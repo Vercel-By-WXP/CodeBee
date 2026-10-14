@@ -1581,7 +1581,7 @@
     max-width: 740px;
     margin-top: 0;
     border-top-color: var(--border-strong);
-    border-radius: 0 0 18px 18px !important;
+    border-radius: 34px;
   }
 
   @media (max-width: 1180px) {

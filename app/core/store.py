@@ -2624,8 +2624,15 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
         # 防目录穿越：必须落在本 run 目录内
         if paths.RUNS_DIR.resolve() not in p.parents:
             return ""
-        data = p.read_bytes()
-        if len(data) > tail:
+        with p.open("rb") as stream:
+            stream.seek(0, 2)
+            size = stream.tell()
+            if tail > 0 and size > tail:
+                stream.seek(-tail, 2)
+            else:
+                stream.seek(0)
+            data = stream.read()
+        if tail > 0 and size > tail:
             text = "...(已截断)...\n" + runner.tail_decoded(data, tail)
         else:
             text = runner.decode_output(data)

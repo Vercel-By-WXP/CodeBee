@@ -31,7 +31,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import activity, automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, settings, store
+from core import activity, automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, runner, settings, store
 from core import paths
 from core import health
 from core import usage as usage_ledger
@@ -850,13 +850,19 @@ class Handler(BaseHTTPRequestHandler):
                 # pretty=1：日志抽屉等人类视图，把 codex JSONL 事件流翻译成可读行；
                 # 蜂巢卡片等机器视图可不带，只享受重复行折叠
                 pretty = (q.get("pretty") or [""])[0] in ("1", "true")
-                text = store.read_step_log(m.group(1), rel, tail=tail, pretty=pretty)
+                raw = store.read_step_log(m.group(1), rel, tail=tail)
+                text = runner.pretty_cli_log(raw) if pretty else raw
                 # 带上步骤/运行状态：日志面板靠它区分「实时刷新中」和「已结束」，
                 # 结束即停轮询（否则用户盯着不动的日志以为刷新坏了）
-                st = next((s.get("status") or "" for s in (run.get("steps") or [])
-                           if s.get("log") == rel), "")
-                return self._json(200, {"log": text, "step_status": st,
-                                        "run_status": run.get("status") or ""})
+                step = next((s for s in (run.get("steps") or []) if s.get("log") == rel), {})
+                st = step.get("status") or ""
+                payload = {"log": text, "step_status": st,
+                           "run_status": run.get("status") or ""}
+                if (q.get("activities") or [""])[0] == "1":
+                    from core.tool_activity import parse_tool_activity
+                    payload.update(parse_tool_activity(raw, st,
+                                                       allow_text_activity=step.get("agent") == "builtin"))
+                return self._json(200, payload)
             m = re.match(r"^/api/runs/([^/]+)/timeline$", path)
             if m:
                 return self._api_run_timeline(m.group(1))

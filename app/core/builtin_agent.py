@@ -27,6 +27,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from . import modelhub, runner, tlsctx
@@ -66,6 +67,7 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 - 大文件（超 64KB）默认只读头尾、中段省略；要看全用 read_file 的 offset/lines 分段读（返回头会提示下一段的 offset）。找内容用 search_content（带行号的 grep），找文件用 find_files，不要逐个文件读。
 - read_file 只能读文本文件；图片、压缩包等二进制文件读不了，如实告知用户即可，不要反复尝试。
 - 较早工具结果若提示已卸载并给出 ref，使用 read_tool_output 按需读取（可传 offset 分段）；不要假设压缩标记就是完整结果。
+- 用户要求使用某项已安装技能时，先用 use_skill 按名称读取，再遵循技能正文；不确定名称可先用 list_skills。需要公开网页信息时用 web_search，任务状态和输出用 read_task_output。已配置的 MCP 工具可直接调用。
 - 用户消息中的图片附件会直接出现在对话里，可直接看图作答，无需用工具读取。
 - run_command 直接在用户的电脑上执行命令并回传退出码与输出：诊断、修复、改配置、重启服务等操作会真实生效。命令跑完看输出再决定下一步，不要一次性罗列步骤让用户自己敲。
 - 当工具列表中提供 create_task 时，如果用户明确要求开始另一项 CodeBee 工作（例如“新建连载小说任务”“再开一个代码任务”），调用它发起独立任务；不要只在当前回答里描述应该怎么做。先从用户话里提取任务类型和目标，缺少关键目标时再追问。
@@ -754,7 +756,109 @@ def _tool_find_files(workdir, args):
     return "\n".join(out) or "（无匹配文件）"
 
 
+def _tool_list_skills():
+    from . import plugins
+    rows = plugins.capabilities_view().get("skills") or []
+    enabled = [r for r in rows if r.get("enabled") and r.get("installed")]
+    return "\n".join("%s · %s" % (r.get("id"), r.get("description") or r.get("display_name") or "")
+                     for r in enabled[:200]) or "（没有已启用的技能）"
+
+
+def _tool_use_skill(args):
+    from . import plugins
+    name = str((args or {}).get("name") or "").strip()
+    if not name:
+        return "（请指定技能名称或 ID；可先调用 list_skills）"
+    rows = [r for r in plugins.capabilities_view().get("skills") or []
+            if r.get("enabled") and r.get("installed")]
+    matches = [r for r in rows if r.get("id") == name]
+    if not matches:
+        matches = [r for r in rows if str(r.get("name") or "").lower() == name.lower()]
+    if len(matches) > 1:
+        return "（技能名称有歧义，请用 ID：%s）" % ", ".join(r["id"] for r in matches)
+    if not matches:
+        return "（未找到已启用技能：%s）" % name[:120]
+    skill = matches[0]
+    source = skill.get("source")
+    if source:
+        try:
+            offset = int((args or {}).get("offset") or 0)
+        except (TypeError, ValueError):
+            return "（offset 必须是非负整数）"
+        if offset < 0 or offset > 200000:
+            return "（offset 超出允许范围）"
+        try:
+            with Path(source).open(encoding="utf-8", errors="replace") as handle:
+                raw = handle.read(offset + 20001)
+        except OSError:
+            return "（技能内容不可读）"
+        body = "技能文件：%s\n相对引用以此文件目录为基准。\n%s" % (
+            source, raw[offset:offset + 20000])
+        if len(raw) > offset + 20000:
+            body += "\n…[后续内容请继续 use_skill，offset=%s]…" % (offset + 20000)
+    else:
+        body = str(skill.get("prompt") or "")[:20000]
+    return body or "（技能内容不可读）"
+
+
+def _tool_web_search(args, sandbox=None, deadline=None):
+    if sandbox and sandbox.get("network") is False:
+        return "（沙箱禁止联网，网页搜索未执行）"
+    query = str((args or {}).get("query") or "").strip()[:300]
+    if not query:
+        return "（query 不能为空）"
+    if deadline is not None and deadline <= time.monotonic():
+        return "（任务总时限已到，网页搜索未执行）"
+    url = "https://www.bing.com/search?format=rss&q=" + urllib.parse.quote(query)
+    timeout = min(10.0, max(0.1, deadline - time.monotonic())) if deadline else 10.0
+    req = urllib.request.Request(url, headers={"User-Agent": "CodeBee/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            data = response.read(256 * 1024)
+        root = ET.fromstring(data)
+        items = root.findall("./channel/item")[:8]
+    except Exception as exc:
+        return "（网页搜索失败：%s）" % str(exc)[:200]
+    if not items:
+        return "（未找到网页结果）"
+    return "\n\n".join("%s\n%s\n%s" % (
+        (item.findtext("title") or "").strip()[:200],
+        (item.findtext("link") or "").strip()[:500],
+        (item.findtext("description") or "").strip()[:700]) for item in items)
+
+
+def _tool_read_task_output(workdir, args, sandbox=None):
+    from . import policy, store
+    task_id = str((args or {}).get("task_id") or "").strip()
+    task = store.get_task(task_id)
+    if not task:
+        return "（任务不存在）"
+    root = Path(workdir or ".").resolve()
+    task_dir = Path(task.get("workdir") or ".").resolve()
+    if task_dir != root and root not in task_dir.parents:
+        return "（任务工作目录不在当前工作目录内，拒绝读取）"
+    if sandbox and not policy.path_allowed(task_dir, sandbox):
+        return "（沙箱拒绝：任务工作目录超出允许范围）"
+    runs = store.task_runs(task_id)
+    if not runs:
+        return "任务状态：%s；暂无运行输出" % task.get("status", "")
+    run = runs[0]
+    lines = ["任务：%s", "状态：%s", "运行：%s"]
+    out = [lines[0] % (task.get("title") or task_id), lines[1] % (run.get("status") or ""),
+           lines[2] % run.get("id")]
+    for step in (run.get("steps") or [])[-10:]:
+        body = step.get("output") or step.get("summary") or ""
+        out.append("步骤 %s（%s）：%s" % (step.get("n"), step.get("status"), str(body)[:2000]))
+    if run.get("error"):
+        out.append("错误：%s" % str(run["error"])[:1000])
+    return "\n".join(out)[:20000]
+
+
 TOOLS_SPEC = [
+    {"name": "list_skills", "description": "列出当前已启用的技能及其 ID，不加载技能正文", "args": {}},
+    {"name": "use_skill", "description": "按名称或 ID 加载已启用的技能指令；长文可用 offset 继续读取", "args": {"name": "技能名称或 ID", "?offset": "下一段起始位置"}},
+    {"name": "web_search", "description": "搜索公开网页，返回标题、网址和摘要；仅用于需要外部最新信息的任务", "args": {"query": "搜索关键词"}},
+    {"name": "read_task_output", "description": "读取当前工作目录内另一项 CodeBee 任务的最近运行状态和步骤输出", "args": {"task_id": "任务 ID"}},
     {"name": "list_files", "description": "列出工作目录（或其子目录）下的文件",
      "args": {"path": "子目录相对路径，留空=根目录"}},
     {"name": "read_file", "description": "读取工作目录内一个文本文件（UTF-8/GBK 自动识别；默认超 64KB 时保留开头与结尾、中段省略，此时用 offset/lines 分段读全；图片等二进制文件无法读取）",
@@ -916,6 +1020,14 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
         if result.get("next_offset") is not None:
             text += "\n…[后续内容可继续 read_tool_output，offset=%s]…" % result["next_offset"]
         return text
+    if name == "list_skills":
+        return _tool_list_skills()
+    if name == "use_skill":
+        return _tool_use_skill(args or {})
+    if name == "web_search":
+        return _tool_web_search(args or {}, sandbox=sandbox, deadline=deadline)
+    if name == "read_task_output":
+        return _tool_read_task_output(workdir, args or {}, sandbox=sandbox)
     if str(name or "").startswith("mcp__"):
         # MCP process launch enforces this policy through bubblewrap; platforms
         # without the isolation backend fail closed in mcp_client._sandbox_launch.

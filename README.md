@@ -1,4 +1,6 @@
-# <img src="app/ui/icons/logo-horizontal.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
+# <img src="app/ui/icons/brand-horizontal.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
+
+> 官网：<https://codebeeagent.com>
 
 > All agents, one hive. —— 一声令下，群蜂齐作。
 > *CodeBee*，码蜂：蜂后统筹（编排者）、侦察蜂定方向（规划/评审）、工蜂采蜜（实现）——
@@ -25,12 +27,10 @@ Trae Agent、OpenClaw……），提供
 ---
 
 <!-- relnotes:start -->
-### 最新版更新内容（v0.1.112）
+### 最新版更新内容（v0.1.113）
 
-- 对话内直接展示每轮文件变更清单
-- 检查点读取流式化，长会话更流畅
-- 发布失败如实上报 + 立即重试；提交按钮定位修复
-- 连载评审失败正确路由到章稿重写
+- README 启用新品牌横向 Logo；新增官网 codebeeagent.com
+- 应用「关于与更新」页新增官网入口；i18n 词条收口
 <!-- relnotes:end -->
 
 
@@ -552,6 +552,7 @@ node tests\ui_skin.mjs        :: 皮肤核验（调色板变量对齐 + 换肤/�
 
 ## 交流与支持
 
+- **官网**：<https://codebeeagent.com> —— 产品介绍与最新动态。
 - **GitHub**：<https://github.com/Vercel-By-WXP/CodeBee> —— 觉得有用就点个 Star，
   Issue 和 PR 都欢迎。
 - **QQ 交流群**：扫码加入「Codebee 沟通交流1群」（群号 923647047），使用问题、

@@ -5518,6 +5518,7 @@ window.sideOpenTask = function (key, pinTab) {
   S.rdTabPin = !!pinTab;
   S.rdTabSig = "";
   applyRdTabs();
+  if (S.rdTab === "chat") chatScrollBottomNow($("rd-chat-flow"));
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
   renderTaskDetail();
 };
@@ -6237,6 +6238,7 @@ async function openRun(id, pinTab) {
   syncInspBtn();
   detailSideReset();     // 换详情目标：任务级 side 缓存作废，等首拉
   syncInspectorVis();    // 详情已铺开：检查器让位（选中保留，返回列表自动滑回）
+  chatScrollBottomNow($("rd-chat-flow"));
   renderRunDetail();
 }
 
@@ -6343,18 +6345,19 @@ function applyRdTabs() {
   }
   // 对话页签不放日志抽屉：会盖住贴底输入条（手动切来/自动选卡都覆盖）
   if (S.rdTab === "chat" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
-  // 切进对话页签且带着跳最新标记（继续任务/首开详情置的）：把时间线带到底。
+  renderChatNav();
+  // 每次进入对话都落到最新；在同一页签内的轮询不改变回看历史的位置。
   // 内容已与当前 run 对齐（drawChatFlow 盖的 run 戳）才就地落底并消费——内容
   // 还是上一轮的旧帧（续跑换 run、/timeline 在途）则保留标记，等 drawChatFlow
   // 重建完新内容再落底，避免停在旧帧尾、新一轮气泡压在折叠线下面。
-  if (S.rdTab === "chat" && chatWasHidden && chatForceBottom) {
+  if (S.rdTab === "chat" && chatWasHidden) {
+    chatForceBottom = true;
     const fl = $("rd-chat-flow");
-    if (fl && fl.dataset.runId && fl.dataset.runId === chatRunId) {
+    if (fl && fl.offsetParent !== null && fl.dataset.runId === S.lastRun?.id) {
       chatScrollBottomNow(fl);
       chatForceBottom = false;
     }
   }
-  renderChatNav();
 }
 
 /* 直连任务「对话为主」布局：收起常规页签条，右上角一排小胶囊按需打开
@@ -6369,6 +6372,7 @@ function renderChatNav() {
   // 对话为主时锁死外层滚动（main 是滚动根）；离开详情必须解锚，否则任务列表滚不动
   const mainEl = document.querySelector("main");
   if (mainEl) mainEl.classList.toggle("chat-fill", direct);
+  renderChatContext(direct);
   if (!direct) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
   const labels = { hive: t("蜂巢"), steps: t("步骤"), result: t("成果"),
     preview: t("预览"), git: "Git", bible: t("圣经"), bookmeta: t("作品信息") };
@@ -6389,6 +6393,129 @@ function renderChatNav() {
     : "") +
     '<span class="cn-pills">' + pills + "</span>";
   nav.classList.remove("hidden");
+}
+
+function renderChatContext(direct) {
+  const box = $("rd-context");
+  if (!box) return;
+  if (!direct || !S.lastRun) {
+    box.classList.add("hidden");
+    $("rd-rail").classList.remove("context-open");
+    return;
+  }
+  const key = detailSideTaskKey();
+  const side = S.detailSide && S.detailSide.task && S.detailSide.task.id === key ? S.detailSide : null;
+  const sideRun = side && side.run && side.run.id === S.lastRun.id ? side : null;
+  const task = [S.lastRunTask].concat((S.state && S.state.tasks) || [], (S.state && S.state.archived_tasks) || [])
+    .find(item => item && item.id === key) || (side && side.task) || {};
+  const wb = S.gitWbKey === key && S.gitWb && S.gitWb.repo ? S.gitWb : null;
+  const git = (side && side.git) || S.lastRun.git || {};
+  const changes = (side && side.changes) || S.lastRun.changes || {};
+  const branch = (wb && wb.branch) || git.branch || "";
+  const path = String(task.workdir || "").replace(/[\\/]+$/, "");
+  const project = path.split(/[\\/]/).filter(Boolean).pop() || task.title || t("项目");
+  const steps = (sideRun && sideRun.steps) || S.lastRun.steps || [];
+  const run = (sideRun && sideRun.run) || S.lastRun;
+  const progress = (sideRun && sideRun.progress) || {};
+  const done = progress.done == null ? steps.filter(step => step.status === "done").length : Number(progress.done);
+  const total = progress.total == null ? steps.length : Number(progress.total);
+  const current = steps.find(step => step.status === "running");
+  const withLog = current && current.log ? current : steps.slice().reverse().find(step => step.log);
+  const agentSteps = task.engine !== "direct" ? (S.lastRun.steps || []) : [];
+  const agents = new Map();
+  agentSteps.forEach(step => {
+    const agent = step.agent || step.agent_label;
+    if (agent) agents.set(agent, step.status);
+  });
+  const agentDone = [...agents.values()].filter(status => status === "done").length;
+  const agentRunning = [...agents.values()].filter(status => status === "running" || status === "queued").length;
+  const runId = run.id || S.lastRun.id;
+  const timeline = $("rd-chat-flow").dataset.runId === S.lastRun.id ? chatTimelineItems : [];
+  const sources = (task.attachments || []).map(item => ({ item, runId: S.lastRun.id }))
+    .concat(timeline.filter(item => item.kind === "user").flatMap(item =>
+      (item.attachments || []).map(attachment => ({ item: attachment, runId: item.run || S.lastRun.id }))));
+  const seenSources = new Set();
+  const atts = sources.map(({ item, runId }) => {
+    const rel = typeof item === "string" ? item : (item && (item.path || item.name)) || "";
+    const name = typeof item === "string" ? item.split(/[\\/]/).pop() : (item && item.name) || rel.split(/[\\/]/).pop();
+    if (!rel || !name) return null;
+    const normalized = String(rel).replace(/\\/g, "/");
+    const path = normalized.startsWith("_attachments/") ? normalized : "_attachments/" + normalized.split("/").pop();
+    const sourceKey = runId + "\n" + path;
+    if (seenSources.has(sourceKey)) return null;
+    seenSources.add(sourceKey);
+    return { rel: path, name: String(name), runId };
+  }).filter(Boolean);
+  const sig = JSON.stringify([key, run.id, branch, changes.add_total, changes.del_total, done, total,
+    steps.map(s => [s.n, s.status, s.summary, s.log, s.duration_s]), run.status, run.started_at,
+    atts, project, !!wb, wb && wb.ahead, agents.size, agentDone, agentRunning,
+    run.status === "running" ? Math.floor(Date.now() / 10000) : 0]);
+  if (box.dataset.signature === sig) { box.classList.remove("hidden"); return; }
+  box.dataset.signature = sig;
+  const icon = name => '<svg class="ico" aria-hidden="true"><use href="#i-' + name + '"></use></svg>';
+  let html = '<div class="rd-context-section"><div class="rd-context-heading"><span>' +
+    esc(project) + '</span><button type="button" class="rd-context-icon" data-context-action="git" title="' +
+    esc(t("打开 Git 工作台")) + '" aria-label="' + esc(t("打开 Git 工作台")) + '">···</button></div>';
+  const add = changes.add_total, del = changes.del_total;
+  if (branch || add != null || del != null) {
+    html += '<button type="button" class="rd-context-row" data-context-action="git">' + icon("file-text") +
+      '<span>' + esc(t("变更")) + '</span><span class="rd-context-spacer"></span>' +
+      (add != null ? '<b class="rd-context-add">+' + Number(add) + '</b>' : "") +
+      (del != null ? '<b class="rd-context-del">-' + Number(del) + '</b>' : "") + '</button>' +
+      (branch ? '<button type="button" class="rd-context-row" data-context-action="git">' + icon("git-branch") +
+      '<span class="rd-context-truncate" title="' + esc(branch) + '">' + esc(branch) + '</span>' + icon("chevron-r") + '</button>' : "") +
+      '<button type="button" class="rd-context-row" data-context-action="git">' + icon("workflow") +
+      '<span>' + esc(t("提交或推送")) + '</span>' +
+      (wb && wb.ahead > 0 ? '<span class="rd-context-muted">↑' + wb.ahead + '</span>' : "") + '</button>';
+  } else {
+    html += '<div class="rd-context-muted rd-context-empty">' + esc(t("暂无 Git 变更")) + '</div>';
+  }
+  html += '</div>';
+  if (total) {
+    html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("进程")) +
+      '<span>' + done + '/' + total + '</span></div><div class="rd-context-steps">' +
+      steps.slice(0, 8).map(step => '<button type="button" class="rd-context-step ' +
+        esc(step.status || "") + '" data-context-action="step" data-step-n="' + Number(step.n || 0) +
+        '" title="' + esc(step.summary || step.role || "") + '"><span class="rd-context-dot"></span>' +
+        '<span>' + esc(step.summary || step.role || t("步骤")) + '</span></button>').join("") +
+      '</div>' + (steps.length > 8 ? '<button type="button" class="rd-context-link" data-context-action="steps">' +
+        esc(t("查看全部")) + '</button>' : "") + '</div>';
+  }
+  if (agents.size) {
+    html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("子智能体")) + '</div>' +
+      '<button type="button" class="rd-context-row rd-context-agent" data-context-action="steps">' +
+      icon("sun") + '<span>' + agentDone + ' ' + esc(t("完成")) + '</span>' +
+      (agentRunning ? '<span class="rd-context-muted">' + agentRunning + ' ' + esc(t("运行中")) + '</span>' : '') +
+      '</button></div>';
+  }
+  if (run.started_at || withLog) {
+    const start = Date.parse(String(run.started_at || "").replace(" ", "T"));
+    const end = Date.parse(String(run.ended_at || "").replace(" ", "T"));
+    const seconds = Number.isFinite(start) ? Math.max(0, Math.floor(((Number.isFinite(end) ? end : Date.now()) - start) / 1000)) : 0;
+    const duration = seconds >= 60 ? Math.floor(seconds / 60) + t("分") + seconds % 60 + t("秒") : seconds + t("秒");
+    html += '<div class="rd-context-section rd-context-terminal"><button type="button" class="rd-context-row" data-context-action="terminal"' +
+      (withLog ? ' data-log-rel="' + esc(withLog.log) + '" data-log-run="' + esc(runId) + '"' : "") + '>' +
+      '<span>' + esc(t("终端")) + '</span><span class="rd-context-muted">' + esc(duration) +
+      (current ? ' · ' + esc(t("运行中")) : "") + '</span></button></div>';
+  }
+  html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("来源")) +
+    '<button type="button" class="rd-context-icon" data-context-action="attach" title="' +
+      esc(t("添加附件")) + '" aria-label="' + esc(t("添加附件")) + '">' + icon("plus") + '</button>' +
+    '</div><div class="rd-context-sources">' + (atts.length ? atts.map((att, i) =>
+      '<button type="button" class="rd-context-source' + (i >= 3 ? ' rd-context-extra hidden' : '') +
+      '" data-context-action="source" data-source-rel="' + esc(att.rel) + '" data-source-run="' + esc(att.runId) +
+      '" title="' + esc(att.name) + '">' +
+      icon("file-text") + '<span>' + esc(att.name) + '</span></button>').join("") :
+      '<span class="rd-context-muted rd-context-empty">' + esc(t("暂无附件")) + '</span>') + '</div>' +
+    (atts.length > 3 ? '<button type="button" class="rd-context-link" data-context-action="all-sources">' +
+      icon("link") + esc(t("查看全部")) + '</button>' : "") + '</div>';
+  box.innerHTML = html;
+  if (box.dataset.sourcesExpanded === "true") {
+    box.querySelectorAll(".rd-context-extra").forEach(row => row.classList.remove("hidden"));
+    const all = box.querySelector('[data-context-action="all-sources"]');
+    if (all) all.lastChild.textContent = t("收起");
+  }
+  box.classList.remove("hidden");
 }
 window.rdChatNavGo = function (tab) {
   S.rdTab = tab;
@@ -7797,12 +7924,14 @@ async function refreshDetailSide(force) {
   if (!d || !d.task) {
     S.detailSide = null;
     renderChangeSummary();
+    renderChatContext(true);
     chatSig = ""; chatLiveSig = "";
     if (S.lastRun && S.lastRun.task_id === key) renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
     return;
   }
   S.detailSide = d;
   renderChangeSummary();
+  renderChatContext(true);
   const sig = JSON.stringify([d.task.git_state, d.git, d.changes, d.stats]);
   if (sig === S.detailSideSig) return;       // 没变化不重画（保住文件行 hover 态）
   S.detailSideSig = sig;
@@ -7907,6 +8036,7 @@ async function loadGitWb(force) {
     if (detailSideTaskKey() !== key) return;   // 期间已切详情目标：过期响应不落盘
     S.gitWb = d; S.gitWbKey = key; S.gitWbAt = Date.now();
     renderGitPanel(S.lastRun, S.lastRunTask);
+    renderChatContext(true);
   } catch (e) { /* 静默：下一轮节流重试 */ }
   finally { S.gitWbBusy = false; }
 }
@@ -10553,7 +10683,10 @@ function syncChatSendControls(run = S.lastRun || {}) {
     send.setAttribute("aria-label", active ? t("排队（默认）") : t("发送"));
   }
   if ($("rd-chat-send-label")) $("rd-chat-send-label").textContent = t(active ? "排队" : "发送");
-  if (options) { options.classList.toggle("hidden", !active); options.disabled = chatSending; }
+  if (options) { options.classList.toggle("hidden", !active || !ready); options.disabled = chatSending; }
+  if (send) send.classList.toggle("hidden", active && !ready);
+  const stop = $("rd-chat-stop");
+  if (stop) { stop.classList.toggle("hidden", !active || ready); stop.disabled = chatSending; }
   if (!active) chatCloseSendMenu();
   document.querySelectorAll("[data-chat-delivery]").forEach(button => { button.disabled = chatSending || !ready; });
   document.querySelectorAll("[data-chat-steer], [data-chat-retract]").forEach(button => {
@@ -10580,6 +10713,7 @@ let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长�
 let chatLiveTimer = null;    // 运行中快轮询句柄（1.2s，见 scheduleChatLive）
 let chatLiveRunId = null;
 const chatLogOpen = new Set(), chatLogClosed = new Set(), chatLogCache = new Map(), chatLogInflight = new Set(), chatLogFetchedAt = new Map();
+const chatActivityCache = new Map(), chatDisclosureState = new Map();
 let chatForceBottom = false; // 强制贴底一次（不管当时滚到哪，都要看到最新内容）；发送消息、继续任务、打开详情共用
 
 // 对话右侧工作区：复用本机目录 API，让用户可以在查看 CLI 日志的同时打开、
@@ -10863,20 +10997,80 @@ function chatAcpEventsHTML(it) {
 }
 
 function chatLogKey(run, rel) { return String(run || "") + "\n" + String(rel || ""); }
+
+function chatDisclosureAttr(key, defaultOpen = false) {
+  const state = chatDisclosureState.get(key);
+  return ' data-chat-disclosure="' + esc(key) + '"' +
+    ((state ? state.open : defaultOpen) ? ' open' : '');
+}
+
+function chatToolActivityHTML(it, index, latestLogIndex, segment) {
+  if (!it.log || !it.run) return "";
+  const key = chatLogKey(it.run, it.log);
+  const cached = chatActivityCache.get(key);
+  const activities = segment ? segment.activities : (cached?.activities || []);
+  const groupKey = key + "\ngroup" + (segment ? ":" + segment.id : "");
+  const icons = { read: "book", command: "code", edit: "file-text", search: "search", tool: "code" };
+  const labels = { read: t("读取文件"), command: t("运行命令"), edit: t("修改文件"), search: t("搜索"), tool: t("使用工具") };
+  const statuses = { completed: t("完成"), running: t("执行中"), failed: t("失败"), unknown: t("工具活动") };
+  const kinds = [...new Set(activities.map(a => labels[a.kind] || labels.tool))];
+  const summary = kinds.length ? kinds.join(" · ") : t("执行过程");
+  const rows = activities.map((a, i) => {
+    const state = Object.hasOwn(statuses, a.status) ? a.status : "unknown";
+    const label = [statuses[state], labels[a.kind] || labels.tool,
+      a.kind === "tool" ? a.name : "", a.summary].filter(Boolean).join(" · ");
+    const detailKey = key + "\nactivity:" + (a.id || i);
+    return '<details class="chat-tool-row ' + state + '"' + chatDisclosureAttr(detailKey) + '><summary>' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-' + (icons[a.kind] || icons.tool) + '"></use></svg>' +
+      '<span class="chat-tool-label" title="' + esc(label) + '">' + esc(label) + '</span></summary>' +
+      '<div class="chat-tool-detail">' +
+      (a.input ? '<pre>' + esc(a.input) + '</pre>' : '') +
+      (a.output ? '<pre>' + esc(a.output) + '</pre>' : '') +
+      (a.exit_code != null ? '<span>' + esc(t("退出码")) + ' ' + esc(a.exit_code) + '</span>' : '') +
+      '</div></details>';
+  }).join("");
+  const empty = cached ? t("该步骤未记录可识别的工具活动，可查看执行日志。") :
+    (chatLogInflight.has(key) ? t("正在读取执行过程…") : t("展开以读取执行过程"));
+  return '<details class="chat-tool-group" data-chat-activity-key="' + esc(key) + '"' +
+    chatDisclosureAttr(groupKey, it.status === "running" || index === latestLogIndex) + '><summary>' +
+    '<svg class="ico" aria-hidden="true"><use href="#i-code"></use></svg><span>' + esc(summary) + '</span>' +
+    (activities.length ? '<span class="chat-tool-count">' + activities.length + '</span>' : '') +
+    '<span class="chat-tool-chevron">⌄</span></summary><div class="chat-tool-list" data-chat-activity-list="' + esc(groupKey) + '">' +
+    (rows || '<div class="chat-tool-empty">' + esc(empty) + '</div>') +
+    (cached?.activities_truncated ? '<div class="chat-tool-empty">' + esc(t("仅显示最近的工具活动")) + '</div>' : '') +
+    '</div></details>';
+}
+
+function chatExecutionHTML(it, index, latestLogIndex) {
+  const cached = chatActivityCache.get(chatLogKey(it.run, it.log));
+  if (!cached?.transcript?.length) return chatToolActivityHTML(it, index, latestLogIndex);
+  const byId = new Map(cached.activities.map(a => [a.id, a]));
+  let html = "", tools = [], segment = 0;
+  const flush = () => {
+    if (tools.length) html += chatToolActivityHTML(it, index, latestLogIndex, { activities: tools, id: segment++ });
+    tools = [];
+  };
+  const finalText = chatCleanText(it.text);
+  for (const block of cached.transcript) {
+    if (block.kind === "tool") { if (byId.has(block.id)) tools.push(byId.get(block.id)); }
+    else if (block.kind === "message") {
+      const text = chatCleanText(block.text);
+      if (!text || text === finalText) continue;
+      flush();
+      html += '<div class="chat-execution-message">' + chatBodyHTML(text) + '</div>';
+    }
+  }
+  flush();
+  return html;
+}
+
 function chatLogHTML(it, index, latestLogIndex) {
   if (!it.log || !it.run) return "";
-  const key = chatLogKey(it.run, it.log), opened = chatLogOpen.has(key) ||
-    ((it.status === "running" || index === latestLogIndex) && !chatLogClosed.has(key));
+  const key = chatLogKey(it.run, it.log), opened = chatLogOpen.has(key);
   const cached = chatLogCache.get(key);
-  const status = it.status === "running" ? t("CLI 执行中") :
-    (it.status === "failed" ? t("失败") : (it.status === "cancelled" ? t("已取消") : t("完成")));
-  const actor = [it.who, it.role, it.n != null ? "#" + it.n : ""].filter(Boolean).join(" · ");
-  return '<div class="chat-cli-card"><div class="chat-cli-card-head"><span class="chat-cli-card-dot ' +
-    (it.status === "running" ? "live" : it.status === "failed" ? "bad" : "") + '"></span><strong>' +
-    esc(actor || t("CLI 日志")) + '</strong><span class="chat-cli-card-status">' + esc(status) +
-    '</span></div><details class="chat-cli-log" data-chat-log-key="' + esc(key) + '"' + (opened ? " open" : "") + ">" +
+  return '<details class="chat-cli-log" data-chat-log-key="' + esc(key) + '"' + (opened ? " open" : "") + ">" +
     "<summary>" + esc(t("查看完整 CLI 执行日志")) + (cached ? " · " + esc(t("已加载")) : "") + "</summary>" +
-    '<pre class="chat-cli-log-text">' + esc(cached || (opened ? t("正在读取 CLI 日志…") : "")) + "</pre></details></div>";
+    '<pre class="chat-cli-log-text">' + esc(cached || (opened ? t("正在读取 CLI 日志…") : "")) + "</pre></details>";
 }
 
 function chatLoadLog(run, rel) {
@@ -10884,8 +11078,14 @@ function chatLoadLog(run, rel) {
   const now = Date.now();
   if (!run || !rel || chatLogInflight.has(key) || now - (chatLogFetchedAt.get(key) || 0) < 2200) return;
   chatLogInflight.add(key);
-  api("/api/runs/" + encodeURIComponent(run) + "/log?step=" + encodeURIComponent(rel) + "&tail=12000&pretty=1")
-    .then((data) => { chatLogCache.set(key, String((data && data.log) || "").trim() || t("当前暂无 CLI 日志输出")); chatLogFetchedAt.set(key, Date.now()); })
+  api("/api/runs/" + encodeURIComponent(run) + "/log?step=" + encodeURIComponent(rel) + "&tail=40000&pretty=1&activities=1")
+    .then((data) => {
+      chatLogCache.set(key, String(data?.log || "").trim() || t("当前暂无 CLI 日志输出"));
+      chatActivityCache.set(key, { activities: Array.isArray(data?.activities) ? data.activities : [],
+        transcript: Array.isArray(data?.transcript) ? data.transcript : [],
+        activities_truncated: !!data?.activities_truncated, step_status: data?.step_status || "" });
+      chatLogFetchedAt.set(key, Date.now());
+    })
     .catch((error) => { chatLogCache.set(key, t("读取 CLI 日志失败：") + (error.message || "")); })
     .finally(() => {
       chatLogInflight.delete(key);
@@ -10899,9 +11099,13 @@ function chatLoadLog(run, rel) {
         const stillRendered = flow && flow.dataset.runId &&
           Array.from(flow.querySelectorAll("details.chat-cli-log[data-chat-log-key]"))
             .some((details) => details.dataset.chatLogKey === key);
+        const viewedRun = S.lastRun.id;
         if (stillRendered)
-          api("/api/runs/" + encodeURIComponent(flow.dataset.runId) + "/timeline")
-          .then((timeline) => { if (S.lastRun) drawChatFlow(S.lastRun, timeline, ["running", "queued"].includes(S.lastRun.status)); })
+          api("/api/runs/" + encodeURIComponent(viewedRun) + "/timeline")
+          .then((timeline) => {
+            if (S.lastRun?.id === viewedRun && !$("run-detail").classList.contains("hidden"))
+              drawChatFlow(S.lastRun, timeline, ["running", "queued"].includes(S.lastRun.status));
+          })
           .catch(() => {});
       }
     });
@@ -11022,7 +11226,11 @@ async function renderChat(run, active) {
   }
   const continueNote = $("rd-chat-continue-note");
   if (continueNote) continueNote.classList.toggle("hidden", !!active);
-  if (chatRunId !== run.id) { chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; chatLiveSig = ""; }
+  if (chatRunId !== run.id) {
+    chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; chatLiveSig = "";
+    chatForceBottom = true;
+    chatDisclosureState.clear();
+  }
   // 三件套回填：任务对象来自 S.state（渲染时已就位）；只在任务未在跑时回显，
   // 防止轮询把用户正在改的值弹回（select change 重绘弹回教训）
   if (run.status !== "running" && run.status !== "queued" && S.state) {
@@ -11033,7 +11241,18 @@ async function renderChat(run, active) {
     "|" + ((run.messages || []).length) + "|" + (run.steps || []).map((s) =>
       [s.status, s.output, s.summary, s.thinking, s.stream, (s.activity || []).length].join("~")
     ).join("^");
-  if (sig === chatSig) return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
+  if (sig === chatSig) {
+    // 重开同一任务时正文签名可能完全不变，时间线不会重绘；仍要消费进入详情时
+    // 设置的落底请求。否则旧 pane 已经可见（只是外层 run-detail 曾隐藏），
+    // applyRdTabs 看不到 pane 显隐变化，用户会留在上次回看的历史位置。
+    const flow = $("rd-chat-flow");
+    if (chatForceBottom && flow && flow.dataset.runId === run.id &&
+        !$('rd-chat').classList.contains("hidden") && !$('rd-chat').closest(".rd-pane").classList.contains("hidden")) {
+      chatScrollBottomNow(flow);
+      chatForceBottom = false;
+    }
+    return;   // 轮询重画去抖：内容没变不重建 DOM（保住输入焦点）
+  }
   const runForFetch = run.id;    // 拉取期间可能切详情：过期响应不落盘（同 renderRunDetail 闸门）
   chatSig = sig;
   let data = null;
@@ -11111,13 +11330,22 @@ function drawChatFlow(run, data, active) {
   const items = (data && data.items) || [];
   const flow = $("rd-chat-flow");
   if (!flow) return;
+  flow.querySelectorAll("details[data-chat-disclosure]").forEach(details => {
+    chatDisclosureState.set(details.dataset.chatDisclosure, { open: details.open });
+  });
+  const activityScroll = new Map(Array.from(flow.querySelectorAll("[data-chat-activity-list]")).map(list =>
+    [list.dataset.chatActivityList, { top: list.scrollTop,
+      pin: list.scrollHeight - list.scrollTop - list.clientHeight < 24 }]));
   const latestLogIndex = items.reduce((last, it, index) =>
     (it.kind === "agent" && it.log && it.run ? index : last), -1);
   // 日志是独立文件，可能在步骤状态/正文都不变时持续增长。先于时间线签名
   // 闸门轮询最新/运行中的日志，否则 DOM 不重建时 CLI 输出会停留在旧尾部。
   items.forEach((it, index) => {
-    if (it.kind === "agent" && it.log && it.run &&
-        (it.status === "running" || index === latestLogIndex)) chatLoadLog(it.run, it.log);
+    if (it.kind !== "agent" || !it.log || !it.run) return;
+    const key = chatLogKey(it.run, it.log), cached = chatActivityCache.get(key);
+    if (it.status === "running" || ((index === latestLogIndex ||
+        chatDisclosureState.get(key + "\ngroup")?.open) && (!cached || cached.step_status !== it.status)))
+      chatLoadLog(it.run, it.log);
   });
   // 增量闸门：时间线任何可见输入（状态/正文/思考/实时流/活动/追问/已送达）
   // 都没变才跳过重建——保滚动位置与折叠态。维度少了不行：只看 live 长度的话，
@@ -11140,6 +11368,7 @@ function drawChatFlow(run, data, active) {
     : ((a && (a.name || a.path)) || "");
     return String(p).split(/[\\/]/).pop() || ""; };
   chatTimelineItems = items;   // 复制/编辑重发按索引回查（见 rd-chat-flow 委托）
+  renderChatContext(chatEngineIsDirect(run));
   renderChatQueue(items, run);
   let html = items.map((it, idx) => {
     if (it.kind === "user") {
@@ -11210,6 +11439,7 @@ function drawChatFlow(run, data, active) {
       (stepMeta ? '<div class="chat-step-meta">' + esc(stepMeta) + "</div>" : "") +
       chatThinkHTML(it) +
       chatAcpEventsHTML(it) +
+      chatExecutionHTML(it, idx, latestLogIndex) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
@@ -11246,6 +11476,10 @@ function drawChatFlow(run, data, active) {
     : true;
   const thinkTop = prevThink ? prevThink.scrollTop : 0;
   flow.innerHTML = html || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
+  flow.querySelectorAll("[data-chat-activity-list]").forEach(list => {
+    const prev = activityScroll.get(list.dataset.chatActivityList);
+    if (prev) list.scrollTop = prev.pin ? list.scrollHeight : prev.top;
+  });
   if (stick) chatScrollBottomNow(flow);
   const newThink = flow.querySelector('[data-think-live="1"] .ct-body');
   if (newThink) {
@@ -11295,14 +11529,15 @@ function chatChangeSummaryHTML(run) {
     esc(run.id || "") + '">' + esc(t("撤销")) + "</button>";
   const submit = active || isolatedRestored ? "" : '<button type="button" class="primary chat-change-submit" data-chat-change-submit="' +
     esc(run.id || "") + '">' + esc(t("提交 Git 并推送")) + "</button>";
-  return '<div class="chat-row chat-change-row"><section class="chat-change-card" aria-label="' + esc(t("文件变更")) + '">' +
-    '<div class="chat-change-head"><div class="chat-change-title"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
+  return '<div class="chat-row chat-change-row"><details class="chat-change-card"' + chatDisclosureAttr("changes:" + run.id) +
+    ' aria-label="' + esc(t("文件变更")) + '">' +
+    '<summary class="chat-change-head"><div class="chat-change-title"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>' +
     '<strong>' + esc(t("已编辑 {0} 个文件", count)) + '</strong><span class="chat-change-stats"><b>+' + add + '</b><b>-' + del +
-    '</b></span></div><span class="chat-change-branch" title="' + esc(git.branch) + '">' + esc(git.branch) + '</span></div>' +
+    '</b></span></div><span class="chat-change-branch" title="' + esc(git.branch) + '">' + esc(git.branch) + '</span></summary>' +
     '<div class="chat-change-files">' + rows + more + '</div>' +
     '<div class="chat-change-foot">' + submit + undo + '<button type="button" class="ghost chat-change-view" data-chat-change-view="' +
     esc(run.id || "") + '">' + esc(t("查看变更")) + '</button></div>' +
-    '</section></div>';
+    '</details></div>';
 }
 
 window.undoChatChanges = async function (runId) {
@@ -12017,6 +12252,7 @@ function bindChat() {
         ta = $("rd-chat-input");
   if (!btn || !file || !send || !ta) return;
   const runStatus = $("rd-chat-run-status");
+  if ($("rd-chat-stop")) $("rd-chat-stop").addEventListener("click", cancelRun);
   if (runStatus) {
     runStatus.querySelector("[data-chat-run-pause]").addEventListener("click", window.dirTogglePause);
     runStatus.querySelector("[data-chat-run-cancel]").addEventListener("click", cancelRun);
@@ -12119,6 +12355,19 @@ function bindChat() {
   // 输入条胶囊增删重画，都不丢监听。时间线胶囊走已落盘文件，输入条胶囊
   // （× 移除按钮除外）走待提交区
   $("rd-chat-flow").addEventListener("click", (e) => {
+    const activityDetails = e.target.closest("details.chat-tool-group[data-chat-activity-key]");
+    if (activityDetails) {
+      const key = activityDetails.dataset.chatActivityKey || "";
+      setTimeout(() => {
+        if (!activityDetails.isConnected) return;
+        chatDisclosureState.set(activityDetails.dataset.chatDisclosure, { open: activityDetails.open });
+        if (activityDetails.open && !chatActivityCache.has(key)) {
+          const split = key.indexOf("\n");
+          if (split >= 0) chatLoadLog(key.slice(0, split), key.slice(split + 1));
+        }
+      }, 0);
+      return;
+    }
     const logDetails = e.target.closest("details.chat-cli-log[data-chat-log-key]");
     if (logDetails) {
       const key = logDetails.dataset.chatLogKey || "";
@@ -18865,6 +19114,43 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-attach").addEventListener("click", (event) => { event.stopPropagation(); cmpAddMenu(); });
   $("change-summary-open").addEventListener("click", openChangeSummaryGit);
   $("change-summary-more").addEventListener("click", openChangeSummaryGit);
+  $("rd-context-toggle").addEventListener("click", () => {
+    const rail = $("rd-rail"), button = $("rd-context-toggle");
+    const open = rail.classList.toggle("context-open");
+    button.setAttribute("aria-expanded", String(open));
+  });
+  $("rd-context").addEventListener("click", event => {
+    const button = event.target.closest("[data-context-action]");
+    if (!button) return;
+    const action = button.dataset.contextAction;
+    if (action === "all-sources") {
+      const box = $("rd-context"), expanded = box.dataset.sourcesExpanded !== "true";
+      box.dataset.sourcesExpanded = String(expanded);
+      box.querySelectorAll(".rd-context-extra").forEach(row => row.classList.toggle("hidden", !expanded));
+      button.lastChild.textContent = expanded ? t("收起") : t("查看全部");
+      return;
+    }
+    if (action === "source") _fpPreviewUrl("/api/runs/" + encodeURIComponent(button.dataset.sourceRun) +
+      "/file?name=" + encodeURIComponent(button.dataset.sourceRel), button.dataset.sourceRel);
+    else if (action === "attach") $("rd-chat-attach").click();
+    else if (action === "terminal" && button.dataset.logRel) toggleLog(button.dataset.logRun, button.dataset.logRel);
+    else if (action === "step") {
+      const n = Number(button.dataset.stepN);
+      const side = S.detailSide;
+      const sameRun = side && side.run && side.run.id === S.lastRun?.id;
+      const step = (sameRun ? side.steps : S.lastRun?.steps || []).find(item => Number(item.n) === n);
+      if (step && step.log) toggleLog(S.lastRun.id, step.log);
+      else { S.rdTab = "steps"; S.rdTabPin = true; applyRdTabs(); }
+    } else if (action === "git") {
+      S.rdTab = "git"; S.rdTabPin = true; applyRdTabs();
+    } else if (action === "steps" || action === "terminal") {
+      S.rdTab = "steps"; S.rdTabPin = true; applyRdTabs();
+    }
+    if (window.innerWidth <= 900) {
+      $("rd-rail").classList.remove("context-open");
+      $("rd-context-toggle").setAttribute("aria-expanded", "false");
+    }
+  });
   $("cmp-add-menu").addEventListener("click", (event) => {
     const action = event.target.closest("[data-add-action]");
     const capability = event.target.closest("[data-add-capability]");

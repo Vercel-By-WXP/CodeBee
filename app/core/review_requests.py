@@ -14,9 +14,9 @@ _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "review-requests.jsonl"
 _STATUSES = {"requested", "assigned", "approved", "changes_requested", "dismissed", "expired"}
 _TRANSITIONS = {
-    "assign": ("requested", "assigned"),
-    "approve": ("assigned", "approved"),
-    "changes_requested": ("assigned", "changes_requested"),
+    "assign": (("requested",), "assigned"),
+    "approve": (("assigned",), "approved"),
+    "changes_requested": (("assigned",), "changes_requested"),
     "dismiss": (("requested", "assigned", "changes_requested"), "dismissed"),
     "expire": (("requested", "assigned", "changes_requested"), "expired"),
 }
