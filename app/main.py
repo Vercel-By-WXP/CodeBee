@@ -2341,8 +2341,9 @@ class Handler(BaseHTTPRequestHandler):
         chain = store.serial_chain_ids(task_id)
         target = (store.get_task(chain[0]) if chain else None) or task
         target_id = str(target.get("id"))
-        if target.get("status") in ("queued", "running"):
-            return self._json(400, {"error": "任务正在运行，请等本轮结束后再生成作品信息"})
+        # 作品信息生成只读取已有素材，再把独立的 book_meta/Markdown 结果写回；
+        # 它可以和任务主流程并行。此前这里复用了主任务运行闸门，导致用户在
+        # 任务仍在产出章节时无法生成建书资料，前端只能误报“生成失败”。
         cur = ((target.get("book_meta") or {}).get(platform) or {})
         if cur.get("status") == "running":
             return self._json(200, {"ok": True, "already": True})
