@@ -10,6 +10,8 @@ import copy
 import hashlib
 import json
 
+from . import paths, flows
+
 
 _EXPERTS = {
     "research": {
@@ -68,11 +70,61 @@ def _copy(item):
 
 
 def list_experts():
-    return [_copy(x) for x in _EXPERTS.values()]
+    items = [_copy(x) for x in _EXPERTS.values()]
+    try:
+        raw = json.loads((paths.DATA_DIR / "experts.json").read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            for expert_id, item in raw.items():
+                if expert_id not in _EXPERTS and isinstance(item, dict):
+                    items.append(_copy(item))
+    except (OSError, ValueError):
+        pass
+    return items
 
 
 def get_expert(expert_id):
-    return _copy(_EXPERTS.get(str(expert_id or "").strip()))
+    key = str(expert_id or "").strip()
+    if key in _EXPERTS:
+        return _copy(_EXPERTS[key])
+    for item in list_experts():
+        if item.get("id") == key:
+            return item
+    return None
+
+
+def import_expert(expert):
+    """Install a validated shared template without replacing built-ins."""
+    if not isinstance(expert, dict):
+        raise ValueError("专家模板必须是对象")
+    expert = _copy(expert)
+    expert_id = str(expert.get("id") or "").strip()
+    if not expert_id.startswith("shared_") or len(expert_id) > 80:
+        raise ValueError("分享专家 ID 必须以 shared_ 开头")
+    if not all(isinstance(expert.get(k), str) and expert.get(k).strip()
+               for k in ("name", "version", "flow_id", "prompt")):
+        raise ValueError("专家模板缺少必要字段")
+    if not flows.get_flow(expert["flow_id"]):
+        raise ValueError("专家模板绑定的流程不存在")
+    for key in ("skills", "knowledge_scope", "deliverables"):
+        if not isinstance(expert.get(key), list):
+            raise ValueError("专家模板字段 %s 必须是列表" % key)
+        expert[key] = [str(x).strip()[:120] for x in expert[key][:20] if str(x).strip()]
+    expert["id"] = expert_id
+    expert["version"] = str(expert["version"])[:40]
+    expert["content_sha256"] = content_sha256(expert)
+    path = paths.DATA_DIR / "experts.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    raw[expert_id] = expert
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
+    return _copy(expert)
 
 
 def content_sha256(expert):

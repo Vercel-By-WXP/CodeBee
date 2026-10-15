@@ -31,7 +31,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import activity, automation, board, catalog, experts, flows, jobs, manager, market, market_remote, preview, registry, remote, runner, settings, store
+from core import activity, automation, board, catalog, cloud_readiness, experts, flows, jobs, manager, market, market_remote, preview, project_permissions, project_space, registry, remote, runner, settings, sharing, store
 from core import paths
 from core import health
 from core import usage as usage_ledger
@@ -391,6 +391,47 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"flows": flows.list_flows()})
             if path == "/api/experts":
                 return self._json(200, {"experts": experts.list_experts()})
+            if path == "/api/cloud/readiness":
+                return self._json(200, cloud_readiness.snapshot())
+            if path == "/api/projects":
+                qs = parse_qs(urlparse(self.path).query)
+                return self._json(200, {"projects": project_space.snapshot(
+                    include_archived=(qs.get("include_archived") or ["0"])[0] == "1")})
+            m = re.match(r"^/api/projects/([^/]+)$", path)
+            if m:
+                project = project_space.get(unquote(m.group(1)))
+                return self._json(200, {"project": project}) if project else self._json(404, {"error": "项目不存在"})
+            m = re.match(r"^/api/projects/([^/]+)/permissions$", path)
+            if m:
+                pid = unquote(m.group(1))
+                if not project_space.get(pid):
+                    return self._json(404, {"error": "项目不存在"})
+                return self._json(200, {"project_id": pid,
+                                        "members": project_permissions.list_for(pid)})
+            if path == "/api/mobile/experts":
+                return self._json(200, {"experts": experts.list_experts(),
+                                        "remote": True})
+            if path == "/api/mobile/status":
+                runs = store.list_runs(limit=100)
+                reviews = []
+                try:
+                    from core import review_requests
+                    reviews = review_requests.list_requests()
+                except Exception:
+                    pass
+                return self._json(200, {"runs": runs[:50], "reviews": reviews[:100],
+                                        "projects": project_space.snapshot()})
+            m = re.match(r"^/api/sharing/(expert|project)/([^/]+)$", path)
+            if m:
+                kind, ident = m.group(1), unquote(m.group(2))
+                try:
+                    result = sharing.export_expert(ident) if kind == "expert" else sharing.export_project(ident)
+                except ValueError as exc:
+                    return self._json(404, {"error": str(exc)})
+                return self._json(200, result)
+            if path == "/api/sharing/knowledge":
+                qs = parse_qs(urlparse(self.path).query)
+                return self._json(200, sharing.export_knowledge(scope=(qs.get("scope") or [""])[0]))
             if path == "/api/flows/versions":
                 qs = parse_qs(urlparse(self.path).query)
                 fid = (qs.get("id") or [""])[0]
@@ -1018,6 +1059,69 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(e.status, {"error": str(e)})
         if path == "/api/control":
             return self._api_control()
+        if path == "/api/sharing/import":
+            body = self._body() or {}
+            try:
+                result = sharing.import_package(body.get("code") or "", apply=bool(body.get("apply")))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, result)
+        m = re.match(r"^/api/projects/([^/]+)/permissions$", path)
+        if m:
+            pid = unquote(m.group(1))
+            if not project_space.get(pid):
+                return self._json(404, {"error": "项目不存在"})
+            body = self._body() or {}
+            actor = self._client_id()
+            if not project_permissions.can(pid, actor, "owner"):
+                return self._json(403, {"error": "只有项目 owner 可以修改成员权限"})
+            try:
+                members = project_permissions.set_role(pid, body.get("member"), body.get("role"))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"project_id": pid, "members": members})
+        m = re.match(r"^/api/mobile/experts/([^/]+)/launch$", path)
+        if m:
+            body = self._body() or {}
+            expert = experts.get_expert(unquote(m.group(1)))
+            if not expert:
+                return self._json(404, {"error": "专家模板不存在"})
+            payload = dict(body)
+            payload["expert_id"] = expert["id"]
+            payload["type"] = expert["flow_id"]
+            if not str(payload.get("goal") or "").strip():
+                return self._json(400, {"error": "goal 必填"})
+            if not str(payload.get("title") or "").strip():
+                payload["title"] = str(payload["goal"])[:80]
+            status, response = self._create_and_start(payload)
+            return self._json(status, {"expert": expert["id"], **response})
+        m = re.match(r"^/api/mobile/runs/([^/]+)/decision$", path)
+        if m:
+            run = store.get_run(unquote(m.group(1)))
+            if not run:
+                return self._json(404, {"error": "运行不存在"})
+            body = self._body() or {}
+            action = str(body.get("action") or "").strip().lower()
+            task_id = run.get("task_id") or ""
+            if action == "approve":
+                from core import contracts
+                item, err = contracts.approve(task_id, actor=self._client_name(), note=body.get("note"))
+                if err:
+                    return self._json(409, {"error": err})
+                return self._json(200, {"ok": True, "action": action, "contract": item})
+            if action == "reject":
+                from core import contracts
+                item, err = contracts.reject(task_id, actor=self._client_name(), note=body.get("note"))
+                if err:
+                    return self._json(400, {"error": err})
+                return self._json(200, {"ok": True, "action": action, "contract": item})
+            if action == "blocked":
+                from core import contracts
+                item, err = contracts.set_blocked(task_id, body.get("reason"), actor=self._client_name())
+                if err:
+                    return self._json(400, {"error": err})
+                return self._json(200, {"ok": True, "action": action, "contract": item})
+            return self._json(400, {"error": "action 必须是 approve/reject/blocked"})
         if path == "/api/sessions":
             from core import session_runtime
             body = self._body()

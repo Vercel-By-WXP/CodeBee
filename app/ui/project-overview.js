@@ -2,7 +2,18 @@
  * fetches, synthetic progress, or mutation of the new-task draft. */
 "use strict";
 (function () {
-  let selected = "", attentionOnly = false, lastRender = "";
+  let selected = "", attentionOnly = false, lastRender = "", remoteProjects = null, remoteFetchedAt = 0;
+  const refreshProjectSpace = () => {
+    if (typeof api !== "function" || Date.now() - remoteFetchedAt < 15000) return;
+    remoteFetchedAt = Date.now();
+    api("/api/projects", { timeout: 8000, busy: false, operation: false }).then(data => {
+      if (data && Array.isArray(data.projects)) {
+        remoteProjects = data.projects;
+        lastRender = "";
+        window.renderProjectOverview();
+      }
+    }).catch(() => {});
+  };
   const key = path => {
     const raw = String(path || "").trim().replace(/\\/g, "/");
     const value = raw === "/" ? raw : raw.replace(/\/+$/, "");
@@ -22,6 +33,7 @@
   window.renderProjectOverview = function () {
     const picker = document.getElementById("ov-project-select");
     if (!picker) return;
+    refreshProjectSpace();
     const state = S.state || {};
     const archived = new Set((state.archived_tasks || []).map(task => task.id));
     (state.tasks || []).forEach(task => { if (task.archived) archived.add(task.id); });
@@ -35,6 +47,9 @@
     const projects = new Map();
     tasks.forEach(task => { if (key(task.workdir)) projects.set(key(task.workdir), task.workdir); });
     runs.forEach(run => { const dir = directory(run); if (key(dir)) projects.set(key(dir), dir); });
+    (remoteProjects || []).forEach(project => {
+      if (key(project.workdir)) projects.set(key(project.workdir), project.workdir);
+    });
     if (selected && !projects.has(selected)) { selected = ""; attentionOnly = false; }
     const options = '<option value="">' + esc(t("全部项目")) + '</option>' +
       Array.from(projects).sort((a, b) => a[1].localeCompare(b[1])).map(([id, path]) =>
@@ -51,14 +66,18 @@
     lastRender = signature;
 
     const scoped = runs.filter(run => !selected || key(directory(run)) === selected);
+    const remote = (remoteProjects || []).find(project => project.id === selected);
+    const remoteCounts = remote && remote.counts || {};
     const gates = tasks.filter(task => task.git_state === "isolated" && (!selected || key(task.workdir) === selected));
     const latest = new Map();
     scoped.forEach(run => { const id = run.task_id || run.id; if (!latest.has(id)) latest.set(id, run); });
     const needsAttention = new Set(gates.map(task => task.id));
     latest.forEach((run, id) => { if (issue(run)) needsAttention.add(id); });
     const status = document.getElementById("ov-project-status");
-    status.innerHTML = '<span>' + icon("gauge") + esc(t("运行中")) + '<b>' + scoped.filter(r => r.status === "running").length + '</b></span>' +
-      '<span>' + icon("history") + esc(t("排队中")) + '<b>' + scoped.filter(r => r.status === "queued").length + '</b></span>' +
+    status.innerHTML = '<span>' + icon("gauge") + esc(t("运行中")) + '<b>' + (remote ? (remoteCounts.running || 0) : scoped.filter(r => r.status === "running").length) + '</b></span>' +
+      '<span>' + icon("history") + esc(t("排队中")) + '<b>' + (remote ? (remoteCounts.queued || 0) : scoped.filter(r => r.status === "queued").length) + '</b></span>' +
+      (remote ? '<span>' + icon("folder") + esc(t("任务")) + '<b>' + (remoteCounts.tasks || 0) + '</b></span>' +
+        '<span>' + icon("brain") + esc(t("记忆")) + '<b>' + (remoteCounts.memory || 0) + '</b></span>' : '') +
       '<button type="button" class="project-attention-toggle' + (needsAttention.size ? ' has-items' : '') + '" aria-pressed="' + attentionOnly + '">' +
       icon("file-search") + esc(t("需关注")) + '<b>' + needsAttention.size + '</b></button>';
     status.querySelector("button").onclick = () => { attentionOnly = !attentionOnly; renderProjectOverview(); };

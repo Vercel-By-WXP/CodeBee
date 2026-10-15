@@ -114,3 +114,56 @@
   window.setTimeout(apply, 300);
   window.mobileWorkbenchReady = true;
 })();
+
+/* Phone control surface: expert launch and a compact activity count. */
+(() => {
+  const setup = () => {
+    const head = document.querySelector(".mobile-workspaces-head");
+    if (!head || typeof api !== "function" || head.querySelector(".mobile-expert-controls")) return;
+    const box = document.createElement("div");
+    box.className = "mobile-expert-controls";
+    box.innerHTML = '<label><span>专家</span><select aria-label="专家"></select></label>' +
+      '<button type="button" class="ghost">启动专家</button><small aria-live="polite"></small>';
+    head.insertBefore(box, head.firstChild);
+    const select = box.querySelector("select"), button = box.querySelector("button"), status = box.querySelector("small");
+    const refresh = () => api("/api/mobile/status", { timeout: 8000, busy: false, operation: false }).then(data => {
+      const runs = data.runs || [];
+      const active = runs.filter(run => ["queued", "running"].includes(run.status));
+      status.textContent = "活动运行：" + active.length;
+      box.querySelectorAll(".mobile-run-decision").forEach(node => node.remove());
+      runs.filter(run => run.status === "done" && run.task_id).slice(0, 3).forEach(run => {
+        const row = document.createElement("span");
+        row.className = "mobile-run-decision";
+        row.textContent = (run.title || run.id) + "：";
+        ["approve", "reject", "blocked"].forEach(action => {
+          const actionButton = document.createElement("button");
+          actionButton.type = "button"; actionButton.className = "ghost small"; actionButton.textContent = action;
+          actionButton.addEventListener("click", async () => {
+            actionButton.disabled = true;
+            try { await api("/api/mobile/runs/" + encodeURIComponent(run.id) + "/decision", { method: "POST", body: { action, note: action === "reject" ? "手机端裁决" : "" } }); await refresh(); }
+            catch (error) { status.textContent = error && error.message ? error.message : "裁决失败"; actionButton.disabled = false; }
+          });
+          row.append(actionButton);
+        });
+        box.append(row);
+      });
+    }).catch(() => {});
+    api("/api/mobile/experts", { timeout: 8000, busy: false, operation: false }).then(data => {
+      select.innerHTML = (data.experts || []).map(expert => '<option value="' + esc(expert.id) + '">' + esc(expert.name || expert.id) + '</option>').join("");
+    }).catch(() => {});
+    button.addEventListener("click", async () => {
+      const goal = window.prompt("告诉专家要完成什么");
+      if (!goal || !goal.trim() || !select.value) return;
+      button.disabled = true;
+      try {
+        await api("/api/mobile/experts/" + encodeURIComponent(select.value) + "/launch", {
+          method: "POST", body: { goal: goal.trim(), title: goal.trim().slice(0, 80) }, timeout: 15000
+        });
+        await refresh();
+      } catch (error) { status.textContent = error && error.message ? error.message : "启动失败"; }
+      finally { button.disabled = false; }
+    });
+    refresh();
+  };
+  window.setTimeout(setup, 500);
+})();
