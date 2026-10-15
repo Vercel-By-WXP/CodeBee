@@ -42,4 +42,13 @@ const card = context.pluginCardHtml({ id: "sample", installed: true, enabled: fa
 assert(card.includes("pluginUpdate('sample')"));
 assert(card.includes("Need &lt;2.0&gt;"));
 assert(!card.includes('type="checkbox" checked'));
+
+context.S = { capabilities: { plugins: [{ id: "blocked", installed: true, enabled: true,
+  available: true, state: "enabled", compatibility: { compatible: false, reason: "Need <2>" } }] } };
+runInNewContext(block("function cmpCapability(id)", "function cmpCapabilityRows()"), context);
+assert.equal(context.cmpCapability("blocked").enabled, false);
+context.S.capabilities.plugins[0].compatibility.compatible = true;
+assert.equal(context.cmpCapability("blocked").enabled, true);
+context.S.capabilities.plugins[0].state = "blocked";
+assert.equal(context.cmpCapability("blocked").enabled, false);
 console.log("borrow follow-up UI runtime: passed");

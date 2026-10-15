@@ -146,3 +146,15 @@ class ExecutionConfigTests(BaseTest):
         result = execution_config.run_view({"id": "legacy", "steps": [{"n": 1, "model": "m"}]})
         self.assertEqual(result["parameters"], {})
         self.assertEqual(result["selection"]["source"], "unknown")
+
+    def test_step_verification_command_uses_snapshot_credential_redaction(self):
+        from app.core import store
+        command = "check --api-key=private-key --token private-token --password=private-password"
+        task = self.create(type="code", verify_command=command)
+        run = store.create_run("orchestration", "Verify", task_id=task["id"])
+        step, _ = store.add_step(run["id"], "verify", "shell", "Shell")
+        store.finish_step(run["id"], step["n"], "done", verify_command=command)
+        persisted = (self.data_dir / "runs" / run["id"] / "run.json").read_text(encoding="utf-8")
+        for private in ("private-key", "private-token", "private-password"):
+            self.assertNotIn(private, persisted)
+        self.assertEqual(store.get_run(run["id"])["steps"][0]["verify_command"].count("<redacted>"), 3)

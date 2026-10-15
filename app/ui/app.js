@@ -3944,7 +3944,8 @@ function cmpCapability(id) {
         ((hit.unsupported || []).length ? "\n此插件的 Codex hooks、应用或 MCP 运行时未自动接入 CodeBee；请只使用当前环境实际可用的工具。" : "")
       : (hit.prompt || "请参考「" + label + "」的职责：" + (hit.description || ""));
     return { id, kind, label, prompt, state: hit.state,
-      enabled: hit.enabled === true && hit.installed === true && hit.available !== false };
+      enabled: hit.enabled === true && hit.installed === true && hit.available !== false &&
+        !["broken", "blocked"].includes(hit.state) && (!hit.compatibility || hit.compatibility.compatible !== false) };
   }
   return null;
 }
@@ -3971,11 +3972,12 @@ function cmpRenderCapabilityMenu() {
       const label = row.display_name || row.name || row.id;
       const desc = row.short_description || row.description || "";
       const state = row.state || "available";
-      const disabled = row.installed !== true || row.enabled !== true || row.available === false || ["broken", "blocked"].includes(state);
-      const status = ["broken", "blocked"].includes(state) ? t("损坏") : row.installed !== true
+      const incompatible = row.compatibility && row.compatibility.compatible === false;
+      const disabled = row.installed !== true || row.enabled !== true || row.available === false || incompatible || ["broken", "blocked"].includes(state);
+      const status = incompatible ? t("不适配") : ["broken", "blocked"].includes(state) ? t("损坏") : row.installed !== true
         ? t("未安装") : row.enabled !== true ? t("已停用") : (row.unsupported || []).length ? t("部分能力") : t("已安装");
       return '<button type="button" class="cmp-add-item cmp-add-plugin" data-add-capability="' + esc(row.id) + '"' +
-        (disabled ? ' disabled aria-disabled="true"' : '') + ' role="menuitem" title="' + esc(row.error || desc) + '">' +
+        (disabled ? ' disabled aria-disabled="true"' : '') + ' role="menuitem" title="' + esc((row.compatibility || {}).reason || row.error || desc) + '">' +
         '<span class="cmp-plugin-mark" aria-hidden="true">' + esc(String(label).slice(0, 1).toUpperCase()) + '</span>' +
         '<span><b>' + esc(label) + '</b><small>' + esc(t(desc)) + '</small></span>' +
         '<em class="cmp-capability-state">' + esc(status) + '</em><span class="cmp-add-check" aria-hidden="true"></span></button>';

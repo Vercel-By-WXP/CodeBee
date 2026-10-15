@@ -822,6 +822,16 @@ def set_run_auditor(auditor):
     _RUN_AUDITOR = auditor if callable(auditor) else None
 
 
+def _redact_command(command, limit=300):
+    value = str(command or "")[:limit]
+    if not value:
+        return ""
+    pattern = re.compile(
+        r"(?i)(api[_-]?key|access[_-]?token|auth(?:orization)?|password|passwd|secret|token)"
+        r"(\s*[:=]\s*|\s+)([^\s]+)")
+    return pattern.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", value)
+
+
 def _execution_snapshot(task):
     """Capture the redacted execution inputs at run creation time.
 
@@ -839,15 +849,6 @@ def _execution_snapshot(task):
         flow_content_sha = flow_digest
     if not flow_revision_id and flow_digest:
         flow_revision_id = "flowrev-" + flow_digest[:16]
-
-    def _redact_command(command):
-        value = str(command or "")[:300]
-        if not value:
-            return ""
-        pattern = re.compile(
-            r"(?i)(api[_-]?key|access[_-]?token|auth(?:orization)?|password|passwd|secret|token)"
-            r"(\s*[:=]\s*|\s+)([^\s]+)")
-        return pattern.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", value)
 
     expert_snapshot = task.get("expert_snapshot")
     if not isinstance(expert_snapshot, dict):
@@ -2398,7 +2399,7 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["command"] = ([str(x)[:500] for x in command]
                                      if isinstance(command, list) else str(command)[:1000])
                 if verify_command:
-                    s["verify_command"] = str(verify_command)[:1000]
+                    s["verify_command"] = _redact_command(verify_command, limit=1000)
                 if duration_s is not None:
                     s["duration_s"] = round(duration_s, 1)
                 elif s.get("started_at_epoch") is not None:

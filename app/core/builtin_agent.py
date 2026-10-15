@@ -759,21 +759,25 @@ def _tool_find_files(workdir, args):
     return "\n".join(out) or "（无匹配文件）"
 
 
-def _tool_list_skills():
+def _available_skill_rows():
     from . import plugins
-    rows = plugins.capabilities_view().get("skills") or []
-    enabled = [r for r in rows if r.get("enabled") and r.get("installed")]
+    return [r for r in plugins.capabilities_view().get("skills") or []
+            if r.get("enabled") and r.get("installed") and r.get("available") is not False
+            and r.get("state") not in ("broken", "blocked")
+            and (r.get("compatibility") or {}).get("compatible") is not False]
+
+
+def _tool_list_skills():
+    enabled = _available_skill_rows()
     return "\n".join("%s · %s" % (r.get("id"), r.get("description") or r.get("display_name") or "")
                      for r in enabled[:200]) or "（没有已启用的技能）"
 
 
 def _tool_use_skill(args):
-    from . import plugins
     name = str((args or {}).get("name") or "").strip()
     if not name:
         return "（请指定技能名称或 ID；可先调用 list_skills）"
-    rows = [r for r in plugins.capabilities_view().get("skills") or []
-            if r.get("enabled") and r.get("installed")]
+    rows = _available_skill_rows()
     matches = [r for r in rows if r.get("id") == name]
     if not matches:
         matches = [r for r in rows if str(r.get("name") or "").lower() == name.lower()]

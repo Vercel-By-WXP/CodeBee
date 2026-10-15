@@ -157,3 +157,78 @@ class PluginCompatibilityTests(BaseTest):
         self.assertIn("99.0.0", error)
         self.assertFalse((self.plugins._install_root() / PID).exists())
         self.assertEqual(self.plugins.skills.user_packs(), [])
+
+    def test_codex_composer_blocks_plugin_and_skill_with_newer_host_requirement(self):
+        codex = self.tmp / "codex"
+        codex.mkdir()
+        (codex / "config.toml").write_text(
+            '[marketplaces.test]\nsource = "' + (self.root / PID).as_posix() +
+            '"\n[plugins."' + PID + '@test"]\nenabled = true\n', encoding="utf-8")
+        for requirement, compatible in (({}, True), ({"min_version": "1.0.0"}, True),
+                                         ({"min_version": "2.0.0"}, False)):
+            self.requirement(**requirement)
+            with self.subTest(requirement=requirement), \
+                 patch.object(self.plugins, "_codex_home", return_value=codex), \
+                 patch.object(self.plugins, "_default_roots", return_value=[]):
+                result = self.plugins.capabilities_view()
+                row = next(r for r in result["plugins"] if r["id"] == "codex:" + PID + "@test")
+                skill = next(r for r in result["skills"] if r.get("plugin_id") == row["id"])
+                self.assertEqual(row["available"], compatible)
+                self.assertEqual(skill["available"], compatible)
+                self.assertEqual(bool(row["skill_prompts"]), compatible)
+                self.assertEqual(bool(skill["prompt"]), compatible)
+                self.assertEqual(row["state"], "enabled" if compatible else "blocked")
+                if not compatible:
+                    self.assertIn("2.0.0", row["compatibility"]["reason"])
+                    self.assertIn("2.0.0", skill["compatibility"]["reason"])
+
+    def test_codex_invalid_constraint_cannot_supply_composer_instructions(self):
+        self.requirement(min_version=">=1.0.0")
+        with patch.object(self.plugins, "_codex_config", return_value=(
+                {"test": {"source": str(self.root / PID)}}, {PID + "@test": {"enabled": True}})):
+            row = self.plugins.codex_view()["plugins"][0]
+            self.assertFalse(row["available"])
+            self.assertIn("SemVer", row["error"])
+            self.assertFalse(any(r.get("plugin_id") == row["id"] for r in self.plugins.codex_skills_view()))
+
+    def test_installed_codebee_plugin_and_its_copied_skills_block_after_host_downgrade(self):
+        self.requirement(min_version="1.0.0")
+        self.assertIsNone(self.plugins.install(PID, roots=[self.root])[1])
+        self.assertIsNone(self.plugins.toggle(PID, True))
+        with patch.object(self.compat, "host_version", return_value="0.9.0"), \
+             patch.object(self.plugins, "_default_roots", return_value=[self.root]), \
+             patch.object(self.plugins, "_codex_config", return_value=({}, {})):
+            result = self.plugins.capabilities_view()
+        row = next(r for r in result["plugins"] if r["id"] == PID)
+        self.assertTrue(row["enabled"])
+        self.assertFalse(row["available"])
+        self.assertEqual(row["skill_prompts"], [])
+        for pack_id in row["skill_pack_ids"]:
+            skill = next(r for r in result["skills"] if r["id"] == "codebee-skill:" + pack_id)
+            self.assertFalse(skill["available"])
+            self.assertEqual(skill["state"], "blocked")
+            self.assertEqual(skill["prompt"], "")
+
+    def test_newer_incompatible_source_does_not_block_compatible_installed_copy(self):
+        self.requirement(min_version="1.0.0")
+        self.assertIsNone(self.plugins.install(PID, roots=[self.root])[1])
+        self.assertIsNone(self.plugins.toggle(PID, True))
+        self.requirement(min_version="2.0.0")
+        (self.root / PID / "skills" / "retry.md").write_text("Uninstalled version", encoding="utf-8")
+        row = self.plugins.view(roots=[self.root])["plugins"][0]
+        self.assertTrue(row["available"])
+        self.assertTrue(row["compatibility"]["compatible"])
+        self.assertEqual(row["compatibility"]["min_version"], "1.0.0")
+        self.assertTrue(row["skill_prompts"])
+        self.assertNotIn("Uninstalled version", "".join(row["skill_prompts"]))
+
+    def test_builtin_skill_tools_do_not_reopen_unavailable_skill_source(self):
+        from app.core import builtin_agent
+        for blocked in ({"available": False}, {"state": "blocked"}, {"state": "broken"},
+                        {"compatibility": {"compatible": False}}):
+            row = {"id": "skill:blocked", "name": "blocked", "enabled": True,
+                   "installed": True, "source": "must-not-read.md", **blocked}
+            with self.subTest(blocked=blocked), \
+                 patch.object(self.plugins, "capabilities_view", return_value={"skills": [row]}):
+                self.assertNotIn(row["id"], builtin_agent._tool_list_skills())
+                self.assertIn("未找到已启用", builtin_agent._tool_use_skill({"name": row["id"]}))

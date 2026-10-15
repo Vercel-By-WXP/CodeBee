@@ -242,6 +242,10 @@ def _load_codex_manifest(plugin_dir):
     manifest = _read_json(manifest_path)
     if not isinstance(manifest, dict):
         raise PluginError("plugin.json 顶层必须是对象")
+    try:
+        compatibility = plugin_compat.check(manifest)
+    except ValueError as exc:
+        raise PluginError(str(exc)) from exc
     name = str(manifest.get("name") or root.name).strip()
     if not _NAME_RE.fullmatch(name):
         raise PluginError("插件 name 非法")
@@ -274,7 +278,7 @@ def _load_codex_manifest(plugin_dir):
         "capabilities": [str(x) for x in (interface.get("capabilities") or []) if isinstance(x, (str, int, float))],
         "default_prompt": [str(x).strip() for x in (interface.get("defaultPrompt") or []) if str(x).strip()][:8],
         "skill_paths": skill_paths, "mcp_path": "", "mcp_inline": {},
-        "unsupported": unsupported,
+        "unsupported": unsupported, "compatibility": compatibility,
     }
 
 
@@ -418,7 +422,7 @@ def codex_view():
             continue
         row.update({"id": "codex:" + key, "plugin_id": name,
                     "installed": True, "enabled": enabled,
-                    "state": "enabled" if enabled else "disabled",
+                    "state": ("enabled" if enabled else "disabled") if row["available"] else "blocked",
                     "source_type": "codex", "marketplace": marketplace,
                     "source": str(root)})
         rows.append(row)
@@ -828,6 +832,8 @@ def _declared_skill_files(base):
 
 
 def _catalog_row(desc):
+    compatibility = desc.get("compatibility") or {"compatible": True}
+    compatible = compatibility["compatible"]
     skill_names = []
     skill_prompts = []
     for base in desc.get("skill_paths") or []:
@@ -837,7 +843,7 @@ def _catalog_row(desc):
                 rel = path.relative_to(base).as_posix() if base.is_dir() else path.name
                 skill_names.append(rel)
                 text = _skill_prompt(path)
-                if text:
+                if text and compatible:
                     # Skill files are user supplied instructions. Keep the
                     # composer context bounded while preserving the actual
                     # workflow instead of only showing a menu label.
@@ -850,12 +856,12 @@ def _catalog_row(desc):
         "short_description": desc["short_description"], "version": desc["version"],
         "author": desc["author"], "category": desc["category"],
         "capabilities": desc["capabilities"], "skills": sorted(skill_names),
-        "default_prompt": list(desc.get("default_prompt") or []),
+        "default_prompt": list(desc.get("default_prompt") or []) if compatible else [],
         "skill_prompts": skill_prompts[:16],
         "skill_count": len(skill_names), "has_mcp": bool(desc.get("mcp_path") or desc.get("mcp_inline")),
         "unsupported": desc["unsupported"], "source": desc["dir"],
-        "available": True, "installed": False, "state": "available",
-        "compatibility": desc.get("compatibility") or {"compatible": True},
+        "available": compatible, "installed": False, "state": "available" if compatible else "blocked",
+        "compatibility": compatibility,
     }
 
 
@@ -878,8 +884,10 @@ def view(roots=None):
         if row["installed"]:
             try:
                 installed = load_manifest(target)
-                row["version"] = installed["version"]
-                row["compatibility"] = installed["compatibility"]
+                installed_row = _catalog_row(installed)
+                for field in ("version", "compatibility", "available", "default_prompt",
+                              "skill_prompts", "skills", "skill_count"):
+                    row[field] = installed_row[field]
             except PluginError as exc:
                 row["compatibility"] = {"compatible": False, "reason": str(exc)}
         row["state"] = "enabled" if rec.get("enabled", True) else "disabled"
@@ -891,6 +899,8 @@ def view(roots=None):
             row["authorization"] = authorize(row, grants=row["grants"])
         except Exception:
             row["authorization"] = {"allowed": False, "missing": list(row.get("capabilities") or [])}
+        if not row.get("compatibility", {}).get("compatible", True):
+            row.update(available=False, skill_prompts=[], default_prompt=[])
     items = sorted(rows.values(), key=lambda x: (str(x.get("category") or ""), str(x.get("display_name") or x.get("name") or "")))
     cats = sorted({str(x.get("category")) for x in items if x.get("category")})
     return {"plugins": items, "categories": cats, "total": len(items)}
@@ -969,6 +979,8 @@ def codex_skills_view():
             desc = _load_codex_manifest(root_dir)
         except PluginError:
             continue
+        compatibility = desc["compatibility"]
+        compatible = compatibility["compatible"]
         for base in desc.get("skill_paths") or []:
             files = _declared_skill_files(base)
             for path in files:
@@ -979,9 +991,10 @@ def codex_skills_view():
                 seen.add(row_id)
                 skill_name = path.parent.name if path.name == "SKILL.md" else path.stem
                 rows.append({"id": row_id, "name": skill_name, "display_name": "%s · %s" % (name, skill_name),
-                             "description": _frontmatter_description(path), "prompt": _skill_prompt(path),
+                             "description": _frontmatter_description(path), "prompt": _skill_prompt(path) if compatible else "",
                              "source": str(path), "source_type": "codex", "installed": True,
-                             "enabled": enabled, "state": "enabled" if enabled else "disabled",
+                             "enabled": enabled, "available": compatible, "compatibility": compatibility,
+                             "state": ("enabled" if enabled else "disabled") if compatible else "blocked",
                              "plugin_id": "codex:" + key})
     rows.sort(key=lambda x: (str(x.get("display_name") or "").lower(), x["id"]))
     return rows
@@ -1045,14 +1058,20 @@ def capabilities_view():
     plugins.sort(key=lambda x: (str(x.get("display_name") or x.get("name") or "").lower(),
                                 str(x.get("id") or "")))
     skill_rows = codex_skills_view()
+    pack_compatibility = {pack_id: row["compatibility"] for row in plugins
+                          if row.get("compatibility", {}).get("compatible") is False
+                          for pack_id in row.get("skill_pack_ids") or []}
     local_pack_states = {p["id"]: p for p in skills.list_packs()}
     for pack in skills.all_packs():
         enabled = (local_pack_states.get(pack["id"]) or {}).get("enabled", True)
+        compatibility = pack_compatibility.get(pack["id"], {"compatible": True})
+        compatible = compatibility["compatible"]
         skill_rows.append({"id": "codebee-skill:" + pack["id"], "name": pack["id"],
                            "display_name": pack["name"], "description": pack.get("note") or "",
-                           "prompt": skills.pack_text(pack)[:8000], "source_type": "codebee",
+                           "prompt": skills.pack_text(pack)[:8000] if compatible else "", "source_type": "codebee",
                            "installed": True, "enabled": enabled,
-                           "state": "enabled" if enabled else "disabled"})
+                           "available": compatible, "compatibility": compatibility,
+                           "state": ("enabled" if enabled else "disabled") if compatible else "blocked"})
     skill_rows.sort(key=lambda x: (x["display_name"].lower(), x["id"]))
     agent_rows = codex_agents_view()
     return {"plugins": plugins, "skills": skill_rows,
