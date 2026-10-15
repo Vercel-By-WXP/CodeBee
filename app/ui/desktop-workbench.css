@@ -1141,7 +1141,7 @@
   #sub-tasks .workspace-hint {
     position: static;
     width: 100%;
-    margin: 0 0 24px;
+    margin: 0 auto 24px;
     transform: none;
     text-align: center;
     pointer-events: auto;

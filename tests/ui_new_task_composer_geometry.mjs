@@ -52,7 +52,11 @@ try {
       const bounds = await browser.evalJs(`(() => {
         const rect = selector => { const r=document.querySelector(selector).getBoundingClientRect();
           return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width}; };
-        return {main:rect('main'), form:rect('#sub-tasks .form'), input:rect('#f-goal'), viewport:innerHeight};
+        const hint=document.querySelector('#cmp-workspace-hint');
+        const hintStyle=getComputedStyle(hint);
+        return {main:rect('main'), form:rect('#sub-tasks .form'), input:rect('#f-goal'),
+          hint:rect('#cmp-workspace-hint'), hintVisible:hintStyle.display !== 'none',
+          hintAlign:hintStyle.textAlign, viewport:innerHeight};
       })()`);
       assert.ok(bounds, 'geometry evaluated');
       const label = JSON.stringify({width, height, collapsed, inspector, sidebar, bounds});
@@ -60,6 +64,10 @@ try {
       assert.ok(bounds.form.left >= bounds.main.left + 23 && bounds.form.right <= bounds.main.right - 23, 'composer stays inside main canvas: ' + label);
       assert.ok(bounds.form.bottom <= bounds.viewport - 23 && bounds.form.top >= bounds.main.top, 'composer visible vertically: ' + label);
       assert.ok(bounds.input.width > 0, 'prompt available: ' + label);
+      if (bounds.hintVisible) {
+        assert.ok(Math.abs((bounds.hint.left + bounds.hint.right) / 2 - (bounds.form.left + bounds.form.right) / 2) < 2, 'subtitle centered on composer: ' + label);
+        assert.equal(bounds.hintAlign, 'center', 'subtitle text centered: ' + label);
+      }
       count++;
     }
   }
