@@ -890,20 +890,47 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "const ss=d?[...d.querySelectorAll('button[role=switch],[role=switch]')].filter(vis):[];"
                         "const s=ss.at(-1);return !!(s&&s.getAttribute('aria-checked')==='true');}", timeout=10))
 
+                def fq_schedule_switch_point():
+                    """Return the visible switch center in the current dialog.
+
+                    Arco's switch is controlled by React state.  On the live
+                    Fanqie editor a DOM ``click()`` reaches the node but does
+                    not update that state; the platform only accepts the real
+                    pointer sequence.  Keep the lookup scoped to the visible
+                    publish dialog so hidden editor copies cannot win.
+                    """
+                    return page.call(
+                        "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                        "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                        "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "const s=d&&[...d.querySelectorAll('button[role=switch],[role=switch]')]"
+                        ".filter(vis).at(-1);if(!s)return null;const r=s.getBoundingClientRect();"
+                        "return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),"
+                        "checked:s.getAttribute('aria-checked')==='true'};}", timeout=10)
+
                 def fq_enable_schedule():
                     if fq_schedule_enabled():
                         return
-                    result = page.call(
-                        "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
-                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
-                        "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
-                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-                        "const ss=d?[...d.querySelectorAll('button[role=switch],[role=switch]')].filter(vis):[];"
-                        "const s=ss.at(-1);"
-                        "if(!s)return{ok:false};s.click();return{ok:true};}", timeout=10) or {}
-                    if not result.get("ok"):
+                    point = fq_schedule_switch_point() or {}
+                    if not point.get("x"):
                         raise FlowError("番茄发布设置里找不到定时发布开关")
-                    time.sleep(0.3)
+                    # Use the same trusted CDP input path as other platform
+                    # controls.  A synthetic DOM click leaves aria-checked
+                    # false on the current Fanqie React form.
+                    page.send("Input.dispatchMouseEvent", {
+                        "type": "mousePressed", "x": point["x"], "y": point["y"],
+                        "button": "left", "clickCount": 1}, timeout=8.0)
+                    page.send("Input.dispatchMouseEvent", {
+                        "type": "mouseReleased", "x": point["x"], "y": point["y"],
+                        "button": "left", "clickCount": 1}, timeout=8.0)
+                    deadline = time.time() + 2.0
+                    while time.time() < deadline:
+                        if fq_schedule_enabled():
+                            return
+                        time.sleep(0.15)
+                    raise FlowError("番茄定时发布开关点击后仍未开启（页面未接受真实点击）")
 
                 def fq_pick_date(day):
                     iso = day.strftime("%Y-%m-%d")
