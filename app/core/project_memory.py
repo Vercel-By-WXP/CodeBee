@@ -4,17 +4,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import math
 import os
 import re
 import stat
+import threading
 import time
 from pathlib import Path
 
 MAX_ENTRY_CHARS = 4000
 DEFAULT_TTL_DAYS = 180
+_LOCK = threading.RLock()
+_LOG = logging.getLogger(__name__)
 
 
 def _file(workdir):
+    if not str(workdir or "").strip():
+        raise ValueError("工作目录不可用")
     root = Path(workdir or "").expanduser().resolve(strict=True)
     if not root.is_dir():
         raise ValueError("工作目录不可用")
@@ -54,51 +61,238 @@ def _append(path, row):
 def _read(path):
     latest = {}
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()[-5000:]
-    except OSError:
+        # Review decisions can be older than any display window. Stream the
+        # whole journal so backfill cannot resurrect an old rejected entry.
+        with path.open("rb") as handle:
+            for line in handle:
+                try:
+                    row = json.loads(line.decode("utf-8"))
+                    if isinstance(row, dict) and isinstance(row.get("id"), str) and row["id"]:
+                        latest[row["id"]] = row
+                except (ValueError, TypeError, UnicodeError):
+                    continue
+    except FileNotFoundError:
         return latest
-    for line in lines:
-        try:
-            row = json.loads(line)
-            if isinstance(row, dict) and row.get("id"):
-                latest[row["id"]] = row
-        except (ValueError, TypeError):
-            continue
     return latest
 
 
-def propose(workdir, *, source_run="", title="", facts=None, now=None):
-    """Persist a candidate, never active until a human explicitly approves it."""
+def _candidate(*, source_run="", title="", facts=None, now=None):
     facts = [str(x).strip()[:500] for x in (facts or []) if str(x).strip()]
     content = "\n".join("- " + x for x in facts)[:MAX_ENTRY_CHARS]
     if not content:
         return None
     stamp = float(now if now is not None else time.time())
     digest = hashlib.sha256((str(source_run) + "\0" + content).encode("utf-8")).hexdigest()
-    row = {"id": digest[:24], "source_run": str(source_run or "")[:100],
+    return {"id": digest[:24], "source_run": str(source_run or "")[:100],
            "title": str(title or "")[:200], "content": content,
            "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
            "created_at": stamp, "expires_at": stamp + DEFAULT_TTL_DAYS * 86400,
            "status": "pending", "version": 1, "updated_at": stamp}
-    path = _file(workdir)
-    latest = _read(path)
-    old = latest.get(row["id"])
-    if old:
-        return old
-    _append(path, row)
-    return row
+
+
+def propose(workdir, *, source_run="", title="", facts=None, now=None):
+    """Persist a candidate, never active until a human explicitly approves it."""
+    row = _candidate(source_run=source_run, title=title, facts=facts, now=now)
+    if row is None:
+        return None
+    with _LOCK:
+        path = _file(workdir)
+        old = _read(path).get(row["id"])
+        if old:
+            return old
+        _append(path, row)
+        return row
+
+
+def _number(value, default=0, *, integer=False):
+    try:
+        number = float(value)
+        if math.isfinite(number):
+            return int(number) if integer else number
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return default
 
 
 def list_entries(workdir, *, now=None):
     stamp = float(now if now is not None else time.time())
     rows = list(_read(_file(workdir)).values())
     for row in rows:
-        raw = row.get("content") or ""
-        row["verified"] = hashlib.sha256(raw.encode("utf-8")).hexdigest() == row.get("content_sha256")
-        row["expired"] = float(row.get("expires_at") or 0) <= stamp
-        row["feedback_score"] = int(row.get("feedback_score") or 0)
-        row["feedback_count"] = int(row.get("feedback_count") or 0)
+        raw = row.get("content")
+        digest = _content_digest(raw)
+        row["verified"] = (isinstance(raw, str) and _number(row.get("version")) >= 1
+                           and digest is not None and digest == row.get("content_sha256"))
+        row["content"] = raw if digest is not None else "（记忆内容格式无效）"
+        row["title"] = str(row.get("title") or "")
+        row["created_at"] = _number(row.get("created_at"))
+        row["expires_at"] = _number(row.get("expires_at"))
+        row["version"] = _number(row.get("version"), integer=True)
+        row["expired"] = row["expires_at"] <= stamp
+        row["feedback_score"] = _number(row.get("feedback_score"), integer=True)
+        row["feedback_count"] = _number(row.get("feedback_count"), integer=True)
     return sorted(rows, key=lambda x: (x.get("created_at", 0), x.get("id", "")), reverse=True)
+
+
+def _content_digest(content):
+    if not isinstance(content, str):
+        return None
+    try:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    except UnicodeError:
+        return None
+
+
+def migrate_legacy(workdir):
+    """Import the old Markdown store as pending candidates, keeping the source."""
+    path = _file(workdir)
+    legacy = path.with_name("project-memory.md")
+    if legacy.is_symlink() or (hasattr(legacy, "is_junction") and legacy.is_junction()):
+        raise ValueError("拒绝符号链接项目记忆文件")
+    if not legacy.is_file():
+        return 0
+    with legacy.open(encoding="utf-8-sig") as handle:
+        text = handle.read(2 * 1024 * 1024 + 1)
+    if len(text) > 2 * 1024 * 1024:
+        raise ValueError("旧版项目记忆文件过大")
+    added = 0
+    with _LOCK:
+        latest = _read(path)
+        sources = {row["source_run"] for row in latest.values()
+                   if isinstance(row.get("source_run"), str)}
+        for section in re.split(r"(?m)^### ", text)[1:]:
+            heading, _, body = section.partition("\n")
+            facts = [line[2:].strip() for line in body.splitlines() if line.startswith("- ")]
+            source = "legacy:" + hashlib.sha256(section.strip().encode("utf-8")).hexdigest()[:32]
+            if not facts or source in sources:
+                continue
+            title, _, stamp = heading.rpartition(" · ")
+            try:
+                created_at = time.mktime(time.strptime(stamp.strip(), "%Y-%m-%d %H:%M:%S"))
+            except ValueError:
+                created_at = legacy.stat().st_mtime
+            row = _candidate(source_run=source, title=title or heading.strip(),
+                             facts=facts, now=created_at)
+            if row and row["id"] not in latest:
+                _append(path, row)
+                latest[row["id"]] = row
+                sources.add(source)
+                added += 1
+    return added
+
+
+def _run_candidate(task, run):
+    """Build execution facts from the run's pinned inputs, not later task edits."""
+    if (run.get("status") != "done" or not run.get("id")
+            or run.get("kind") != "orchestration"
+            or not task.get("workdir") or run.get("task_id") != task.get("id")):
+        return None
+    verdict = run.get("verdict") if isinstance(run.get("verdict"), dict) else {}
+    if verdict.get("partial"):
+        return None
+    execution_snapshot = run.get("execution_snapshot") if isinstance(run.get("execution_snapshot"), dict) else {}
+    original_workdir = execution_snapshot.get("workdir")
+    if original_workdir and Path(original_workdir).expanduser().resolve() != Path(task["workdir"]).expanduser().resolve():
+        return None  # A task moved to another project must not import the old project's facts.
+    snapshot = run.get("task_spec") if isinstance(run.get("task_spec"), dict) else {}
+    title = snapshot.get("title", run.get("title") or task.get("title") or "")
+    goal = snapshot.get("goal", task.get("goal") or title)
+    manuscript = snapshot.get("deliverable", task.get("manuscript") or "")
+    engine = verdict.get("engine") or snapshot.get("engine") or task.get("engine") or task.get("type") or ""
+    facts = ["任务目标：%s" % str(goal)[:500],
+             "任务流程：%s；执行已完成" % engine]
+    if engine == "direct":
+        facts.append("直连任务未执行独立验证或评审，执行完成不代表质量验收通过")
+    else:
+        for field, label in (("pass", "质量门禁"), ("publishable", "发布门禁"),
+                             ("verify_pass", "验证"), ("review_pass", "评审")):
+            if field == "verify_pass" and verdict.get("verify_ran") is False:
+                facts.append("验证：未执行独立验证")
+                continue
+            if isinstance(verdict.get(field), bool):
+                facts.append("%s：%s" % (label, "通过" if verdict[field] else "未通过"))
+    if verdict.get("start_chapter") is not None and verdict.get("end_chapter") is not None:
+        facts.append("本次章节范围：%s–%s" % (verdict["start_chapter"], verdict["end_chapter"]))
+    for step in run.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        if step.get("role") == "verify":
+            command = (step.get("verify_command") or
+                       execution_snapshot.get("verify_command") or
+                       "（历史命令未记录）")
+            facts.append("验证命令 `%s` → %s" % (command, step.get("status") or "未知"))
+    if manuscript:
+        facts.append("稿件文件：%s" % manuscript)
+    if run.get("ended_at"):
+        facts.append("完成时间：%s" % run["ended_at"])
+    try:
+        created_at = time.mktime(time.strptime(run.get("ended_at") or "", "%Y-%m-%d %H:%M:%S"))
+    except (TypeError, ValueError):
+        created_at = time.time()
+    return _candidate(source_run=run["id"], title=title,
+                      facts=facts, now=created_at)
+
+
+def capture_run(task, run):
+    """Capture bounded execution facts from every completed task engine."""
+    candidate = _run_candidate(task, run)
+    if candidate is None:
+        return None
+    with _LOCK:
+        path = _file(task["workdir"])
+        for row in _read(path).values():
+            if row.get("source_run") == run["id"] or row["id"] == candidate["id"]:
+                return row  # Never replace an earlier approval/rejection on backfill.
+        _append(path, candidate)
+        return candidate
+
+
+def backfill(tasks, runs):
+    """Recover missing candidates without model calls or changing review state."""
+    # Startup runs this before accepting requests. Share the lock with live
+    # capture, and read each workspace journal only once for the run batch.
+    with _LOCK:
+        return _backfill(tasks, runs)
+
+
+def _backfill(tasks, runs):
+    by_id = {task["id"]: task for task in tasks if task.get("id")}
+    result = {"legacy": 0, "runs": 0, "errors": 0}
+    sources = {}
+    existing_ids = {}
+    for task in by_id.values():
+        workdir = task.get("workdir")
+        if not workdir:
+            continue
+        try:
+            key = str(_file(workdir))
+            if key not in sources:
+                result["legacy"] += migrate_legacy(workdir)
+                latest = _read(_file(workdir))
+                sources[key] = {row["source_run"] for row in latest.values()
+                                if isinstance(row.get("source_run"), str)}
+                existing_ids[key] = set(latest)
+        except (OSError, ValueError) as exc:
+            result["errors"] += 1
+            _LOG.warning("项目记忆迁移失败（任务 %s）：%s", task["id"], exc)
+    for run in runs:
+        task = by_id.get(run.get("task_id"))
+        if (not task or not task.get("workdir") or run.get("status") != "done"
+                or run.get("kind") != "orchestration"):
+            continue
+        try:
+            key = str(_file(task.get("workdir")))
+            if run.get("id") in sources.get(key, set()):
+                continue
+            row = _run_candidate(task, run)
+            if row and row["id"] not in existing_ids.get(key, set()):
+                _append(_file(task["workdir"]), row)
+                sources.setdefault(key, set()).add(run["id"])
+                existing_ids.setdefault(key, set()).add(row["id"])
+                result["runs"] += 1
+        except (OSError, ValueError, TypeError) as exc:
+            result["errors"] += 1
+            _LOG.warning("项目记忆回填失败（运行 %s）：%s", run.get("id"), exc)
+    return result
 
 
 def project_index(tasks, *, now=None):
@@ -109,6 +303,7 @@ def project_index(tasks, *, now=None):
     stable task ids, a display name, and the existing governed entries.
     """
     groups = {}
+    entries_by_workspace = {}
     for task in tasks or []:
         if not isinstance(task, dict):
             continue
@@ -119,7 +314,9 @@ def project_index(tasks, *, now=None):
         try:
             path = _file(workdir)
             key = str(path.parent.resolve())
-            entries = list_entries(workdir, now=now)
+            if key not in entries_by_workspace:
+                entries_by_workspace[key] = list_entries(workdir, now=now)
+            entries = entries_by_workspace[key]
         except (OSError, ValueError):
             continue
         if not entries:
@@ -130,10 +327,6 @@ def project_index(tasks, *, now=None):
         if not group["name"]:
             group["name"] = str(task.get("name") or task.get("title") or
                                   task.get("goal") or "项目记忆").strip()[:160]
-        # Multiple tasks can point to the same workspace. Read the store once
-        # per group and keep the newest governed snapshot.
-        if len(entries) > len(group["entries"]):
-            group["entries"] = entries
     result = []
     for group in groups.values():
         entries = group["entries"]
@@ -152,6 +345,11 @@ def project_index(tasks, *, now=None):
 
 
 def decide(workdir, entry_id, action, *, expected_version=None, now=None):
+    with _LOCK:
+        return _decide(workdir, entry_id, action, expected_version=expected_version, now=now)
+
+
+def _decide(workdir, entry_id, action, *, expected_version=None, now=None):
     if action not in ("approve", "reject", "archive", "restore"):
         raise ValueError("action 必须是 approve/reject/archive/restore")
     path = _file(workdir)
@@ -162,14 +360,15 @@ def decide(workdir, entry_id, action, *, expected_version=None, now=None):
     if expected_version is not None and int(expected_version) != int(row.get("version") or 1):
         raise ValueError("记忆条目版本已变化，请刷新后重试")
     stamp = float(now if now is not None else time.time())
-    raw = row.get("content") or ""
-    if hashlib.sha256(raw.encode("utf-8")).hexdigest() != row.get("content_sha256"):
+    raw = row.get("content")
+    digest = _content_digest(raw)
+    if digest is None or digest != row.get("content_sha256"):
         raise ValueError("记忆内容指纹校验失败")
     transitions = {"approve": "pending", "reject": "pending",
                    "archive": "approved", "restore": "archived"}
     if row.get("status") != transitions[action]:
         raise ValueError("当前记忆状态不允许此操作")
-    if action in ("approve", "restore") and float(row.get("expires_at") or 0) <= stamp:
+    if action in ("approve", "restore") and _number(row.get("expires_at")) <= stamp:
         raise ValueError("记忆已过期，不能启用；请重新生成候选")
     row = dict(row, status={"approve": "approved", "reject": "rejected",
                             "archive": "archived", "restore": "approved"}[action],
@@ -181,6 +380,11 @@ def decide(workdir, entry_id, action, *, expected_version=None, now=None):
 
 def feedback(workdir, entry_id, *, useful, expected_version=None, now=None):
     """Record explicit retrieval feedback as a versioned append-only update."""
+    with _LOCK:
+        return _feedback(workdir, entry_id, useful=useful, expected_version=expected_version, now=now)
+
+
+def _feedback(workdir, entry_id, *, useful, expected_version=None, now=None):
     if not isinstance(useful, bool):
         raise ValueError("useful 必须是布尔值")
     path = _file(workdir)
@@ -189,8 +393,9 @@ def feedback(workdir, entry_id, *, useful, expected_version=None, now=None):
         raise KeyError("记忆条目不存在")
     if expected_version is not None and int(expected_version) != int(row.get("version") or 1):
         raise ValueError("记忆条目版本已变化，请刷新后重试")
-    raw = row.get("content") or ""
-    if hashlib.sha256(raw.encode("utf-8")).hexdigest() != row.get("content_sha256"):
+    raw = row.get("content")
+    digest = _content_digest(raw)
+    if digest is None or digest != row.get("content_sha256"):
         raise ValueError("记忆内容指纹校验失败")
     if row.get("status") != "approved":
         raise ValueError("只有已批准的记忆条目可以反馈")

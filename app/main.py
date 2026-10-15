@@ -3920,6 +3920,7 @@ def _state_run_summary(run):
     fields = ("id", "task_id", "kind", "op", "title", "status", "created_at",
               "started_at", "ended_at", "summary", "error", "paused", "direct_session",
               "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens")
+    fields += ("project_memory_id",)
     summary = {key: run[key] for key in fields if key in run}
     summary["step_count"] = len(run.get("steps") or [])
     summary.update(activity.run_activity(run))
@@ -4074,6 +4075,13 @@ def main():
     _step("正在加载任务目录…")
     catalog.load()
     store.load_all()
+    _step("正在恢复项目记忆…")
+    from core import project_memory
+    memory_recovery = project_memory.backfill(store.list_tasks(), store.list_runs(limit=None))
+    if any(memory_recovery.values()):
+        print("[CodeBee] 项目记忆：迁移旧记录 %d 条，回填完成记录 %d 条，失败 %d 项"
+              % (memory_recovery["legacy"], memory_recovery["runs"], memory_recovery["errors"]),
+              flush=True)
     _step("正在启动健康探针…")
     health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
     from core import modelhub

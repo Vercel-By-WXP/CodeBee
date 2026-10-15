@@ -2144,20 +2144,6 @@ def _run_code(run, task, agents, ev, stats, mode):
     lines += ["", "## 评审总评", "", review_json.get("summary", ""), ""]
     store.write_report(run_id, "\n".join(lines))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
-    # 项目记忆沉淀（借鉴 agentmemory 持久记忆）：代码任务成功后提取架构事实
-    # （改动文件/验收结果/修复轮数），追加到 .codebee/project-memory.md——
-    # 同目录后续 code 任务规划前自动注入，让编排者「知道这个代码库的脾气」
-    try:
-        _diff = _git_diff(workdir)
-        _files_touched = sorted(set(re.findall(
-            r"(?:^|\n)diff --git a/(\S+) b/(\S+)", _diff or "")))
-        _touched_str = "、".join(sorted(set(b for _, b in _files_touched)))[:500] if _files_touched else ""
-        _mem_lines = ["改动文件：%s" % (_touched_str or "（无 diff）"),
-                      "验收：%s" % ("通过" if verify_pass else "未通过"),
-                      "修复轮数：%d" % (len(repairs) - 1)]
-        _write_project_memory(task, workdir, _mem_lines, source_run=run_id)
-    except Exception:
-        pass
     # Stop gate（planning-with-files）：收工时活计划若有未勾选项，摘要与 verdict
     # 如实点名——「计划没走完就报完成」属于静默降级（赛马/异常路径不回写勾选时
     # 此前无任何可见信号）。只保可见不改判：勾选是文件事实，质量判据仍是评审。
@@ -5805,19 +5791,6 @@ def _read_constitution(workdir):
             "与其他要求冲突时以宪章为准）\n\n" + txt + "\n\n")
 
 
-def _write_project_memory(task, workdir, lines, source_run=""):
-    """Persist proposed project facts; they are not injected before approval."""
-    if not lines:
-        return ""
-    try:
-        from . import project_memory
-        row = project_memory.propose(workdir, source_run=source_run,
-                                     title=task.get("title") or "", facts=lines)
-        return str(project_memory._file(workdir)) if row else ""
-    except Exception:
-        return ""
-
-
 def _read_project_memory(workdir, cap=4000, query=""):
     """Only inject approved, unexpired and fingerprint-verified memory."""
     try:
@@ -6295,6 +6268,13 @@ def execute_run(run_id):
     # 任务规格文件化（借鉴 planning-with-files/agent-orchestrator）：任何任务都在
     # 工作目录留一份 .codebee/spec.md——原始意图可见、随任务分支版本化
     _write_task_spec(task, task["workdir"])
+    # 先完成基线检出再读记忆，避免把旧分支的记录注入所选分支。code 在自身
+    # 入口读取，以保留快速规划对原始上下文长度的判定。
+    if task["engine"] != "code":
+        memory_text = _read_project_memory(
+            task.get("workdir"), query=task.get("goal") or task.get("title") or "")
+        if memory_text:
+            task["context"] = (task.get("context") or "") + "\n\n" + memory_text
     # 任务宪章（借鉴 spec-kit constitution）：工作目录 .codebee/constitution.md
     # 是作者定下的质量原则（代码规范/文风/测试要求），每次 run 注入所有智能体
     # 提示词——代码/文章/翻译全类型通用，一次定义持续生效。缺省零噪音。
@@ -6444,6 +6424,16 @@ def execute_run(run_id):
         except Exception:
             pass
     finally:
+        # 所有引擎共用完成后的候选记忆沉淀；失败、取消和 partial 不产生成功记录。
+        try:
+            from . import project_memory
+            memory_entry = project_memory.capture_run(task, store.get_run(run_id) or {})
+            if memory_entry:
+                store.update_run(run_id, project_memory_id=memory_entry["id"])
+        except Exception as memory_error:
+            warning = "项目记忆保存失败：%s" % str(memory_error)[:200]
+            current = store.get_run(run_id) or {}
+            store.update_run(run_id, warnings=(current.get("warnings") or []) + [warning])
         try:
             from . import session_runtime
             session_runtime.default_runtime().drain_turns(

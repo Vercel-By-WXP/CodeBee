@@ -287,15 +287,14 @@ class TestProjectMemoryKeepsAttachmentContext(BaseTest):
         import base64
         import threading
         from unittest.mock import patch
-        from app.core import attachments, pipeline, store, task_compile
+        from app.core import attachments, pipeline, project_memory, store, task_compile
 
         meta = attachments.save_pending(
             "long-spec.txt", base64.b64encode(("附件要求" * 1800).encode()).decode())
         task = store.create_task({"type": "code", "title": "长附件", "goal": "实现需求",
                                   "workdir": str(self.workdir), "attachments": [meta["id"]]})
-        memory = self.workdir / ".codebee" / "project-memory.md"
-        memory.parent.mkdir()
-        memory.write_text("历史架构事实" * 1000, encoding="utf-8")
+        memory = project_memory.propose(self.workdir, title="架构", facts=["历史架构事实" * 80])
+        project_memory.decide(self.workdir, memory["id"], "approve")
         task = dict(task, difficulty="default", _compiled_spec=task_compile.compile_task(task))
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running")

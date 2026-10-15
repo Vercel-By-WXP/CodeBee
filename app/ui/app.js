@@ -2164,6 +2164,7 @@ function applyState(d) {
   restoreInspector();   // 刷新后恢复上次打开的检查器（只在已开时为空操作）
   restoreLastTask();    // 刷新/重开后回到最近打开的任务对话（只在首帧尝试一次）
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
+  memoryCenterMaybeRefresh();
   if (S.tab === "browser") {
     browserRenderTaskContext();
     browserLoadPublishState(browserCurrentTask());
@@ -5664,8 +5665,8 @@ function renderTaskDetail() {
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
   setResumeNowBtn(null);   // 退避与否要看 run 数据，先收起防上一个任务残留
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
+  renderProjectMemoryControls(key);
   if (isTask) {
-    renderProjectMemoryControls(key);
     renderCheckpointControls(latestSummary.id || "", true);
     refreshCheckpointRestoreAvailability(latestSummary);
     if (latestSummary.id && S._checkpointRun !== latestSummary.id) {
@@ -5699,19 +5700,34 @@ function refreshCheckpointRestoreAvailability(run) {
   button.classList.toggle("hidden", !terminal || box.dataset.hasRestorable !== "true");
 }
 
+function currentProjectMemoryTaskId() {
+  return S.detailTaskKey || S.lastRun?.task_id || S.lastRunTask?.id;
+}
+
 function renderProjectMemoryControls(taskId) {
   const box = $("rd-project-memory");
   if (!box) return;
-  const task = ((S.state || {}).tasks || []).find((item) => item.id === taskId);
+  const state = S.state || {};
+  const task = [...(state.tasks || []), ...(state.archived_tasks || [])].find((item) => item.id === taskId);
   box.classList.toggle("hidden", !task || !task.workdir);
-  if (task && task.workdir && S._projectMemoryTask !== taskId) {
-    S._projectMemoryTask = taskId;
+  if (!task || !task.workdir) {
+    S._projectMemoryTask = "";
+    S._projectMemorySeq = (S._projectMemorySeq || 0) + 1;
+    return;
+  }
+  const latest = (state.task_latest || {})[taskId] || {};
+  const workspaceMemories = [...(state.tasks || []), ...(state.archived_tasks || [])]
+    .filter((item) => item.workdir === task.workdir)
+    .map((item) => [item.id, state.task_latest?.[item.id]?.project_memory_id]);
+  const signature = JSON.stringify([taskId, task.workdir, latest.id, latest.status, latest.project_memory_id, workspaceMemories]);
+  if (S._projectMemoryTask !== signature) {
+    S._projectMemoryTask = signature;
     loadProjectMemory(taskId);
   }
 }
 
 window.loadProjectMemory = async function (taskId) {
-  taskId = taskId || S.detailTaskKey || ((S.state || {}).tasks || []).find((item) => item.id === S.lastRunTask?.id)?.id;
+  taskId = taskId || currentProjectMemoryTaskId();
   if (!taskId) return;
   const requestSeq = S._projectMemorySeq = (S._projectMemorySeq || 0) + 1;
   const box = $("rd-project-memory-body");
@@ -5732,16 +5748,22 @@ window.loadProjectMemory = async function (taskId) {
         (canRestore ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'restore\',' + Number(entry.version) + ')">' + esc(t("恢复")) + "</button>" : "");
       return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(entry.status || "") + (entry.expired ? " · " + esc(t("已过期")) : "") + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + actions + "</div></article>";
     }).join("");
-  } catch (error) { box.innerHTML = '<span class="hint">' + esc(t("加载项目记忆失败：")) + esc(error.message) + "</span>"; }
+  } catch (error) {
+    if (requestSeq !== S._projectMemorySeq || (S.detailTaskKey && S.detailTaskKey !== taskId)) return;
+    S._projectMemoryTask = ""; // Allow the next detail refresh to retry a transient read failure.
+    box.innerHTML = '<span class="hint">' + esc(t("加载项目记忆失败：")) + esc(error.message) + "</span>";
+  }
 };
 
 window.previewProjectMemory = async function (taskId) {
-  taskId = taskId || S.detailTaskKey;
+  taskId = taskId || currentProjectMemoryTaskId();
   if (!taskId) return;
   const box = $("rd-project-memory-body");
   if (!box) return;
+  const requestSeq = S._projectMemorySeq;
   try {
     const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory/preview?cap=4000");
+    if (requestSeq !== S._projectMemorySeq || currentProjectMemoryTaskId() !== taskId) return;
     const entries = (data.entries || []).map((entry) =>
       '<span class="chip">' + esc(entry.title || t("项目记忆")) + ' · v' + esc(String(entry.version || 1)) + '</span>').join(" ");
     const text = data.text ? '<pre>' + esc(data.text) + '</pre>' : '<span class="hint">' + esc(t("暂无可注入记忆")) + '</span>';
@@ -6769,7 +6791,7 @@ async function renderRunDetail() {
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
-  const rcTask = ((S.state || {}).tasks || []).find((x) => x.id === run.task_id);
+  const rcTask = [...((S.state || {}).tasks || []), ...((S.state || {}).archived_tasks || [])].find((x) => x.id === run.task_id);
   if (rcTask) {
     renderProjectMemoryControls(rcTask.id);
   } else {
@@ -14029,11 +14051,35 @@ async function loadKnowledge() {
 /* ---------------------------------------------------------- 记忆中心 */
 let MEMORY_CENTER = { data: null };
 
+function memoryCenterSignature() {
+  const state = S.state || {};
+  const latest = state.task_latest || {};
+  return JSON.stringify([
+    [...(state.tasks || []), ...(state.archived_tasks || [])].map((task) => [task.id, task.workdir]),
+    Object.keys(latest).sort().map((id) => [id, latest[id].id, latest[id].project_memory_id]),
+  ]);
+}
+
+function memoryCenterMaybeRefresh() {
+  if (S.tab === "memory" && MEMORY_CENTER.stateSignature !== memoryCenterSignature()) loadMemoryCenter();
+}
+
 window.loadMemoryCenter = async function () {
+  const requestSeq = MEMORY_CENTER.requestSeq = (MEMORY_CENTER.requestSeq || 0) + 1;
+  MEMORY_CENTER.stateSignature = memoryCenterSignature();
   const projects = $("memory-projects");
   if (projects) projects.innerHTML = '<div class="hint">' + esc(t("正在加载项目记忆…")) + '</div>';
-  try { MEMORY_CENTER.data = await api("/api/memory"); }
-  catch (e) { MEMORY_CENTER.data = null; if (projects) projects.innerHTML = '<div class="hint">' + esc(e.message) + '</div>'; return; }
+  try {
+    const data = await api("/api/memory");
+    if (requestSeq !== MEMORY_CENTER.requestSeq) return;
+    MEMORY_CENTER.data = data;
+  } catch (e) {
+    if (requestSeq !== MEMORY_CENTER.requestSeq) return;
+    MEMORY_CENTER.stateSignature = "";
+    MEMORY_CENTER.data = null;
+    if (projects) projects.innerHTML = '<div class="hint">' + esc(e.message) + '</div>';
+    return;
+  }
   renderMemoryCenter();
 };
 
