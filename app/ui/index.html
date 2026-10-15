@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="workspace-editor.css">
 <link rel="stylesheet" href="chat-delivery.css">
 <link rel="stylesheet" href="mobile-workbench.css">
+<link rel="stylesheet" href="project-overview.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -401,6 +402,19 @@
           </div>
         </div>
         <div id="ov-kpis" class="ov-kpis"></div>
+        <section class="panel wide ov-recent project-overview" aria-labelledby="ov-project-heading">
+          <div class="panel-head">
+            <div><h2 id="ov-project-heading" data-i18n="项目进展">项目进展</h2><p class="project-caption" data-i18n="按项目查看最近运行与结果摘要">按项目查看最近运行与结果摘要</p></div>
+            <div class="actions">
+              <label class="project-picker"><span data-i18n="项目">项目</span><select id="ov-project-select"></select></label>
+              <button class="ghost small" onclick="switchTab('runs')" data-i18n="查看全部">查看全部</button>
+            </div>
+          </div>
+          <div id="ov-project-status" class="project-status" role="group" aria-label="运行状态" data-i18n-aria="运行状态"></div>
+          <h3 class="project-section-title" data-i18n="最近运行">最近运行</h3>
+          <div id="ov-recent-body" class="ov-recent-body"></div>
+          <div id="ov-project-results" class="project-results"></div>
+        </section>
         <section id="ov-goal" class="panel ov-goal-card" aria-labelledby="ov-goal-heading">
           <div class="panel-head">
             <div><h2 id="ov-goal-heading" data-i18n="长目标">长目标</h2>
@@ -441,15 +455,6 @@
             <div id="ov-quick-body" class="ov-quick-body"></div>
           </div>
         </div>
-        <div class="panel wide ov-recent">
-          <div class="panel-head">
-            <h2 data-i18n="最近运行">最近运行</h2>
-            <div class="actions">
-              <button class="ghost small" onclick="switchTab('runs')" data-i18n="查看全部">查看全部</button>
-            </div>
-          </div>
-          <div id="ov-recent-body" class="ov-recent-body"></div>
-        </div>
       </div>
       <div id="sub-tasks" class="subpage">
         <section id="mobile-workspaces" class="mobile-workspaces" aria-labelledby="mobile-workspaces-title">
@@ -461,11 +466,11 @@
         </section>
       <div class="panel wide composer">
           <button type="button" class="ghost mobile-workspaces-back" id="btn-mobile-workspaces"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg><span data-i18n="返回工作区">返回工作区</span></button>
+        <div class="form">
         <div class="hero-row">
           <h2 class="hero" id="cmp-greet">上午好呀，有什么想让我帮忙的吗</h2>
         </div>
         <p id="cmp-workspace-hint" class="hero-sub workspace-hint"></p>
-        <div class="form">
           <!-- Composer 大输入框：工作目录作为框上沿上下文；值真源仍是
                #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。
                附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
@@ -1897,6 +1902,7 @@
 <script src="hive3d.js"></script>
 <script src="activity.js"></script>
 <script src="app.js"></script>
+<script src="project-overview.js"></script>
 <script src="mobile-workbench.js"></script>
 </body>
 </html>

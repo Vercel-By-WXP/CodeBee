@@ -1062,9 +1062,10 @@
   html[data-theme="dark"] .side-settings .set-item.active { color: #dce8f7; background: #303943; }
 }
 
-/* New-task canvas: keep the familiar composer controls, but give the empty
- * state the open, bottom-composer composition used by Codex's chat start page. */
+/* New-task canvas: one focused group for the heading, input and task shortcuts.
+ * Conversation composers retain their separate bottom-anchored layout. */
 @media (min-width: 901px) {
+  body:has(#page-settings > #sub-tasks:not(.hidden)) { overflow: hidden; }
   main:has(> #page-settings > #sub-tasks:not(.hidden)) {
     position: relative;
     min-height: 0;
@@ -1122,12 +1123,10 @@
   }
 
   #sub-tasks .hero-row {
-    position: absolute;
-    top: 41%;
-    left: 50%;
-    width: min(920px, calc(100% - 64px));
-    margin: 0;
-    transform: translate(-50%, -50%);
+    position: static;
+    width: 100%;
+    margin: 0 0 8px;
+    transform: none;
     pointer-events: auto;
   }
 
@@ -1140,12 +1139,10 @@
   }
 
   #sub-tasks .workspace-hint {
-    position: absolute;
-    top: calc(41% + 42px);
-    left: 50%;
-    width: min(680px, calc(100% - 64px));
-    margin: 0;
-    transform: translateX(-50%);
+    position: static;
+    width: 100%;
+    margin: 0 0 24px;
+    transform: none;
     text-align: center;
     pointer-events: auto;
   }
@@ -1202,12 +1199,32 @@
     background: var(--accent);
   }
 
-  #page-settings > #sub-tasks .cmp-quick,
+  #page-settings > #sub-tasks .cmp-quick {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0 0;
+  }
+  #sub-tasks .cmp-chip {
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    background: var(--panel);
+    box-shadow: none;
+  }
+  #sub-tasks .cmp-chip:hover, #sub-tasks .cmp-chip.on {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+  }
   #page-settings > #sub-tasks .cmp-estimate { display: none; }
 
   #sub-tasks details#f-advanced {
     position: absolute;
-    bottom: calc(100% + 8px);
+    top: calc(100% + 8px);
     left: 0;
     width: 100%;
     margin: 0;
@@ -1225,6 +1242,10 @@
   }
 
   #sub-tasks details#f-advanced[open] .adv-body {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    width: 100%;
+    box-sizing: border-box;
     max-height: min(58vh, 620px);
     overflow: auto;
     background: var(--panel);
@@ -1232,9 +1253,17 @@
   }
 
   @media (max-height: 700px) {
-    #sub-tasks .hero-row { top: 34%; }
-    #sub-tasks .workspace-hint { top: calc(34% + 38px); }
     #sub-tasks .cmp-box textarea { min-height: 58px; }
+  }
+  @media (max-height: 500px) {
+    #sub-tasks .hero-row, #sub-tasks .workspace-hint,
+    #page-settings > #sub-tasks .cmp-quick { display: none; }
+    #sub-tasks details#f-advanced { top: auto; bottom: calc(100% + 8px); }
+    #sub-tasks details#f-advanced[open] .adv-body {
+      top: calc(100% + 8px);
+      bottom: auto;
+      max-height: min(38dvh, 120px);
+    }
   }
 }
 
@@ -1882,7 +1911,7 @@
   }
   #sub-tasks .form {
     position: fixed !important;
-    bottom: max(24px, env(safe-area-inset-bottom));
+    bottom: max(48px, calc((100dvh - 400px) / 2), env(safe-area-inset-bottom));
     max-height: calc(100dvh - 48px);
     left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px)) / 2);
     width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));

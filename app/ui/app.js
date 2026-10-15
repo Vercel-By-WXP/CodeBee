@@ -17239,6 +17239,7 @@ function setLangBtn(lang) {
   paintWorkspaceMode();
   renderQuickChips();
   // 侧栏区头两颗钮的 title/aria 是 JS 按状态写的，applyI18n 会用静态词条盖掉，这里重刷
+  if (S.tab === "overview") ovRenderRecent();
   paintArchToggle();
   syncSideExpandBtn();
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
@@ -17997,6 +17998,7 @@ function ovRenderQuick() {
  * 「图标 + 主副标题 + 右侧状态与相对时间」。点击走 jumpToRun——
  * 它会先切到运行记录页再开详情；在概览页直接 openRun 会把详情开在错的分区上。 */
 function ovRenderRecent() {
+  if (typeof renderProjectOverview === "function") { renderProjectOverview(); return; }
   const box = $("ov-recent-body");
   if (!box) return;
   const runs = ((S.state && S.state.runs) || []).slice(0, 5);

@@ -10,6 +10,17 @@
   const LANG_KEY = "orch.lang";
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
+    "项目进展": "Project progress",
+    "按项目查看最近运行与结果摘要": "Recent runs and results by project",
+    "全部项目": "All projects",
+    "需关注": "Needs attention",
+    "当前项目暂无待处理项": "No items need attention in this project",
+    "结果摘要": "Result summaries",
+    "运行完成后，结果摘要会显示在这里": "Result summaries will appear here after a run completes",
+    "查看运行结果": "View run results",
+    "开始时间": "Started",
+    "默认工作区": "Default workspace",
+    "运行状态": "Run status",
     "搜索插件、技能、智能体、文件和会话": "Search plugins, skills, agents, files and chats",
     "部分能力": "Partial support",
     "工作区文件": "Workspace files",
