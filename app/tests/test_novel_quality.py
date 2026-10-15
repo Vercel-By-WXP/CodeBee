@@ -109,3 +109,62 @@ class OpeningGateTests(unittest.TestCase):
         self.assertFalse(opening_below({}, 5.0))
         self.assertFalse(opening_below({OPENING_DIM: "abc"}, 5.0))
         self.assertFalse(opening_below({OPENING_DIM: 4.0}, None))
+
+
+class StyleConsistencyTests(unittest.TestCase):
+    """跨章/章内体例一致性检测（2026-10-15 七猫双拒实案校准）。
+
+    神瞳 ch05 整章「」与其余章 ASCII 直引号混用、头七 ch02 弯直混用+BOM，
+    平台按「风格不统一」拒——检测须确定性命中且分档 major。
+    """
+
+    def _ascii_ch(self):
+        return '# 第N章 测试\n\n他说"东西不对，账要重算"，说完便坐下。\n她答"好，我等着"。\n他又补了一句"别等太久"。\n'
+
+    def _corner_ch(self):
+        return '# 第N章 测试\n\n他说「东西不对，账要重算」，说完便坐下。\n她答「好，我等着」。\n他又补了一句「别等太久」。\n'
+
+    def test_uniform_style_passes(self):
+        from core.novel_quality import style_consistency_notes
+        chapters = {i: self._corner_ch() for i in range(1, 5)}
+        self.assertEqual(style_consistency_notes(chapters), [])
+
+    def test_cross_chapter_mix_is_major_and_names_stray_chapter(self):
+        from core.novel_quality import style_consistency_notes
+        chapters = {i: self._ascii_ch() for i in range(1, 5)}
+        chapters[5] = self._corner_ch()          # 神瞳 ch05 实案形态
+        notes = style_consistency_notes(chapters)
+        cross = [n for n in notes if "跨章混用" in n["note"]]
+        self.assertEqual(len(cross), 1)
+        self.assertEqual(cross[0]["severity"], "major")
+        self.assertIsNone(cross[0]["chapter"])    # 全书级账，note 点名病灶章
+        self.assertIn("第 5 章", cross[0]["note"])
+        # 证据句定位到病灶章的对白而非章首
+        self.assertIn("「", cross[0]["quote"])
+        self.assertNotIn("#", cross[0]["quote"][:2])
+
+    def test_intra_chapter_mix_is_major(self):
+        from core.novel_quality import style_consistency_notes
+        mixed = self._corner_ch() + '\n他说"这句话用直引号"，前后都是直角引号。\n她又说了"第二句"作证。\n最后一句"收尾"。\n'
+        chapters = {i: self._corner_ch() for i in range(1, 4)}
+        chapters[2] = mixed                       # 头七 ch02 实案形态
+        notes = style_consistency_notes(chapters)
+        intra = [n for n in notes if "章内混用" in n["note"]]
+        self.assertEqual(len(intra), 1)
+        self.assertEqual(intra[0]["severity"], "major")
+        self.assertEqual(intra[0]["chapter"], 2)
+
+    def test_bom_is_flagged(self):
+        from core.novel_quality import style_consistency_notes
+        chapters = {i: self._corner_ch() for i in range(1, 4)}
+        chapters[2] = "\ufeff" + self._corner_ch()
+        notes = style_consistency_notes(chapters)
+        self.assertTrue(any("BOM" in n["note"] and n["severity"] == "major"
+                            for n in notes))
+
+    def test_few_quotes_do_not_trigger_cross_chapter(self):
+        from core.novel_quality import style_consistency_notes
+        # 对白稀少的章节（旁白章一两句）不该被判「用错了制式」
+        chapters = {i: self._ascii_ch() for i in range(1, 5)}
+        chapters[3] = '# 第3章\n\n他整夜没说话，天亮时才合眼。\n'
+        self.assertEqual(style_consistency_notes(chapters), [])

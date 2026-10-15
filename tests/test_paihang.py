@@ -93,6 +93,15 @@ class RankScanPromptTests(BaseTest):
         self.assertIn("番茄排行榜素材", p)
         self.assertIn("差异化切入", p)
 
+    def test_saturation_section_present(self):
+        # 2026-10-15 七猫双拒实案：立项层饱和（题材+核心机制写烂了）内部
+        # 评审测不出——扫榜报告必须带饱和度红线，直接回答「写烂了没有」
+        p = self._make(["盖世神医"], ["逆天邪神"])
+        self.assertIn("饱和度与立项风险", p)
+        self.assertIn("饱和风险", p)
+        self.assertIn("只换皮不换机制", p)
+        self.assertIn("永久锁定", p)
+
     def test_quad_source_merged(self):
         p = self._make(["盖世神医"], ["逆天邪神"], qd=["夜无疆"], zh=["剑来"])
         for sec in ("七猫排行榜素材", "番茄排行榜素材", "起点排行榜素材", "纵横排行榜素材"):

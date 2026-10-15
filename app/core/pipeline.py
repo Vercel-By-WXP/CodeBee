@@ -3110,6 +3110,7 @@ SERIAL_SIGNING_EVAL_PROMPT = """你是独立小说质量评审（不要修改任
 }
 统一评分 rubric：1-3 为明显影响理解或阅读的严重问题；4-6 为有具体可定位的弱项；7-8 为基本有效、仍有局部提升空间；9-10 为在本稿目标下表现突出。分数必须由所读文本支撑，不把分数映射成过签概率。
 五个维度固定为：开篇吸引力、情节推进、文风统一、情感细腻度、节奏控制。每项给证据与未读范围；不能因不用某种套路（如黄金三章、打脸、单一视角）扣分。
+分档校准（免费平台拒稿实案，2026-10）：编辑拒稿话术与本五维对应（创新/代入感≈开篇吸引力与情节推进，「风格不统一」≈文风统一，推进生硬/情感不够细腻≈其余两维），打分按平台编辑严格度而非自家喜好。以下形态一律 major 而非 minor：引号制式跨章或章内混用等体例伤；开篇前五段仍无冲突/异常信号；同一流程桥段连排三章以上；核心情绪爆点被一句话带过（无特写放大）。7-8 分只留给「编辑不会一句话拒」的稿子——内部 8 分稿被平台整篮拒的实案为鉴。
 可检查文风是否突变、情绪是否被概括、开篇承诺是否兑现、因果桥是否成立、重复是否损害节奏；这些是检查问题而不是预设缺陷。没有当前平台规则或明确编辑反馈时，不把质量评审包装成平台审核结论。
 
 ## 待评审稿件
@@ -3737,24 +3738,28 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         与任务 rubric 解耦（评分维度保持作者口径，签约五维是解释层/平台口径）。
         返回 (means, issues, summary)；评估失败返回 (None, [], "")——调用方
         按「未评估」处理，绝不得当 0 分。issues 同时并入 issues_all 供打磨用。"""
-        texts, acc = [], 0
+        texts, acc, style_chapters = [], 0, {}
         for j in range(start, upto_chapter + 1):
             t = _read_chapter(workdir, j)
             if not t:
                 continue
             texts.append("### 第 %d 章\n\n%s" % (j, t.strip()))
+            style_chapters[j] = t
             acc += _wc(t)
             if acc >= novel_quality.SIGNING_CHECKPOINT_WORDS * 1.2:
                 break
         if not texts:
             return None, [], ""
+        reviewers = critics or [impl]
+        reviews, summaries, issues = [], [], []
+        # 体例一致性（确定性红线，2026-10-15 七猫双拒实案）：混用不交给模型
+        # 分档——模型一贯记 minor 放行、平台按「风格不统一」一句话拒。
+        issues.extend(novel_quality.style_consistency_notes(style_chapters))
         signing_dimkey = ", ".join('"%s": 0' % d for d in novel_quality.SIGNING_RUBRIC)
         prompt = (SERIAL_SIGNING_EVAL_PROMPT
                   .replace("__DIMKEYS__", signing_dimkey)
                   .replace("__NOTE__", note or "")
                   .replace("__MANUSCRIPT__", "\n\n".join(texts)[:26000]))
-        reviewers = critics or [impl]
-        reviews, summaries, issues = [], [], []
         for idx, agent in enumerate(reviewers):
             res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
                             prompt, workdir, readonly=True, ev=ev, timeout=2400,
@@ -5182,6 +5187,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       duration_s=0.1)
 
     chapters_pass = all(c["passed"] for c in chapter_scores)
+    # 体例一致性终检（确定性，读最终落盘稿）：模型评审对体例伤分档过松
+    # （神瞳实案：ch05 整章「」与其余章 ASCII 直引号混用，内部 8.1 分
+    # publishable=True，平台按「风格不统一」整篮拒）——红线机械进账。
+    issues_all.extend(novel_quality.style_consistency_notes(
+        {j: _read_chapter(workdir, j) for j in range(start, end + 1)}))
     major_issues = [x for x in _dedup_issues(list(issues_all) + list(global_issues))
                     if isinstance(x, dict) and x.get("severity") == "major"]
     publishable = bool(chapters_pass and global_pass and not major_issues)
