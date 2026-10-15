@@ -937,6 +937,18 @@ def test_fanqie_publish_feedback_detects_new_quota_toast():
            "历史残留的投稿额度提示不能触发本次终止")
 
 
+def test_fanqie_schedule_conflict_keeps_same_day_and_advances_thirty_minutes():
+    from datetime import date, time
+    from core.publish.flow import _next_fanqie_schedule_slot
+
+    day, slot = _next_fanqie_schedule_slot(date(2026, 10, 15), time(0, 0))
+    expect(day == date(2026, 10, 15) and slot == time(0, 30),
+           "同时间冲突应当天顺延半小时")
+    day, slot = _next_fanqie_schedule_slot(date(2026, 10, 15), time(23, 30))
+    expect(day == date(2026, 10, 16) and slot == time(0, 0),
+           "只有顺延越过午夜时才应进入下一天")
+
+
 def test_fanqie_stale_override_falls_back_to_calibrated_flow():
     """旧用户覆盖缺少当前确认链时，不能盖掉随包校准流程。"""
     fp = (_TMP / "publish" / "flows-fanqie.json").resolve()

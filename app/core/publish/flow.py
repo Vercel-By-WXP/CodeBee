@@ -78,6 +78,12 @@ def _fanqie_submission_limit_changed(before, after):
         before, after, ["提交字数超出每日上限", "投稿字数超出每日上限"])
 
 
+def _next_fanqie_schedule_slot(day, slot):
+    """Move a rejected same-time slot by the platform's stated 30-minute gap."""
+    advanced = datetime.datetime.combine(day, slot) + datetime.timedelta(minutes=30)
+    return advanced.date(), advanced.time()
+
+
 class TitleDupError(FlowError):
     """平台拒绝书名：重名（全平台书名唯一）。message 带平台提示原文。
 
@@ -1095,6 +1101,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             fq_enable_schedule()
                             fq_pick_date(trial_day)
                             fq_pick_time(trial_time)
+                            # Save the actual accepted candidate back to the
+                            # caller so the publish ledger can continue this
+                            # queue's cadence for the next chapter.
+                            values["scheduled_date"] = trial_day.strftime("%Y-%m-%d")
+                            values["scheduled_time"] = trial_time.strftime("%H:%M")
                             note(i, "尝试定时发布 %s %s" %
                                  (trial_day.strftime("%Y-%m-%d"),
                                   trial_time.strftime("%H:%M")))
@@ -1135,11 +1146,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                 before_submit, after,
                                 ["半小时以后", "发布时间间隔", "同一时间"]):
                             force_schedule = True
-                            # This book accepts several scheduled chapters at
-                            # the same midnight slot. Keep a fixed 00:00
-                            # cadence; when the platform rejects a time slot,
-                            # retain the time and try the next date.
-                            trial_day += datetime.timedelta(days=1)
+                            # Keep the chapter on the same release date when
+                            # possible. The platform rejects duplicate slots
+                            # with a 30-minute minimum-gap hint; moving a full
+                            # day was silently putting adjacent chapters on
+                            # different publishing days.
+                            trial_day, trial_time = _next_fanqie_schedule_slot(
+                                trial_day, trial_time)
                             if "发布设置" not in after_dialog:
                                 page.call(
                                     "()=>{const e=[...document.querySelectorAll('button')]"
