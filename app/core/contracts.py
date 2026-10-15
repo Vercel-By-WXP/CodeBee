@@ -15,6 +15,9 @@ _LOCK = threading.RLock()
 _ID_RE = re.compile(r"^[A-Za-z][0-9A-Za-z_-]{0,99}$")
 _CRITERIA_MAX = 40
 _EVIDENCE_MAX = 300
+_EVIDENCE_LIST_MAX = 20
+_EVIDENCE_TEXT_MAX = 300
+_COVERAGE_STATUSES = ("complete", "partial", "unknown")
 _MISSING = object()
 _CASE_KEYWORDS = {
     "correctness": ("正确", "验证", "测试", "质量", "correct", "test", "verify"),
@@ -60,6 +63,76 @@ def _actor(value):
     return str(value or "local").strip()[:120] or "local"
 
 
+def _bounded_list(value):
+    """Normalize human/provider caveats without allowing unbounded payloads."""
+    if value is None:
+        return []
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    result = []
+    for entry in values:
+        text = str(entry or "").strip()[:_EVIDENCE_TEXT_MAX]
+        if text and text not in result:
+            result.append(text)
+        if len(result) >= _EVIDENCE_LIST_MAX:
+            break
+    return result
+
+
+def _coverage(value):
+    """Return a small, stable coverage declaration for an evidence record."""
+    if isinstance(value, dict):
+        status = str(value.get("status") or "unknown").strip().lower()
+        scope = str(value.get("scope") or "criterion").strip()[:80] or "criterion"
+    else:
+        status = str(value or "unknown").strip().lower()
+        scope = "criterion"
+    if status not in _COVERAGE_STATUSES:
+        status = "unknown"
+    return {"status": status, "scope": scope}
+
+
+def _provenance(value, source):
+    """Keep producer identity and trust markers while dropping arbitrary input."""
+    if isinstance(value, dict):
+        out = {}
+        for key in ("source", "run_id", "step_id", "locator", "captured_at"):
+            text = str(value.get(key) or "").strip()[:_EVIDENCE_TEXT_MAX]
+            if text:
+                out[key] = text
+        if isinstance(value.get("untrusted_content"), bool):
+            out["untrusted_content"] = value["untrusted_content"]
+        return out or {"source": str(source or "manual")[:80]}
+    text = str(value or source or "manual").strip()[:_EVIDENCE_TEXT_MAX]
+    return {"source": text or "manual"}
+
+
+def normalize_evidence(evidence):
+    """Normalize the shared evidence envelope while accepting legacy callers.
+
+    The extra fields are intentionally additive: old producers can keep sending
+    ``criterion/status/summary/source`` and receive explicit unknown coverage;
+    newer producers can preserve REA-style caveats and provenance without
+    creating a second evidence store.
+    """
+    if not isinstance(evidence, dict):
+        raise ValueError("证据必须是对象")
+    status = str(evidence.get("status") or "unknown").lower()
+    if status not in ("passed", "failed", "unknown", "not_evaluated"):
+        raise ValueError("证据状态无效")
+    source = str(evidence.get("source") or "manual").strip()[:80] or "manual"
+    unknown = evidence.get("unknown", evidence.get("unknowns"))
+    return {
+        "criterion": str(evidence.get("criterion") or "")[:500],
+        "status": status,
+        "summary": str(evidence.get("summary") or "")[:2000],
+        "source": source,
+        "coverage": _coverage(evidence.get("coverage")),
+        "unknown": _bounded_list(unknown),
+        "limitations": _bounded_list(evidence.get("limitations")),
+        "provenance": _provenance(evidence.get("provenance"), source),
+    }
+
+
 def create(task_id, payload=None):
     """Create or update a task's contract, preserving evidence and audit history."""
     payload = payload if isinstance(payload, dict) else {}
@@ -101,20 +174,13 @@ def get(task_id):
 
 
 def add_evidence(task_id, evidence, actor="local"):
-    if not isinstance(evidence, dict):
-        raise ValueError("证据必须是对象")
-    status = str(evidence.get("status") or "unknown").lower()
-    if status not in ("passed", "failed", "unknown", "not_evaluated"):
-        raise ValueError("证据状态无效")
+    normalized = normalize_evidence(evidence)
     with _LOCK:
         item = _load(task_id)
         if not item:
             item = create(task_id, {})
-        row = {"id": "ev-%s" % uuid.uuid4().hex[:20],
-               "criterion": str(evidence.get("criterion") or "")[:500], "status": status,
-               "summary": str(evidence.get("summary") or "")[:2000],
-               "source": str(evidence.get("source") or "manual")[:80], "at": _now(),
-               "actor": _actor(actor)}
+        row = {"id": "ev-%s" % uuid.uuid4().hex[:20], **normalized,
+               "at": _now(), "actor": _actor(actor)}
         item["evidence"].append(row)
         item["evidence"] = item["evidence"][-_EVIDENCE_MAX:]
         item["audit"].append({"at": row["at"], "actor": row["actor"],

@@ -104,6 +104,37 @@ class TaskContractTests(unittest.TestCase):
         self.assertEqual(latest["安全检查完成"]["status"], "failed")
         self.assertNotIn("产品文案符合品牌语气", latest)
 
+    def test_evidence_normalizes_coverage_unknowns_limitations_and_provenance(self):
+        contracts.create("task-structured")
+        item = contracts.add_evidence("task-structured", {
+            "criterion": "artifact inventory",
+            "status": "passed",
+            "coverage": {"status": "partial", "scope": "root"},
+            "unknown": ["archive entries", "archive entries", ""],
+            "limitations": ["provider skipped sockets", "provider skipped sockets"],
+            "provenance": {"source": "inspect_artifact", "run_id": "run-7",
+                            "untrusted_content": True},
+        })
+        row = item["evidence"][-1]
+        self.assertEqual(row["coverage"], {"status": "partial", "scope": "root"})
+        self.assertEqual(row["unknown"], ["archive entries"])
+        self.assertEqual(row["limitations"], ["provider skipped sockets"])
+        self.assertEqual(row["provenance"]["source"], "inspect_artifact")
+        self.assertEqual(row["provenance"]["run_id"], "run-7")
+        self.assertTrue(row["provenance"]["untrusted_content"])
+
+    def test_evidence_legacy_shape_gets_safe_defaults(self):
+        contracts.create("task-legacy")
+        item = contracts.add_evidence("task-legacy", {
+            "criterion": "build", "status": "passed", "source": "pytest",
+            "unknown": "missing optional fixture",
+        })
+        row = item["evidence"][-1]
+        self.assertEqual(row["coverage"], {"status": "unknown", "scope": "criterion"})
+        self.assertEqual(row["unknown"], ["missing optional fixture"])
+        self.assertEqual(row["limitations"], [])
+        self.assertEqual(row["provenance"], {"source": "pytest"})
+
 
 if __name__ == "__main__":
     unittest.main()
