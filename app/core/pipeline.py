@@ -4874,7 +4874,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # 全失效 + kimi 命令行超长，global_scores 为空被 _all_ge 判成不通过）。
     # mock 评审总出分，不会误触；判失败不设 impl mock 例外（对齐章级中止）。
     if not gscored:
+        from . import bench as _bench
         tried = {a.get("id") for a in critics}
+        # 本场停用的 CLI 不进补位池：全停时补位只是把死链再叫来一轮
+        # （2026-10-15 案：qwen/codex 双双欠费后补位仍指向同两条死链）
+        tried |= _bench.benched_ids(run_id)
         for spare in [a for a in (agents or [])
                       if a.get("mode") == "real" and a.get("id") not in tried][:2]:
             sc, acc, spare_reviews, _sgi = run_global_round([spare])
@@ -4890,10 +4894,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     (spare.get("label") or spare.get("id")))
                 break
         if not gscored:
+            # 全停时错误行带上停用名单：只说「评审模型不可用」不说是谁欠费，
+            # 用户拿到 run 结果还是不知道去充哪个账号（对齐章级失败文案）
+            _benched_why = ""
+            try:
+                _bl = _bench.benched_agents(run_id)
+                if _bl:
+                    _benched_why = "；本场停用：%s" % "；".join(
+                        "%s：%s" % (aid, why)
+                        for aid, why in sorted(_bl.items())[:4])
+            except Exception:
+                pass
             store.update_run(run_id, expected_status="running", status="failed",
                              error="全局一致性评审全部失败（评审模型不可用或输出不可解析），"
                                    "已中止以免把「无法评审」误判为「未达标」。"
-                                   "各章稿件已全部落盘，修复评审链后续跑可直接收尾",
+                                   "各章稿件已全部落盘，修复评审链后续跑可直接收尾"
+                                   + _benched_why,
                              ended_at=_now())
             return
     global_means = {d: round(sum(xs) / len(xs), 1) for d, xs in gmeans_acc.items()}

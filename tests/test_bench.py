@@ -115,3 +115,18 @@ class TestPipelineBenchWiring(BaseTest):
         from app.core import bench, pipeline
         self.assertTrue(hasattr(bench, "bench"))
         self.assertTrue(hasattr(bench, "is_benched"))
+
+    def test_global_round_spare_pool_excludes_benched(self):
+        """全局评审补位池并入停用名单，且全挂错误行带停用名单。
+
+        补位池不过滤时，qwen/codex 双双欠费后补位仍指向同两条死链，
+        白烧一轮完整 CLI 冷启动（2026-10-15 案）。
+        """
+        import pathlib
+        from app.core import pipeline
+        src = pathlib.Path(pipeline.__file__).read_text(encoding="utf-8")
+        # 补位池：tried 先并入 benched_ids 再进入候选过滤
+        self.assertIn("tried |= _bench.benched_ids(run_id)", src)
+        # 全挂收场：错误行拼接 benched_agents 名单（用户看得见去充哪个账号）
+        self.assertIn("_bl = _bench.benched_agents(run_id)", src)
+        self.assertIn("本场停用：", src)

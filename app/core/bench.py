@@ -20,7 +20,8 @@ from __future__ import annotations
 import threading
 import time
 
-from .error_codes import ErrorCode, error_code_value, safe_error_summary
+from .error_codes import (ErrorCode, error_code_value, is_account_dead_error,
+                          safe_error_summary)
 
 _LOCK = threading.Lock()
 # run_id -> {agent_id: {"code": str, "summary": str, "at": float}}
@@ -37,7 +38,6 @@ def bench(run_id, agent_id, code, at=None):
     if not run_id or not agent_id:
         return False
     value = error_code_value(code)
-    from .error_codes import is_account_dead_error
     if not is_account_dead_error(value):
         return False
     row = {
