@@ -24,7 +24,12 @@ def document():
                 "network": {"type": "boolean"}, "timeout_s": {"type": "integer"}}},
             "acceptance_criteria": {"type": "array", "maxItems": 40,
                                      "items": {"type": "string", "maxLength": 500}},
+            "acceptance_thresholds": {"$ref": "#/components/schemas/PerformanceThresholds"},
             "approval_required": {"type": "boolean"}}},
+        "PerformanceThresholds": {"type": "object", "additionalProperties": False,
+            "description": "运行创建时固定的性能验收阈值；空对象表示未声明。缺测不判通过。",
+            "properties": {key: {"type": "number", "minimum": 0} for key in (
+                "max_duration_s", "max_cost_usd", "max_first_token_ms", "min_tokens_per_sec")}},
         "TaskResult": {"type": "object", "required": ["task_id", "run_id"], "properties": {
             "task_id": {"type": "string"}, "run_id": {"type": "string"}}},
         "Evidence": {"type": "object", "required": ["status"], "properties": {
@@ -101,6 +106,15 @@ def document():
             "requestBody": body(ref("TaskCreate")),
             "responses": {"200": response("已排队", ref("TaskResult")),
                           "503": response("运行记录或入队失败", ref("Error")), **errors}}},
+        "/api/tasks/{task_id}/params": {"post": {"summary": "更新空闲任务参数与性能阈值", "security": security,
+            "parameters": [{"name": "task_id", "in": "path", "required": True,
+                            "schema": {"type": "string"}}],
+            "requestBody": body({"type": "object", "properties": {
+                "expected_rev": {"type": "integer"},
+                "acceptance_thresholds": ref("PerformanceThresholds")}}),
+            "responses": {"200": response("参数已更新", {"type": "object", "properties": {
+                "ok": {"type": "boolean"}, "rev": {"type": "integer"}}}),
+                "400": errors["400"], "401": errors["401"], "423": errors["423"]}}},
         "/api/a2a/tasks": {"post": {"summary": "A2A-lite 创建任务", "security": security,
             "requestBody": body(ref("TaskCreate")),
             "responses": {"200": response("已排队", ref("TaskResult")), "400": errors["400"],

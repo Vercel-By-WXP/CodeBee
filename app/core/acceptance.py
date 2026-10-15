@@ -8,7 +8,9 @@ successful process exit.
 """
 from __future__ import annotations
 
+import math
 import time
+from datetime import datetime
 
 CASES = ("correctness", "performance", "boundary", "exception",
          "readability", "security")
@@ -26,6 +28,98 @@ def _quality_verdict(run):
         if isinstance(verdict.get(key), bool):
             return verdict.get(key), key
     return None, ""
+
+
+_PERFORMANCE_THRESHOLDS = (
+    ("max_duration_s", "duration_s", "max"),
+    ("max_cost_usd", "cost_usd", "max"),
+    ("max_first_token_ms", "first_token_ms", "max"),
+    ("min_tokens_per_sec", "tokens_per_sec", "min"),
+)
+
+
+def _number(value):
+    """Return a finite float, or ``None`` for missing/invalid evidence."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if value >= 0 and math.isfinite(value) else None
+
+
+def normalize_thresholds(value):
+    """Validate public task parameters before any task mutation."""
+    allowed = {key for key, _metric, _direction in _PERFORMANCE_THRESHOLDS}
+    if not isinstance(value, dict) or any(key not in allowed for key in value):
+        raise ValueError("acceptance_thresholds 必须是仅含已知性能阈值的对象")
+    normalized = {}
+    for key, raw in value.items():
+        number = _number(raw)
+        if number is None:
+            raise ValueError("acceptance_thresholds.%s 必须是有限非负数" % key)
+        normalized[key] = number
+    return normalized
+
+
+def _performance_thresholds(run, task):
+    """Prefer the run's frozen configuration, including an empty snapshot."""
+    for owner in (run, task):
+        if not isinstance(owner, dict):
+            continue
+        if "acceptance_thresholds" in owner:
+            return owner["acceptance_thresholds"]
+    return {}
+
+
+def _performance_case(run, task):
+    measured = {}
+    metrics = tuple(dict.fromkeys(
+        [metric for _threshold, metric, _direction in _PERFORMANCE_THRESHOLDS]
+        + ["tokens", "input", "output", "cached", "reasoning"]))
+    for metric in metrics:
+        value = _number(run.get(metric))
+        # Store initializes cost/tokens to zero even without usage evidence.
+        if value is not None and (value > 0 or metric not in
+                                  ("cost_usd", "tokens", "input", "output", "cached", "reasoning")):
+            measured[metric] = value
+    if "duration_s" not in measured:
+        try:
+            elapsed = (datetime.fromisoformat(run["ended_at"]) -
+                       datetime.fromisoformat(run["started_at"])).total_seconds()
+            if elapsed >= 0:
+                measured["duration_s"] = elapsed
+        except (KeyError, TypeError, ValueError, OverflowError):
+            pass
+    evidence = {"source": "run.metrics", "measured": measured,
+                "thresholds": {}, "checks": []}
+    try:
+        thresholds = normalize_thresholds(_performance_thresholds(run, task))
+    except ValueError as exc:
+        return _case("performance", "not_evaluated", evidence=evidence, reason=str(exc))
+    evidence["thresholds"] = thresholds
+    for threshold_key, metric, direction in _PERFORMANCE_THRESHOLDS:
+        if threshold_key not in thresholds:
+            continue
+        limit = thresholds[threshold_key]
+        actual = measured.get(metric)
+        passed = None
+        if actual is not None:
+            passed = actual <= limit if direction == "max" else actual >= limit
+        evidence["checks"].append({"metric": metric, "actual": actual,
+                                    "threshold": limit, "passed": passed,
+                                    "direction": direction})
+    if not evidence["checks"]:
+        return _case("performance", "not_evaluated", evidence=evidence,
+                     reason="已记录性能数据，但未声明性能阈值")
+    if any(item["passed"] is False for item in evidence["checks"]):
+        return _case("performance", "failed", evidence=evidence, reason="性能实测值未满足声明阈值")
+    missing = [item["metric"] for item in evidence["checks"] if item["passed"] is None]
+    if missing:
+        return _case("performance", "not_evaluated", evidence=evidence,
+                     reason="性能阈值已声明，但缺少实测值：%s" % ", ".join(missing))
+    return _case("performance", "passed", evidence=evidence)
 
 
 def evaluate_run(run, task=None):
@@ -48,19 +142,7 @@ def evaluate_run(run, task=None):
     else:
         out.append(_case("correctness", "not_evaluated", reason="缺少验证或质量门证据"))
 
-    duration = run.get("duration_s")
-    if duration is None and run.get("started_at") and run.get("ended_at"):
-        duration = "recorded"
-    has_duration = isinstance(duration, (int, float)) and duration >= 0
-    has_usage = any(isinstance(run.get(key), (int, float)) and run.get(key) > 0
-                    for key in ("tokens", "cost_usd"))
-    if has_duration or has_usage:
-        out.append(_case("performance", "passed", {
-            "source": "run.metrics", "duration_s": duration,
-            "tokens": run.get("tokens", 0), "cost_usd": run.get("cost_usd", 0),
-        }, "仅表示性能数据已记录，不代表达到业务阈值"))
-    else:
-        out.append(_case("performance", "not_evaluated", reason="缺少耗时或用量证据"))
+    out.append(_performance_case(run, task))
 
     boundary = verdict.get("boundary_checks")
     if isinstance(boundary, list) and boundary and all(

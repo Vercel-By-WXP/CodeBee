@@ -234,6 +234,9 @@ def create_task(payload):
     # persisted outside the task JSON so evidence/audit history survives task
     # parameter edits and can be consumed by API/MCP clients independently.
     raw_criteria = payload.get("acceptance_criteria")
+    from . import acceptance
+    task["acceptance_thresholds"] = acceptance.normalize_thresholds(
+        payload.get("acceptance_thresholds", {}))
     if raw_criteria not in (None, "") and not isinstance(raw_criteria, list):
         raise ValueError("acceptance_criteria 必须是列表")
     task["acceptance_criteria"] = [str(x).strip()[:500] for x in
@@ -1000,6 +1003,8 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
         # queued/backoff time does not shorten the actual execution budget.
         run["deadline_at"] = time.time() + run["timeout_budget_s"]
         run["execution_snapshot"] = _execution_snapshot(task)
+        # Freeze even an empty gate: later task edits cannot regrade history.
+        run["acceptance_thresholds"] = dict(task.get("acceptance_thresholds") or {})
         try:
             eta = _RUN_ESTIMATOR(
                 task_type=task.get("type") or "", mode=task.get("mode") or "auto",
@@ -2109,6 +2114,7 @@ def continue_task(task_id, chapters=None):
         "implementer": task.get("implementer") or "",
         "critics": task.get("critics") or [],
         "acceptance_criteria": task.get("acceptance_criteria") or [],
+        "acceptance_thresholds": dict(task.get("acceptance_thresholds") or {}),
         "approval_required": bool(task.get("approval_required")),
         "manuscript": task.get("manuscript") or "manuscript.md",
         "threshold": task.get("threshold") or 7.0,
@@ -2216,6 +2222,13 @@ def update_task_params(task_id, patch):
             if want_rev != cur_rev:
                 return False, ("任务参数已被其他窗口修改（当前修订 %d），"
                                "已拒绝过期写入，界面稍后自动同步最新值" % cur_rev)
+        thresholds = None
+        if "acceptance_thresholds" in patch:
+            from . import acceptance
+            try:
+                thresholds = acceptance.normalize_thresholds(patch["acceptance_thresholds"])
+            except ValueError as exc:
+                return False, str(exc)
         changed = False
         mode = str(patch.get("mode") or "").strip()
         if mode in ("auto", "fast", "expert", "manual"):
@@ -2251,6 +2264,9 @@ def update_task_params(task_id, patch):
             if task.get("timeout_s") != new_ts:
                 task["timeout_s"] = new_ts
                 changed = True
+        if thresholds is not None and task.get("acceptance_thresholds") != thresholds:
+            task["acceptance_thresholds"] = thresholds
+            changed = True
         if changed:
             task["rev"] = int(task.get("rev") or 1) + 1
             _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
