@@ -18114,16 +18114,15 @@ function sideUsageRenderRuns() {
 }
 
 /* ---------------------------------------------------------- 手机连接（扫码） */
-/* ZCode 桌面端式样：大二维码居中，地址+复制在下方；多来源（Tailscale/局域网）用 chips 切换 */
+/* 手机连接统一使用 CodeBee relay；大二维码居中，地址+复制在下方。 */
 async function openPhoneConnect() {
   let urls = [];
   let relay = null;
   try {
     const d = await api("/api/connect");
-    urls = d.urls || [];
     relay = d.relay;
   } catch (e) { toast(e.message, true); return; }
-  if (!urls.length && !relay) { toast(t("未获取到可用的连接地址"), true); return; }
+  if (!relay) { toast(t("统一手机连接暂不可用，请在本机打开 CodeBee 后重试"), true); return; }
   if (relay && relay.pair_url) urls.unshift({ label: "Codebee · 手机配对", url: relay.pair_url });
   S.connUrls = urls; S.connIdx = 0;
   const chips = urls.map((u, i) =>
@@ -18142,9 +18141,8 @@ async function openPhoneConnect() {
     '<div class="conn-url-row"><code id="conn-url"></code>' +
     '<button class="ghost small" onclick="copyConnUrl()">' + t("复制地址") + '</button></div>' +
     '<p class="hint">' + (relay ? "统一入口仅连接已配对的电脑；电脑需保持开机联网。已配对手机可使用 30 天，也可在电脑上随时撤销。<br>" : "") +
-    t("其他连接地址包含访问令牌，请只分享给自己的设备。") +
-    t('局域网地址要求手机与电脑连同一 WiFi；Tailscale 地址出门也能用，') +
-    t("两端需登录同一 Tailscale 账号。手机控制时另一端自动变为只读，可在顶栏接管。") + '<br>' +
+    t("手机连接地址只使用 app.codebeeagent.com，请只分享给自己的设备。") +
+    t("手机控制时另一端自动变为只读，可在顶栏接管。") + '<br>' +
     t("连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。") + '</p>' +
     "</div>";
   openModal(t("📱 手机连接"), body, "");
@@ -18754,6 +18752,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dirFilePopup(dir, f.dataset.name || "", Number(f.dataset.size) || 0);
   });
   $("btn-settings").addEventListener("click", enterSettings);
+  $("btn-rail-phone").addEventListener("click", openPhoneConnect);
   $("btn-phone-side").addEventListener("click", openPhoneConnect);
   $("btn-prov-side").addEventListener("click", () => switchTab("orch"));   // 供应商指示 → 编排设置页更换
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
