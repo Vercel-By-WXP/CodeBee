@@ -4,7 +4,7 @@ CodeBee 的用户可感知变更记录。发布新版时：最上面加一节，
 `<!-- relnotes:start -->…<!-- relnotes:end -->` 段（那段会被 `npm view` 的
 README 元数据带回，供老版本在「发现新版本」时展示新版更新内容）。
 
-## 未发布
+## v0.1.115（2026-10-16）
 
 - **主流 CLI 与跨平台补齐**：新增 Cline CLI（macOS/Windows/Linux 无头 `cline --yolo`）编排；补齐 Goose Windows PowerShell 安装/升级/卸载；新增 GitHub Copilot CLI 的 macOS/Windows/Linux 检测、安装与打开管理，因官方当前仍以交互入口为主暂不自动派发。
 - **CLI 覆盖补充**：新增 Mistral Vibe（`vibe --prompt`）无头编排，安装走官方 `uv tool install mistral-vibe`；沿用 Vibe 本机登录与模型配置，不注入不兼容的外部供应商凭据。
@@ -15,6 +15,14 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 - **Pi 原生 OAuth 订阅登录**：发现 `~/.pi/agent/auth.json` 中的 Pi OAuth provider（如 `openai-codex`、`anthropic`、`github-copilot`），沿用 Pi 自身订阅额度并传递 provider/model 选择；当前不标记为 Free，也不创建空 API Key 网关配置。
 - **MiMo Code 原生免费通道**：发现已安装 MiMo Code 的 `MiMo Auto` 限时免费通道，使用 `mimo/mimo-auto` 走 CLI 自带会话；不写空 API Key 或 `provider.codebee` 覆盖块，并限制为 MiMo Code 使用。
 - **Qwen Code 原生 OAuth/订阅**：发现 `~/.qwen/oauth_creds.json` 的 Qwen Code 设备流登录态，绑定时沿用 `qwen-oauth` 自身 `coder-model`；免费额度已停用，不标记为 Free，也不把 access/refresh token 当 API Key 写入。
+- **项目空间与共享**：工作区升级为项目空间，支持共享路由与项目级控制；选书转连载链路落地
+- **运行能力全程可审计**：任务能力清单注入编排者与评审面（计划提示词、质量闸同步消费），跨引擎可查
+- **连载质量闭环强化**：拒稿反馈持久化并强制证据回炉（拒绝必须给证据）、七猫双拒防线（体例一致性 major 闸+签约评审分档校准+扫榜饱和度红线）、手稿证据要求强化
+- **番茄发布排期修复批**：保持章节排期顺序、相邻排期同日、配额重试死循环修复、排期切换真实点击
+- **编排韧性**：额度/凭据类死错本场停用并降级、全局评审补位池过滤停用 CLI、全停干净收场
+- **内存恢复与治理**：项目记忆恢复工具、取消任务不再触发关注告警、接受阈值快照化执行
+- **兼容性诊断**：配置溯源、插件兼容性与钩子诊断；桌面端 Windows/macOS 兼容包统一
+- 显式创建请求路由到新建 CodeBee 任务；首页输入区居中与项目进展展示
 
 ## v0.1.114（2026-10-15）
 
