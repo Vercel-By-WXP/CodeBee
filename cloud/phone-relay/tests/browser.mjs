@@ -53,10 +53,10 @@ try {
   await cdp("Page.enable");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await cdp("Page.navigate", { url: relay + "/relay/portal" });
-  await until(() => evaluate("!!document.getElementById('pair-form')"));
-  await until(() => evaluate("getComputedStyle(document.getElementById('code')).fontSize === '16px'"));
+  await until(() => evaluate("!!document.querySelector('.brand img.mark')"));
+  await until(() => evaluate("document.querySelector('.brand img.mark').naturalWidth > 0"));
+  assert.equal(await evaluate("(await fetch('/relay/codebee-logo.png')).status"), 200, "unpaired visitors can load the CodeBee logo");
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth"), true);
-  assert.equal(await evaluate("getComputedStyle(document.getElementById('code')).fontSize"), "16px");
   const output = resolve(root, "output/playwright/phone-relay");
   mkdirSync(output, { recursive: true });
   writeFileSync(join(output, "portal-mobile.png"), Buffer.from((await cdp("Page.captureScreenshot", { format: "png" })).data, "base64"));
@@ -64,9 +64,8 @@ try {
   assert.equal(paired.status, 200);
   const code = await until(async () => (await (await fetch(local + "/api/connect")).json()).relay.pair_code);
   await cdp("Page.navigate", { url: relay + "/relay/portal#pair=" + code });
-  await until(() => evaluate("!!document.getElementById('code')?.value"));
+  await until(() => evaluate("location.pathname === '/' && !!document.querySelector('#app')"));
   assert.equal(await evaluate("location.hash"), "", "one-time secret removed from address bar");
-  await evaluate("document.getElementById('submit').click()");
   try { await until(() => evaluate("typeof S !== 'undefined' && !!document.querySelector('#app')")); }
   catch (error) {
     console.error(await evaluate("({path:location.pathname,status:document.querySelector('#status')?.textContent,title:document.title,app:!!document.querySelector('#app'),ready:document.readyState})"));

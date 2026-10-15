@@ -33,7 +33,7 @@ export default {
       const path = url.pathname;
       if (path === "/relay/health" && request.method === "GET") return json({ ok: true, service: "codebee-phone-relay" });
       if (path === "/relay/portal" && request.method === "GET") return portal(env, request);
-      if (["/relay/portal.js", "/relay/portal.css"].includes(path) && request.method === "GET") {
+      if (["/relay/portal.js", "/relay/portal.css", "/relay/codebee-logo.png"].includes(path) && request.method === "GET") {
         return env.ASSETS.fetch(request);
       }
       const connector = path.match(/^\/relay\/connector\/([a-f0-9]{32})$/);
