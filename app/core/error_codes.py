@@ -68,6 +68,14 @@ _AUTH = (
     "status code 401",
 )
 _FORBIDDEN = ("forbidden", "request not allowed", "permission denied", "access denied")
+# 额度耗尽的强信号：部分网关把计费拒绝包成 403 下发（qwen 实案：
+# "[API Error: 403 预扣费额度失败, 用户剩余额度: ¥0.006, 需要预扣费额度: ¥0.010]"）。
+# 裸 403 正则会先把它判成 FORBIDDEN（权限封禁）——但两者的处置完全不同：
+# QUOTA 是账号级死错（本场该停用该 CLI），FORBIDDEN 只封具体上游。
+# 强信号词零歧义（不会出现在权限文案里），先于 401/403 正则判定。
+_QUOTA_STRONG = ("预扣费", "剩余额度", "insufficient balance", "insufficient quota",
+                "insufficient credit", "quota exhausted", "余额不足", "欠费停",
+                "payment required", "billing address")
 # 「request rejected」是智谱网关 429 的固定措辞（Request rejected (429)）：
 # 裸 (429) 不带 http/status-code 前缀，正则分支匹配不到，只能靠词面
 # （2026-09-27 七天上限案：分类不出 → 换将闸门当终态收工，备用 KEY 永不上场）
@@ -124,6 +132,11 @@ def classify_error_text(error):
         return None
     if any(marker in text for marker in _TOOL_LAUNCH):
         return ErrorCode.TOOL_LAUNCH
+    # 计费拒绝的强信号先于 401/403 正则：网关用 403 包装「预扣费失败」时，
+    # 必须归类为 QUOTA（账号级）而不是 FORBIDDEN（权限级）——下游的停用与
+    # 降级策略依赖这个区分（2026-10-15 qwen 欠费连撞 31 次案）。
+    if any(marker in text for marker in _QUOTA_STRONG):
+        return ErrorCode.QUOTA
     if re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)401\b", text):
         return ErrorCode.AUTH
     # An explicit HTTP 403 is authoritative even when the provider describes the
@@ -183,6 +196,26 @@ def is_transient_error(error):
 
 def is_rate_limited_error(error):
     return classify_error_text(error) == ErrorCode.RATE_LIMIT
+
+
+# 账号级死错：换请求/换提示词也不会好（余额耗尽/凭据缺失/权限封禁/CLI 起不来）。
+# 与 transient（限流/超时/网络抖动）相对——那些只值得退避重试，不配让 CLI 下场。
+# 供本场停用台账（bench）判定。
+ACCOUNT_DEAD_CODES = frozenset({
+    ErrorCode.QUOTA.value,
+    ErrorCode.AUTH.value,
+    ErrorCode.MISSING_CREDENTIAL.value,
+    ErrorCode.FORBIDDEN.value,
+    ErrorCode.TOOL_LAUNCH.value,
+})
+
+
+def is_account_dead_error(code) -> bool:
+    """True 当错误码属于账号级死错（本场应停用该 CLI，不再重试）。
+
+    code 可以是 ErrorCode 或字符串（如来自 res.get('error_code')）。
+    """
+    return error_code_value(code) in ACCOUNT_DEAD_CODES
 
 
 _SAFE_ERROR_SUMMARIES = {

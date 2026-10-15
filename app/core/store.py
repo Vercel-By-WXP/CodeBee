@@ -756,6 +756,10 @@ def load_all():
                 if interrupted:
                     r["status"] = "failed"
                     r["error"] = r.get("error") or "服务重启中断，可重试"
+                    # 补 ended_at：收尸只改状态不收时间，run 永远挂着「无结束
+                    # 时间」的空壳（2026-10-15 实案：中断 run 反复被收尸重写
+                    # 却始终 ended_at=None，UI 上像仍在跑）。就地生成当前时间。
+                    r["ended_at"] = r.get("ended_at") or time.strftime("%Y-%m-%d %H:%M:%S")
                     _save_json(p, r)
                     # 读盘收尸绕过 update_run，需在释放存储锁后补一条 run
                     # 级错误记录；避免错误台账的文件 I/O 拉长全局锁。

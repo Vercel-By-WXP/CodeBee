@@ -50,6 +50,14 @@ class TaskTimeout(Exception):
     pass
 
 
+class UpstreamExhausted(Exception):
+    """可用上游全部停用（额度耗尽/凭据缺失等账号级死错）——继续跑只会
+    白烧步骤，编排应立即干净收场，向用户报告原因后停止。
+    与 Cancelled（用户主动）和 TaskTimeout（时限）分开：这是路由层的
+    「该取消就取消」，run 终态 failed、错误行写人话。"""
+    pass
+
+
 def _now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -985,6 +993,15 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
                 step=step["n"], exit_code=res.get("raw", {}).get("exit_code"))
         except Exception:
             pass
+        # 本场停用台账：账号级死错（欠费/凭据缺失/权限封禁/CLI 起不来）首报
+        # 即停用该 CLI，后续章节/评审/换将绕开（2026-10-15 qwen 欠费连撞
+        # 31 次案）。transient（限流/超时/网络）不进台账，退避重试路径不变。
+        try:
+            from . import bench as _bench
+            if agent.get("id") and agent.get("mode") == "real":
+                _bench.bench(run_id, agent["id"], res.get("error_code"))
+        except Exception:
+            pass
     # A failed step with an entirely failed candidate history is a routing
     # exhaustion event.  Keep this separate from provider health: one provider
     # may fail while another candidate succeeds, whereas this alarm means a
@@ -1522,6 +1539,12 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
         return draft_res, impl, draft_note
 
     tried = {impl.get("id")}
+    # 本场停用的 CLI 不进补位候选：欠费死链换将只是把失败换个人重演
+    try:
+        from . import bench as _bench
+        tried |= _bench.benched_ids(run_id)
+    except Exception:
+        pass
     failures = ["%s：%s" % (impl.get("id") or "CLI",
                             (draft_res.get("error") or "起草失败")[:180])]
     dead_upstreams = []
@@ -1828,6 +1851,13 @@ def _run_code(run, task, agents, ev, stats, mode):
         # 权限拒绝只走不同上游，其余死因（超时等）仍只换一次。
         if mode == "auto" and impl_agent.get("mode") == "real":
             tried = {impl_agent["id"], "mock-a", "mock-b"}
+            # 本场停用的 CLI 不进换将候选：账号级死错（欠费/凭据缺失）的
+            # 补位只是把失败换个人重演（2026-10-15 案）
+            try:
+                from . import bench as _bench
+                tried |= _bench.benched_ids(run_id)
+            except Exception:
+                pass
             dead_ids = {impl_agent["id"]}  # 实现步已失败的原实现者，属已知死候选
             notes = []
             dead_ups = []  # 配额死亡候选的上游：先异上游，无异上游时仍可捡回
@@ -3424,6 +3454,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     run_id = run["id"]
     actual_implementers = [impl]
     actual_critics = list(critics)
+    # 评审停用降级的已播报名单（每 run 一次，不逐章刷屏）
+    _bench_noted = set()
     current_impl = [impl]
     current_impl_reason = [route.get("author", "")]
     current_review_reason = [route.get("critics", "")]
@@ -3824,9 +3856,28 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
             role = "critique-c%d" % i
             results = {}
+            # 本场停用降级：撞过账号级死错（欠费/凭据缺失/权限封禁）的评审
+            # 不再逐章送死（2026-10-15 qwen 欠费案：同一死链连撞 31 次白烧
+            # 4 小时）——直接绕开，名单里还有谁就用谁，全停才收场。
+            from . import bench as _bench
+            live = [a for a in critics
+                    if not _bench.is_benched(run_id, a.get("id"))]
+            for _ba in critics:
+                if _bench.is_benched(run_id, _ba.get("id")) \
+                        and _ba.get("id") not in _bench_noted:
+                    _bench_noted.add(_ba.get("id"))
+                    try:
+                        store.add_message(run_id, (
+                            "评审降级：%s 已本场停用（%s），后续章节自动跳过，"
+                            "由其余评审继续把关" % (
+                                _ba.get("label") or _ba.get("id"),
+                                _bench.reason(run_id, _ba.get("id"))
+                                or "账号级错误")))
+                    except Exception:
+                        pass
             # 绑定解析提前到主线程：bind_agent 会把链首同步进 CLI 自家配置（写盘），
             # 多线程同时调它有写盘竞争。解析结果随线程参数传入，线程内只做调用。
-            bound = [modelhub.bind_agent(a, difficulty) for a in critics]
+            bound = [modelhub.bind_agent(a, difficulty) for a in live]
 
             def _critique_one(idx, agent):
                 """单评审执行体（线程内只做调用与解析，不改共享结构）。
@@ -3872,7 +3923,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 }
 
             threads = []
-            for idx, agent in enumerate(critics):
+            for idx, agent in enumerate(live):
                 th = threading.Thread(target=_critique_one, args=(idx, agent),
                                       name="crit-%s-c%d-%d" % (run_id, i, idx), daemon=True)
                 threads.append(th)
@@ -3882,7 +3933,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             _check_cancel(ev)
 
             # join 后按原顺序合并（确定性：与串行版结果一致）
-            for idx in range(len(critics)):
+            for idx in range(len(live)):
                 r = results.get(idx)
                 if r is None:
                     continue     # 该评审线程超时未回，按「没出分」处理
@@ -3903,7 +3954,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if scored < quality_gate.MIN_REVIEWERS:
                 tried = {a.get("id") for a in critics}
                 pool = [a for a in (agents or [])
-                        if a.get("mode") == "real" and a.get("id") not in tried]
+                        if a.get("mode") == "real" and a.get("id") not in tried
+                        and not _bench.is_benched(run_id, a.get("id"))]
                 for spare in pool[:2]:
                     res = _run_step(run_id, role, modelhub.bind_agent(spare, difficulty),
                                     crit_prompt_for(
@@ -3925,6 +3977,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         if scored >= quality_gate.MIN_REVIEWERS:
                             break
                     _check_cancel(ev)
+            # 全停收场：名单与补位池都掏空（且确实发生过账号级死错），继续跑
+            # 只会把剩余章节的起草白烧完——「该取消就取消」，说清原因再停，
+            # 不留僵尸步骤也不空转门禁。
+            if not live and _bench.benched_ids(run_id):
+                real_left = [a for a in (agents or [])
+                             if a.get("mode") == "real"
+                             and not _bench.is_benched(run_id, a.get("id"))]
+                if not real_left:
+                    _why = "；".join(
+                        "%s：%s" % (aid, why)
+                        for aid, why in sorted(_bench.benched_agents(run_id).items()))
+                    raise UpstreamExhausted(
+                        "全部可用评审已本场停用（额度耗尽/凭据缺失/权限封禁），"
+                        "继续只会白烧步骤，编排已中止。停用名单：%s。"
+                        "请充值或配置可用 CLI 后重试。" % _why)
             return cj_map, scored, sids
 
         def means_of(cj_map):
@@ -4086,7 +4153,24 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 prev_timed_out = False  # 上一次是否「超时/停滞」收场
                 shrink_note = ""        # 本次重试的分层降级说明（进 step note 供对账）
                 dup_fix_note = ""       # 查重打回后的消重指令（重试/换将随提示词下发）
-                for draft_attempt in range(3):
+                # 作者本场停用（欠费/凭据缺失等账号级死错）时不再退避重试：
+                # 三轮同作者重试 + 30/60s 退避对死账号纯属白烧——合成一条
+                # 失败结果，直接落到下面的换将逻辑换人（2026-10-15 案）。
+                _author_benched_why = ""
+                try:
+                    from . import bench as _bench
+                    if (impl.get("mode") != "mock"
+                            and _bench.is_benched(run_id, impl.get("id"))):
+                        _author_benched_why = (
+                            _bench.reason(run_id, impl.get("id")) or "本场已停用")
+                except Exception:
+                    _author_benched_why = ""
+                if _author_benched_why:
+                    res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                           "tokens": 0, "error": "作者 %s 已本场停用：%s" % (
+                               impl.get("id"), _author_benched_why),
+                           "raw": {}, "kind": impl.get("kind", "")}
+                for draft_attempt in ([] if _author_benched_why else range(3)):
                     if draft_attempt:
                         # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
                         if ev is not None:
@@ -4165,6 +4249,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         res, router.agent_upstreams(
                             impl["id"], difficulty=difficulty,
                             task_type=task.get("type") or "serial", role="implement"))
+                    # 本场停用的 CLI 一并排除：欠费死链补位只是把失败换个人重演
+                    try:
+                        from . import bench as _bench
+                        tried |= {a.get("id") for a in (agents or [])
+                                  if _bench.is_benched(run_id, a.get("id"))}
+                    except Exception:
+                        pass
                     swap_guard = {"exclude": tried, "blocked": blocked_ups}
                     for _alt in range(2):
                         if good or (ev is not None and ev.is_set()):
@@ -4213,8 +4304,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         chapter_impl = last_attempt_impl
                         chapter_reason = last_attempt_reason
                 if not good:
+                    # 失败原因带上本场停用名单——「第 N 章起草失败: None」对
+                    # 用户等于没解释，欠费/凭据问题要说透（2026-10-15 案）
+                    _benched_why = ""
+                    try:
+                        from . import bench as _bench
+                        _bl = _bench.benched_agents(run_id)
+                        if _bl:
+                            _benched_why = "；本场停用：%s" % "；".join(
+                                "%s：%s" % (aid, why)
+                                for aid, why in sorted(_bl.items())[:4])
+                    except Exception:
+                        pass
                     store.update_run(run_id, expected_status="running", status="failed",
-                                     error="第 %d 章起草失败: %s" % (i, (res or {}).get("error")), ended_at=_now())
+                                     error=("第 %d 章起草失败: %s"
+                                            % (i, (res or {}).get("error"))) + _benched_why,
+                                     ended_at=_now())
                     return
                 remember_agent(actual_implementers, chapter_impl)
                 refresh_actual_route(chapter_impl, implement_reason=chapter_reason)
@@ -4678,6 +4783,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         串行只是把等待时间叠起来。共享结构仍在 join 后按原顺序合并，结果与串行一致。"""
         gmeans_acc, scored, valid_reviews, round_issues = {}, 0, [], []
         results = {}
+        # 本场停用的评审不送场（欠费/凭据缺失逐轮重撞是白烧，2026-10-15 案）
+        from . import bench as _bench
+        agent_list = [a for a in agent_list
+                      if not _bench.is_benched(run_id, a.get("id"))]
         # 绑定解析提前到主线程（线程内不做会写盘的 bind_agent）
         bound = [modelhub.bind_agent(a, difficulty) for a in agent_list]
 
@@ -4893,7 +5002,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 (impl.get("label") or impl.get("id")))
             # 重评该章
             cj_by_agent = {}
-            for agent in critics:
+            from . import bench as _bench
+            for agent in [a for a in critics
+                          if not _bench.is_benched(run_id, a.get("id"))]:
                 if agent.get("mode") == "mock":
                     cj = mocks.critique(agent["id"], 3, dims, threshold_ch)
                 else:
@@ -6219,6 +6330,12 @@ def execute_run(run_id):
     except Cancelled:
         store.update_run(run_id, expected_status="running",
                          status="cancelled", ended_at=_now())
+    except UpstreamExhausted as e:
+        # 可用上游全部停用（额度耗尽/凭据缺失/权限封禁）：run 记 failed 并把
+        # 人话错误行带到用户面前——「该取消就取消」，不空转门禁、不烧步骤。
+        store.update_run(run_id, expected_status="running",
+                         status="failed", ended_at=_now(),
+                         error=str(e) or "可用上游全部停用，编排已中止")
     except Exception as e:
         import traceback
         # 崩溃现场随错误行下发（2026-10-10 Mac 实案：连载连烧两轮自动续跑都
@@ -6245,6 +6362,13 @@ def execute_run(run_id):
         except Exception:
             pass
     finally:
+        # 本场停用台账随 run 收尾清理（run 内生效，不跨 run——充值/登录是
+        # 用户动作，下一个 run 重新探测，绝不把昨晚的死错错杀成今天的）。
+        try:
+            from . import bench as _bench
+            _bench.reset(run_id)
+        except Exception:
+            pass
         # 全类型统一写调度终态与质量反馈。调用成功只代表传输可靠；真正用于
         # 在线推荐的成功率以 verify/review/publishable 等验收结果为准。
         try:
