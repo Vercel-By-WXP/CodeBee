@@ -296,13 +296,14 @@ CodeBee 的任务记录、配置、记忆和成果保存在本机。调用远程
 
 **品牌书写：** 统一使用 `CodeBee`；中文名“码蜂”可用于解释品牌。
 
+**品牌展示：** 使用纯文字 `CodeBee`，不再使用旧版蓝色 B 形拼块 Logo。
+
 ## 11. 已有视觉素材
 
 以下为仓库已有素材，可用于官网初稿。正式发布前建议按发行版本重拍，去除个人目录、密钥、真实工单和非公开内容。
 
 | 用途 | 素材路径 |
 | --- | --- |
-| 品牌 Logo | `app/ui/icons/brand-horizontal.png` |
 | 首页与任务入口 | `docs/screenshots/home.png` |
 | 智能体协作 | `docs/screenshots/hive.png` |
 | 执行步骤与日志 | `docs/screenshots/run_steps.png` |

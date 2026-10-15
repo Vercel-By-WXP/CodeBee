@@ -1,4 +1,4 @@
-# <img src="app/ui/icons/brand-horizontal.png" width="96" align="top" alt="CodeBee"> CodeBee · 多智能体编排台
+# CodeBee · 多智能体编排台
 
 > 官网：<https://codebeeagent.com>
 
