@@ -9,6 +9,12 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 - **主流 CLI 与跨平台补齐**：新增 Cline CLI（macOS/Windows/Linux 无头 `cline --yolo`）编排；补齐 Goose Windows PowerShell 安装/升级/卸载；新增 GitHub Copilot CLI 的 macOS/Windows/Linux 检测、安装与打开管理，因官方当前仍以交互入口为主暂不自动派发。
 - **CLI 覆盖补充**：新增 Mistral Vibe（`vibe --prompt`）无头编排，安装走官方 `uv tool install mistral-vibe`；沿用 Vibe 本机登录与模型配置，不注入不兼容的外部供应商凭据。
 - **CLI 覆盖补充**：新增 MiniMax Code（`mcode exec`）无头编排，按平台使用官方安装器并沿用 CLI 自身凭据；新增 Goose 检测、版本、安装与打开管理，待无头协议完成验证后再开放自动派工。
+- **OpenCode 原生免费模型编排**：自动发现 `opencode/...-free` 等原生模型，沿用 OpenCode 自身认证参与模型链；不注入空密钥、不改写为 `orch/`，并限制为 OpenCode 使用。
+- **Gemini / Kimi 原生 OAuth**：发现 Gemini CLI 的 Google OAuth 和 Kimi Code 的 `managed:kimi-code` 登录态，绑定时沿用各 CLI 自身凭据并传递模型选择，不写入空 API Key 或 `orch` 覆盖块。
+- **Grok Build 原生 OAuth**：发现 `~/.grok/auth.json` 登录态并使用 Grok CLI 自带模型/账号配额；不把浏览器会话转换为 API Key。账户是否有免费额度由 Grok 服务端决定，CodeBee 不将其误标为 Free。
+- **Pi 原生 OAuth 订阅登录**：发现 `~/.pi/agent/auth.json` 中的 Pi OAuth provider（如 `openai-codex`、`anthropic`、`github-copilot`），沿用 Pi 自身订阅额度并传递 provider/model 选择；当前不标记为 Free，也不创建空 API Key 网关配置。
+- **MiMo Code 原生免费通道**：发现已安装 MiMo Code 的 `MiMo Auto` 限时免费通道，使用 `mimo/mimo-auto` 走 CLI 自带会话；不写空 API Key 或 `provider.codebee` 覆盖块，并限制为 MiMo Code 使用。
+- **Qwen Code 原生 OAuth/订阅**：发现 `~/.qwen/oauth_creds.json` 的 Qwen Code 设备流登录态，绑定时沿用 `qwen-oauth` 自身 `coder-model`；免费额度已停用，不标记为 Free，也不把 access/refresh token 当 API Key 写入。
 
 ## v0.1.114（2026-10-15）
 

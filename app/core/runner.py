@@ -106,10 +106,16 @@ def _fallback_probe_cli(name):
     local = os.environ.get("LOCALAPPDATA") or ""
     home = os.path.expanduser("~")
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
+    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
+    program_files_x86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
     flat_dirs = (
         os.path.join(local, "Microsoft", "WinGet", "Links"),
         os.path.join(home, ".local", "bin"),
         os.path.join(appdata, "npm"),
+        # Node.js 官方 Windows 安装器把 node/npm.cmd 放在这里；服务进程
+        # 可能启动于安装前，PATH 快照没有刷新，但磁盘上的命令仍可直接使用。
+        os.path.join(program_files, "nodejs"),
+        os.path.join(program_files_x86, "nodejs"),
     )
     for d in flat_dirs:
         for ext in _CLI_EXTS:
@@ -1696,8 +1702,31 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             tmpl = agent["resume_argv_template"]
         argv = resolve_command(agent["command"]) + [
             str(a).replace("{prompt}", prompt).replace("{session}", sid) for a in tmpl]
-        # 提示词在 argv 里 → 必须绕开 cmd 重解析（见 _npm_shim_bypass）
+        # Normalize Windows npm .cmd shims before adding model/provider flags.
+        # A raw ``cmd /c tool.cmd`` prefix must remain intact; inserting at
+        # argv[1] would produce ``cmd --model ... /c tool.cmd`` and fail before
+        # the CLI starts.
         argv = _npm_shim_bypass(argv)
+        if len(argv) >= 3 and str(argv[0]).lower() == "cmd" and argv[1] == "/c":
+            flag_at = 3
+        elif len(argv) >= 2 and str(argv[0]).lower().endswith(("node", "node.exe")):
+            flag_at = 2
+        else:
+            flag_at = 1
+        # Pi OAuth providers are selected explicitly; its --model value is
+        # provider-local while the binding stores the canonical provider/id.
+        if model and agent.get("id") == "pi":
+            native_provider = str((agent.get("provider") or {}).get("native_provider") or "").strip()
+            model_id = model
+            if native_provider and "/" in model_id and model_id.split("/", 1)[0].lower() == native_provider.lower():
+                model_id = model_id.split("/", 1)[1]
+            if native_provider:
+                argv[flag_at:flag_at] = ["--provider", native_provider, "--model", model_id]
+        # Gemini CLI and Kimi Code keep authentication in their own CLI
+        # sessions.  A native binding may still select the model explicitly;
+        # both official CLIs use the portable ``-m`` spelling.
+        if model and agent.get("id") in ("gemini-cli", "kimi-code", "grok-build", "mimo-code"):
+            argv[flag_at:flag_at] = ["-m", model]
         if "{prompt}" not in tmpl:
             stdin_text = prompt  # 恢复模板不带 {prompt}：提示词走 stdin（mimo 实测支持）
     # Windows CreateProcess 命令行上限 32767 字符：全局评审会把全书文本（约 6 万
@@ -2015,6 +2044,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             env.setdefault("RUST_LOG", "codex_otel=off")
         eff_agent = dict(agent)
         eff_agent["env"] = env
+        if isinstance(att.get("provider"), dict):
+            eff_agent["provider"] = att["provider"]
         if att["own_cp"]:
             eff_agent["codex_provider"] = att["codex_provider"]
         elif att["from_chain"] and "codex_provider" in eff_agent:

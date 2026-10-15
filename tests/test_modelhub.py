@@ -863,6 +863,10 @@ class TestMultiSourceImport(BaseTest):
         ocauth.write_text(json.dumps({"oc1": {"type": "api", "key": FAKE_KEY2}}),
                           encoding="utf-8")
 
+        # MiMo Code：存在配置即可发现原生 MiMo Auto 通道
+        mimo = home / "mimo-config.jsonc"
+        mimo.write_text('{"model": "mimo/mimo-auto"}\n', encoding="utf-8")
+
         # Continue：yaml（含 fallback 解析器要处理的形状）
         cont = home / "continue"
         cont.mkdir(exist_ok=True)
@@ -905,9 +909,16 @@ class TestMultiSourceImport(BaseTest):
 
         return self._patch(
             m,
-            CLAUDE_SETTINGS=str(claude), CODEX_DIR=str(codex), ZCODE_CONFIG=str(zcode),
-            QWEN_SETTINGS=str(qwen), GEMINI_DIR=str(gem),
+            CCSWITCH_DB=str(home / "no-ccswitch.db"),
+            CLAUDE_SETTINGS=str(claude), CLAUDE_GLOBAL=str(home / "no-claude-global.json"),
+            CODEX_DIR=str(codex), ZCODE_CONFIG=str(zcode),
+             QWEN_SETTINGS=str(qwen), QWEN_OAUTH=str(home / "no-qwen-oauth.json"),
+             GEMINI_DIR=str(gem),
             OPENCODE_CONFIG=str(oc), OPENCODE_AUTH=str(ocauth), CONTINUE_DIR=str(cont),
+            MIMO_CONFIG=str(mimo),
+            KIMI_CONFIG=str(home / "no-kimi-config.toml"),
+            GROK_AUTH=str(home / "no-grok-auth.json"), GROK_CONFIG=str(home / "no-grok-config.toml"),
+            PI_AUTH=str(home / "no-pi-auth.json"), PI_MODELS=str(home / "no-pi-models.json"),
             CURSOR_DB=str(cur), TRAE_DBS=[str(trae)],
             # dsh 来源由 test_deepseek_harness.py 专项覆盖；这里指到临时目录，
             # 防止装了 dsh 的真机把 ~/.dsh 的真实供应商混进导入计数
@@ -921,7 +932,7 @@ class TestMultiSourceImport(BaseTest):
             # 1) 扫描：每个来源都能被发现并解析出数量
             rows = {r["id"]: r for r in modelhub.sources()}
             expect = {"claude": 1, "codex": 2, "zcode": 2, "qwen": 1, "gemini": 1,
-                      "opencode": 1, "continue": 1, "cursor": 1, "trae": 1}
+                      "opencode": 1, "continue": 1, "cursor": 1, "trae": 1, "mimo": 1}
             for sid, n in expect.items():
                 self.assertTrue(rows[sid]["found"], sid)
                 self.assertEqual(rows[sid]["count"], n, sid)

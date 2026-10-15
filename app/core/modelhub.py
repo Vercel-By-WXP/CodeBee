@@ -32,11 +32,13 @@ import copy
 import hashlib
 import ipaddress
 import json
+import math
 import os
 import re
 import shutil
 import socket
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -1342,14 +1344,27 @@ else:
 
 CCSWITCH_DB = os.path.join(_HOME, ".cc-switch", "cc-switch.db")
 CLAUDE_SETTINGS = os.path.join(_HOME, ".claude", "settings.json")
+CLAUDE_GLOBAL = os.path.join(_HOME, ".claude.json")
 CODEX_DIR = os.path.join(_HOME, ".codex")
 DSH_DIR = os.environ.get("DSH_HOME") or os.path.join(_HOME, ".dsh")
 DSH_SETTINGS = os.path.join(DSH_DIR, "settings.yaml")
 ZCODE_CONFIG = os.path.join(_HOME, ".zcode", "v2", "config.json")
 QWEN_SETTINGS = os.path.join(_HOME, ".qwen", "settings.json")
+QWEN_OAUTH = os.path.join(_HOME, ".qwen", "oauth_creds.json")
 GEMINI_DIR = os.path.join(_HOME, ".gemini")
+GEMINI_OAUTH = os.path.join(GEMINI_DIR, "oauth_creds.json")
+KIMI_DIR = os.path.join(_HOME, ".kimi-code")
+KIMI_CREDENTIALS = os.path.join(KIMI_DIR, "credentials")
+KIMI_CONFIG = os.path.join(KIMI_DIR, "config.toml")
+GROK_DIR = os.path.join(_HOME, ".grok")
+GROK_AUTH = os.path.join(GROK_DIR, "auth.json")
+GROK_CONFIG = os.path.join(GROK_DIR, "config.toml")
+MIMO_CONFIG = os.path.join(_HOME, ".config", "mimocode", "mimocode.jsonc")
 OPENCODE_CONFIG = os.path.join(_HOME, ".config", "opencode", "opencode.json")
 OPENCODE_AUTH = os.path.join(_HOME, ".local", "share", "opencode", "auth.json")
+PI_AGENT_DIR = os.path.join(_HOME, ".pi", "agent")
+PI_AUTH = os.path.join(PI_AGENT_DIR, "auth.json")
+PI_MODELS = os.path.join(PI_AGENT_DIR, "models.json")
 CONTINUE_DIR = os.path.join(_HOME, ".continue")
 CURSOR_DB = os.path.join(_VSC_USER_BASE, "Cursor", "User", "globalStorage", "state.vscdb")
 TRAE_DBS = [os.path.join(_VSC_USER_BASE, "Trae CN", "User", "globalStorage", "state.vscdb"),
@@ -1554,6 +1569,13 @@ def _merge_provider(data, prov):
         # 跨来源去重：同一个网关常被多个工具分别记录（如 CCSwitch / Claude Code / ZCode），
         # 导入全部时按「地址 + 密钥」收敛成一条，避免同一供应商出现多份。
         same = next((p for p in plist if p.get("base_url") == prov.get("base_url")), None)
+        # Native CLI sessions and ordinary API-key gateways may share the same
+        # public endpoint, but they are different credential domains and must
+        # remain independently selectable.
+        if (same is not None and
+                (same.get("credential_mode") == "cli" or
+                 prov.get("credential_mode") == "cli")):
+            same = None
         if same is not None:
             newkey = prov.get("api_key") or ""
             have = same.get("api_key") or ""
@@ -1697,6 +1719,8 @@ def _src_ccswitch():
 
 def _src_claude():
     out = {"providers": [], "note": "", "found": os.path.isfile(CLAUDE_SETTINGS)}
+    global_cfg = _read_json(CLAUDE_GLOBAL)
+    out["found"] = out["found"] or os.path.isfile(CLAUDE_GLOBAL)
     if not out["found"]:
         return out
     env = (_read_json(CLAUDE_SETTINGS) or {}).get("env") or {}
@@ -1712,21 +1736,43 @@ def _src_claude():
         out["note"] = "settings.json 里的 ANTHROPIC_BASE_URL 不是 http/https"
     else:
         out["note"] = "settings.json 的 env 未配置 ANTHROPIC_BASE_URL"
+    # Claude Code subscription/browser login is owned by Claude Code.  The
+    # account marker is kept in ~/.claude.json while bearer tokens are stored
+    # by the CLI's secure credential store; never convert it to an API key.
+    account = global_cfg.get("oauthAccount") if isinstance(global_cfg, dict) else None
+    if isinstance(account, dict) and any(str(account.get(k) or "").strip()
+                                         for k in ("accountUuid", "organizationUuid", "emailAddress")):
+        native = _prov("Claude Code 原生 OAuth", "anthropic", "https://api.anthropic.com", "",
+                       "claude", "claude:oauth", model="sonnet",
+                       models=["sonnet", "opus", "haiku"])
+        if native:
+            native["credential_mode"] = "cli"
+            native["native_cli"] = "claude-code"
+            native["native_models"] = True
+            out["providers"].append(native)
     return out
 
 
 def _src_codex():
     cfg = os.path.join(CODEX_DIR, "config.toml")
-    out = {"providers": [], "note": "", "found": os.path.isfile(cfg)}
+    auth_path = os.path.join(CODEX_DIR, "auth.json")
+    cfg_exists = os.path.isfile(cfg)
+    out = {"providers": [], "note": "", "found": os.path.isfile(cfg) or os.path.isfile(auth_path)}
     if not out["found"]:
         return out
-    try:
-        with open(cfg, "r", encoding="utf-8-sig", errors="replace") as f:
-            text = f.read()
-    except Exception as e:
-        out["error"] = "读取 config.toml 失败：%r" % (e,)
-        return out
-    key = (_read_json(os.path.join(CODEX_DIR, "auth.json")) or {}).get("OPENAI_API_KEY") or ""
+    text = ""
+    if cfg_exists:
+        try:
+            with open(cfg, "r", encoding="utf-8-sig", errors="replace") as f:
+                text = f.read()
+        except Exception as e:
+            out["error"] = "读取 config.toml 失败：%r" % (e,)
+            return out
+    auth = _read_json(auth_path) or {}
+    key = auth.get("OPENAI_API_KEY") or ""
+    chatgpt_oauth = (str(auth.get("auth_mode") or "").lower() in ("chatgpt", "chatgpt_auth_tokens")
+                     or (isinstance(auth, dict) and any(auth.get(k) for k in
+                                                        ("access_token", "refresh_token", "id_token"))))
     model = _toml_quoted(text, "model") or ""
     active = _toml_quoted(text, "model_provider") or ""
     top, sections = _toml_parse(text)
@@ -1740,13 +1786,23 @@ def _src_codex():
                   wire_api=kv.get("wire_api") or "responses")
         if p:
             out["providers"].append(p)
-    if not out["providers"]:
+    if not out["providers"] and cfg_exists:
         p = _prov("Codex CLI", "openai", top.get("base_url") or _toml_quoted(text, "base_url"),
                   key, "codex", "codex:default", model=model,
                   wire_api=_toml_quoted(text, "wire_api") or "responses")
         if p:
             out["providers"].append(p)
-    if not out["providers"]:
+    if chatgpt_oauth:
+        native_model = model or "gpt-5.5"
+        native = _prov("Codex CLI 原生 ChatGPT OAuth", "openai", "https://chatgpt.com", "",
+                       "codex", "codex:oauth", model=native_model,
+                       models=list(dict.fromkeys([native_model, "gpt-5.5", "gpt-5.4"])))
+        if native:
+            native["credential_mode"] = "cli"
+            native["native_cli"] = "codex-cli"
+            native["native_models"] = True
+            out["providers"].append(native)
+    if not out["providers"] and cfg_exists:
         out["note"] = ("config.toml 未配置第三方 model_providers"
                        + ("" if key else "（且 auth.json 无 OPENAI_API_KEY）"))
     return out
@@ -1793,7 +1849,9 @@ def _src_zcode():
 
 
 def _src_qwen():
-    out = {"providers": [], "note": "", "found": os.path.isfile(QWEN_SETTINGS)}
+    out = {"providers": [], "note": "",
+           "found": (os.path.isfile(QWEN_SETTINGS) or
+                     os.path.isfile(QWEN_OAUTH))}
     if not out["found"]:
         return out
     d = _read_json(QWEN_SETTINGS) or {}
@@ -1814,6 +1872,21 @@ def _src_qwen():
                        model=(mid if mid and mid == cur else ""), models=[mid])
             if pr:
                 out["providers"].append(pr)
+    # Qwen Code keeps its device-flow OAuth session separate from settings and
+    # refreshes it itself.  Never copy access/refresh tokens into api_key:
+    # qwen-oauth is a CLI-owned credential domain, and its free tier was
+    # discontinued on 2026-04-15 (the account now uses Coding Plan/paid quota).
+    oauth = _read_json(QWEN_OAUTH)
+    if _oauth_credentials_present(oauth):
+        native = _prov("Qwen Code 原生 OAuth", "openai", "https://chat.qwen.ai", "",
+                       "qwen", "qwen:oauth", model="coder-model",
+                       models=["coder-model"])
+        if native:
+            native["credential_mode"] = "cli"
+            native["native_cli"] = "qwencode"
+            native["native_models"] = True
+            out["providers"].append(native)
+            out["note"] = "已发现 Qwen Code 原生 OAuth（免费额度已停用，按账号订阅/配额计费）"
     if not out["providers"]:
         out["note"] = "settings.json 的 modelProviders 为空"
     return out
@@ -1823,7 +1896,8 @@ def _src_gemini():
     envp = os.path.join(GEMINI_DIR, ".env")
     setp = os.path.join(GEMINI_DIR, "settings.json")
     out = {"providers": [], "note": "",
-           "found": os.path.isfile(envp) or os.path.isfile(setp)}
+           "found": (os.path.isfile(envp) or os.path.isfile(setp)
+                     or os.path.isfile(GEMINI_OAUTH))}
     if not out["found"]:
         return out
     env = _read_env_file(envp)
@@ -1835,14 +1909,319 @@ def _src_gemini():
               model=env.get("GEMINI_MODEL") or "")
     if p:
         out["providers"].append(p)
-    else:
+    elif key:
         out["note"] = "未在 .env 找到 GEMINI_API_KEY / GOOGLE_GEMINI_BASE_URL"
+    oauth = _read_json(GEMINI_OAUTH)
+    if _oauth_credentials_present(oauth):
+        names = ["auto", "flash", "pro"]
+        cfg = _read_json(setp) or {}
+        configured = cfg.get("model") if isinstance(cfg, dict) else ""
+        if isinstance(configured, dict):
+            configured = configured.get("name") or configured.get("id") or ""
+        if configured:
+            names.insert(0, str(configured))
+        native = _prov("Gemini CLI 原生 OAuth", "openai",
+                       "https://generativelanguage.googleapis.com", "",
+                       "gemini", "gemini:oauth", model=str(configured or "auto"),
+                       models=names)
+        if native:
+            native["credential_mode"] = "cli"
+            native["native_cli"] = "gemini-cli"
+            native["native_models"] = True
+            out["providers"].append(native)
+    if not out["providers"] and not out["note"]:
+        out["note"] = "未找到 Gemini API Key 或有效 OAuth 凭据"
     return out
+
+
+def _oauth_credentials_present(value):
+    """Best-effort check for CLI-managed OAuth credentials.
+
+    Refresh tokens remain useful after an access token expires, so expiry is
+    deliberately not enforced here; the owning CLI refreshes the session.
+    """
+    if isinstance(value, dict):
+        keys = {str(k).lower() for k in value}
+        if keys.intersection({"access_token", "accesstoken", "refresh_token",
+                              "refreshtoken", "token"}):
+            return any(str(v or "").strip() for k, v in value.items()
+                       if str(k).lower() in {"access_token", "accesstoken",
+                                             "refresh_token", "refreshtoken",
+                                             "token"})
+        return any(_oauth_credentials_present(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_oauth_credentials_present(v) for v in value if isinstance(v, (dict, list)))
+    return False
+
+
+def _kimi_native_models():
+    """Read managed:kimi-code aliases from the user's Kimi config."""
+    try:
+        with open(KIMI_CONFIG, "r", encoding="utf-8-sig") as fh:
+            text = fh.read()
+    except OSError:
+        return [], ""
+    top, sections = _toml_parse(text)
+    names = []
+    for sec, vals in sections.items():
+        if not sec.lower().startswith("models.") or not isinstance(vals, dict):
+            continue
+        provider = str(vals.get("provider") or "").lower()
+        if provider != "managed:kimi-code" and "managed:kimi-code" not in provider:
+            continue
+        alias = sec.split(".", 1)[1].strip().strip('"').strip("'")
+        if alias:
+            names.append(alias)
+    default = str(top.get("default_model") or top.get("defaultModel") or "").strip()
+    if default and default in names:
+        names.remove(default)
+        names.insert(0, default)
+    return list(dict.fromkeys(names)), default
+
+
+def _src_kimi():
+    cred_files = []
+    if os.path.isdir(KIMI_CREDENTIALS):
+        try:
+            cred_files = [os.path.join(KIMI_CREDENTIALS, n)
+                          for n in os.listdir(KIMI_CREDENTIALS)
+                          if n.lower().endswith(".json")]
+        except OSError:
+            cred_files = []
+    valid = any(_oauth_credentials_present(_read_json(p)) for p in cred_files)
+    names, default = _kimi_native_models()
+    out = {"providers": [], "note": "",
+           "found": bool(cred_files or os.path.isfile(KIMI_CONFIG))}
+    if valid:
+        native = _prov("Kimi Code 原生 OAuth", "openai", "https://kimi.com", "",
+                       "kimi", "kimi:oauth", model=default or (names[0] if names else ""),
+                       models=names or ([default] if default else ["default"]))
+        if native:
+            native["credential_mode"] = "cli"
+            native["native_cli"] = "kimi-code"
+            native["native_models"] = True
+            out["providers"].append(native)
+    elif out["found"]:
+        out["note"] = "未找到 Kimi Code 有效 OAuth 凭据或 managed:kimi-code 模型"
+    return out
+
+
+def _src_grok():
+    """Discover Grok Build's browser OAuth session.
+
+    Grok keeps the token in its own auth.json and applies the account's
+    server-side tier/limits.  We therefore expose only the CLI's built-in Grok
+    model names and never turn this into an API-key gateway.  The account tier
+    is not guessed locally: a paid Grok login is not mislabeled as free.
+    """
+    out = {"providers": [], "note": "", "found": os.path.isfile(GROK_AUTH)
+           or os.path.isfile(GROK_CONFIG)}
+    auth = _read_json(GROK_AUTH)
+    if not _grok_credentials_present(auth):
+        if out["found"]:
+            out["note"] = "未找到 Grok Build 有效 OAuth 登录态"
+        return out
+    default = ""
+    top, sections = {}, {}
+    try:
+        with open(GROK_CONFIG, "r", encoding="utf-8-sig") as fh:
+            top, sections = _toml_parse(fh.read())
+        models = sections.get("models") or {}
+        default = str(models.get("default") or top.get("model") or "").strip()
+    except OSError:
+        pass
+    # Keep the built-in first-party names as a conservative fallback, but
+    # prefer xAI model ids explicitly present in the user's config.  Custom
+    # providers in the same file are intentionally ignored.
+    names = []
+    if default.startswith("grok-"):
+        names.append(default)
+    try:
+        for sec, vals in sections.items():
+            if not sec.lower().startswith("model.") or not isinstance(vals, dict):
+                continue
+            model_id = str(vals.get("model") or vals.get("id") or "").strip()
+            if model_id.startswith("grok-"):
+                names.append(model_id)
+    except Exception:
+        pass
+    names.extend(("grok-4.6", "grok-4.5"))
+    names = list(dict.fromkeys(names))
+    native = _prov("Grok Build 原生 OAuth", "openai",
+                   "https://grok.com", "", "grok", "grok:oauth",
+                   model=names[0], models=names)
+    if native:
+        native["credential_mode"] = "cli"
+        native["native_cli"] = "grok-build"
+        native["native_models"] = True
+        out["providers"].append(native)
+    return out
+
+
+def _src_mimo():
+    """Discover MiMo Code's first-party zero-config channel."""
+    out = {"providers": [], "note": "",
+           "found": os.path.isfile(MIMO_CONFIG) or bool(shutil.which("mimo"))}
+    if not out["found"]:
+        return out
+    names = ["mimo/mimo-auto"]
+    try:
+        with open(MIMO_CONFIG, "r", encoding="utf-8-sig") as fh:
+            text = fh.read()
+        m = re.search(r'"model"\s*:\s*"([^"]+)"', text)
+        configured = (m.group(1) if m else "").strip()
+        if configured and configured not in names and configured.lower().startswith("mimo/"):
+            names.insert(0, configured)
+    except (OSError, UnicodeError):
+        pass
+    native = _prov("MiMo Code 原生免费通道", "openai", "https://mimo.xiaomi.com", "",
+                   "mimo", "mimo:native-auto", model=names[0], models=names)
+    if native:
+        native["credential_mode"] = "cli"
+        native["native_cli"] = "mimo-code"
+        native["native_models"] = True
+        native["free_tier"] = "limited"
+        out["providers"].append(native)
+    return out
+
+
+_PI_NATIVE_DEFAULTS = {
+    "anthropic": "claude-opus-4-8",
+    "openai-codex": "gpt-6.1-sol",
+    "github-copilot": "gpt-5.4",
+    "openrouter": "moonshotai/kimi-k2.6",
+}
+
+
+def _pi_native_models(provider):
+    """Best-effort discovery of Pi's built-in models for an OAuth provider.
+
+    Pi's model catalog is CLI-owned and may be refreshed independently, so the
+    command is authoritative when available.  The packaged default model is a
+    conservative fallback for offline startup and tests.
+    """
+    provider = str(provider or "").strip().lower()
+    names = []
+    listed = False
+    if shutil.which("pi"):
+        try:
+            p = subprocess.run(["pi", "--list-models", provider],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               text=True, timeout=20, check=False,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            # A successful command is authoritative, including an explicit
+            # "No models available" response.  Do not expose a packaged model
+            # that this installed Pi cannot actually select.
+            listed = p.returncode == 0
+            for raw in (p.stdout or "").splitlines():
+                line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw).strip()
+                parts = line.split()
+                if len(parts) >= 2 and parts[0].lower() == provider:
+                    model = parts[1].split(":", 1)[0].strip()
+                    if model and model.lower() not in {"model", "provider"}:
+                        names.append("%s/%s" % (provider, model))
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if listed:
+        return list(dict.fromkeys(names))
+    fallback = _PI_NATIVE_DEFAULTS.get(provider)
+    if fallback:
+        names.append("%s/%s" % (provider, fallback))
+    return list(dict.fromkeys(names))
+
+
+def _pi_oauth_usable(cred):
+    """Match Pi's auth-storage schema and allow refreshable expiry."""
+    if not isinstance(cred, dict):
+        return False
+    raw_access = cred.get("access") or cred.get("access_token")
+    raw_refresh = cred.get("refresh") or cred.get("refresh_token")
+    access = raw_access.strip() if isinstance(raw_access, str) else ""
+    refresh = raw_refresh.strip() if isinstance(raw_refresh, str) else ""
+    if not access or not refresh:
+        return False
+    expiry = (cred.get("expires") or cred.get("expires_at") or
+              cred.get("expiresAt") or cred.get("expiry") or
+              cred.get("expiry_date"))
+    if expiry in (None, "") or isinstance(expiry, bool) or not isinstance(expiry, (int, float, str)):
+        return False
+    if isinstance(expiry, str):
+        return False
+    try:
+        value = float(expiry)
+        if not math.isfinite(value):
+            return False
+        if value > 100000000000:  # milliseconds since epoch
+            value /= 1000.0
+        expired = value <= time.time()
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return not expired or bool(refresh)
+
+
+def _src_pi():
+    """Discover Pi's stored OAuth sessions without importing API-key entries."""
+    out = {"providers": [], "note": "", "found": os.path.isfile(PI_AUTH)}
+    auth = _read_json(PI_AUTH)
+    if not isinstance(auth, dict):
+        if out["found"]:
+            out["note"] = "Pi auth.json 不是可识别的 OAuth 凭据"
+        return out
+    for provider, cred in auth.items():
+        if not isinstance(cred, dict) or str(cred.get("type") or "").lower() != "oauth":
+            continue
+        if not _pi_oauth_usable(cred):
+            continue
+        names = _pi_native_models(provider)
+        if not names:
+            continue
+        proto = "anthropic" if str(provider).lower() == "anthropic" else "openai"
+        native = _prov("Pi 原生 OAuth · %s" % provider, proto, "https://pi.dev", "",
+                       "pi", "pi:oauth:%s" % provider, model=names[0], models=names)
+        if native:
+            native["credential_mode"] = "cli"
+            native["native_cli"] = "pi"
+            native["native_provider"] = str(provider)
+            native["native_models"] = True
+            out["providers"].append(native)
+    if not out["providers"] and out["found"] and not out["note"]:
+        out["note"] = "Pi auth.json 没有可用的内置 OAuth provider"
+    return out
+
+
+def _grok_credentials_present(value):
+    """Recognize Grok's documented auth.json token shapes.
+
+    Recent Grok builds store the browser token as
+    ``{"https://accounts.x.ai/sign-in": {"key": "..."}}`` rather than an
+    ``access_token`` field.  Keep this check Grok-specific so a generic
+    arbitrary ``key`` in another CLI's config cannot look like OAuth.
+    """
+    if _oauth_credentials_present(value):
+        return True
+    if not isinstance(value, dict):
+        return False
+    for issuer, payload in value.items():
+        if (str(issuer).lower().startswith(("https://accounts.x.ai/", "https://auth.x.ai/"))
+                and isinstance(payload, dict)
+                and str(payload.get("key") or "").strip()):
+            return True
+    return False
+
+
+def _kimi_credential_paths():
+    try:
+        return [os.path.join(KIMI_CREDENTIALS, n)
+                for n in os.listdir(KIMI_CREDENTIALS)
+                if n.lower().endswith(".json")]
+    except OSError:
+        return []
 
 
 def _src_opencode():
     out = {"providers": [], "note": "",
-           "found": os.path.isfile(OPENCODE_CONFIG) or os.path.isfile(OPENCODE_AUTH)}
+           "found": (os.path.isfile(OPENCODE_CONFIG) or os.path.isfile(OPENCODE_AUTH)
+                     or bool(shutil.which("opencode")))}
     if not out["found"]:
         return out
     d = _read_json(OPENCODE_CONFIG) or {}
@@ -1861,9 +2240,48 @@ def _src_opencode():
                    "opencode", "opencode:%s" % pid, models=names)
         if pr:
             out["providers"].append(pr)
+    # OpenCode also exposes a first-party pool of free models through its own
+    # CLI.  These models use the CLI's local auth/session, so they must remain
+    # a credential-free provider in CodeBee rather than being treated as an
+    # ordinary OpenAI gateway.
+    native = _opencode_native_models()
+    if native:
+        pr = _prov("OpenCode 原生免费模型", "openai", "https://opencode.ai", "",
+                   "opencode", "opencode:native-free", models=native)
+        if pr:
+            pr["credential_mode"] = "cli"
+            pr["native_cli"] = "opencode"
+            pr["native_models"] = True
+            out["providers"].append(pr)
     if not out["providers"]:
         out["note"] = "opencode.json 的 provider 为空"
     return out
+
+
+def _opencode_native_models():
+    """Return OpenCode's currently advertised free first-party models.
+
+    ``opencode models`` is the authoritative list and works across OpenCode
+    releases.  Keep discovery best-effort: a missing/old CLI must not make the
+    normal provider import fail or block the settings page.
+    """
+    if not shutil.which("opencode"):
+        return []
+    try:
+        p = subprocess.run(["opencode", "models"], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, text=True, timeout=20,
+                           check=False, creationflags=getattr(subprocess,
+                           "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return []
+    names = []
+    for line in (p.stdout or "").splitlines():
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line).strip()
+        m = re.match(r"^(opencode/[^\s]+)$", line)
+        if m and re.search(r"(?:free|contributor)", m.group(1), re.I):
+            names.append(m.group(1))
+    # Prefer DeepSeek in the default ordering while retaining every free model.
+    return sorted(dict.fromkeys(names), key=lambda n: (0 if "deepseek" in n.lower() else 1, n))
 
 
 def _src_continue():
@@ -2030,19 +2448,28 @@ def _src_dsh():
 _SOURCES = [
     ("ccswitch", "CCSwitch", "本地库（Claude / Claude Desktop / Codex / Gemini / OpenClaw）",
      _src_ccswitch, lambda: [CCSWITCH_DB]),
-    ("claude", "Claude Code", "~/.claude/settings.json 的 env 供应商",
-     _src_claude, lambda: [CLAUDE_SETTINGS]),
-    ("codex", "Codex CLI", "~/.codex/config.toml + auth.json（含多 model_providers）",
-     _src_codex, lambda: [os.path.join(CODEX_DIR, "config.toml")]),
+    ("claude", "Claude Code", "~/.claude/settings.json / ~/.claude.json（含原生 OAuth）",
+     _src_claude, lambda: [CLAUDE_SETTINGS, CLAUDE_GLOBAL]),
+    ("codex", "Codex CLI", "~/.codex/config.toml + auth.json（含 ChatGPT OAuth）",
+     _src_codex, lambda: [os.path.join(CODEX_DIR, "config.toml"),
+                          os.path.join(CODEX_DIR, "auth.json")]),
     ("zcode", "ZCode", "~/.zcode/v2/config.json 的 provider 表",
      _src_zcode, lambda: [ZCODE_CONFIG]),
-    ("qwen", "Qwen Code", "~/.qwen/settings.json 的 modelProviders",
-     _src_qwen, lambda: [QWEN_SETTINGS]),
+     ("qwen", "Qwen Code", "~/.qwen/settings.json / oauth_creds.json（含原生 OAuth）",
+      _src_qwen, lambda: [QWEN_SETTINGS, QWEN_OAUTH]),
     ("gemini", "Gemini CLI", "~/.gemini 的 .env / settings.json",
      _src_gemini, lambda: [os.path.join(GEMINI_DIR, ".env"),
-                           os.path.join(GEMINI_DIR, "settings.json")]),
-    ("opencode", "OpenCode", "~/.config/opencode/opencode.json 的 provider 表",
+                           os.path.join(GEMINI_DIR, "settings.json"), GEMINI_OAUTH]),
+    ("opencode", "OpenCode", "配置 provider + opencode models 原生免费模型",
      _src_opencode, lambda: [OPENCODE_CONFIG, OPENCODE_AUTH]),
+    ("kimi", "Kimi Code", "~/.kimi-code 原生 OAuth + managed:kimi-code 模型",
+     _src_kimi, lambda: [KIMI_CONFIG] + _kimi_credential_paths()),
+    ("grok", "Grok Build", "~/.grok/auth.json 原生 OAuth（账户配额由 Grok 管理）",
+     _src_grok, lambda: [GROK_AUTH, GROK_CONFIG]),
+    ("mimo", "MiMo Code", "MiMo Auto 原生免费通道（限时，凭据由 MiMo CLI 管理）",
+     _src_mimo, lambda: [MIMO_CONFIG]),
+    ("pi", "Pi", "~/.pi/agent/auth.json 原生 OAuth（使用订阅账号额度，不标记 Free）",
+     _src_pi, lambda: [PI_AUTH, PI_MODELS]),
     ("continue", "Continue", "~/.continue/config.yaml 的 models",
      _src_continue, lambda: [os.path.join(CONTINUE_DIR, "config.yaml"),
                              os.path.join(CONTINUE_DIR, "config.json")]),
@@ -2381,6 +2808,19 @@ def _entry_endpoint(prov, allowed):
     return None
 
 
+def _native_cli_provider(prov, target=""):
+    """Whether *prov* belongs to a native CLI session.
+
+    Such providers intentionally have no API key and are valid only for their
+    declaring CLI; they must not be treated as ordinary gateways.
+    """
+    if not isinstance(prov, dict) or prov.get("credential_mode") != "cli":
+        return False
+    cli = str(prov.get("native_cli") or "").strip().lower()
+    target = str(target or "").strip().lower()
+    return bool(cli and target == cli and prov.get("native_models"))
+
+
 def _protocol_candidates(prov):
     """需要「唯一协议」时按序尝试的候选 [(proto, base)]。
 
@@ -2455,13 +2895,19 @@ def bindable_protocols(agent_kind_or_id):
     return tuple(_BINDABLE_PROTOCOLS)
 
 
-# 只吃 CLI 本机凭据、不吃 Tutti 两种 wire env 的目标：gemini 本尊只认
-# GOOGLE_API_KEY/GEMINI_API_KEY（Google AI 协议，Tutti 无此协议面）；codebuddy
-# （claude 兼容系）与 trae-agent 的凭据 env 语义未实机验证。注入它们不认的 env
-# 只会造出「链显示活着、实际走 CLI 默认模型」的静默假绑定——宁可返回空协议集，
-# 链上条目全跳过、回落 CLI 本机登录态（recommend_binding 同口径，返回 None）。
-_LOCAL_CRED_ONLY_TARGETS = ("gemini-cli", "codebuddy", "trae-agent",
-                            "minimax-code", "mistral-vibe", "cline-cli", "cline")
+# 只吃 CLI 本机凭据、不吃 Tutti 两种 wire env 的目标。Gemini CLI/Kimi Code
+# 若发现各自官方 OAuth 会以 native_cli provider 接入；没有原生凭据时仍保持
+# 本机登录态回落，避免注入 CLI 不认的 env 造成静默假绑定。CodeBuddy、
+# trae-agent、Mistral Vibe 与 Cline CLI 仍未声明可注入协议。
+_LOCAL_CRED_ONLY_TARGETS = ("gemini-cli", "codebuddy", "trae-agent", "pi", "mimo-code",
+                            "minimax-code", "mistral-vibe", "qwencode", "cline-cli", "cline")
+
+
+def _has_native_provider(target):
+    try:
+        return any(_native_cli_provider(p, target) for p in providers())
+    except Exception:
+        return False
 
 
 def _dead(reasons, text):
@@ -2531,7 +2977,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     # model-only entries that have no provider_id.  The generic runner cannot
     # inject those model names, so returning a partial chain would make the UI
     # report a bound model while the CLI silently uses its own default.
-    if agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS:
+    if (agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS
+            and not _has_native_provider(agent_kind_or_id)):
         return None
     b = _binding_for(agent_kind_or_id)
     chain = _binding_chain(b)
@@ -2559,6 +3006,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             model = (item.get("model") or "").strip()
             pid = (item.get("provider_id") or "").strip()
             if not pid:
+                if agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS:
+                    continue
                 if model:
                     # 纯模型条目：零凭据注入，只传 -m 走 CLI 本机登录态。
                     # no_cred 标记供 runner 审计行/登录指引点名（Mac claude 案：
@@ -2574,10 +3023,13 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             if not prov.get("enabled", True):
                 _dead(dead_reasons, "%s：供应商已停用" % label)
                 continue
-            if not prov.get("api_key"):
+            native_cli = _native_cli_provider(prov, agent_kind_or_id)
+            if not prov.get("api_key") and not native_cli:
                 _dead(dead_reasons, "%s：无可用密钥" % label)
                 continue
-            ep = _entry_endpoint(prov, allowed)
+            ep = None if native_cli else _entry_endpoint(prov, allowed)
+            if native_cli:
+                ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
             if not ep:
                 proto = prov.get("protocol") or "auto"
                 _dead(dead_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
@@ -2587,7 +3039,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             if prov.get("name") in down_set:
                 _dead(dead_reasons, "%s：健康监测判定 down" % label)
                 continue  # 健康监测判定 down：跳过，省掉无效等待
-            if not _evaluation_is_usable(pid, model):
+            if not native_cli and not _evaluation_is_usable(pid, model):
                 _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
                       % label)
                 continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
@@ -2600,6 +3052,14 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             if model and not _model_bindable(prov, model):
                 _dead(dead_reasons, "%s：模型 %s 已停用/删除" % (label, model))
                 continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
+            if native_cli:
+                if not model:
+                    model = _usable_default_model(prov, prov.get("model"))
+                if model and _model_bindable(prov, model):
+                    entries.append({"model": model, "env": {}, "provider": prov,
+                                    "provider_id": pid, "key_id": "", "no_cred": True,
+                                    "native_cli": True})
+                continue
             # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
             # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
             for kk in _chain_keys(prov):
@@ -2652,11 +3112,14 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         _dead(single_reasons, "%s：供应商已停用" % label)
         _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None
-    if not prov.get("api_key"):
+    native_cli = _native_cli_provider(prov, agent_kind_or_id)
+    if not prov.get("api_key") and not native_cli:
         _dead(single_reasons, "%s：无可用密钥" % label)
         _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None
-    ep = _entry_endpoint(prov, allowed)
+    ep = None if native_cli else _entry_endpoint(prov, allowed)
+    if native_cli:
+        ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
     if not ep:
         proto = prov.get("protocol") or "auto"
         _dead(single_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
@@ -2664,7 +3127,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                  "、".join(allowed)))
         _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
-    if not _evaluation_is_usable(pid):
+    if not native_cli and not _evaluation_is_usable(pid):
         _dead(single_reasons, "%s：评测结论不可用（健康事件作废或探针失败）" % label)
         _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None
@@ -2681,8 +3144,17 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         model = ""   # 默认/难度模型键位指向停用或已删模型：不冒充可用，回落启用名单
     if not model and names:
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
-    if not _evaluation_is_usable(pid, model):
+    if not native_cli and not _evaluation_is_usable(pid, model):
         return None
+    if native_cli:
+        model = _usable_default_model(prov, model or prov.get("model"))
+        if not model or not _model_bindable(prov, model):
+            return None
+        entry = {"model": model, "env": {}, "provider": prov,
+                 "provider_id": pid, "key_id": "", "no_cred": True,
+                 "native_cli": True}
+        return {"model": model, "env": {}, "provider": prov,
+                "model_fallbacks": [], "call_chain": [entry]}
     # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
     # 多 KEY：主模型先按 KEY 逐把试（欠费自动切备用），再降级到别的模型
@@ -2727,13 +3199,17 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
     candidates = []
     for prov in data.get("providers") or []:
         pid = (prov.get("id") or "").strip()
-        if not pid or not prov.get("enabled", True) or not prov.get("api_key"):
+        native_cli = _native_cli_provider(prov, agent_kind_or_id)
+        if not pid or not prov.get("enabled", True) or (
+                not prov.get("api_key") and not native_cli):
             continue
         if prov.get("name") in down_set:
             continue
-        if not _evaluation_is_usable(pid, prov.get("model") or ""):
+        if not native_cli and not _evaluation_is_usable(pid, prov.get("model") or ""):
             continue
-        ep = _entry_endpoint(prov, allowed)
+        ep = None if native_cli else _entry_endpoint(prov, allowed)
+        if native_cli:
+            ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
         if not ep:
             continue
         if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
@@ -2747,7 +3223,7 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         # 候选阶段不能先截前三个：便宜档往往排在供应商列表后面，easy 任务
         # 需要看到完整启用列表后再按成本与档位评分。最终调用链仍受上限约束。
         for model in names:
-            if not _evaluation_is_usable(pid, model):
+            if not native_cli and not _evaluation_is_usable(pid, model):
                 continue
             candidates.append({"provider_id": pid, "model": model})
     if not candidates:
@@ -2764,10 +3240,20 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         prov = provs.get(item.get("provider_id"))
         if not prov:
             continue
-        ep = _entry_endpoint(prov, allowed)
+        native_cli = _native_cli_provider(prov, agent_kind_or_id)
+        ep = None if native_cli else _entry_endpoint(prov, allowed)
+        if native_cli:
+            ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
         if not ep:
             continue
         pid = item.get("provider_id") or ""
+        if native_cli:
+            entries.append({"model": item.get("model") or "", "env": {},
+                            "provider": prov, "provider_id": pid, "key_id": "",
+                            "no_cred": True, "native_cli": True})
+            if len(entries) >= MAX_CHAIN_ATTEMPTS:
+                break
+            continue
         # 与显式绑定完全同口径：同一模型按可用 KEY 展开，runner 才能在首 KEY
         # 欠费/失效时记账冷却并尝试下一把。最终尝试数仍受硬上限约束。
         for kk in _chain_keys(prov):
@@ -2828,6 +3314,15 @@ def launch_pick(agent_id, protocols):
             continue  # 纯链条目（只传 -m）：对打开场景无凭据可用
         prov = provs.get(pid)
         if not prov:
+            continue
+        native_cli = _native_cli_provider(prov, agent_id)
+        if native_cli:
+            if str(prov.get("protocol") or "") in protocols:
+                chosen = (str(item.get("model") or "").strip()
+                          or _usable_default_model(prov, prov.get("model")))
+                return {"model": chosen,
+                        "provider": prov}, None
+            mismatch = True
             continue
         if not prov.get("enabled", True) or not prov.get("api_key"):
             if prov.get("protocol") in protocols:

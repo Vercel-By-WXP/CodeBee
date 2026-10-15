@@ -62,8 +62,9 @@ DEFAULT_CATALOG = [
     },
     {
         "id": "qwencode", "name": "QwenCode", "cli_group": "installable",
-        "note": "通义千问编码 CLI（gemini-cli 系）；无头走 stdin；绑定凭据经打开注入"
-                "写 settings.json 的 env 段（OPENAI_*，qwen 存在即优先 openai 兼容通道）",
+        "note": "通义千问编码 CLI（gemini-cli 系）；支持 ~/.qwen/oauth_creds.json 的原生 OAuth"
+                "（免费额度已于 2026-04-15 停用，按 Coding Plan/账号配额）；普通绑定仍写"
+                " settings.json 的 env 段（OPENAI_*，qwen 存在即优先 openai 兼容通道）",
         "detect": {"cli": "qwen"},
         # stall_timeout_s：静默 15 分钟即杀（2026-09-22 全书总评实案：qwen 吐完
         # 评审内容后卡在 MCP 收尾死锁，输出归零但进程活着，stall=0 时只能干等
@@ -117,8 +118,8 @@ DEFAULT_CATALOG = [
     {
         "id": "mimo-code", "name": "MiMo Code", "cli_group": "installable",
         "note": "小米 MiMo Code（opencode 衍生）；无头调用是子命令 mimo run \"提示词\"，"
-                "-p 在该 CLI 是 --password；默认模型在 ~/.config/mimocode/mimocode.jsonc "
-                "顶层 model（provider/model 格式），onboarding 自动建文件",
+                "-p 在该 CLI 是 --password；支持 MiMo Auto 限时原生免费通道（零配置）和 OAuth；"
+                "普通 API 供应商仍写入 ~/.config/mimocode/mimocode.jsonc 的 provider 块",
         "detect": {"cli": "mimo"},
         "orch": {"kind": "generic", "command": "mimo", "argv_template": ["run", "{prompt}"],
                  "resume_argv_template": ["run", "-s", "{session}"]},
@@ -146,9 +147,8 @@ DEFAULT_CATALOG = [
     },
     {
         "id": "pi", "name": "Pi", "cli_group": "installable",
-        "note": "Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；包名必须带 @earendil-works/ 前缀；"
-                "供应商端点与模型注册表在 ~/.pi/agent/models.json，settings.json 的 defaultModel 必须"
-                "配 defaultProvider 才解析得动——CodeBee 绑定后两处一并托管（providers.codebee）",
+        "note": "Earendil Works 的 Pi 编码 CLI（需 Node ≥22.19）；支持 ~/.pi/agent/auth.json 的原生 OAuth 订阅登录；"
+                "普通 API 供应商使用 ~/.pi/agent/models.json，原生 OAuth 绑定仅选择 Pi 自身 provider/model，不标记为 Free",
         "detect": {"cli": "pi"},
         "orch": {"kind": "generic", "command": "pi", "argv_template": ["-p", "{prompt}"]},
         "config": {"path": "~/.pi/agent/settings.json", "format": "json-path",

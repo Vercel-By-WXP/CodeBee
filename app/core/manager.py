@@ -1251,6 +1251,43 @@ def _jsonc_set(text, path, value_json):
     return text[:vs] + new_seg + text[end2 + 1:], True
 
 
+def _jsonc_delete(text, path):
+    """Delete a JSON(C) object key while retaining surrounding comments/text."""
+    if not path:
+        return text, False
+    brace = text.find("{")
+    if brace < 0:
+        return text, False
+    end, keys = _jsonc_scan_object(text, brace)
+    target = None
+    if len(path) == 1:
+        target = (brace, end, keys, path[0])
+    else:
+        hit = next((k for k in keys if k[0] == path[0]), None)
+        if not hit or text[hit[3]:hit[4]].lstrip()[:1] != "{":
+            return text, False
+        end2, keys2 = _jsonc_scan_object(text, hit[3])
+        target = (hit[3], end2, keys2, path[1])
+    _start_obj, _end_obj, obj_keys, leaf = target
+    hit = next((k for k in obj_keys if k[0] == leaf), None)
+    if not hit:
+        return text, False
+    start, stop = hit[1], hit[4]
+    # Prefer consuming the following comma; otherwise consume the preceding one.
+    j = stop
+    while j < len(text) and text[j] in " \t\r\n":
+        j += 1
+    if j < len(text) and text[j] == ",":
+        stop = j + 1
+    else:
+        j = start - 1
+        while j >= 0 and text[j] in " \t\r\n":
+            j -= 1
+        if j >= 0 and text[j] == ",":
+            start = j
+    return text[:start] + text[stop:], True
+
+
 def _jsonc_insert_entry(text, brace, end, key, value_json):
     """在 {brace..end} 对象的开头插入 "key": value（带尾逗号，不依赖原文件的
     逗号风格）；对象为空时去掉多余逗号。"""
@@ -1370,6 +1407,27 @@ def _sync_mimo_settings(entry, model, prov):
     只吃 OpenAI 兼容端点；anthropic 协议供应商明确拒绝（不猜 wire）。"""
     if tmp_data_no_home_write():
         return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
+    if (prov.get("credential_mode") == "cli"
+            and prov.get("native_cli") == "mimo-code"
+            and prov.get("native_models")):
+        # MiMo Auto/OAuth is owned by MiMo Code.  Select the model only and
+        # never create provider.codebee with an empty API key.
+        path = _config_path(entry)
+        if not path:
+            return "mimo 配置路径无效"
+        try:
+            text = _read_text(path, preserve_newlines=True) if os.path.isfile(path) else ""
+            text, _ = _jsonc_delete(text, ("provider", "codebee"))
+            new_text, ok = _jsonc_set(text, ("model",), json.dumps(model or ""))
+            if not ok:
+                return "mimocode.jsonc 结构异常，未能写入原生模型（已避免覆盖）"
+            if os.path.isfile(path):
+                shutil.copyfile(path, path + ".bak")
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_bytes(path, new_text.encode("utf-8"))
+            return None
+        except OSError as e:
+            return "写入 mimocode.jsonc 失败：%s" % str(e)[:80]
     if str(prov.get("protocol") or "").lower() != "openai":
         return ("mimo 只吃 OpenAI 兼容端点，供应商 %s 是 %s 协议——请绑 openai 协议供应商"
                 % (prov.get("name") or prov.get("id") or "?", prov.get("protocol") or "?"))
@@ -1414,6 +1472,53 @@ def _sync_opencode_settings(entry, model, prov):
     文本级就地 patch（保留注释）。返回错误串或 None。"""
     if tmp_data_no_home_write():
         return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
+    native_cli = (prov.get("credential_mode") == "cli"
+                  and prov.get("native_cli") == "opencode"
+                  and prov.get("native_models"))
+    if native_cli:
+        # OpenCode owns authentication and provider resolution for native
+        # models.  Preserve the full model id and avoid an empty orch block.
+        targets = [p for p in _opencode_config_candidates(entry) if os.path.isfile(p)] \
+            or [_opencode_config_candidates(entry)[0]]
+        top_perms = {"edit": "allow", "bash": "allow", "webfetch": "allow",
+                     "external_directory": "allow"}
+        errs = []
+        for path in targets:
+            try:
+                path = os.path.realpath(path)
+                home = os.path.abspath(os.path.expanduser("~"))
+                if os.path.commonpath([path, home]) != home:
+                    errs.append("路径越出主目录：%s" % path)
+                    continue
+                if os.path.isfile(path):
+                    text = _read_text(path, preserve_newlines=True)
+                else:
+                    Path(path).parent.mkdir(parents=True, exist_ok=True)
+                    text = ""
+                try:
+                    data = json.loads(text) if text.strip() else {}
+                except Exception:
+                    data = None
+                if data is not None:
+                    if not isinstance(data, dict):
+                        errs.append("结构异常（顶层不是对象）：%s" % path)
+                        continue
+                    if isinstance(data.get("provider"), dict):
+                        data["provider"].pop("orch", None)
+                    data["model"] = model or ""
+                    data["permission"] = top_perms
+                    new_text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+                else:
+                    new_text, _ = _jsonc_delete(text, ("provider", "orch"))
+                    new_text, _ = _jsonc_set(new_text, ("model",), json.dumps(model or ""))
+                    new_text, _ = _jsonc_set(new_text, ("permission",),
+                                             json.dumps(top_perms))
+                if os.path.isfile(path):
+                    shutil.copyfile(path, path + ".bak")
+                _atomic_write_bytes(path, new_text.encode("utf-8"))
+            except Exception as e:
+                errs.append("%s: %r" % (path, e))
+        return "；".join(errs) or None
     npm = "@ai-sdk/anthropic" if prov.get("protocol") == "anthropic" else "@ai-sdk/openai-compatible"
     base = prov.get("base_url") or ""
     if prov.get("protocol") == "anthropic" and not base.rstrip("/").endswith("/v1"):
@@ -1529,6 +1634,29 @@ def _sync_kimi_settings(entry, model, prov):
     if tmp_data_no_home_write():
         return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
     import re as _re
+    native_cli = (prov.get("credential_mode") == "cli"
+                  and prov.get("native_cli") == "kimi-code"
+                  and prov.get("native_models"))
+    if native_cli:
+        # Kimi Code owns the OAuth credentials and managed provider tables.
+        # Only select the already-defined alias; never create provider.orch or
+        # write an empty apiKey into the user's CLI configuration.
+        path = os.path.abspath(os.path.expanduser("~/.kimi-code/config.toml"))
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            text = _read_text(path, preserve_newlines=True) if os.path.isfile(path) else ""
+            if os.path.isfile(path):
+                shutil.copyfile(path, path + ".bak")
+            if model:
+                line = 'default_model = "%s"' % str(model).replace('"', '')
+                if _re.search(r"(?m)^default_model\s*=", text):
+                    text = _re.sub(r"(?m)^default_model\s*=.*$", line, text)
+                else:
+                    text = line + "\n" + text
+            _atomic_write_bytes(path, text.encode("utf-8"))
+            return None
+        except Exception as e:
+            return "写入 Kimi 原生配置失败：%s" % str(e)[:100]
     top_keys = ("defaultProvider", "defaultModel", "yolo", "defaultPermissionMode")
     targets = [os.path.abspath(os.path.expanduser("~/.kimi-code/config.toml"))]
     errs = []
@@ -1630,6 +1758,21 @@ def _sync_pi_settings(entry, model, prov, env=None):
     ANTHROPIC_AUTH_TOKEN 的既有实证保持一致。返回错误串或 None。"""
     if tmp_data_no_home_write():
         return "测试数据目录（TUTTI_DATA 在临时目录）不写真实 CLI 配置，已拦截"
+    if (prov.get("credential_mode") == "cli"
+            and prov.get("native_cli") == "pi"
+            and prov.get("native_models")):
+        provider = str(prov.get("native_provider") or "").strip()
+        selected = str(model or "").strip()
+        if "/" in selected and selected.split("/", 1)[0].lower() == provider.lower():
+            selected = selected.split("/", 1)[1]
+        if not provider or not selected:
+            return "Pi 原生 OAuth 缺少 provider 或模型，未写入配置"
+        settings_path = _config_path(entry)
+        if not settings_path:
+            return "Pi 配置路径无效，已拒绝"
+        return _pi_write_json(settings_path,
+                              lambda d: (d.__setitem__("defaultProvider", provider),
+                                          d.__setitem__("defaultModel", selected)))
     proto = str(prov.get("protocol") or "").lower()
     api = _PI_API_BY_PROTOCOL.get(proto)
     env = env or {}
@@ -1702,6 +1845,7 @@ _AGENT_INJECTORS = {
     "mimo-code": (("openai",), _sync_mimo_settings),
 }
 
+
 # 无专属注入通道的专有协议 CLI：env 注入大概率无效，打开时明确告知而非静默废
 # （mimo 已实证配置注入：provider.codebee 块（apiKey 走 options）；grok 吃 XAI_API_KEY 但
 # 无端点 env 可指中转，openai 协议供应商也用不上）
@@ -1714,6 +1858,11 @@ def _sync_agent_injection(entry, binding):
     协议不匹配不降级（claude 拿 openai 的 key 等于没 key）。返回给用户看的提示
     （成功注入 / 不可用原因），None=该 CLI 无需处理。"""
     from . import modelhub
+    native = binding.get("provider") if isinstance(binding, dict) else None
+    if (isinstance(native, dict) and native.get("credential_mode") == "cli"
+            and native.get("native_models")
+            and str(native.get("native_cli") or "").lower() == str(entry.get("id") or "").lower()):
+        return "%s 使用 CLI 自带登录（未写入 API Key 或网关配置）" % entry.get("name", entry.get("id"))
     spec = _AGENT_INJECTORS.get(entry["id"])
     if spec:
         protocols, injector = spec
@@ -1722,6 +1871,10 @@ def _sync_agent_injection(entry, binding):
         pick, note = modelhub.launch_pick(entry["id"], protocols)
         if pick:
             prov = pick["provider"]
+            if (isinstance(prov, dict) and prov.get("credential_mode") == "cli"
+                    and prov.get("native_models")
+                    and str(prov.get("native_cli") or "").lower() == str(entry.get("id") or "").lower()):
+                return "%s 使用 CLI 自带登录（未写入 API Key 或网关配置）" % entry.get("name", entry.get("id"))
             err = injector(entry, pick["model"], prov)
             if err:
                 return "%s 凭据同步失败：%s（打开后可能需在其自带界面登录）" % (
