@@ -45,6 +45,7 @@ class ProjectSpaceSharingTests(unittest.TestCase):
         decoded = sharing.decode(exported["code"])
         self.assertEqual(decoded["kind"], "project")
         self.assertEqual(decoded["payload"]["project"]["id"], project["id"])
+        self.assertEqual(len(decoded["payload"]["runs"]), 1)
         tampered = exported["code"][:-1] + ("A" if exported["code"][-1] != "A" else "B")
         with self.assertRaises(ValueError):
             sharing.decode(tampered)
@@ -73,6 +74,7 @@ class ProjectSpaceSharingTests(unittest.TestCase):
         from app.core import cloud_readiness, project_permissions
         self.assertEqual(project_permissions.role("p", "local"), "owner")
         project_permissions.set_role("p", "alice", "editor")
+        self.assertEqual(project_permissions.role("p", "local"), "owner")
         self.assertTrue(project_permissions.can("p", "alice", "viewer"))
         self.assertFalse(project_permissions.can("p", "alice", "owner"))
         with patch("app.core.phone_relay.view", return_value={"enabled": False, "connected": False}):

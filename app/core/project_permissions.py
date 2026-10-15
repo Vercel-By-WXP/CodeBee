@@ -36,7 +36,14 @@ def list_for(project_id):
 def role(project_id, actor):
     actor = str(actor or "local").strip()[:120] or "local"
     current = list_for(project_id)
-    return current.get(actor) or ("owner" if not current else "viewer")
+    if actor in current:
+        return current[actor]
+    # The local client owns a project by default.  Keep that implicit owner
+    # role until an explicit owner is assigned, so adding the first member
+    # does not lock the local owner out of subsequent permission changes.
+    if actor == "local" and "owner" not in current.values():
+        return "owner"
+    return "viewer"
 
 
 def can(project_id, actor, required="viewer"):

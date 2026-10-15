@@ -53,6 +53,14 @@ class ProjectMobileRouteTests(unittest.TestCase):
                                            {"member": "alice", "role": "viewer"})._route_post()
             self.assertEqual(status, 403)
 
+    def test_openapi_exposes_all_five_layers(self):
+        from core import openapi
+        paths = openapi.document()["paths"]
+        for path in ("/api/experts", "/api/projects", "/api/mobile/status",
+                     "/api/sharing/import", "/api/projects/{project_id}/permissions",
+                     "/api/cloud/readiness"):
+            self.assertIn(path, paths)
+
 
 if __name__ == "__main__":
     unittest.main()

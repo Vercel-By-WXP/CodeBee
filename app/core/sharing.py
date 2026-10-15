@@ -14,7 +14,7 @@ import json
 import re
 import time
 
-from . import experts, knowledge, project_space, project_memory
+from . import experts, knowledge, project_space
 
 SCHEMA = 1
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
@@ -86,6 +86,7 @@ def export_project(project_id, *, include_archived=False):
     payload = {"project": {"id": project["id"], "name": project["name"],
                             "workdir": project["workdir"]},
                "tasks": project["tasks"][:100], "automations": project["automations"][:100],
+               "runs": project["runs"][:100],
                "memory": [e for e in project["memory"] if e.get("status") in ("approved", "pending")][:200],
                "experts": [t.get("expert_snapshot") for t in project["tasks"]
                            if isinstance(t.get("expert_snapshot"), dict)][:50]}
