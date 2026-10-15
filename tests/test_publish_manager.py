@@ -937,16 +937,18 @@ def test_fanqie_publish_feedback_detects_new_quota_toast():
            "历史残留的投稿额度提示不能触发本次终止")
 
 
-def test_fanqie_schedule_conflict_keeps_same_day_and_advances_thirty_minutes():
-    from datetime import date, time
-    from core.publish.flow import _next_fanqie_schedule_slot
+def test_fanqie_schedule_conflict_is_detected_without_changing_requested_slot():
+    from core.publish.flow import _fanqie_schedule_conflict
 
-    day, slot = _next_fanqie_schedule_slot(date(2026, 10, 15), time(0, 0))
-    expect(day == date(2026, 10, 15) and slot == time(0, 30),
-           "同时间冲突应当天顺延半小时")
-    day, slot = _next_fanqie_schedule_slot(date(2026, 10, 15), time(23, 30))
-    expect(day == date(2026, 10, 16) and slot == time(0, 0),
-           "只有顺延越过午夜时才应进入下一天")
+    before = {"dialog": "发布设置", "body": "编辑器", "feedback": []}
+    rejected = {"dialog": "发布设置", "body": "编辑器\n同一时间只能安排一个章节",
+                "feedback": []}
+    stale = {"dialog": "发布设置", "body": "编辑器\n同一时间只能安排一个章节",
+             "feedback": []}
+    expect(_fanqie_schedule_conflict(before, rejected),
+           "本次新增的同一时间冲突应被识别并停止")
+    expect(not _fanqie_schedule_conflict(stale, stale),
+           "旧冲突提示不能误判为本次排期冲突")
 
 
 def test_fanqie_stale_override_falls_back_to_calibrated_flow():

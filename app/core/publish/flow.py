@@ -78,10 +78,10 @@ def _fanqie_submission_limit_changed(before, after):
         before, after, ["提交字数超出每日上限", "投稿字数超出每日上限"])
 
 
-def _next_fanqie_schedule_slot(day, slot):
-    """Move a rejected same-time slot by the platform's stated 30-minute gap."""
-    advanced = datetime.datetime.combine(day, slot) + datetime.timedelta(minutes=30)
-    return advanced.date(), advanced.time()
+def _fanqie_schedule_conflict(before, after):
+    """Detect a new platform rejection of the requested schedule slot."""
+    return _has_new_feedback(
+        before, after, ["半小时以后", "发布时间间隔", "同一时间"])
 
 
 class TitleDupError(FlowError):
@@ -1142,26 +1142,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                     timeout=10)
                                 time.sleep(0.8)
                             continue
-                        if _has_new_feedback(
-                                before_submit, after,
-                                ["半小时以后", "发布时间间隔", "同一时间"]):
-                            force_schedule = True
-                            # Keep the chapter on the same release date when
-                            # possible. The platform rejects duplicate slots
-                            # with a 30-minute minimum-gap hint; moving a full
-                            # day was silently putting adjacent chapters on
-                            # different publishing days.
-                            trial_day, trial_time = _next_fanqie_schedule_slot(
-                                trial_day, trial_time)
-                            if "发布设置" not in after_dialog:
-                                page.call(
-                                    "()=>{const e=[...document.querySelectorAll('button')]"
-                                    ".find(x=>x.getBoundingClientRect().width>0"
-                                    "&&(x.innerText||'').trim()==='下一步');"
-                                    "if(!e)return{ok:false};e.click();return{ok:true};}",
-                                    timeout=10)
-                                time.sleep(0.8)
-                            continue
+                        if _fanqie_schedule_conflict(before_submit, after):
+                            if "发布设置" in after_dialog:
+                                fq_click("发布设置", "取消")
+                            raise FlowError(
+                                "番茄拒绝了指定的定时发布时间；为保持章节队列顺序，"
+                                "本次没有自动改到其他日期，请核对前序章节排期后重试")
                         if _has_new_feedback(before_submit, after,
                                              ["请选择是否使用 AI"]):
                             continue
