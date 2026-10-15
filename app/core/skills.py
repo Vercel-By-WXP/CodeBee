@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import paths, revisions
+from . import novel_feedback, paths, revisions
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "skills.json"
@@ -691,6 +691,7 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
     按结局（过审 +1 / 未过 -1）回写 won/lost——好教训在排序中胜出。
     """
     scope = scope_override or task.get("type") or "*"
+    feedback = novel_feedback.block_for(task)
     parts, used, lesson_ids = [], [], []
 
     for p in all_packs():
@@ -733,16 +734,21 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
         lesson_part = ("### 【本项目经验记录（证据强度以条目标注为准；先结合当前正文判断，不要机械套用；方括号内为编号）】\n"
                        + "\n".join(lines))
 
-    if not parts and not lesson_part:
+    if not parts and not lesson_part and not feedback:
         return "", []
 
     header = "## 经验库（写作/工程规范 + 过往经验记录；按证据强度参考）\n\n"
-    budget = max(600, MAX_INJECT_CHARS - len(lesson_part))
+    # Reserve both the attributed lessons and complete rejection records before
+    # allocating the generic pack budget. Feedback must not evict lessons.
+    reserve = len(header) + len(lesson_part) + len(feedback) + 100
+    budget = max(0, MAX_INJECT_CHARS - reserve)
     body = "\n\n".join(parts)
     if len(body) > budget:
         body = body[:budget] + "\n…（包区已按预算截断，优先保住项目教训）"
     body = (body + "\n\n" + lesson_part) if (body and lesson_part) else (body or lesson_part)
     text = header + body
+    if feedback:
+        text = feedback + "\n\n" + text[:max(0, MAX_INJECT_CHARS - len(feedback) - 2)]
     if len(text) > MAX_INJECT_CHARS:
         text = text[:MAX_INJECT_CHARS] + "\n…（已截断）"
     if lesson_ids:

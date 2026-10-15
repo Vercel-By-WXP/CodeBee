@@ -3779,6 +3779,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                   .replace("__STYLE__", style_tpl)
                   .replace("__MANUSCRIPT__", "\n\n".join(texts)))
         prompt += "\n实际送审范围（仅限下列已读文本，未列章节未读）：%s" % _json.dumps(read_scope, ensure_ascii=False)
+        from . import novel_feedback
+        feedback = novel_feedback.block_for(task)
+        if feedback:
+            prompt += "\n\n" + feedback
         evidence_errors = []
         for idx, agent in enumerate(reviewers):
             res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),

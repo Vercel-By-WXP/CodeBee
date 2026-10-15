@@ -1,0 +1,40 @@
+[
+  {
+    "id": "nf-qimao-shentong-20261015",
+    "platform": "qimao",
+    "work": "神瞳鉴宝：我在当铺断真假",
+    "channel": "未核实（通知类型：签约评估）",
+    "feedback_date": "2026-10-15（采集日；平台反馈日期未核实）",
+    "submission_version": "截图所示版本（具体提交号未留存）",
+    "submission_scope": "实际送审范围未核实；正文核对仅覆盖当前目录第1-2章",
+    "original_quote": "文笔表述的清晰度略有不足、描绘复杂情感时不够细腻、风格不够统一；开篇切入点缺乏足够吸引力、情节推进稍显生硬",
+    "source": "用户提供的七猫签约评估截图；正文观察见 docs/maintenance/novel-rejection-20261015.md",
+    "judgment_type": "platform_explicit",
+    "evidence": "第1-2章正文观察：能力确认后多次退回封存/留证流程，重复动作没有改变对手行动；引文位置以报告为准。",
+    "change_level": "结构",
+    "experiment": "重构首个交割单元：让能力限制、主角付费选择、对手利益反应和阶段结果同时出现。",
+    "recheck_question": "能力是否改变双方行动？主角是否承担可理解代价？阶段结果是否真实发生？",
+    "can_reapply": false,
+    "tags": ["开篇吸引力", "情节推进", "文风统一", "情感细腻度", "鉴宝"],
+    "trials": []
+  },
+  {
+    "id": "nf-qimao-touqi-20261015",
+    "platform": "qimao",
+    "work": "头七结账人",
+    "channel": "未核实（通知类型：签约评估）",
+    "feedback_date": "2026-10-15（采集日；平台反馈日期未核实）",
+    "submission_version": "截图所示版本（具体提交号未留存）",
+    "submission_scope": "实际送审范围未核实；正文核对仅覆盖当前目录第1-2章",
+    "original_quote": "故事剧情缺乏创新、代入感较弱",
+    "source": "用户提供的七猫签约评估截图；正文观察见 docs/maintenance/novel-rejection-20261015.md",
+    "judgment_type": "platform_explicit",
+    "evidence": "第1-2章正文观察：规则登记和关键线索推进较多依赖巧合，主角触犯规则的动机与现实损失不够绑定。",
+    "change_level": "立项",
+    "experiment": "重构首个退款单元：让亡者委托改变退款解法，主角选择同时触及现实利益和母女关系代价。",
+    "recheck_question": "人物为何非做不可？证据是否由行动取得？规则是否改变了解法与代价？",
+    "can_reapply": false,
+    "tags": ["剧情创新", "代入感", "人物动机", "头七", "首个故事单元"],
+    "trials": []
+  }
+]

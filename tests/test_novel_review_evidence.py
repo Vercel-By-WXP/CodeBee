@@ -49,9 +49,11 @@ class EvidenceValidationTests(BaseTest):
 
 
 class OpeningEvidenceGateTests(BaseTest):
-    def _exercise(self, signing_result, body=None):
+    def _exercise(self, signing_result, body=None, goal=None):
         from app.core import pipeline, store
         task = _serial_task(str(self.workdir))
+        if goal:
+            task["goal"] = goal
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running")
         agents, critics, impl = _agents()
@@ -122,6 +124,15 @@ class OpeningEvidenceGateTests(BaseTest):
         self.assertLess(scope[0]["included_chars"], scope[0]["total_chars"])
         self.assertIn("实际送审范围", self.signing_prompts[0])
         self.assertNotIn("__CONTEXT__", self.signing_prompts[0])
+
+    def test_signing_review_receives_feedback_as_case_not_manuscript(self):
+        from app.core import novel_quality as nq
+        value = review(dict.fromkeys(nq.SIGNING_RUBRIC, 8))
+        self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
+        prompt = self.signing_prompts[0]
+        self.assertIn("nf-qimao-shentong-20261015", prompt)
+        self.assertIn("待完成，未验证改后效果", prompt)
+        self.assertIn("非平台规则", prompt)
 
 
 if __name__ == "__main__":

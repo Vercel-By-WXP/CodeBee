@@ -13,7 +13,7 @@ import re
 import time
 from pathlib import Path
 
-from . import knowledge, modelhub, runner, skills, usage, volumes
+from . import knowledge, modelhub, novel_feedback, runner, skills, usage, volumes
 
 MAX_SUBTASKS = 4
 DEFAULT_OUTLINE_TIMEOUT = 900   # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够
@@ -840,6 +840,9 @@ def redesign_opening(task, outline=None, critique="", author_agent=None, workdir
               .replace("__GOAL__", task.get("goal", ""))
               .replace("__CONTEXT__", task.get("context") or "（无）")
               .replace("__OUTLINE__", head_txt))
+    feedback = novel_feedback.block_for(task)
+    if feedback:
+        prompt += "\n\n" + feedback
     orch = _orchestrator()
     if not orch:
         _append_log(log_path, "开篇重设计：编排者未配置，回退普通修订")
