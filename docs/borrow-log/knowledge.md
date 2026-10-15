@@ -7900,3 +7900,16 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
 - 批4（治理/安全/人机协同）增量复核：六源市场只读 manifest/API 均 HTTP 200 且 JSON 可解析；权限、白名单、SSRF、人工评审状态机和禅道回写边界未发现新的接口兼容小改进。
 - OpenSandbox、NVIDIA SkillSpector 等候选需要更大沙箱/扫描运行时或完整兼容性评估；继续只记录来源，不安装、不盲接。未安装的 CLI 候选同样不写入 catalog。
 - 本班没有产品代码或关键词策略变化；并行门禁未给出可核验最终汇总，继续沿用“全量未绿，不推送”的门禁口径。以后若扫描日志未落盘，必须记录为降级而不是补写推断数量。
+## 2026-10-15 21 时班：批7 增量结论
+
+- 心跳要求批7（21 % 7 = 0）；因本机已跨日到 05:30，扫描器使用显式 `--batch 7`，
+  不把默认批5结果冒充批7。批7 stars/updated 双轮 **20/20**，90 条结果、77 个唯一仓，
+  0 错误/限流；同日 05 时班已覆盖常驻组、固定仓、topic 雷达和六源市场，本班按增量规则复用。
+- 新命中集中在已录的 LangBot/Yuxi/网关/多平台发布族；`omnara-ai/omnara`（2,918★）
+  的 2026-10-15 提交和 `omnarad-v0.2.5`/`cluster-v0.2.5` 发布已核验，但其托管 agent
+  平台超出 CodeBee 本地接口边界，不接入。公开 issue/security-advisory 端点无条目，
+  不据此推出“无漏洞”。
+- 18 类 flow 与 A-G 七专项未出现低风险、接口兼容的新差量；本班不改产品代码或关键词，
+  不安装 `goose/minimax`。原始证据为 `outputs/borrow-scan-20261015-21-batch7.{jsonl,log}`。
+- 门禁实账：根发现器 `Ran 0 tests`；显式 `tests/` 套件记录 2,102 ok、45 FAIL、2 ERROR、4 skipped，
+  且无可靠 `Ran` 汇总。退出码 0 不代表全绿，本班按未绿口径收尾。

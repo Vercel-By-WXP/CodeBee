@@ -1,0 +1,22 @@
+PROGRESS quick batch B7: 20 queries
+PROGRESS Q1/20 B7 数字员工+OR+大模型+编排 ok 5
+PROGRESS Q2/20 B7 one-api+alternative ok 5
+PROGRESS Q3/20 B7 模型中转+OR+api+网关+大模型 ok 5
+PROGRESS Q4/20 B7 ollama+orchestrator ok 5
+PROGRESS Q5/20 B7 local+llm+agent ok 5
+PROGRESS Q6/20 B7 self+hosted+agent+platform ok 5
+PROGRESS Q7/20 B7 rpa+ai+agent ok 5
+PROGRESS Q8/20 B7 小说生成+ai+OR+ai+写作+平台 ok 5
+PROGRESS Q9/20 B7 office+document+agent+OR+办公+智能体+工作流 ok 0
+PROGRESS Q10/20 B7 magicrew+OR+%E8%B6%85%E7%BA%A7%E9%BA%A6%E5%90%89 ok 5
+PROGRESS Q11/20 B7u 数字员工+OR+大模型+编排 ok 5
+PROGRESS Q12/20 B7u one-api+alternative ok 5
+PROGRESS Q13/20 B7u 模型中转+OR+api+网关+大模型 ok 5
+PROGRESS Q14/20 B7u ollama+orchestrator ok 5
+PROGRESS Q15/20 B7u local+llm+agent ok 5
+PROGRESS Q16/20 B7u self+hosted+agent+platform ok 5
+PROGRESS Q17/20 B7u rpa+ai+agent ok 5
+PROGRESS Q18/20 B7u 小说生成+ai+OR+ai+写作+平台 ok 5
+PROGRESS Q19/20 B7u office+document+agent+OR+办公+智能体+工作流 ok 0
+PROGRESS Q20/20 B7u magicrew+OR+%E8%B6%85%E7%BA%A7%E9%BA%A6%E5%90%89 ok 5
+PROGRESS DONE 20 queries
