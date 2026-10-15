@@ -157,6 +157,7 @@ class TestPolishNamedPriority(BaseTest):
 
     def _run_with(self, task, run, critics, impl, fake_step):
         from app.core import pipeline
+        task = dict(task, serial=dict(task["serial"], opening_gate=False))
         orig_step = pipeline._run_step
         orig_outline = pipeline.planner.make_serial_outline
 
@@ -367,6 +368,7 @@ class TestInChapterRevisionFreshLedger(BaseTest):
             "serial": {"chapters": 2, "words_per_chapter": 300},
             "implementer": "impl-r", "critics": ["c1", "c2"],
         })
+        task = dict(task, serial=dict(task["serial"], opening_gate=False))
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running")
         critics = [{"id": cid, "mode": "real", "kind": "generic", "command": "x",

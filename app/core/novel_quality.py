@@ -8,6 +8,7 @@ for the common rejection reasons instead of relying on vague impressions.
 from __future__ import annotations
 
 import re
+from typing import Any, Mapping
 
 
 SIGNING_RUBRIC = [
@@ -20,6 +21,33 @@ SIGNING_RUBRIC = [
 
 OPENING_DIM = "开篇吸引力"
 SIGNING_CHECKPOINT_WORDS = 20000   # 项目检查点默认值；不是通用平台规则，调用方应核对当前后台
+
+
+def review_evidence_errors(review: Any, chapters: Mapping[int, str]) -> list[str]:
+    """Require a real chapter quote and an explanation for each scored dimension.
+
+    This validates provenance only, never the literary truth of the judgement.
+    ``chapters`` must contain exactly the excerpts sent to the reviewer.
+    """
+    review = review if isinstance(review, dict) else {}
+    rows = review.get("evidence")
+    rows = rows if isinstance(rows, list) else []
+    supported = set()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("dim") not in SIGNING_RUBRIC:
+            continue
+        try:
+            text = chapters.get(int(row.get("chapter")), "")
+        except (TypeError, ValueError, OverflowError):
+            continue
+        text = "\n".join(line for line in text.splitlines()
+                         if not re.match(r"^\s{0,3}#{1,6}\s", line))
+        quote = str(row.get("quote") or "").strip()
+        if (len(re.sub(r"\s+", "", quote)) >= 8 and quote in text
+                and str(row.get("analysis") or "").strip()):
+            supported.add(row["dim"])
+    return ["%s缺少可定位正文引文与分析" % dim
+            for dim in SIGNING_RUBRIC if dim not in supported]
 
 _SENTENCE_RE = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?")
 _DIALOGUE_RE = re.compile(r"[“‘\"「『](.*?)[”’\"」』]", re.S)
@@ -124,9 +152,9 @@ def _style_snippet(text, marker, closer):
 def style_consistency_notes(chapters):
     """跨章/章内体例一致性检测（确定性，签约红线级；2026-10-15 七猫双拒实案）。
 
-    神瞳第 5 章整章「」、其余章 ASCII 直引号，头七第 2 章弯直混用——平台
-    「风格上不够统一」的拒稿在提交稿里有具体对应物；内部评审把这类记 minor
-    放行、编辑按一句话拒，故体例伤不交给模型分档，直接出 major。
+    引号制式混用和 BOM 是可定位的内部交付问题，按项目体例要求出 major。
+    这不能证明它们是编辑所说「风格上不够统一」的原因；语域、视角距离、
+    人物声音仍需文学评审独立判断。
     chapters 接受 {章号: 正文} 或 [(章号, 正文), ...]。三类红线：①引号制式
     跨章混用（多数章制式为基准，偏离章在 note 点名）；②章内两种制式并存；
     ③UTF-8 BOM 残留。返回 issue 列表 [{dim, severity, chapter, note, quote}]——
@@ -154,7 +182,7 @@ def style_consistency_notes(chapters):
             notes.append({
                 "dim": "文风统一", "severity": "major", "chapter": None,
                 "note": "引号制式跨章混用：第 %s 章用%s、其余章以%s为主——签约稿须"
-                        "全稿单一引号制（平台「风格不统一」整篮拒实案）"
+                        "按项目交付要求统一体例；此项不代表文学文风或平台判断"
                         % ("、".join(str(c) for c in stray),
                            _STYLE_NAMES[dominant[stray[0]]], _STYLE_NAMES[base]),
                 "quote": _style_snippet(texts[stray[0]],

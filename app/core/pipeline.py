@@ -3038,6 +3038,9 @@ __STYLE__
 
 ## 签约质量门禁
 __QUALITY_GATE__
+- 把能力/职业的独特解法写进人物行动，让选择改变现实筹码或关系；不要只反复确认异常。
+- 核验、登记、封存按其改变局面的作用安排篇幅，不用等待手续代替关键场景。
+- 复杂情感来自人物想要与不肯承认的东西之间的拉扯；保持人物不同的判断与口气，勿用攥拳、发抖反复代替情感。
 
 __REVIEW_RUBRIC__
 - 写完文件后，最终回复只输出一行：`第 __I__ 章完成（约 __WORDS__ 字）`——不要在回复里复述或解释正文。"""
@@ -3067,6 +3070,7 @@ __STYLE__
 - 重要情绪/戏剧变化要有与其分量相称的呈现；避免概括带过，但不把每个变化都扩写成高潮。
 - 删除不改变局面的环境、解释和重复叙述；每段至少完成冲突、信息或人物选择之一。
 - 让主角主动做出选择并推动下一步，补足因果桥，不用旁白硬推剧情。
+- 按“原问题→原场景→改动的选择/后果→保留的伏笔”返修；切入点或设定问题不能仅靠换词、加怪声或情绪动作解决。
 
 ## 要求
 - 针对性解决所有 major 问题（含确定性文本信号指出的问题），保持与前后的剧情衔接；字数仍约 __WORDS__ 字。"""
@@ -3097,13 +3101,25 @@ SERIAL_SIGNING_EVAL_PROMPT = """你是独立小说质量评审（不要修改任
 请输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
 {
   "scores": {"__DIMKEYS__"},
+  "evidence": [{"dim": "每个评分维度各一条", "chapter": 1, "quote": "该章正文连续原文（至少8字）", "analysis": "此引文怎样支持本维度评分、仍有什么局限"}],
   "issues": [{"dim": "维度名", "severity": "major|minor", "note": "具体问题（指明哪一章）", "quote": "支撑该问题的稿件原文连续片段（≥8字，逐字摘录不许改写）"}],
   "summary": "一句话内部文本诊断：优势、主要风险和未验证项；不得表述为平台结论或过签预测"
 }
 统一评分 rubric：1-3 为明显影响理解或阅读的严重问题；4-6 为有具体可定位的弱项；7-8 为基本有效、仍有局部提升空间；9-10 为在本稿目标下表现突出。分数必须由所读文本支撑，不把分数映射成过签概率。
 五个维度固定为：开篇吸引力、情节推进、文风统一、情感细腻度、节奏控制。每项给证据与未读范围；不能因不用某种套路（如黄金三章、打脸、单一视角）扣分。
-分档校准（免费平台拒稿实案，2026-10）：编辑拒稿话术与本五维对应（创新/代入感≈开篇吸引力与情节推进，「风格不统一」≈文风统一，推进生硬/情感不够细腻≈其余两维），打分按平台编辑严格度而非自家喜好。以下形态一律 major 而非 minor：引号制式跨章或章内混用等体例伤；开篇前五段仍无冲突/异常信号；同一流程桥段连排三章以上；核心情绪爆点被一句话带过（无特写放大）。7-8 分只留给「编辑不会一句话拒」的稿子——内部 8 分稿被平台整篮拒的实案为鉴。
+逐维先举正文证据再评分：开篇吸引力检查题材承诺、独有事件机制、人物欲望与代价；
+情节推进检查触发事件→人物选择→对手反应→可见后果，留意靠巧合送线索或流程循环；
+文风统一检查视角距离、语域和人物口气，引号等体例检查单列，不能据此认定编辑拒稿原因；
+情感细腻度检查矛盾欲望、关系与选择如何互相影响，生理动作数量或是否有特写不能代替此项；
+节奏控制检查场景新增了什么与首个单元兑现了什么，不以固定段数、章数、冲突或钩子频次判失败。
+每个维度都要 evidence，正面评分同样需原文与分析；摘要、章名、题材标签不算证据。
+summary 写明实际已读章号、是否节选及尚未验证项；明确区分平台原反馈、文本观察和适配假设。
 可检查文风是否突变、情绪是否被概括、开篇承诺是否兑现、因果桥是否成立、重复是否损害节奏；这些是检查问题而不是预设缺陷。没有当前平台规则或明确编辑反馈时，不把质量评审包装成平台审核结论。
+
+## 作品目标与作者背景（平台反馈仅在确有原文时采用）
+__GOAL__
+__CONTEXT__
+__STYLE__
 
 ## 待评审稿件
 ---
@@ -3726,52 +3742,69 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
     # ---- 独立签约评估设施（开篇闸门 + 2万字检查点共用）----
     def _signing_eval(upto_chapter, note):
-        """按平台五维对截至 upto_chapter 的稿件做一次签约评估。
-        与任务 rubric 解耦（评分维度保持作者口径，签约五维是解释层/平台口径）。
+        """按内部五维对截至 upto_chapter 的稿件做文本评估。
+        与任务 rubric 解耦，不代表平台决定。
         返回 (means, issues, summary)；评估失败返回 (None, [], "")——调用方
         按「未评估」处理，绝不得当 0 分。issues 同时并入 issues_all 供打磨用。"""
-        texts, acc, style_chapters = [], 0, {}
+        texts, style_chapters, read_scope = [], {}, []
+        remaining = 26000
+        signing_review_meta.clear()
         for j in range(start, upto_chapter + 1):
             t = _read_chapter(workdir, j)
             if not t:
                 continue
-            texts.append("### 第 %d 章\n\n%s" % (j, t.strip()))
-            style_chapters[j] = t
-            acc += _wc(t)
-            if acc >= novel_quality.SIGNING_CHECKPOINT_WORDS * 1.2:
+            header = "### 第 %d 章\n\n" % j
+            excerpt = t.strip()[:max(0, remaining - len(header) - 2)]
+            if not excerpt:
                 break
+            texts.append(header + excerpt)
+            style_chapters[j] = excerpt
+            read_scope.append({"chapter": j, "included_chars": len(excerpt),
+                               "total_chars": len(t.strip()), "excerpt": len(excerpt) < len(t.strip())})
+            remaining -= len(header) + len(excerpt) + 2
+        signing_review_meta["read_chapters"] = list(style_chapters)
+        signing_review_meta["read_scope"] = read_scope
         if not texts:
             return None, [], ""
         reviewers = critics or [impl]
         reviews, summaries, issues = [], [], []
-        # 体例一致性（确定性红线，2026-10-15 七猫双拒实案）：混用不交给模型
-        # 分档——模型一贯记 minor 放行、平台按「风格不统一」一句话拒。
+        # 项目体例检查与文学判断分开，不能推断它就是平台拒稿原因。
         issues.extend(novel_quality.style_consistency_notes(style_chapters))
         signing_dimkey = ", ".join('"%s": 0' % d for d in novel_quality.SIGNING_RUBRIC)
         prompt = (SERIAL_SIGNING_EVAL_PROMPT
                   .replace("__DIMKEYS__", signing_dimkey)
                   .replace("__NOTE__", note or "")
-                  .replace("__MANUSCRIPT__", "\n\n".join(texts)[:26000]))
+                  .replace("__GOAL__", str(task.get("goal") or "")[:2000])
+                  .replace("__CONTEXT__", str(task.get("context") or "（无）")[:4000])
+                  .replace("__STYLE__", style_tpl)
+                  .replace("__MANUSCRIPT__", "\n\n".join(texts)))
+        prompt += "\n实际送审范围（仅限下列已读文本，未列章节未读）：%s" % _json.dumps(read_scope, ensure_ascii=False)
+        evidence_errors = []
         for idx, agent in enumerate(reviewers):
             res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
                             prompt, workdir, readonly=True, ev=ev, timeout=2400,
                             note=("签约评估 %s" % (note or "")).strip())
             cj = _critique_json(res, novel_quality.SIGNING_RUBRIC)
-            if cj.get("scores"):
+            errors = novel_quality.review_evidence_errors(cj, style_chapters)
+            evidence_errors.extend(errors)
+            if res.get("ok") and cj.get("scores") and not errors:
                 reviews.append({"id": agent.get("id") or "signing-%d" % idx,
                                 "scores": cj.get("scores")})
-            summaries.append(str(cj.get("summary") or ""))
-            issues.extend((cj.get("issues") or [])[:6])
+                summaries.append(str(cj.get("summary") or ""))
+                issues.extend(it for it in (cj.get("issues") or [])[:6] if isinstance(it, dict))
         agg = quality_gate.aggregate_reviews(
             reviews, novel_quality.SIGNING_RUBRIC, threshold=threshold,
             min_reviewers=1)
-        signing_review_meta.clear()
         signing_review_meta.update({"reviewer_count": agg.get("reviewer_count", 0),
                                     "consensus": agg.get("consensus", False),
-                                    "spreads": agg.get("spreads", {})})
+                                    "spreads": agg.get("spreads", {}),
+                                    "evidence_errors": list(dict.fromkeys(evidence_errors))})
         means = agg.get("means") or {}
-        if not agg.get("eligible") or not means:
+        if not agg.get("consensus") or not means:
             return None, [], ""
+        _anchor_issues(issues, "\n\n".join(style_chapters.values()))
+        signing_review_meta["blocking_issues"] = [it for it in issues
+            if it.get("severity") == "major" and it.get("anchored") is True]
         issues_all.extend({"chapter": upto_chapter, **it} for it in issues)
         return means, issues, next((s for s in summaries if s), "")
 
@@ -4518,7 +4551,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             continue
 
         # 开篇闸门（仅全书第 1 章、真实作者、可经 serial.opening_gate=false 关闭）：
-        # 平台口径「开篇失败=全书判死」，第 1 章必须按签约评估单独核开篇吸引力
+        # 第 1 章先核内部五维，减少在弱开篇上继续扩写的成本。
         gate_live = (start == 1 and i == 1 and impl.get("mode") == "real"
                      and bool(serial.get("opening_gate", True)))
         gate_note = ""
@@ -4544,15 +4577,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             if rnd == 1 and gate_live:
                 s_means, s_issues, s_summary = _signing_eval(
                     i, "（开篇闸门：核第 1 章能否抓住读者）")
+                if s_means is None:
+                    _signing_record("opening_gate", dict(signing_review_meta, chapter=i, evaluated=False))
+                    store.update_run(run_id, expected_status="running", status="failed",
+                                     error="开篇闸门：未完成有效文本评估（模型失败、逐维原文证据缺失或评审分歧），"
+                                           "已保留稿件；恢复评审后重试，不据此判定稿件质量。", ended_at=_now())
+                    return
                 if s_means is not None:
-                    gate_opening_ok = not novel_quality.opening_below(
-                        s_means, threshold_ch)
+                    gate_opening_ok = (_all_ge(s_means, threshold_ch)
+                                       and not signing_review_meta.get("blocking_issues"))
                     _signing_record("opening_gate", {
+                        **signing_review_meta,
                         "chapter": i, "means": s_means,
                         "summary": (s_summary or "")[:200],
                         "opening_below_line": not gate_opening_ok})
                 if s_means is not None and not gate_opening_ok:
-                    # 平台口径未过线：回大纲层重设计前三章节拍，再按新节拍重写，
+                    # 内部评估未过线：回大纲层重设计前三章节拍，再按新节拍重写，
                     # 而不是只修文案——切入点不行是结构病（重设计失败回退普通修订）
                     passed = False
                     critique_txt = "；".join(
@@ -4647,21 +4687,28 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 pass
             _check_cancel(ev)
         if gate_live and not (gate_opening_ok and rounds_used == 1):
-            # 闸门终判（rnd1 已过线且未修订时免复核）：平台口径的开篇吸引力
-            # 仍低于签约线 → 停批止损。写满 8 章才发现开篇不行太贵，这正是
-            # 《戍边骑奴》被整本驳回的病根。
+            # 闸门终判（rnd1 已过线且未修订时免复核）：五维仍低于内部阈值
+            # 时先暂停扩写，不据此预测平台结果。
             s_means2, _si2, s_sum2 = _signing_eval(
                 i, "（开篇闸门终判：重设计/修订后能否申请签约评估）")
             _signing_record("opening_gate_final", {
+                **signing_review_meta,
                 "chapter": i, "means": s_means2 or {},
                 "summary": (s_sum2 or "")[:200]})
-            opening_final = (s_means2 or {}).get(novel_quality.OPENING_DIM)
-            if opening_final is not None and float(opening_final) < threshold_ch:
+            if s_means2 is None:
                 store.update_run(run_id, expected_status="running", status="failed",
-                                 error="开篇闸门：第 1 章签约评估「开篇吸引力」%.1f 低于签约线 %.1f"
-                                       "（已重设计节拍并修订仍不达标）。开篇失败=全书判死，已停批止损；"
+                                 error="开篇闸门终判：未完成有效文本评估，稿件已保留，恢复评审后重试。",
+                                 ended_at=_now())
+                return
+            shortfalls = ["%s %.1f" % (d, v) for d, v in s_means2.items() if v < threshold_ch]
+            blockers = signing_review_meta.get("blocking_issues") or []
+            if shortfalls or blockers:
+                store.update_run(run_id, expected_status="running", status="failed",
+                                 error="开篇闸门：第 1 章内部文本评估 %s（项目阈值 %.1f）"
+                                       "（已尝试重设计或修订仍不达标），暂停扩写；"
                                        "稿件保留，可人工复核或调整目标后重开。"
-                                       % (float(opening_final), threshold_ch),
+                                       % ("、".join(shortfalls) or "存在有正文证据的 major：" +
+                                          "；".join(str(it.get("note") or "")[:100] for it in blockers[:3]), threshold_ch),
                                  ended_at=_now())
                 return
         cs_new = {"chapter": i, "title": ch["title"], "means": means,
@@ -4742,7 +4789,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         except Exception:
             pass
 
-        # ---- 2万字签约预评估检查点（平台口径：前 2 万字定签约）。累计字数
+        # ---- 2万字文本预评估（项目默认检查点，不是平台通用政策）。累计字数
         # 过线时做一次独立签约评估；未达线先重改最弱章一轮再复核一次。
         # 不中止批次——终局全局评审仍是发布门，这里把问题提前暴露并给一次
         # 修复机会（全书评审通过记录 signing_checkpoint，只触发一次）。
@@ -4757,8 +4804,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       "reviewer_count": signing_review_meta.get("reviewer_count", 0),
                       "reviewer_consensus": signing_review_meta.get("consensus", False),
                       "reviewer_spreads": signing_review_meta.get("spreads", {}),
+                      "read_chapters": signing_review_meta.get("read_chapters", []),
+                      "read_scope": signing_review_meta.get("read_scope", []),
+                      "evidence_errors": signing_review_meta.get("evidence_errors", []),
                       "passed": bool(cp_means) and all(
-                          v >= threshold for v in cp_means.values()) if cp_means else None,
+                          v >= threshold for v in cp_means.values()) and not
+                          signing_review_meta.get("blocking_issues") if cp_means else None,
                       "summary": (cp_summary or "")[:200]}
                 if cp["passed"] is False:
                     # 未达线：重改最弱章一轮（按签约评估短板），再复核一次
@@ -4805,8 +4856,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         cp["reviewer_count"] = signing_review_meta.get("reviewer_count", 0)
                         cp["reviewer_consensus"] = signing_review_meta.get("consensus", False)
                         cp["reviewer_spreads"] = signing_review_meta.get("spreads", {})
+                        cp["read_chapters"] = signing_review_meta.get("read_chapters", [])
+                        cp["read_scope"] = signing_review_meta.get("read_scope", [])
+                        cp["evidence_errors"] = signing_review_meta.get("evidence_errors", [])
                         cp["summary"] = (cp_sum2 or "")[:200]
-                        cp["passed"] = all(v >= threshold for v in cp_means2.values())
+                        cp["passed"] = (all(v >= threshold for v in cp_means2.values())
+                                        and not signing_review_meta.get("blocking_issues"))
                 store.update_run(run_id, signing_checkpoint=cp)
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
@@ -5179,9 +5234,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                       duration_s=0.1)
 
     chapters_pass = all(c["passed"] for c in chapter_scores)
-    # 体例一致性终检（确定性，读最终落盘稿）：模型评审对体例伤分档过松
-    # （神瞳实案：ch05 整章「」与其余章 ASCII 直引号混用，内部 8.1 分
-    # publishable=True，平台按「风格不统一」整篮拒）——红线机械进账。
+    # 最终落盘稿的内部体例检查，与平台拒稿原因及文学文风判断分开。
     issues_all.extend(novel_quality.style_consistency_notes(
         {j: _read_chapter(workdir, j) for j in range(start, end + 1)}))
     major_issues = [x for x in _dedup_issues(list(issues_all) + list(global_issues))

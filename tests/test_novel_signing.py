@@ -24,6 +24,8 @@ def _res(text="", ok=True, error=""):
 
 def _critique_json(scores, summary="ok", issues=None):
     return _res(json.dumps({"scores": scores, "issues": issues or [],
+                            "evidence": [{"dim": d, "chapter": 1, "quote": "山" * 12,
+                                          "analysis": "测试所读正文证据"} for d in scores],
                             "summary": summary}, ensure_ascii=False))
 
 
@@ -101,14 +103,14 @@ class SigningPromptContractTests(BaseTest):
         tpl = pipeline.SERIAL_CHAPTER_PROMPT
         self.assertIn("__STYLE__", tpl)
         self.assertIn("__HIGHLIGHT__", tpl)
-        self.assertIn("特写镜头", tpl)
+        self.assertIn("人物行动", tpl)
 
     def test_revise_prompt_carries_beats_style_highlight(self):
         from app.core import pipeline
         tpl = pipeline.SERIAL_REVISE_PROMPT
         for ph in ("__BEATS__", "__HIGHLIGHT__", "__STYLE__", "__CRITIQUE__"):
             self.assertIn(ph, tpl)
-        self.assertIn("特写镜头", tpl)
+        self.assertIn("因果桥", tpl)
 
     def test_signing_eval_prompt_covers_rejection_talk_tracks(self):
         from app.core import pipeline

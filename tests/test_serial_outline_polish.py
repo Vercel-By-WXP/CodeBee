@@ -33,6 +33,9 @@ WEAK = {d: 5.0 for d in RUBRIC}
 
 def _j(scores, issues=None):
     return json.dumps({"scores": scores, "issues": issues or [],
+                       "evidence": [{"dim": d, "chapter": 1,
+                                     "quote": "这是一段足够长的测试正文",
+                                     "analysis": "测试所读正文证据"} for d in scores],
                        "summary": "总评"}, ensure_ascii=False)
 
 

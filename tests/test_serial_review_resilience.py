@@ -238,6 +238,7 @@ class TestPolishLeaderFinishes(SerialReviewBase):
 
     def _run_with(self, task, run, agents, critics, impl, fake_step):
         from app.core import pipeline
+        task = dict(task, serial=dict(task["serial"], opening_gate=False))
         orig_step = pipeline._run_step
         orig_outline = pipeline.planner.make_serial_outline
 

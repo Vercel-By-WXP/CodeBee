@@ -101,6 +101,8 @@ class _SerialFixture(BaseTest):
             "serial": {"chapters": chapters, "words_per_chapter": 300},
             "implementer": "mock-a", "critics": ["c1", "c2"],
         })
+        # Isolate major-repair routing; store normalization does not persist this runtime flag.
+        task = dict(task, serial=dict(task["serial"], opening_gate=False))
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running")
         return task, run
