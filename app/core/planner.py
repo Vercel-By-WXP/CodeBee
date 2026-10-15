@@ -13,7 +13,7 @@ import re
 import time
 from pathlib import Path
 
-from . import knowledge, modelhub, novel_feedback, runner, skills, usage, volumes
+from . import capability_runtime, modelhub, runner, usage, volumes
 
 MAX_SUBTASKS = 4
 DEFAULT_OUTLINE_TIMEOUT = 900   # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够
@@ -602,10 +602,11 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     n = int(serial.get("chapters") or 8)
     wpc = int(serial.get("words_per_chapter") or 2500)
     start = int(serial.get("start_chapter") or 1)
-    sk_block, _ = skills.block_for(task, run_id=run_id)
-    kb_block = knowledge.block_for(task)
-    if kb_block:
-        sk_block = (sk_block + "\n\n" + kb_block) if sk_block else kb_block
+    # The orchestrator must see the same stable capability snapshot as the
+    # drafting/review calls.  Previously this path only loaded the legacy
+    # skills/knowledge pair, silently excluding authorized plugins and local
+    # external Skills from the very outline that shaped the whole serial run.
+    sk_block = capability_runtime.block_for(task, run_id)
     prev_title = ""
     # 分卷规划表：显式卷表 → 每卷章数，皆无则不分卷（整块提示词为空）。
     # 卷边界由章号确定性推导，本批写不到的高章号也要铺出来（upto=start+n-1）。
@@ -840,9 +841,9 @@ def redesign_opening(task, outline=None, critique="", author_agent=None, workdir
               .replace("__GOAL__", task.get("goal", ""))
               .replace("__CONTEXT__", task.get("context") or "（无）")
               .replace("__OUTLINE__", head_txt))
-    feedback = novel_feedback.block_for(task)
-    if feedback:
-        prompt += "\n\n" + feedback
+    cap = capability_runtime.block_for(task, run_id)
+    if cap:
+        prompt += "\n\n" + cap
     orch = _orchestrator()
     if not orch:
         _append_log(log_path, "开篇重设计：编排者未配置，回退普通修订")
@@ -960,12 +961,12 @@ def _reasoning_effort(task):
 
 
 def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=None,
-                   deadline=None):
+                   deadline=None, run_id=None):
     """代码任务计划：编排者 API 优先 → CLI 智能体 → 单步模板。"""
     orch = _orchestrator()
     if orch:
         plan = _orch_code_plan(task, orch[0], orch[1], log_path=log_path,
-                               deadline=deadline)
+                               deadline=deadline, run_id=run_id)
         if plan:
             return plan
     if planner_agent is None:
@@ -973,6 +974,9 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=
     if planner_agent.get("mode") == "mock":
         return _fallback_code_plan(task, "mock 模式：单步模板")
     prompt = _code_plan_prompt(task)
+    cap = capability_runtime.block_for(task, run_id)
+    if cap:
+        prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
                            timeout=_deadline_timeout(deadline, 300), deadline=deadline,
                            cancel_event=ev, resume=resume,
@@ -992,10 +996,14 @@ def _fallback_code_plan(task, note):
             "steps": [{"title": "实现任务", "detail": task["goal"]}]}
 
 
-def _orch_code_plan(task, prov, model, log_path=None, deadline=None):
+def _orch_code_plan(task, prov, model, log_path=None, deadline=None, run_id=None):
     cb = _log_streamer(log_path)
     # §07 T2.2：代码计划同任务同 prompt（断点续跑/重试），TTL 1h 精确缓存
-    res = modelhub.chat(prov["id"], model, _code_plan_prompt(task),
+    prompt = _code_plan_prompt(task)
+    cap = capability_runtime.block_for(task, run_id)
+    if cap:
+        prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap
+    res = modelhub.chat(prov["id"], model, prompt,
                         max_tokens=8000, timeout=_deadline_timeout(deadline, 300), on_delta=cb,
                         reasoning_effort=_reasoning_effort(task),
                         cache_ttl=3600)
@@ -1017,16 +1025,19 @@ def _orch_code_plan(task, prov, model, log_path=None, deadline=None):
             "workflow": _plan_workflow(data)}
 
 
-def make_review_outline(task, deadline=None):
+def make_review_outline(task, deadline=None, run_id=None):
     """review 类任务：编排者产出写作大纲（失败返回 None，起草退回无大纲）。"""
     orch = _orchestrator()
     if not orch:
         return None
     prov, model = orch
-    res = modelhub.chat(prov["id"], model,
-                        (REVIEW_OUTLINE_PROMPT
-                         .replace("__GOAL__", task["goal"])
-                         .replace("__CONTEXT__", task.get("context") or "（无）")),
+    prompt = (REVIEW_OUTLINE_PROMPT
+              .replace("__GOAL__", task["goal"])
+              .replace("__CONTEXT__", task.get("context") or "（无）"))
+    cap = capability_runtime.block_for(task, run_id)
+    if cap:
+        prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap
+    res = modelhub.chat(prov["id"], model, prompt,
                         max_tokens=8000, timeout=_deadline_timeout(deadline, 300),
                         reasoning_effort=_reasoning_effort(task),
                         cache_ttl=3600)   # §07 T2.2：同任务重试幂等，TTL 1h

@@ -47,6 +47,30 @@ class CapabilityRuntimeTests(BaseTest):
         self.assertIn("七猫签约标准与写作规范", block)
         self.assertIn("番茄小说写作与流量守则", block)
 
+    def test_codebee_orchestrator_planning_prompt_receives_capabilities(self):
+        """Planner API calls must consume the same run snapshot as writers."""
+        from app.core import knowledge, planner, skills
+
+        skills.upsert_lesson("code", "计划证据规则", "先依据仓库事实拆解任务。")
+        knowledge.upsert_entry("code", "计划知识事实", "该计划约束已确认。", status="approved")
+        task = {"id": "planner-run", "type": "code", "goal": "按计划知识事实修改代码",
+                "context": "计划证据规则", "workdir": str(self.workdir)}
+        seen = {}
+
+        def fake_chat(_provider, _model, prompt, **_kwargs):
+            seen["prompt"] = prompt
+            return {"ok": True, "text": "```json {\"difficulty\":\"easy\",\"subtasks\":[{\"title\":\"实现\",\"detail\":\"完成\"}]} ```",
+                    "usage": {}, "raw": {}}
+
+        with mock.patch.object(planner, "_orchestrator", return_value=(
+                {"id": "prov", "name": "测试"}, "model")), \
+             mock.patch.object(planner.modelhub, "chat", side_effect=fake_chat):
+            result = planner._orch_code_plan(task, {"id": "prov", "name": "测试"},
+                                             "model", run_id="planner-run")
+        self.assertTrue(result["steps"])
+        self.assertIn("计划证据规则", seen["prompt"])
+        self.assertIn("计划知识事实", seen["prompt"])
+
     def test_mcp_evidence_is_updated_without_changing_prompt_snapshot(self):
         from app.core import capability_runtime
 

@@ -1746,7 +1746,7 @@ def _run_code(run, task, agents, ev, stats, mode):
             _resume_workdir(resume_ctx, workdir), ev,
             resume=resume_ctx["session"] if resume_ctx else None,
             log_path=str(plan_log) if plan_log else None,
-            deadline=_run_deadline(run_id))
+            deadline=_run_deadline(run_id), run_id=run_id)
         _ensure_budget(run_id)
         # 规划器判定优先于启发式（仅当用户未显式指定难度）
         if not explicit and plan.get("difficulty") in ("easy", "hard"):
@@ -5555,7 +5555,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     # 编排者大纲：只对真实执行有意义；失败静默退回无大纲（喂入带指令的任务副本）
     outline = (_planner_call(planner.make_review_outline,
                              _steered_task(run_id, task),
-                             deadline=_run_deadline(run_id))
+                             deadline=_run_deadline(run_id), run_id=run_id)
                if workflow["outline"] and impl.get("mode") != "mock" else None)
     _ensure_budget(run_id)
     if outline:
