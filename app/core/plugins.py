@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import threading
 import time
@@ -23,7 +24,7 @@ try:
 except ImportError:  # pragma: no cover - Python 3.10 fallback
     tomllib = None
 
-from . import market, paths, skills
+from . import market, paths, skills, plugin_compat
 
 _LOCK = threading.RLock()
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -149,6 +150,10 @@ def _path_values(value):
 def _validate_manifest(plugin_dir, manifest, *, require_dir_name=True):
     if not isinstance(manifest, dict):
         raise PluginError("plugin.json 顶层必须是对象")
+    try:
+        compatibility = plugin_compat.check(manifest)
+    except ValueError as exc:
+        raise PluginError(str(exc)) from exc
     name = manifest.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise PluginError("插件 name 非法")
@@ -198,6 +203,7 @@ def _validate_manifest(plugin_dir, manifest, *, require_dir_name=True):
         raise PluginError("暂不支持 hooks 插件；请使用 MCP 或技能声明")
     return {
         "manifest": manifest,
+        "compatibility": compatibility,
         "dir": str(Path(plugin_dir).resolve()),
         "name": name,
         "version": version,
@@ -455,7 +461,7 @@ def discover(roots=None):
     return out
 
 
-def _skill_files(desc):
+def _skill_files(desc, package_id=None):
     files = []
     for base in desc["skill_paths"]:
         if base.is_file():
@@ -468,7 +474,7 @@ def _skill_files(desc):
         raise PluginError("插件技能文件超过 %d 个" % _MAX_SKILL_FILES)
     total = 0
     out = {}
-    package_id = "plugin-" + desc["name"]
+    package_id = package_id or ("plugin-" + desc["name"])
     for index, path in enumerate(files):
         size = path.stat().st_size
         if size > _MAX_SKILL_BYTES:
@@ -587,6 +593,8 @@ def install(plugin_id, roots=None, grants=None):
     desc = _descriptor_for(plugin_id, roots=roots)
     if not desc:
         return None, "插件不存在或 manifest 无效: %s" % plugin_id
+    if not desc["compatibility"]["compatible"]:
+        return None, desc["compatibility"]["reason"]
     policy = authorize(desc, grants=grants)
     if not policy["allowed"]:
         return None, "插件需要显式能力授权: %s" % ", ".join(policy["missing"])
@@ -610,6 +618,10 @@ def install(plugin_id, roots=None, grants=None):
                 shutil.rmtree(target, ignore_errors=True)
             _copy_plugin(source, target)
             installed_desc = load_manifest(target)
+            if not installed_desc["compatibility"]["compatible"]:
+                raise PluginError(installed_desc["compatibility"]["reason"])
+            if not authorize(installed_desc, grants=grants)["allowed"]:
+                raise PluginError("插件需要显式能力授权")
             files = _skill_files(installed_desc)
             skill_result = None
             if files:
@@ -653,12 +665,110 @@ def install(plugin_id, roots=None, grants=None):
             "has_mcp": bool(installed_desc.get("mcp_path") or installed_desc.get("mcp_inline"))}, None
 
 
+def upgrade(plugin_id, roots=None):
+    """Stage and preflight an update; preserve enablement and roll back failures."""
+    plugin_id = str(plugin_id or "")
+    with _LOCK:
+        reg = _load_registry()
+        old = (reg.get("installed") or {}).get(plugin_id)
+        if not old:
+            return None, "插件尚未安装"
+        target = Path(str(old.get("install_dir") or "")).resolve()
+        try:
+            target.relative_to(_install_root().resolve())
+        except ValueError:
+            return None, "插件安装路径越界，拒绝更新"
+        if target != (_install_root() / plugin_id).resolve() or not _NAME_RE.fullmatch(plugin_id):
+            return None, "插件安装路径非法"
+        try:
+            if roots is None:
+                desc = load_manifest(old.get("source") or "")
+            else:
+                desc = _descriptor_for(plugin_id, roots=roots)
+            if not desc:
+                return None, "插件更新源无效"
+            if not desc["compatibility"]["compatible"]:
+                return None, desc["compatibility"]["reason"]
+            policy = authorize(desc, grants=old.get("grants") or [])
+            if not policy["allowed"]:
+                return None, "插件更新需要显式能力授权: %s" % ", ".join(policy["missing"])
+        except PluginError as exc:
+            return None, str(exc)
+        transaction = _install_root() / (".update-" + secrets.token_hex(8))
+        staged = transaction / plugin_id
+        backup = transaction / "previous" / plugin_id
+        market_id = "plugin-%s-%s" % (plugin_id, secrets.token_hex(6))
+        market_written = replaced = committed = False
+        new = dict(old)
+        try:
+            transaction.mkdir(parents=True)
+            _copy_plugin(Path(desc["dir"]), staged)
+            candidate = load_manifest(staged)
+            # Recheck staged bytes before publishing, not just the source view.
+            if not candidate["compatibility"]["compatible"]:
+                raise PluginError(candidate["compatibility"]["reason"])
+            if not authorize(candidate, grants=old.get("grants") or [])["allowed"]:
+                raise PluginError("插件更新需要显式能力授权")
+            files = _skill_files(candidate, package_id=market_id)
+            pack_ids = []
+            if files:
+                market_written = True  # cleanup also covers partial installation
+                result, error = market.install_files(market_id, candidate["display_name"], files,
+                    extra={"plugin_id": plugin_id, "plugin_version": candidate["version"]})
+                if error:
+                    raise PluginError(error)
+                names = set(result.get("files") or files)
+                pack_ids = [p["id"] for p in skills.user_packs()
+                            if Path(str(p.get("file") or "")).name in names]
+                for pack_id in pack_ids:
+                    error = skills.pack_op(pack_id, "enable" if old.get("enabled") else "disable")
+                    if error:
+                        raise PluginError(error)
+            backup.parent.mkdir(parents=True)
+            target.rename(backup)
+            replaced = True
+            staged.rename(target)
+            new.update({"source": desc["dir"], "market_id": market_id if files else "",
+                        "skill_pack_ids": pack_ids, "updated_at": _now(),
+                        "has_mcp": bool(candidate.get("mcp_path") or candidate.get("mcp_inline"))})
+            reg["installed"][plugin_id] = new
+            _save_registry(reg)
+            committed = True
+        except (OSError, PluginError) as exc:
+            if replaced:
+                try:
+                    if target.exists():
+                        shutil.rmtree(target)
+                    backup.rename(target)
+                except OSError as rollback_error:
+                    return None, "%s; rollback failed: %s; backup: %s" % (exc, rollback_error, backup)
+            if market_written:
+                market.remove(market_id)
+            return None, str(exc)
+        finally:
+            if transaction.exists():
+                # If rollback failed, retain the backup for manual recovery.
+                if not backup.exists() or committed:
+                    shutil.rmtree(transaction, ignore_errors=True)
+        cleanup_error = market.remove(old["market_id"]) if old.get("market_id") else None
+        _invalidate_mcp_cache()
+        return {"ok": True, "id": plugin_id, "version": candidate["version"],
+                "enabled": bool(new.get("enabled")), "cleanup_error": cleanup_error}, None
+
+
 def toggle(plugin_id, enabled):
     with _LOCK:
         reg = _load_registry()
         rec = (reg.get("installed") or {}).get(str(plugin_id))
         if not rec:
             return "插件尚未安装"
+        if enabled:
+            try:
+                desc = load_manifest(rec.get("install_dir") or "")
+            except PluginError as exc:
+                return str(exc)
+            if not desc["compatibility"]["compatible"]:
+                return desc["compatibility"]["reason"]
         pack_ids = list(rec.get("skill_pack_ids") or [])
         changed = []
         action = "enable" if enabled else "disable"
@@ -745,6 +855,7 @@ def _catalog_row(desc):
         "skill_count": len(skill_names), "has_mcp": bool(desc.get("mcp_path") or desc.get("mcp_inline")),
         "unsupported": desc["unsupported"], "source": desc["dir"],
         "available": True, "installed": False, "state": "available",
+        "compatibility": desc.get("compatibility") or {"compatible": True},
     }
 
 
@@ -764,6 +875,13 @@ def view(roots=None):
         if not row:
             continue
         row["installed"] = bool(target is not None and target.is_dir())
+        if row["installed"]:
+            try:
+                installed = load_manifest(target)
+                row["version"] = installed["version"]
+                row["compatibility"] = installed["compatibility"]
+            except PluginError as exc:
+                row["compatibility"] = {"compatible": False, "reason": str(exc)}
         row["state"] = "enabled" if rec.get("enabled", True) else "disabled"
         row["enabled"] = bool(rec.get("enabled", True))
         row["install_dir"] = str(target) if target is not None else ""
@@ -952,6 +1070,8 @@ def active_mcp_servers():
         path = Path(str(rec.get("install_dir") or ""))
         try:
             desc = load_manifest(path)
+            if not desc["compatibility"]["compatible"]:
+                continue
             policy = authorize(desc, grants=rec.get("grants") or [])
             if not policy["allowed"]:
                 continue

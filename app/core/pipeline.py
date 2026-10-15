@@ -489,10 +489,12 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     dead_msg = _binding_dead_msg(agent) if dead_binding else ""
     if dead_binding:
         note = ((note + "；") if note else "") + "⚠ " + dead_msg
+    from . import execution_config
     step, log_abs = store.add_step(run_id, role, agent["id"],
                                    agent.get("label", agent["id"]), note=note,
                                    model=agent.get("model") or "",
-                                   provider=_binding_brief(agent))
+                                   provider=_binding_brief(agent),
+                                   configuration=execution_config.agent_view(agent, resume=resume))
     try:
         checkpoint_effects = [] if readonly else ["workspace_files"]
         if agent.get("mode") != "mock":
@@ -715,9 +717,11 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     内部 normalize 后在工具执行期强制。"""
     _wait_gate(run_id, ev)
     deadline = _ensure_budget(run_id)
+    from . import execution_config
     step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note,
                                    model=bi.get("model") or "",
-                                   provider=str(bi.get("provider_id") or "")[:120])
+                                   provider=str(bi.get("provider_id") or "")[:120],
+                                   configuration=execution_config.agent_view(bi))
     start = time.time()
     agent_pseudo = {"id": "builtin", "label": "CodeBee", "kind": "builtin", "mode": "real",
                     "provider": {"id": bi.get("provider_id") or "",
@@ -982,6 +986,7 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
         # 孙进程可能仍在跑，孤儿清扫稍后兜底。只提示不改变终态语义。
         step_summary = ((step_summary + "\n") if step_summary else "") + \
             "⚠ 进程树未确认清空：孙进程可能仍在运行（孤儿清扫稍后兜底）"
+    from . import execution_config
     store.finish_step(run_id, step["n"],
                       status,
                       summary=step_summary,
@@ -990,6 +995,7 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
                       tokens=res.get("tokens", 0),
                       duration_s=time.time() - start,
                       model=res.get("model"),
+                      binding_result=execution_config.result_view(res),
                       # 智能体的最终回答（runner 已从 JSONL 事件流里抽出 agent_message）。
                       # 对话视图直读这个；日志文件是全量事件流，塞进气泡就成了「看日志」。
                       output=(res.get("text") or ""),

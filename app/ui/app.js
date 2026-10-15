@@ -6453,6 +6453,33 @@ function renderChatNav() {
   nav.classList.remove("hidden");
 }
 
+function executionConfigHtml(run) {
+  const config = ((run || {}).execution_snapshot || {}).configuration || {};
+  const parameters = config.parameters || {};
+  const steps = (run.steps || []).filter(step => step.configuration);
+  if (!Object.keys(parameters).length && !steps.length) return "";
+  const labels = { "task.request": "任务指定", "task.params": "任务修改", flow: "流程", default: "默认",
+    "default.workload": "按工作量默认", environment: "环境配置", "task.implementer": "手动执行者",
+    "task.direct_agent": "指定 CLI", "task.direct_provider": "指定厂商", "task.resume": "续接会话",
+    "binding.explicit": "显式模型绑定", "binding.automatic": "自动模型推荐", "cli.default": "CLI 默认",
+    orchestrator: "编排者配置", "provider.default": "厂商默认", automatic: "自动选择", unknown: "未知", mock: "演示" };
+  const label = source => t(labels[source] || source || "未知");
+  const rows = Object.entries(parameters).map(([key, item]) => '<div class="rd-context-row"><span>' + esc(key) +
+    '</span><span>' + esc(typeof item.value === "object" ? JSON.stringify(item.value) : String(item.value ?? "")) +
+    ' · ' + esc(label(item.source)) + '</span></div>').join("");
+  const actual = steps.map(step => {
+    const binding = step.configuration, result = binding.result || {};
+    const model = result.model || binding.model || "";
+    const provider = result.provider_id || binding.provider_id || "";
+    return '<div class="rd-context-row"><span>' + esc(step.role || String(step.n)) + '</span><span>' +
+      esc([binding.agent, provider, model, label(binding.binding_source)].filter(Boolean).join(" · ")) + '</span></div>';
+  }).join("");
+  const selection = config.selection || {};
+  return '<details class="rd-context-section" data-config-details><summary>' + esc(t("配置来源")) + '</summary>' +
+    '<div class="hint">' + esc(t("任务选择：") + label(selection.source)) + '</div>' +
+    ((selection.overrides || []).length ? '<div class="hint">' + esc(t("已被覆盖：") + selection.overrides.join(", ")) + '</div>' : "") + rows + actual + '</details>';
+}
+
 function renderChatContext(direct) {
   const box = $("rd-context");
   if (!box) return;
@@ -6505,7 +6532,7 @@ function renderChatContext(direct) {
     return { rel: path, name: String(name), runId };
   }).filter(Boolean);
   const sig = JSON.stringify([key, run.id, branch, changes.add_total, changes.del_total, done, total,
-    steps.map(s => [s.n, s.status, s.summary, s.log, s.duration_s]), run.status, run.started_at,
+    steps.map(s => [s.n, s.status, s.summary, s.log, s.duration_s, s.configuration]), run.status, run.started_at,
     atts, project, !!wb, wb && wb.ahead, agents.size, agentDone, agentRunning,
     run.status === "running" ? Math.floor(Date.now() / 10000) : 0]);
   if (box.dataset.signature === sig) { box.classList.remove("hidden"); return; }
@@ -6567,7 +6594,10 @@ function renderChatContext(direct) {
       '<span class="rd-context-muted rd-context-empty">' + esc(t("暂无附件")) + '</span>') + '</div>' +
     (atts.length > 3 ? '<button type="button" class="rd-context-link" data-context-action="all-sources">' +
       icon("link") + esc(t("查看全部")) + '</button>' : "") + '</div>';
+  html += executionConfigHtml(run);
+  const configOpen = !!box.querySelector('[data-config-details][open]');
   box.innerHTML = html;
+  if (configOpen && box.querySelector('[data-config-details]')) box.querySelector('[data-config-details]').open = true;
   if (box.dataset.sourcesExpanded === "true") {
     box.querySelectorAll(".rd-context-extra").forEach(row => row.classList.remove("hidden"));
     const all = box.querySelector('[data-context-action="all-sources"]');
@@ -15012,6 +15042,7 @@ function loadHooksPanel() {
   api("/api/hooks").then((d) => {
     S.hooks = d.hooks || [];
     S.hookEvents = d.events || [];
+    S.hookDiagnostics = d.diagnostics || {};
     renderHooks();
   }).catch((e) => toast(t("加载失败：") + (e.message || e), true));
 }
@@ -15023,6 +15054,7 @@ function renderHooks() {
   if (empty) empty.classList.toggle("hidden", list.length > 0);
   const evLabel = { task_start: t("任务开始"), message_submit: t("消息送达"), run_end: t("运行结束") };
   box.innerHTML = list.map((h, i) => {
+    const diagnostic = hookDiagnosticHtml(h, S.hookDiagnostics);
     return '<div class="card hook-card" data-i="' + i + '">' +
       '<div class="hook-row">' +
       '<input class="hook-name" value="' + esc(h.name || "") + '" placeholder="' + esc(t("钩子名称")) + '" data-hf="name">' +
@@ -15041,7 +15073,7 @@ function renderHooks() {
       '<input class="hook-timeout" type="number" min="1" max="120" value="' + Number(h.timeout_s || 10) + '" data-hf="timeout_s">' +
       '<button type="button" class="ghost small" data-hook-test="' + i + '">' + t("测试") + "</button>" +
       '<button type="button" class="ghost small" onclick="removeHook(' + i + ')">' + t("删除") + "</button>" +
-      '<span class="hint hook-test-out"></span>' +
+      '<span class="hint hook-test-out">' + diagnostic + '</span>' +
       "</div></div>";
   }).join("");
 }
@@ -15050,6 +15082,17 @@ window.removeHook = function (i) {
   (S.hooks || []).splice(i, 1);
   renderHooks();
 };
+
+function hookDiagnosticHtml(hook, diagnostics) {
+  const match = row => row.hook_id === hook.id && row.event === hook.event;
+  const recent = ((diagnostics || {}).recent || []).find(match);
+  const failure = ((diagnostics || {}).last_errors || []).find(match);
+  const labels = { succeeded: "成功", failed: "执行失败", timeout: "超时",
+    spawn_failed: "启动失败", invalid_command: "命令无效" };
+  return (recent ? esc(t("最近调用：") + t(labels[recent.status] || recent.status) +
+    " · " + recent.duration_ms + " ms" + (recent.exit_code != null ? " · exit " + recent.exit_code : "")) : "") +
+    (failure ? '<br><span class="warn">' + esc(t("最近错误：") + (failure.error || t(labels[failure.status] || failure.status))) + '</span>' : "");
+}
 
 function hookHarvest() {
   return Array.from(document.querySelectorAll("#hooks-list .hook-card")).map((card) => {
@@ -15357,6 +15400,7 @@ function pluginCardHtml(p) {
     ops = '<label class="switch" title="' + esc(p.enabled ? t("已启用") : t("已停用")) + '">' +
       '<input type="checkbox"' + (p.enabled ? " checked" : "") +
       ' onchange="pluginToggle(\'' + esc(p.id) + '\', this.checked)"></label>' +
+      '<button class="ghost small" onclick="pluginUpdate(\'' + esc(p.id) + '\')">' + t("更新") + "</button>" +
       '<button class="ghost small" onclick="pluginRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
   } else {
     ops = '<button class="primary small" onclick="pluginInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
@@ -15371,6 +15415,8 @@ function pluginCardHtml(p) {
     '<span class="name">' + esc(t(title)) + "</span>" +
     '<span class="tag">' + esc(t(p.category || "Productivity")) + "</span></div>" +
     '<div class="note">' + esc(t(p.short_description || p.description || p.error || "")) + "</div>" +
+    (p.compatibility && !p.compatibility.compatible ? '<div class="note warn">' +
+      esc(p.compatibility.reason || t("宿主版本不兼容")) + '</div>' : "") +
     '<div class="mk-meta"><span>' + esc(features) + '</span><span>' + esc(p.author || "") + "</span></div>" +
     (caps ? '<div class="mk-meta">' + caps + "</div>" : "") +
     '<div class="ops">' + ops + "</div></div>";
@@ -15402,6 +15448,15 @@ async function pluginToggle(id, enabled) {
     toast(enabled ? t("插件已启用") : t("插件已停用"));
   } catch (e) { toast(e.message || t("操作失败"), true); }
   loadPlugins();
+}
+
+async function pluginUpdate(id) {
+  try {
+    const result = await api("/api/plugins/" + encodeURIComponent(id) + "/update", { method: "POST", body: "{}" });
+    toast(result.cleanup_error ? t("插件已更新，旧技能清理失败：") + result.cleanup_error : t("插件已更新，启停状态已保留"), !!result.cleanup_error);
+  } catch (e) { toast(e.message || t("更新失败"), true); }
+  await loadPlugins();
+  loadMarket();
 }
 
 async function pluginRemove(id) {

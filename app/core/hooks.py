@@ -19,6 +19,9 @@ import logging
 import os
 import shlex
 import subprocess
+import time
+
+from . import hook_diagnostics
 
 from . import paths
 
@@ -91,19 +94,28 @@ def _argv(cmd):
     return out
 
 
-def _run_one(h, payload):
-    """跑单条钩子。返回注入文本或 None（失败/超时/空输出）。"""
+def _execute(h, payload):
+    """Execute once and report the real process outcome without raising."""
+    start = time.monotonic()
+
+    def finish(status, *, output=None, exit_code=None, error=""):
+        error = hook_diagnostics.safe_error(error)
+        result = {"ok": status == "succeeded", "status": status,
+                  "output": output, "error": error, "exit_code": exit_code}
+        try:
+            hook_diagnostics.record(paths.DATA_DIR, h, payload, status=status, exit_code=exit_code,
+                                    duration_ms=(time.monotonic() - start) * 1000, error=error)
+        except Exception:
+            pass  # Diagnostic storage never changes hook execution semantics.
+        return result
+
     try:
         argv = _argv(h.get("cmd"))
-    except ValueError as e:
-        log.warning("hook[%s %s] 命令解析失败：%s", h.get("name"), h.get("event"), str(e)[:120])
-        return None
-    if not argv:
-        return None
+        if not argv:
+            return finish("invalid_command", error="Hook command is empty")
+    except ValueError as exc:
+        return finish("invalid_command", error=str(exc))
     try:
-        # Hook input/output is a UTF-8 JSON/text protocol. Python subprocesses on
-        # Windows otherwise inherit the OEM code page and their Chinese stdout is
-        # decoded as mojibake below. Non-Python hooks ignore this variable.
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.run(
@@ -112,21 +124,30 @@ def _run_one(h, payload):
             capture_output=True, timeout=int(h.get("timeout_s") or _DEFAULT_TIMEOUT),
             creationflags=_CREATE_NO_WINDOW, env=env)
     except subprocess.TimeoutExpired:
-        log.warning("hook[%s %s] 超时，已跳过", h.get("name"), h.get("event"))
-        return None
-    except Exception as e:
-        log.warning("hook[%s %s] 执行失败：%s", h.get("name"), h.get("event"), str(e)[:120])
-        return None
+        return finish("timeout", error="Hook timed out")
+    except Exception as exc:
+        return finish("spawn_failed", error=str(exc))
+    if proc.returncode != 0:
+        stderr = (proc.stderr or b"").decode("utf-8", "replace")
+        return finish("failed", exit_code=proc.returncode,
+                      error="Hook exit %s: %s" % (proc.returncode, stderr))
     out = (proc.stdout or b"").decode("utf-8", "replace").strip()
-    if not out:
-        return None
     try:
         data = json.loads(out)
         if isinstance(data, dict):
-            return str(data.get("inject") or "") or None
-    except Exception:
+            out = str(data.get("inject") or "")
+    except (ValueError, TypeError):
         pass
-    return out
+    return finish("succeeded", output=out or None, exit_code=0)
+
+
+def _run_one(h, payload):
+    result = _execute(h, payload)
+    return result["output"] if result["ok"] else None
+
+
+def diagnostics():
+    return hook_diagnostics.view(paths.DATA_DIR)
 
 
 def run_event(event, ctx=None, task_id=None, run_id=None, text=None):
@@ -158,5 +179,7 @@ def test_one(cmd, event="task_start", timeout_s=None):
     """设置页「测试」：手动跑一条钩子，返回 (ok, 输出/错误人话)。"""
     h = {"name": "test", "event": event if event in EVENTS else "task_start",
          "cmd": cmd, "timeout_s": timeout_s or _DEFAULT_TIMEOUT}
-    piece = _run_one(h, {"event": h["event"], "task_id": "", "run_id": "", "text": ""})
-    return True, piece if piece else "（无输出，未注入）"
+    result = _execute(h, {"event": h["event"], "task_id": "", "run_id": "", "text": ""})
+    if not result["ok"]:
+        return False, result["error"]
+    return True, result["output"] or "（无输出，未注入）"

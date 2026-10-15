@@ -456,6 +456,8 @@ def create_task(payload):
             task["acceptance_criteria"])
     except Exception:
         pass
+    from . import execution_config
+    task["configuration_sources"] = execution_config.sources(task, payload, flow)
     with LOCK:
         _TASKS[task["id"]] = task
         _save_json(paths.TASKS_DIR / (task["id"] + ".json"), task)
@@ -828,6 +830,7 @@ def _execution_snapshot(task):
     not rewrite the explanation of an existing run.
     """
     task = task or {}
+    from . import execution_config
     flow_snapshot = dict(task.get("flow_snapshot") or {})
     flow_digest = str(flow_snapshot.get("digest") or "")
     flow_content_sha = str(flow_snapshot.get("content_sha256") or "")
@@ -851,6 +854,7 @@ def _execution_snapshot(task):
         expert_snapshot = {}
     snapshot = {
         "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "configuration": execution_config.capture(task),
         "task_id": task.get("id") or "",
         "flow_revision": flow_digest,
         "flow_revision_id": flow_revision_id,
@@ -2229,6 +2233,12 @@ def update_task_params(task_id, patch):
                 thresholds = acceptance.normalize_thresholds(patch["acceptance_thresholds"])
             except ValueError as exc:
                 return False, str(exc)
+        if task.get("engine") == "direct":
+            pv = str(patch.get("direct_provider_id", task.get("direct_provider_id")) or "").strip()[:80]
+            mv = str(patch.get("direct_model", task.get("direct_model")) or "").strip()[:160]
+            if mv and not pv:
+                return False, "指定对话模型时必须同时指定厂商"
+        before_params = {key: task.get(key) for key in patch}
         changed = False
         mode = str(patch.get("mode") or "").strip()
         if mode in ("auto", "fast", "expert", "manual"):
@@ -2241,17 +2251,13 @@ def update_task_params(task_id, patch):
                 task["thinking"] = thinking
                 changed = True
         if task.get("engine") == "direct":
-            pv = str(patch.get("direct_provider_id") or "").strip()[:80]
-            mv = str(patch.get("direct_model") or "").strip()[:160]
-            if mv and not pv:
-                return False, "指定对话模型时必须同时指定厂商"
             if task.get("direct_provider_id") != pv or task.get("direct_model") != mv:
                 task["direct_provider_id"] = pv
                 task["direct_model"] = mv
                 changed = True
             # 执行 CLI 可改/可清（清空 = 回内置智能体或模型绑定）；与模型绑定
             # 允许共存，运行时 CLI 优先
-            av = str(patch.get("direct_agent") or "").strip()[:80]
+            av = str(patch.get("direct_agent", task.get("direct_agent")) or "").strip()[:80]
             if task.get("direct_agent") != av and (av or task.get("direct_agent")):
                 task["direct_agent"] = av
                 changed = True
@@ -2268,13 +2274,18 @@ def update_task_params(task_id, patch):
             task["acceptance_thresholds"] = thresholds
             changed = True
         if changed:
+            from .execution_config import FIELDS
+            sources = task.setdefault("configuration_sources", {})
+            for key in FIELDS:
+                if key in patch and before_params.get(key) != task.get(key):
+                    sources[key] = "task.params"
             task["rev"] = int(task.get("rev") or 1) + 1
             _save_json(paths.TASKS_DIR / (task_id + ".json"), task)
             bump_state()
     return True, ""
 
 
-def add_step(run_id, role, agent_id, agent_label, note="", model="", provider=""):
+def add_step(run_id, role, agent_id, agent_label, note="", model="", provider="", configuration=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -2299,6 +2310,9 @@ def add_step(run_id, role, agent_id, agent_label, note="", model="", provider=""
             "ended_at": None, "duration_s": None, "exit_code": None,
             "summary": "", "log": None, "cost_usd": 0.0, "tokens": 0,
         }
+        if configuration is not None:
+            import copy
+            step["configuration"] = copy.deepcopy(configuration)
         run["steps"].append(step)
         log_rel = "steps/%02d-%s-%s.log" % (n, _safe_name(role), _safe_name(agent_id))
         step["log"] = log_rel
@@ -2360,13 +2374,15 @@ def clear_stream_state(run_id=None, n=None):
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
                 followups=None, thinking=None, partial=False, acp_events=None,
-                command=None, verify_command=None):
+                command=None, verify_command=None, binding_result=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
             return
         for s in run["steps"]:
             if s["n"] == n:
+                if binding_result is not None:
+                    s.setdefault("configuration", {})["result"] = binding_result
                 s["status"] = status
                 s["ended_at"] = time.strftime("%H:%M:%S")
                 s["ended_at_epoch"] = time.time()

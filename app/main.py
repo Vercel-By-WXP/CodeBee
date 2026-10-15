@@ -676,7 +676,11 @@ class Handler(BaseHTTPRequestHandler):
                 # 任务生命周期钩子配置（本机设置；只读列表）
                 from core import hooks
                 return self._json(200, {"hooks": hooks.load_list(),
-                                        "events": list(hooks.EVENTS)})
+                                        "events": list(hooks.EVENTS),
+                                        "diagnostics": hooks.diagnostics()})
+            if path == "/api/hooks/diagnostics":
+                from core import hooks
+                return self._json(200, hooks.diagnostics())
             if path == "/api/wxdigest/pythons":
                 # 64 位 Python 候选（蜜蜂坞微信直连配置）：扫描后台跑，此端点轮询
                 from core import wxdigest
@@ -792,6 +796,13 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 # 任务检查器（右缘停靠列）专用：轻量聚合、可轮询，不带 diff 文本
                 return self._api_task_side(m.group(1))
+            m = re.match(r"^/api/runs/([^/]+)/config$", path)
+            if m:
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "run not found"})
+                from core import execution_config
+                return self._json(200, execution_config.run_view(run))
             m = re.match(r"^/api/tasks/([^/]+)/detail$", path)
             if m:
                 task = store.get_task(m.group(1))
@@ -2081,13 +2092,16 @@ class Handler(BaseHTTPRequestHandler):
             from core import knowledge
             n = knowledge.learn_from_run((self._body().get("run_id") or ""))
             return self._json(200, {"ok": True, "learned": n})
-        m = re.match(r"^/api/plugins/([^/]+)/(install|enable|disable|remove|grant)$", path)
+        m = re.match(r"^/api/plugins/([^/]+)/(install|update|enable|disable|remove|grant)$", path)
         if m:
             # 本地插件生命周期：只搬文件+记账（skills 走 market.install_files、
             # MCP 只暴露声明），永不执行插件代码。前端 loadPlugins 拉的就是
             # 上面 GET /api/plugins；缺这组路由时设置页会显示「插件加载失败」。
             from core import plugins
             pid, op = m.group(1), m.group(2)
+            if op == "update":
+                result, err = plugins.upgrade(pid)
+                return self._json(400, {"error": err}) if err else self._json(200, result)
             if op == "install":
                 body = self._body()
                 result, err = plugins.install(pid, grants=body.get("grants") or [])

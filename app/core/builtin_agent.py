@@ -111,6 +111,7 @@ def resolve(provider_id="", model="", difficulty="default"):
                     selected = (p.get("model") or "").strip()
             if selected:
                 return {"prov": p, "model": selected,
+                        "selection_source": "task.direct_provider",
                         "provider_id": p.get("id") or "",
                         "provider_name": p.get("name") or p.get("id") or ""}
         return None
@@ -122,6 +123,7 @@ def resolve(provider_id="", model="", difficulty="default"):
     if orch:
         prov, model = orch
         return {"prov": prov, "model": model,
+                "selection_source": "orchestrator",
                 "provider_id": prov.get("id") or "",
                 "provider_name": prov.get("name") or prov.get("id") or ""}
     for p in modelhub.providers():
@@ -136,6 +138,7 @@ def resolve(provider_id="", model="", difficulty="default"):
             m = (p.get("model") or "").strip()
         if m:
             return {"prov": p, "model": m, "provider_id": p.get("id") or "",
+                    "selection_source": "provider.default",
                     "provider_name": p.get("name") or p.get("id") or ""}
     return None
 
