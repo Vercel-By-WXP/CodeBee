@@ -67,6 +67,7 @@ class OpeningEvidenceGateTests(BaseTest):
         runner = signing.TestOpeningGate(methodName="runTest")
         calls = []
         self.signing_prompts = []
+        self.global_prompts = []
 
         def fake(run_id, role, agent, prompt, workdir, readonly, ev, *args, **kwargs):
             calls.append(role)
@@ -75,7 +76,10 @@ class OpeningEvidenceGateTests(BaseTest):
             if role == "signing-eval":
                 self.signing_prompts.append(prompt)
                 return signing_result() if callable(signing_result) else signing_result
-            if role.startswith("critique-c") or role == "global-critique":
+            if role == "global-critique":
+                self.global_prompts.append(prompt)
+                return _critique_json(dict.fromkeys(task["rubric"], 8))
+            if role.startswith("critique-c"):
                 return _critique_json(dict.fromkeys(task["rubric"], 8))
             return _res()
 
@@ -140,6 +144,24 @@ class OpeningEvidenceGateTests(BaseTest):
         self.assertIn("nf-qimao-shentong-20261015", prompt)
         self.assertIn("待完成，未验证改后效果", prompt)
         self.assertIn("非平台规则", prompt)
+        self.assertEqual(prompt.count("### 【相关小说拒稿复盘"), 1)
+
+    def test_signing_gate_receives_stable_capability_block(self):
+        from app.core import pipeline, novel_quality as nq
+        value = feedback_review(dict.fromkeys(nq.SIGNING_RUBRIC, 8), "nf-qimao-shentong-20261015")
+        with patch.object(pipeline.capability_runtime, "block_for",
+                          return_value="CAPABILITY-SNAPSHOT-FOR-SIGNING"):
+            self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
+        self.assertIn("CAPABILITY-SNAPSHOT-FOR-SIGNING", self.signing_prompts[0])
+
+    def test_global_review_receives_stable_capability_block(self):
+        from app.core import pipeline, novel_quality as nq
+        value = feedback_review(dict.fromkeys(nq.SIGNING_RUBRIC, 8), "nf-qimao-shentong-20261015")
+        with patch.object(pipeline.capability_runtime, "block_for",
+                          return_value="CAPABILITY-SNAPSHOT-FOR-GLOBAL"):
+            self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
+        self.assertTrue(self.global_prompts)
+        self.assertIn("CAPABILITY-SNAPSHOT-FOR-GLOBAL", self.global_prompts[0])
 
     def test_feedback_without_explicit_check_cannot_count_as_valid_review(self):
         from app.core import novel_quality as nq

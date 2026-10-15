@@ -3791,11 +3791,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                   .replace("__CONTEXT__", str(task.get("context") or "（无）")[:4000])
                   .replace("__STYLE__", style_tpl)
                   .replace("__MANUSCRIPT__", "\n\n".join(texts)))
+        capability_block = capability_runtime.block_for(task, run_id)
+        if capability_block:
+            prompt += ("\n\n## 本次运行可用能力（签约评估必须按证据参考）\n"
+                       + capability_block)
         prompt += "\n实际送审范围（仅限下列已读文本，未列章节未读）：%s" % _json.dumps(read_scope, ensure_ascii=False)
+        # capability_runtime.block_for() already carries the relevant rejection
+        # ledger through the stable skills block.  Keep the structured
+        # feedback_check below as the validation contract, but do not append a
+        # second rendered copy of the same records here.
         from . import novel_feedback
-        feedback = novel_feedback.block_for(task)
-        if feedback:
-            prompt += "\n\n" + feedback
         try:
             # Use the ledger selection itself rather than the rendered block: a
             # prompt budget truncation must never silently disable the gate.
@@ -4966,6 +4971,10 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     "- 重复叙述、人设崩坏、文风漂移、真实前后矛盾照常计 major——本口径只纠正评审"
                     "对象的范围与基准，不是放水。\n\n"
                     "## 全书目标" % (start, end), 1)
+            capability_block = capability_runtime.block_for(task, run_id)
+            if capability_block:
+                gtpl = gtpl.replace("## 全书目标",
+                                    capability_block + "\n\n## 全书目标", 1)
             if bible:
                 gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
             res = _run_step(run_id, "global-critique", bound[idx],
