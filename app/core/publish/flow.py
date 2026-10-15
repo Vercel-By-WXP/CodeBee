@@ -883,18 +883,23 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
 
                 def fq_schedule_enabled():
                     return bool(page.call(
-                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                        "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
                         "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-                        "const s=d&&d.querySelector('button[role=switch]');"
-                        "return !!(s&&s.getAttribute('aria-checked')==='true');}", timeout=10))
+                        "const ss=d?[...d.querySelectorAll('button[role=switch],[role=switch]')].filter(vis):[];"
+                        "const s=ss.at(-1);return !!(s&&s.getAttribute('aria-checked')==='true');}", timeout=10))
 
                 def fq_enable_schedule():
                     if fq_schedule_enabled():
                         return
                     result = page.call(
-                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                        "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
                         "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-                        "const s=d&&d.querySelector('button[role=switch]');"
+                        "const ss=d?[...d.querySelectorAll('button[role=switch],[role=switch]')].filter(vis):[];"
+                        "const s=ss.at(-1);"
                         "if(!s)return{ok:false};s.click();return{ok:true};}", timeout=10) or {}
                     if not result.get("ok"):
                         raise FlowError("番茄发布设置里找不到定时发布开关")
@@ -1020,6 +1025,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                        "有定时待发布章节" in dialog_text)
                         use_schedule = force_schedule or queued_hint
                         if use_schedule:
+                            # Tell the caller that the platform accepted the
+                            # scheduled path even when the flow was entered
+                            # from the normal upload action via queued_hint.
+                            # Without this marker the manager incorrectly
+                            # records the chapter as published immediately.
+                            values["_scheduled_by_platform"] = True
                             if tried_dates >= max_days:
                                 raise FlowError("番茄连续 %d 个日期均触发每日字数上限" % max_days)
                             fq_enable_schedule()

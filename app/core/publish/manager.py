@@ -1091,6 +1091,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                                  book_ref.get("title") or "")
     values["publish_date"] = ""
     values["publish_time"] = "00:00"
+    # When the platform already has a queued chapter, continue its cadence.
+    # The flow may still fall back to tomorrow/00:00 when no local slot is
+    # known (for example a queue created manually before CodeBee was used).
+    try:
+        prior_slot = ledger.latest_scheduled_slot(task_id, plat)
+    except Exception:
+        prior_slot = None
+    if prior_slot:
+        values["scheduled_date"] = prior_slot["date"]
+        values["scheduled_time"] = prior_slot["time"]
+        values["publish_date"] = prior_slot["date"]
+        values["publish_time"] = prior_slot["time"]
     # Qimao renders the numeric prefix itself in the chapter editor.  Passing
     # the source heading ("第1章 标题") would therefore produce
     # "第1章 第1章 标题" on the platform; keep the full heading for audit
@@ -1145,12 +1157,17 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               operation_status="confirmed",
                               remote_receipt="platform-draft")
             elif auto_submit:
+                recorded_action = ("upload_chapter_scheduled"
+                                    if scheduled or values.get("_scheduled_by_platform")
+                                    else flow_key)
                 operations.confirm(operation_id, metadata={"platform": plat,
-                                                            "action": flow_key,
+                                                            "action": recorded_action,
                                                             "chapter_no": ch_no})
-                ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
+                ledger.record(plat, recorded_action, task_id=task_id, chapter_no=ch_no,
                               book_id=book_ref.get("book_id") or "", title=title, ok=True,
                               operation_id=operation_id, operation_status="confirmed",
+                              scheduled_date=values.get("scheduled_date") if recorded_action == "upload_chapter_scheduled" else "",
+                              scheduled_time=values.get("scheduled_time") if recorded_action == "upload_chapter_scheduled" else "",
                               quality_forced=quality_forced,
                               quality_reason=quality_reason)
             else:

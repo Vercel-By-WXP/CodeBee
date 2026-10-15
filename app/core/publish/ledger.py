@@ -26,7 +26,7 @@ LOCK = threading.RLock()
 FIELDS = ("ts", "day", "platform", "action", "task_id", "chapter_no",
           "book_id", "title", "ok", "error", "shot", "operation_id",
           "operation_status", "remote_receipt", "quality_forced",
-          "quality_reason")
+          "quality_reason", "scheduled_date", "scheduled_time")
 
 
 def _month_file(day):
@@ -36,7 +36,7 @@ def _month_file(day):
 def record(platform, action, task_id="", chapter_no=0, book_id="",
            title="", ok=True, error="", shot="", operation_id="",
            operation_status="", remote_receipt="", quality_forced=False,
-           quality_reason=""):
+           quality_reason="", scheduled_date="", scheduled_time=""):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
     try:
         rec = {
@@ -56,6 +56,11 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             "remote_receipt": str(remote_receipt or "")[:300],
             "quality_forced": bool(quality_forced),
             "quality_reason": str(quality_reason or "")[:300],
+            # Keep the slot that was actually submitted so a later chapter
+            # can continue an existing platform queue instead of inventing a
+            # new default date/time.  Older ledger rows simply have blanks.
+            "scheduled_date": str(scheduled_date or "")[:10],
+            "scheduled_time": str(scheduled_time or "")[:5],
         }
         with LOCK:
             paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
@@ -135,6 +140,25 @@ def scheduled_chapters(task_id, platform):
             if n > 0:
                 out.add(int(n))
     return out
+
+
+def latest_scheduled_slot(task_id, platform):
+    """Return the most recent locally recorded scheduled slot, if any."""
+    from .. import store
+    try:
+        ids = set(store.serial_chain_ids(task_id))
+    except Exception:
+        ids = {str(task_id)}
+    rows = [r for r in _iter_records(3650)
+            if r.get("action") == "upload_chapter_scheduled"
+            and r.get("ok") and r.get("task_id") in ids
+            and r.get("platform") == platform
+            and r.get("scheduled_date") and r.get("scheduled_time")]
+    if not rows:
+        return None
+    row = max(rows, key=lambda r: str(r.get("ts") or ""))
+    return {"date": str(row.get("scheduled_date")),
+            "time": str(row.get("scheduled_time"))}
 
 
 def drafted_chapters(task_id, platform):
