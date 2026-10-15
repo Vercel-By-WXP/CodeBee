@@ -33,6 +33,17 @@ test('packaged runtime and engine stay outside asar for both OSes', () => {
     path.join('/repo/desktop', 'assets', 'icon-512.png'));
 });
 
+test('macOS universal runtime selects the host architecture payload', t => {
+  const resources = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-universal-'));
+  t.after(() => fs.rmSync(resources, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(resources, 'python', 'arm64', 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(resources, 'python', 'x64', 'bin'), { recursive: true });
+  assert.equal(runtimePaths(true, resources, '/desktop', 'darwin', 'arm64').python,
+    path.join(resources, 'python', 'arm64', 'bin/python3'));
+  assert.equal(runtimePaths(true, resources, '/desktop', 'darwin', 'x64').python,
+    path.join(resources, 'python', 'x64', 'bin/python3'));
+});
+
 test('Windows and macOS installers use the shared CodeBee atom icon family', () => {
   const assets = path.join(__dirname, '..', 'assets');
   const png = fs.readFileSync(path.join(assets, 'icon-512.png'));
@@ -41,6 +52,7 @@ test('Windows and macOS installers use the shared CodeBee atom icon family', () 
   const icns = fs.readFileSync(path.join(assets, 'icon.icns'));
   const builder = yaml.load(fs.readFileSync(path.join(__dirname, '..', 'electron-builder.yml'), 'utf8'));
   const win7 = yaml.load(fs.readFileSync(path.join(__dirname, '..', 'electron-builder.win7.yml'), 'utf8'));
+  const compatible = yaml.load(fs.readFileSync(path.join(__dirname, '..', 'electron-builder.win-compatible.yml'), 'utf8'));
   assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
   assert.deepEqual(webPng, png);
   assert.equal(ico.subarray(0, 4).toString('hex'), '00000100');
@@ -48,7 +60,9 @@ test('Windows and macOS installers use the shared CodeBee atom icon family', () 
   assert.equal(icns.readUInt32BE(4), icns.length);
   assert.equal(builder.win.icon, 'assets/icon.ico');
   assert.equal(builder.mac.icon, 'assets/icon.icns');
-  assert.equal(win7.win.icon, 'assets/icon.ico');
+  assert.equal(win7.extends, 'electron-builder.win-compatible.yml');
+  assert.equal(compatible.electronVersion, '22.3.27');
+  assert.deepEqual(compatible.win.target[0].arch, ['x64']);
 });
 
 test('restrict navigation by exact origin and reject executable external protocols', () => {

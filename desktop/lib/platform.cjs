@@ -14,9 +14,14 @@ function dataDirectory(platform = process.platform, env = process.env, home = os
   return fs.existsSync(legacy) ? legacy : path.join(base, platform === 'win32' ? 'CodeBee' : '.codebee');
 }
 
-function runtimePaths(packaged, resources, desktopRoot, platform = process.platform) {
+function runtimePaths(packaged, resources, desktopRoot, platform = process.platform, arch = process.arch) {
   const root = packaged ? path.join(resources, 'codebee') : path.dirname(desktopRoot);
-  const runtime = packaged ? path.join(resources, 'python') : path.join(desktopRoot, 'runtime', 'python');
+  const runtimeBase = packaged ? path.join(resources, 'python') : path.join(desktopRoot, 'runtime', 'python');
+  // A macOS universal bundle carries both native Python runtimes. Keep the
+  // single-runtime layout as a fallback for existing developer checkouts.
+  const universalRuntime = platform === 'darwin' && ['arm64', 'x64'].includes(arch)
+    ? path.join(runtimeBase, arch) : runtimeBase;
+  const runtime = fs.existsSync(universalRuntime) ? universalRuntime : runtimeBase;
   return {
     root,
     script: path.join(root, 'app', 'desktop_host.py'),

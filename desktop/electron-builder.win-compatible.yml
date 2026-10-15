@@ -1,0 +1,11 @@
+extends: electron-builder.yml
+# Electron 22 is the last Electron line that starts on Windows 7 and also
+# runs on current Windows releases. One x64 installer therefore covers Win7,
+# Windows 8.1, Windows 10 and Windows 11.
+electronVersion: 22.3.27
+artifactName: 'CodeBee-${version}-win-x64.${ext}'
+win:
+  icon: assets/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]

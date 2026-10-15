@@ -15,11 +15,14 @@
     "test": "node --test tests/*.test.cjs",
     "smoke": "electron . --smoke-test",
     "pack": "electron-builder --dir --publish never",
-    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "prepare:runtime:win": "node scripts/prepare-runtime.cjs win32 x64 win7",
+    "dist:win": "npm run prepare:runtime:win && electron-builder --config electron-builder.win-compatible.yml --publish never",
     "prepare:runtime:win7": "node scripts/prepare-runtime.cjs win32 x64 win7",
     "dist:win7": "npm run prepare:runtime:win7 && electron-builder --config electron-builder.win7.yml --publish never",
     "dist:mac:arm64": "electron-builder --mac dmg zip --arm64 --publish never",
-    "dist:mac:x64": "electron-builder --mac dmg zip --x64 --publish never"
+    "dist:mac:x64": "electron-builder --mac dmg zip --x64 --publish never",
+    "prepare:runtime:mac:universal": "node scripts/prepare-runtime.cjs universal-darwin",
+    "dist:mac:universal": "npm run prepare:runtime:mac:universal && electron-builder --mac dmg zip --universal --publish never"
   },
   "devDependencies": {
     "electron": "44.7.0",

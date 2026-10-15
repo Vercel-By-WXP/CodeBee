@@ -15,6 +15,12 @@ const desktopRoot = path.resolve(__dirname, '..');
 const cacheRoot = path.join(desktopRoot, '.cache');
 const runtimeRoot = path.join(desktopRoot, 'runtime');
 
+function executablePath(root, asset, platform) {
+  const relative = platform === 'darwin' && asset.executable.startsWith('python/')
+    ? asset.executable.slice('python/'.length) : asset.executable;
+  return path.join(root, relative);
+}
+
 async function sha256(file) {
   const hash = crypto.createHash('sha256');
   for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
@@ -40,12 +46,16 @@ async function prepare(platform = process.platform, arch = process.arch, profile
   const asset = manifest.assets[`${platform}-${arch}`];
   if (!asset) throw new Error(`Unsupported desktop platform: ${platform}-${arch}`);
   fs.mkdirSync(cacheRoot, { recursive: true });
-  const marker = path.join(runtimeRoot, 'manifest.json');
+  // macOS universal builds keep one native runtime per architecture. Windows
+  // and single-architecture macOS builds retain the historical layout.
+  const universal = platform === 'darwin';
+  const targetRoot = universal ? path.join(runtimeRoot, 'python', arch) : runtimeRoot;
+  const marker = path.join(targetRoot, 'manifest.json');
   if (fs.existsSync(marker)) {
     const existing = JSON.parse(fs.readFileSync(marker, 'utf8'));
     if (existing.profile === profile && existing.platform === platform && existing.arch === arch && existing.sha256 === asset.sha256 &&
-        fs.existsSync(path.join(runtimeRoot, asset.executable))) {
-      if (platform === process.platform && arch === process.arch) checkInterpreter(path.join(runtimeRoot, asset.executable), platform, arch, manifest);
+        fs.existsSync(executablePath(targetRoot, asset, platform))) {
+      if (platform === process.platform && arch === process.arch) checkInterpreter(executablePath(targetRoot, asset, platform), platform, arch, manifest);
       return;
     }
   }
@@ -91,17 +101,27 @@ async function prepare(platform = process.platform, arch = process.arch, profile
         if (entry !== 'python') fs.renameSync(path.join(staging, entry), path.join(payload, entry));
       }
     }
-    if (platform === process.platform && arch === process.arch) checkInterpreter(path.join(staging, asset.executable), platform, arch, manifest);
-    fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify({
+    if (platform === process.platform && arch === process.arch) checkInterpreter(executablePath(universal ? path.join(staging, 'python') : staging, asset, platform), platform, arch, manifest);
+    const payloadRoot = universal ? path.join(staging, 'python') : staging;
+    fs.writeFileSync(path.join(payloadRoot, 'manifest.json'), JSON.stringify({
       profile, platform, arch, version: manifest.version, release: manifest.release || null, sha256: asset.sha256,
     }, null, 2));
     // Both targets are fixed children of this desktop checkout, never user paths.
-    fs.rmSync(runtimeRoot, { recursive: true, force: true });
-    fs.renameSync(staging, runtimeRoot);
+    fs.rmSync(targetRoot, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(targetRoot), { recursive: true });
+    fs.renameSync(payloadRoot, targetRoot);
   } finally { fs.rmSync(staging, { recursive: true, force: true }); }
 }
 
-if (require.main === module) {
-  prepare(process.argv[2], process.argv[3], process.argv[4] || 'modern').catch(error => { console.error(error.message); process.exitCode = 1; });
+async function prepareUniversalDarwin() {
+  await prepare('darwin', 'arm64', 'modern');
+  await prepare('darwin', 'x64', 'modern');
 }
-module.exports = { prepare, sha256, checkInterpreter };
+
+if (require.main === module) {
+  const task = process.argv[2] === 'universal-darwin'
+    ? prepareUniversalDarwin()
+    : prepare(process.argv[2], process.argv[3], process.argv[4] || 'modern');
+  task.catch(error => { console.error(error.message); process.exitCode = 1; });
+}
+module.exports = { prepare, prepareUniversalDarwin, sha256, checkInterpreter };

@@ -1,6 +1,6 @@
 # CodeBee 桌面预览版
 
-复用现有 Web 界面和 Python 引擎，支持 **Windows 10/11 x64**、**Windows 7 x64（预览）**、**macOS 13+ Intel x64 / Apple Silicon arm64**。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
+复用现有 Web 界面和 Python 引擎，提供 **Windows x64 兼容安装包**（Windows 7/8.1/10/11，Electron 22）和 **macOS 13+ Universal 安装包**（Intel/Apple Silicon）。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
 
 关闭窗口会隐藏到托盘/菜单栏，任务继续执行。托盘菜单可重新打开；macOS 另有应用菜单。明确退出时，有正在执行的任务会询问是否停止。系统休眠、关机或退出应用后不保证持续执行；重新启动沿用引擎已有的任务恢复规则。
 
@@ -33,25 +33,18 @@ smoke 使用独立临时数据与用户目录、动态端口，验证实际窗�
 每个架构在对应原生系统构建，避免打包错误架构的 Python：
 
 ```sh
-# Windows x64
-npm run prepare:runtime -- win32 x64
+# Windows x64（兼容 Windows 7/8.1/10/11）
+npm run prepare:runtime:win
 npm run dist:win
 
-# macOS Apple Silicon
-npm run prepare:runtime -- darwin arm64
-npm run dist:mac:arm64
-
-# macOS Intel
-npm run prepare:runtime -- darwin x64
-npm run dist:mac:x64
-
-# Windows 7 x64（预览）：Electron 22.3.27 + Python 3.8.10 embeddable
-npm run dist:win7
+# macOS Universal（Intel + Apple Silicon）
+npm run prepare:runtime:mac:universal
+npm run dist:mac:universal
 ```
 
-生成 `dist/CodeBee-<版本>-win-x64.exe`、`CodeBee-<版本>-win7-x64.exe`、`CodeBee-<版本>-mac-arm64.dmg`、`CodeBee-<版本>-mac-x64.dmg` 与 Mac zip。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
+生成 `dist/CodeBee-<版本>-win-x64.exe` 与 `CodeBee-<版本>-mac-universal.dmg/zip`。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
 
-GitHub Actions 的 `Desktop preview` 工作流提供四个原生构建任务（win-x64 / mac-arm64 / mac-x64 / win7），先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用，只上传预览 artifacts，不创建 Release、不自动发布。共享工作区的其他在途改动不能作为正式交付基线。Win7 构建使用 Electron 22.3.27（最后支持 Win7/8/8.1 的线）+ Python 3.8.10 embeddable 运行时，`before-pack` 按 Electron 大小号强制校验运行时档位；Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
+GitHub Actions 的 `Desktop preview` 工作流提供 Windows 兼容版和 macOS Universal 两个原生构建任务，先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用，只上传预览 artifacts。Windows 兼容版使用 Electron 22.3.27（最后支持 Win7/8.1 的线）+ Python 3.8.10 embeddable 运行时；macOS Universal 包同时携带 arm64/x64 Python 运行时，启动时按当前架构选择。Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
 
 ## 更新与正式发布
 

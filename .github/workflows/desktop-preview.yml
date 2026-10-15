@@ -31,12 +31,8 @@ jobs:
             dist: dist:win
           - os: macos-15
             platform: darwin
-            arch: arm64
-            dist: dist:mac:arm64
-          - os: macos-15-intel
-            platform: darwin
-            arch: x64
-            dist: dist:mac:x64
+            arch: universal
+            dist: dist:mac:universal
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
@@ -60,7 +56,16 @@ jobs:
       - name: Run sidecar lifecycle and data lock tests
         working-directory: .
         run: python -m unittest discover -s tests -p test_desktop_runtime.py -v -f
-      - run: npm run prepare:runtime -- ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Prepare bundled Python runtime
+        shell: bash
+        run: |
+          if [ "${{ matrix.arch }}" = universal ]; then
+            npm run prepare:runtime:mac:universal
+          elif [ "${{ matrix.platform }}" = win32 ]; then
+            npm run prepare:runtime:win
+          else
+            npm run prepare:runtime -- ${{ matrix.platform }} ${{ matrix.arch }}
+          fi
       - name: Desktop smoke with bundled Python
         run: npm run smoke
       - name: Build preview installer (no publishing)
@@ -73,11 +78,7 @@ jobs:
           if [ "${{ matrix.platform }}" = win32 ]; then
             './dist/win-unpacked/CodeBee.exe' --smoke-test
           else
-            if [ "${{ matrix.arch }}" = arm64 ]; then
-              './dist/mac-arm64/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
-            else
-              './dist/mac/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
-            fi
+            './dist/mac-universal/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
           fi
           test -f dist/packaged-smoke/result.json
       - uses: actions/upload-artifact@v4
@@ -92,58 +93,11 @@ jobs:
             desktop/dist/packaged-smoke/
           if-no-files-found: warn
 
-  win7-preview:
-    # Windows 7 target: Electron 22.3.27 (last line supporting Win7/8/8.1) with
-    # the Python 3.8 embeddable runtime; electron-builder.win7.yml pins the
-    # electron version via `electronVersion`, and before-pack enforces the
-    # matching win7 Python profile. The packaged smoke runs on the Win10/11
-    # runner to prove the Electron 22 build itself works end to end.
-    runs-on: windows-latest
-    timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: desktop
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      TUTTI_SELFUPDATE_OFFLINE: '1'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.8'
-      - run: npm ci --no-audit --no-fund
-      - run: npm test
-      - name: Run sidecar lifecycle and data lock tests
-        working-directory: .
-        run: python -m unittest discover -s tests -p test_desktop_runtime.py -v -f
-      - name: Build Windows 7 preview installer
-        run: npm run dist:win7
-      - name: Test the packaged application (Electron 22)
-        shell: bash
-        env:
-          CODEBEE_SMOKE_OUTPUT: ${{ github.workspace }}/desktop/dist/packaged-smoke-win7
-        run: |
-          './dist/win-unpacked/CodeBee.exe' --smoke-test
-          test -f dist/packaged-smoke-win7/result.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: codebee-preview-win7-x64
-          path: |
-            desktop/dist/*win7*.exe
-            desktop/dist/packaged-smoke-win7/
-          if-no-files-found: warn
-
   github-release:
-    # Tag push (v*) = 正式发版：四路构建全绿后自动创建 GitHub Release，
-    # 把四平台安装包挂到 Releases 页（公开仓库无需登录即可下载）。
+    # Tag push (v*) = 正式发版：兼容 Windows 与 macOS universal 构建全绿后自动创建 GitHub Release，
+    # 把兼容安装包挂到 Releases 页（公开仓库无需登录即可下载）。
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [native-preview, win7-preview]
+    needs: [native-preview]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -164,6 +118,6 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" \
             --title "CodeBee ${GITHUB_REF_NAME#v}" \
-            --notes "桌面预览版安装包（Windows 10/11、Windows 7 预览、macOS Intel/Apple Silicon）。Python 已随包内置。更新内容见仓库 CHANGELOG.md。" \
+            --notes "桌面预览版兼容安装包（Windows 7/8.1/10/11 x64、macOS Universal Intel/Apple Silicon）。Python 已随包内置。更新内容见仓库 CHANGELOG.md。" \
             --prerelease \
             release/*

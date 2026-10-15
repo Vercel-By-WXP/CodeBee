@@ -89,7 +89,7 @@ function secureWindow(target) {
 }
 
 async function launch() {
-  paths = runtimePaths(app.isPackaged, process.resourcesPath, __dirname);
+  paths = runtimePaths(app.isPackaged, process.resourcesPath, __dirname, process.platform, process.arch);
   window = new BrowserWindow({ title: 'CodeBee', width: 1380, height: 900,
     minWidth: 860, minHeight: 620, backgroundColor: '#f4f7fb', icon: paths.icon,
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
