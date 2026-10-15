@@ -216,6 +216,89 @@ DEFAULT_CATALOG = [
         "uninstall": "uv tool uninstall trae-agent",
         "default_enabled": False,
     },
+    {
+        "id": "minimax-code", "name": "MiniMax Code", "cli_group": "installable",
+        "note": "MiniMax 官方终端智能体；无头批处理使用 `mcode exec \"提示词\"`，"
+                "支持 ACP、会话续接与自定义 OpenAI/Anthropic 兼容供应商；"
+                "CodeBee 先沿用 MCode 自身登录/供应商配置，不把外部模型凭据强行注入。",
+        "detect": {"cli": "mcode"},
+        "orch": {"kind": "generic", "command": "mcode",
+                 "argv_template": ["exec", "{prompt}"],
+                 "timeout_ms": 1200000, "stall_timeout_s": 600},
+        "config": {"path": "~/.minimax-code", "format": None, "model_key": None},
+        # MCode 官方安装器按平台分开；manager.command_for() 会选择对应命令。
+        "install": "curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash",
+        "install_windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://filecdn.minimax.chat/public/install.ps1 | iex\"",
+        "upgrade": "curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash",
+        "upgrade_windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://filecdn.minimax.chat/public/install.ps1 | iex\"",
+        "uninstall": "rm -rf ~/.minimax-code",
+        "uninstall_windows": "Remove-Item -Recurse -Force $env:USERPROFILE\\.minimax-code",
+        "default_enabled": False,
+    },
+    {
+        "id": "goose", "name": "Goose", "cli_group": "installable",
+        "note": "Block/AAIF 的本地 CLI；当前 CodeBee 只提供检测、版本与安装管理。"
+                "官方 CLI 的交互/ACP 入口尚未验证为稳定无头协议，因此不会自动派发编排任务。",
+        "detect": {"cli": "goose"},
+        "orch": None,
+        "config": {"path": "~/.config/goose", "format": None, "model_key": None},
+        "install": "curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | bash",
+        "install_windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/aaif-goose/goose/releases/download/stable/download_cli.ps1 | iex\"",
+        "upgrade": "curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | bash",
+        "upgrade_windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/aaif-goose/goose/releases/download/stable/download_cli.ps1 | iex\"",
+        # Goose's official installer places the launcher in ~/.local/bin on
+        # POSIX; keep an explicit command because the installer URL cannot be
+        # safely converted by derive_uninstall().
+        "uninstall": "rm -f ~/.local/bin/goose",
+        "uninstall_windows": "Remove-Item -Force \"$env:USERPROFILE\\.local\\bin\\goose.exe\" -ErrorAction SilentlyContinue",
+        "default_enabled": False,
+    },
+    {
+        "id": "mistral-vibe", "name": "Mistral Vibe", "cli_group": "installable",
+        "note": "Mistral 官方终端智能体；无头调用使用 `vibe --prompt`，可配合"
+                " `--auto-approve` 和 `--output text` 执行一次性任务；登录与模型"
+                "配置沿用 Vibe 自身的 ~/.vibe，不注入 CodeBee 外部供应商凭据。",
+        "detect": {"cli": "vibe"},
+        "orch": {"kind": "generic", "command": "vibe",
+                 "argv_template": ["--prompt", "{prompt}", "--auto-approve",
+                                    "--output", "text"],
+                 "timeout_ms": 1200000, "stall_timeout_s": 600},
+        "config": {"path": "~/.vibe", "format": None, "model_key": None},
+        "install": "uv tool install mistral-vibe",
+        "upgrade": "uv tool upgrade mistral-vibe",
+        "default_enabled": False,
+    },
+    {
+        "id": "cline-cli", "name": "Cline CLI", "cli_group": "installable",
+        "note": "Cline 官方终端智能体；官方 npm 包为跨平台 macOS/Linux/Windows 构建，"
+                "无头调用使用 `cline --yolo \"提示词\"`；先沿用 Cline 自身登录和供应商配置，"
+                "不把 CodeBee 外部凭据注入到 Cline。",
+        "detect": {"cli": "cline"},
+        "orch": {"kind": "generic", "command": "cline",
+                 "argv_template": ["--yolo", "{prompt}"],
+                 "timeout_ms": 1200000, "stall_timeout_s": 600},
+        "config": {"path": "~/.cline", "format": None, "model_key": None},
+        "install": "npm install -g cline",
+        "upgrade": "npm install -g cline@latest",
+        "default_enabled": False,
+    },
+    {
+        "id": "github-copilot-cli", "name": "GitHub Copilot CLI", "cli_group": "installable",
+        "note": "GitHub 官方终端 CLI；官方支持 macOS/Linux/Windows，但当前文档只核验到"
+                "交互式 `copilot` 入口，暂不自动派发无头编排任务。",
+        "detect": {"cli": "copilot"},
+        "orch": None,
+        "config": {"path": "~/.copilot", "format": None, "model_key": None},
+        "install": "npm install -g @github/copilot",
+        "install_macos": "brew install copilot-cli",
+        "install_windows": "winget install GitHub.Copilot",
+        "upgrade": "npm install -g @github/copilot@latest",
+        "upgrade_macos": "brew upgrade copilot-cli",
+        "upgrade_windows": "winget upgrade GitHub.Copilot",
+        "uninstall_macos": "brew uninstall copilot-cli",
+        "uninstall_windows": "winget uninstall GitHub.Copilot",
+        "default_enabled": False,
+    },
 ]
 
 _LOCK = threading.RLock()
@@ -242,6 +325,11 @@ LAUNCH_PATCH = {    "codex-cli": {"kind": "console", "command": "codex"},
     "gemini-cli": {"kind": "console", "command": "gemini"},
     "codebuddy": {"kind": "console", "command": "cbc"},
     "trae-agent": {"kind": "console", "command": "trae-cli"},
+    "minimax-code": {"kind": "console", "command": "mcode"},
+    "goose": {"kind": "console", "command": "goose"},
+    "mistral-vibe": {"kind": "console", "command": "vibe"},
+    "cline-cli": {"kind": "console", "command": "cline"},
+    "github-copilot-cli": {"kind": "console", "command": "copilot"},
     # dsh 自带浏览器 UI（dsh web）；端口固定以便「已在运行就直接开页面」的复用
     # 判断，18790 避开 CodeBee 自身与常用测试端口。--no-open 关掉 dsh 自己开浏览器
     # 的行为（否则它会和 CodeBee 就绪后各开一个标签页）
@@ -341,10 +429,33 @@ def derive_uninstall(cmd):
 
 def uninstall_command(entry):
     """该条目的卸载命令：catalog 显式配置优先，否则由 install/upgrade 推导。"""
-    explicit = (entry.get("uninstall") or "").strip()
+    explicit = (command_for(entry, "uninstall") or "").strip()
     if explicit:
         return explicit
-    return derive_uninstall(entry.get("install") or entry.get("upgrade") or "")
+    return derive_uninstall(command_for(entry, "install") or
+                            command_for(entry, "upgrade") or "")
+
+
+def command_for(entry, op, platform=None):
+    """Return the platform-specific management command for a catalog entry.
+
+    Entries may provide ``install_windows``/``upgrade_windows`` (and the
+    corresponding ``*_macos``/``*_linux`` keys) while retaining a portable
+    ``install`` fallback.  Keeping selection here makes UI checks, uninstall
+    derivation and the async manager use the same command.
+    """
+    if not isinstance(entry, dict):
+        return None
+    platform = platform or ("windows" if os.name == "nt" else
+                            "macos" if sys.platform == "darwin" else "linux")
+    platform = {"win": "windows", "win32": "windows", "nt": "windows",
+                "mac": "macos", "darwin": "macos", "osx": "macos"}.get(
+                    str(platform).lower(), str(platform).lower())
+    specific = entry.get("%s_%s" % (op, platform))
+    if specific:
+        return specific
+    value = entry.get(op)
+    return value if isinstance(value, str) else None
 
 
 def _apply_resume_patch(entries):

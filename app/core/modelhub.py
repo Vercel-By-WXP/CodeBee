@@ -2460,7 +2460,8 @@ def bindable_protocols(agent_kind_or_id):
 # （claude 兼容系）与 trae-agent 的凭据 env 语义未实机验证。注入它们不认的 env
 # 只会造出「链显示活着、实际走 CLI 默认模型」的静默假绑定——宁可返回空协议集，
 # 链上条目全跳过、回落 CLI 本机登录态（recommend_binding 同口径，返回 None）。
-_LOCAL_CRED_ONLY_TARGETS = ("gemini-cli", "codebuddy", "trae-agent")
+_LOCAL_CRED_ONLY_TARGETS = ("gemini-cli", "codebuddy", "trae-agent",
+                            "minimax-code", "mistral-vibe", "cline-cli", "cline")
 
 
 def _dead(reasons, text):

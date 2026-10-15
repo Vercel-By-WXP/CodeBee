@@ -13,7 +13,7 @@
 **AI 是引擎，你的经验是方向盘。** CodeBee 为你指挥一支跨厂商的执笔/编码小队：
 统一调度本机已装的 AI 编码 CLI（Codex CLI、Claude Code、Qwen Code、OpenCode、Aider、
 Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness、Gemini CLI、CodeBuddy CLI、
-Trae Agent、OpenClaw……），提供
+Trae Agent、MiniMax Code、Goose、Mistral Vibe、Cline CLI、GitHub Copilot CLI、OpenClaw……），提供
 **目标 → 自动拆解 → 智能路由 → 执行 → 客观验证 → 跨厂商评审 → 自动修复/换将 → 汇总报告**
 的完整闭环。你不在时它们自动推进、自我打磨；需要你拍板的地方——质量闸门、任务分支的
 采纳与丢弃——它们会亮起「待裁决」等你，绝不静默替你决定。
@@ -488,9 +488,22 @@ CLI 默认冒烟、供应商可达性、wire 适配、单模型生成、绑定�
 - **编排开关**：决定哪些 CLI 参与任务路由。
 
 Kimi Code / MiMo Code / Grok Build / Pi / DeepSeek Harness / Gemini CLI / CodeBuddy CLI /
-Trae Agent 的安装命令已内置（均取自
+Trae Agent / MiniMax Code / Goose / Mistral Vibe / Cline CLI / GitHub Copilot CLI 的安装命令已内置（均取自
 各工具官方渠道）。若某个条目的安装命令缺失，直接编辑 `data/catalog.json` 补上
 `install` 字段保存后点"重新加载 catalog"即可；点"恢复默认 catalog"可回滚。
+
+MiniMax Code 已接入无头 `mcode exec "提示词"`，可参与编排；它的登录和模型配置由
+MCode 自己管理，CodeBee 不向其中写入外部 API Key。Goose 已纳入检测、版本、安装和
+一键打开，但目前只核验到交互 CLI / ACP 入口，尚未加入自动编排路由；待无头协议完成
+真机验证后再开放派工。
+
+Mistral Vibe 已接入无头 `vibe --prompt "提示词" --auto-approve --output text`，
+可参与编排；安装走 `uv tool install mistral-vibe`，登录和模型配置由 Vibe 自己管理。
+
+Cline CLI 已接入跨平台无头 `cline --yolo "提示词"`，可参与编排；其 npm 包提供
+macOS、Windows 和 Linux 的原生构建，CodeBee 沿用 Cline 自己的登录与模型配置。
+GitHub Copilot CLI 已纳入 macOS、Windows、Linux 的检测、安装和一键打开；官方当前
+只核验到交互式 `copilot`，因此暂不自动派发任务。
 
 ## 接入原理（已在本机实测）
 
@@ -499,6 +512,12 @@ Trae Agent 的安装命令已内置（均取自
 | Codex CLI | `codex exec --skip-git-repo-check --json -s <sandbox>`（stdin 传提示词） | JSONL 事件流：`item.completed`=回答，`turn.completed`=token 用量 |
 | Claude Code | `claude -p --output-format json`（stdin 传提示词；自动注入 Git Bash 路径与输出上限） | 单个 JSON：`result` / `total_cost_usd` / `usage` |
 | DeepSeek Harness | `dsh --profile headless "<任务>"`（任务只能走位置参数） | stdout 即最终回答；退出码 0=完成 / 1=错误 |
+| MiniMax Code | `mcode exec "<任务>"` | stdout 即最终回答；退出码 0=完成 |
+| Mistral Vibe | `vibe --prompt "<任务>" --auto-approve --output text` | stdout 即最终回答；退出码 0=完成 |
+| Cline CLI | `cline --yolo "<任务>"` | stdout 即最终回答；退出码 0=完成 |
+
+MiniMax Code 与 Mistral Vibe 的命令形态取自官方 CLI 文档；本机未安装时只会显示为
+可安装条目，不会被自动路由。
 
 - **模型指定因 CLI 而异**：codex/claude 支持运行时注入（env / `-c` 覆盖）；dsh 只认
   `~/.dsh/settings.yaml` 的配置项，凭据走 `DEEPSEEK_API_KEY` 环境变量（不落盘）；

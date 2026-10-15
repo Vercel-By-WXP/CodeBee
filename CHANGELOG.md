@@ -4,6 +4,12 @@ CodeBee 的用户可感知变更记录。发布新版时：最上面加一节，
 `<!-- relnotes:start -->…<!-- relnotes:end -->` 段（那段会被 `npm view` 的
 README 元数据带回，供老版本在「发现新版本」时展示新版更新内容）。
 
+## 未发布
+
+- **主流 CLI 与跨平台补齐**：新增 Cline CLI（macOS/Windows/Linux 无头 `cline --yolo`）编排；补齐 Goose Windows PowerShell 安装/升级/卸载；新增 GitHub Copilot CLI 的 macOS/Windows/Linux 检测、安装与打开管理，因官方当前仍以交互入口为主暂不自动派发。
+- **CLI 覆盖补充**：新增 Mistral Vibe（`vibe --prompt`）无头编排，安装走官方 `uv tool install mistral-vibe`；沿用 Vibe 本机登录与模型配置，不注入不兼容的外部供应商凭据。
+- **CLI 覆盖补充**：新增 MiniMax Code（`mcode exec`）无头编排，按平台使用官方安装器并沿用 CLI 自身凭据；新增 Goose 检测、版本、安装与打开管理，待无头协议完成验证后再开放自动派工。
+
 ## v0.1.114（2026-10-15）
 
 - **番茄章节发布流程收尾**：浏览器自动化加固 + 受控工作区自动重试，番茄发布链完整闭环

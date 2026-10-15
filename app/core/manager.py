@@ -2191,7 +2191,7 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
                     "error": "无法推导卸载命令：请在 data/catalog.json 的 \"%s\" 里配置 uninstall 字段"
                              % entry["id"]}
     else:
-        cmd = entry.get(op)
+        cmd = catalog.command_for(entry, op)
         if not cmd:
             return {"ok": False,
                     "error": "未配置 %s 命令：请在 data/catalog.json 的 \"%s\" 里补充，或用官方渠道安装"
@@ -2275,7 +2275,8 @@ def check_update(entry, force=False):
     cur_num = ".".join(str(x) for x in _ver_tuple(current)) or "-"
     result = {"current": current, "latest": None, "updatable": None, "note": ""}
 
-    cmd = entry.get("install") or entry.get("upgrade") or ""
+    cmd = (catalog.command_for(entry, "install") or
+           catalog.command_for(entry, "upgrade") or "")
     pkg = _npm_pkg_name(cmd)
     if pkg:
         # Windows 的 npm 是 .cmd 垫片须经 cmd /c；POSIX 直接跑
@@ -2350,7 +2351,8 @@ def _checkable_entries():
     out = []
     for e in catalog.load():
         det = (detected or {}).get(e["id"]) or {}
-        if det.get("installed") and (e.get("upgrade") or e.get("install")):
+        if det.get("installed") and (catalog.command_for(e, "upgrade") or
+                                      catalog.command_for(e, "install")):
             out.append(e)
     return out
 
@@ -2398,7 +2400,7 @@ def upgrade_all_targets():
     out = []
     for e in catalog.load():
         det = (detected or {}).get(e["id"]) or {}
-        if not det.get("installed") or not e.get("upgrade"):
+        if not det.get("installed") or not catalog.command_for(e, "upgrade"):
             continue
         if update_info(e).get("status") == "current":
             continue
@@ -2430,8 +2432,8 @@ def catalog_view():
             "orch_enabled": orch_enabled,
             "capabilities": registry.capability_manifest(e),
             "update": update_info(e),
-            "has_install": bool(e.get("install")),
-            "has_upgrade": bool(e.get("upgrade")),
+            "has_install": bool(catalog.command_for(e, "install")),
+            "has_upgrade": bool(catalog.command_for(e, "upgrade")),
             # 卸载命令由 install/upgrade 推导（或 catalog 显式配置），供 UI 确认框展示
             "uninstall_cmd": catalog.uninstall_command(e) if det.get("installed") else None,
             # 一键打开配置（kind=web/console + command）；没配的条目 UI 不出「打开」按钮
