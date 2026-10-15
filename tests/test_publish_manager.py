@@ -899,6 +899,44 @@ def test_fanqie_upload_flow_contract():
     contract(manager.load_flow("fanqie", "upload_chapter"), "解析后")
 
 
+def test_fanqie_active_dialog_prefers_blocking_prompt():
+    """An overlay prompt must win regardless of DOM order."""
+    from core.publish.flow import _fanqie_active_dialog
+
+    prompt = "发布提示\n检测到你还有错别字未修改，是否确定提交？"
+    risk_prompt = "是否进行内容风险检测？\n开启后将消耗次数"
+    settings = "发布设置\n定时发布\n确认发布"
+    expect(_fanqie_active_dialog([prompt, settings]) == prompt,
+           "提示框在 DOM 前面时仍应优先处理")
+    expect(_fanqie_active_dialog([settings, prompt]) == prompt,
+           "提示框在 DOM 后面时仍应优先处理")
+    expect(_fanqie_active_dialog([settings, risk_prompt]) == risk_prompt,
+           "可选风险检测框必须优先于发布设置")
+    expect(_fanqie_active_dialog([settings]) == settings,
+           "没有上层提示框时应继续处理发布设置")
+
+
+def test_fanqie_publish_feedback_detects_new_quota_toast():
+    """Quota feedback rendered in the page body must trigger a retry."""
+    from core.publish.flow import _has_new_feedback
+
+    before = {"dialog": "发布设置", "feedback": [], "body": "编辑器"}
+    after = {"dialog": "发布设置", "feedback": [],
+             "body": "编辑器\n提交字数超出每日上限"}
+    expect(_has_new_feedback(before, after, ["每日上限"]),
+           "正文里的额度提示应触发日期顺延")
+    expect(not _has_new_feedback(after, after, ["每日上限"]),
+           "相同旧提示不能误判为本次新反馈")
+
+    from core.publish.flow import _fanqie_submission_limit_changed
+    before = {"dialog": "发布设置", "body": "正文"}
+    after = {"dialog": "发布设置", "body": "正文\n提交字数超出每日上限"}
+    expect(_fanqie_submission_limit_changed(before, after),
+           "投稿字数额度反馈应终止日期顺延")
+    expect(not _fanqie_submission_limit_changed(after, after),
+           "历史残留的投稿额度提示不能触发本次终止")
+
+
 def test_fanqie_stale_override_falls_back_to_calibrated_flow():
     """旧用户覆盖缺少当前确认链时，不能盖掉随包校准流程。"""
     fp = (_TMP / "publish" / "flows-fanqie.json").resolve()

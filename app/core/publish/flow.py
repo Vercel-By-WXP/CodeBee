@@ -37,19 +37,45 @@ class FlowError(Exception):
     """流程失败：message 面向用户（含步骤序号与截图路径线索）。"""
 
 
+def _fanqie_active_dialog(dialogs):
+    """Prefer blocking confirmation dialogs over an underlying publish form.
+
+    Fanqie can render a typo-confirmation modal above the publish-settings
+    modal. DOM order is not visual stacking order, so selecting the last
+    visible dialog can make the flow click the covered settings form again.
+    """
+    texts = [str(text or "").strip() for text in (dialogs or [])]
+    for mark in ("发布提示", "请选择内容检测方式", "是否进行内容风险检测？",
+                 "发布设置"):
+        for text in texts:
+            if mark in text:
+                return text
+    return texts[-1] if texts else ""
+
+
 def _has_new_feedback(before, after, marks):
     """Return whether a submit click produced a new matching dialog/toast."""
     before_dialog = str((before or {}).get("dialog") or "")
     after_dialog = str((after or {}).get("dialog") or "")
+    before_body = str((before or {}).get("body") or "")
+    after_body = str((after or {}).get("body") or "")
     before_feedback = [str(x) for x in ((before or {}).get("feedback") or [])]
     after_feedback = [str(x) for x in ((after or {}).get("feedback") or [])]
     for mark in marks:
         if mark in after_dialog and mark not in before_dialog:
             return True
+        if mark in after_body and mark not in before_body:
+            return True
         if (sum(mark in x for x in after_feedback) >
                 sum(mark in x for x in before_feedback)):
             return True
     return False
+
+
+def _fanqie_submission_limit_changed(before, after):
+    """A daily submission quota cannot be fixed by changing publish date."""
+    return _has_new_feedback(
+        before, after, ["提交字数超出每日上限", "投稿字数超出每日上限"])
 
 
 class TitleDupError(FlowError):
@@ -858,16 +884,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 note(i, "处理番茄发布确认链")
 
                 def fq_state():
-                    return page.call(
+                    state = page.call(
                         "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                         "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
                         "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
                         "const fs=[...document.querySelectorAll('[role=alert],.arco-message,"
                         ".arco-notification,.arco-modal-notice')].filter(vis)"
                         ".map(e=>(e.innerText||'').trim()).filter(Boolean);"
-                        "const d=ds[ds.length-1]||null;return{dialog:d?(d.innerText||'').trim():'',"
-                        "feedback:fs,"
+                        "return{dialogs:ds.map(d=>(d.innerText||'').trim()),feedback:fs,"
                         "body:(document.body.innerText||''),url:location.href};}", timeout=15) or {}
+                    state["dialog"] = _fanqie_active_dialog(state.get("dialogs"))
+                    return state
 
                 def fq_click(dialog_mark, label):
                     return page.call(
@@ -1045,6 +1072,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             raise FlowError("番茄内容检测弹窗没有基础检测按钮")
                         time.sleep(1.2)
                         continue
+                    if "是否进行内容风险检测" in dialog_text:
+                        if not fq_click("是否进行内容风险检测", "取消").get("ok"):
+                            raise FlowError("番茄风险检测弹窗没有取消按钮")
+                        time.sleep(0.5)
+                        continue
                     if "发布设置" in dialog_text:
                         if not fq_click("发布设置", "否").get("ok"):
                             raise FlowError("番茄发布设置无法选择“未使用 AI”")
@@ -1070,9 +1102,22 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         before_submit = fq_state()
                         if not fq_click("发布设置", "确认发布").get("ok"):
                             raise FlowError("番茄发布设置没有确认发布按钮")
-                        time.sleep(1.4)
+                        feedback_marks = ["每日上限", "半小时以后", "发布时间间隔",
+                                          "同一时间", "请选择是否使用 AI"]
                         after = fq_state()
+                        feedback_deadline = time.time() + 2.2
+                        while (time.time() < feedback_deadline and
+                               "发布设置" in str(after.get("dialog") or "") and
+                               not any(_has_new_feedback(before_submit, after, [mark])
+                                       for mark in feedback_marks)):
+                            time.sleep(0.15)
+                            after = fq_state()
                         after_dialog = str(after.get("dialog") or "")
+                        if _fanqie_submission_limit_changed(before_submit, after):
+                            fq_click("发布设置", "取消")
+                            raise FlowError(
+                                "番茄提示投稿字数超出每日上限；顺延定时日期无法解除，"
+                                "本次已停止，请额度恢复后再发")
                         if _has_new_feedback(before_submit, after, ["每日上限"]):
                             force_schedule = True
                             trial_day += datetime.timedelta(days=1)
