@@ -12,6 +12,8 @@ def document():
         "TaskCreate": {"type": "object", "required": ["goal"], "properties": {
             "type": {"type": "string"}, "title": {"type": "string"},
             "goal": {"type": "string", "maxLength": 4000}, "workdir": {"type": "string"},
+            "expert_id": {"type": "string", "maxLength": 80,
+                          "description": "可选专家工作模板 ID；必须与 type 绑定的流程一致"},
             "sandbox": {"type": "object", "properties": {
                 "backend": {"type": "string", "enum": ["native", "docker"]},
                 "docker_image": {"type": "string", "maxLength": 240},
@@ -171,6 +173,38 @@ def document():
                      "responses": {"200": response("评审请求", {"type": "object", "properties": {"review": ref("ReviewRequest")}}), **errors}}},
         "/api/capabilities": {"get": {"summary": "读取智能体能力清单", "security": security,
             "responses": {"200": response("能力清单", {"type": "object"}), "401": errors["401"]}}},
+        "/api/plugins/{plugin_id}/grant": {"post": {"summary": "授予插件声明的能力", "security": security,
+            "parameters": [{"name": "plugin_id", "in": "path", "required": True,
+                            "schema": {"type": "string"}}],
+            "requestBody": body({"type": "object", "properties": {
+                "grants": {"type": "array", "items": {"type": "string"}}}}),
+            "responses": {"200": ok, "400": errors["400"], "401": errors["401"]}}},
+        "/api/experts": {"get": {"summary": "读取内置专家工作模板", "security": security,
+            "responses": {"200": response("专家模板列表", {"type": "object", "properties": {
+                "experts": {"type": "array", "items": {"type": "object", "properties": {
+                    "id": {"type": "string"}, "name": {"type": "string"},
+                    "version": {"type": "string"}, "flow_id": {"type": "string"},
+                    "description": {"type": "string"}, "prompt": {"type": "string"},
+                    "skills": {"type": "array", "items": {"type": "string"}},
+                    "knowledge_scope": {"type": "array", "items": {"type": "string"}},
+                    "deliverables": {"type": "array", "items": {"type": "string"}}
+                }}}
+            }}), "401": errors["401"]}}},
+        "/api/sessions": {
+            "get": {"summary": "读取持久会话与 workspace lease 状态", "security": security,
+                     "responses": {"200": response("Sessions", {"type": "object"}), "401": errors["401"]}},
+            "post": {"summary": "创建持久会话", "security": security,
+                      "requestBody": body({"type": "object", "properties": {
+                          "id": {"type": "string"}, "workspace": {"type": "string"},
+                          "owner": {"type": "string"}, "route": {"type": "object"}}}),
+                      "responses": {"201": response("Session", {"type": "object"}), "400": errors["400"], "401": errors["401"]}}},
+        "/api/sessions/{session_id}": {"get": {"summary": "读取会话状态", "security": security,
+            "responses": {"200": response("Session", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
+        "/api/sessions/{session_id}/{operation}": {"post": {"summary": "推进会话 prompt/resume/close 生命周期", "security": security,
+            "parameters": [{"name": "operation", "in": "path", "required": True,
+                            "schema": {"type": "string", "enum": ["prompt", "resume", "close"]}}],
+            "requestBody": body({"type": "object"}),
+            "responses": {"200": response("Session", {"type": "object"}), "401": errors["401"], "404": errors["404"], "409": errors["409"]}}},
         "/api/memory": {"get": {"summary": "读取全局与项目记忆中心", "security": security,
             "responses": {"200": response("记忆中心", {"type": "object"}), "401": errors["401"]}}},
         "/api/tasks/{task_id}/memory/preview": {"get": {"summary": "预览项目记忆注入内容", "security": security,
@@ -196,6 +230,15 @@ def document():
             "responses": {"200": response("运行状态", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
         "/api/runs/{run_id}/trace": {"get": {"summary": "读取脱敏 trace", "security": security,
             "responses": {"200": response("Trace", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
+        "/api/runs/{run_id}/attempts": {"get": {"summary": "读取 provider attempt 账本", "security": security,
+            "responses": {"200": response("Attempts", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
+        "/api/runs/{run_id}/provenance": {"get": {"summary": "读取运行 provenance", "security": security,
+            "responses": {"200": response("Provenance", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
+        "/api/runs/{run_id}/session-snapshot": {"get": {"summary": "读取会话快照", "security": security,
+            "responses": {"200": response("Session snapshot", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
+        "/api/runs/{run_id}/session-snapshot/replay": {"get": {"summary": "回放无密钥会话快照", "security": security,
+            "parameters": [{"name": "upto_seq", "in": "query", "schema": {"type": "integer", "minimum": 1}}],
+            "responses": {"200": response("Replayed session", {"type": "object"}), "400": errors["400"], "401": errors["401"], "404": errors["404"]}}},
         "/api/runs/{run_id}/otel": {"get": {"summary": "导出 OTLP JSON trace", "security": security,
             "responses": {"200": response("OTLP trace", {"type": "object"}), "401": errors["401"], "404": errors["404"]}}},
         "/api/runs/{run_id}/checkpoints": {"get": {"summary": "读取 checkpoint 回放预览", "security": security,

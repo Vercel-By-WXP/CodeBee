@@ -48,6 +48,20 @@ class TaskSpecTests(BaseTest):
         self.assertNotIn("评审轮数", text)
         self.assertNotIn("连载：", text)
 
+    def test_expert_snapshot_is_recorded(self):
+        task = {
+            "title": "做竞品调研", "type": "research", "goal": "输出结论",
+            "expert_snapshot": {
+                "id": "research", "name": "调研分析师", "version": "1.0.0",
+                "content_sha256": "abcdef1234567890deadbeef",
+                "deliverables": ["执行摘要", "关键发现与证据", "风险与下一步建议"],
+            },
+        }
+        self._write(task)
+        text = self._read()
+        self.assertIn("专家模板：调研分析师（版本 1.0.0，指纹 abcdef1234567890）", text)
+        self.assertIn("专家交付清单：执行摘要、关键发现与证据、风险与下一步建议", text)
+
     def test_failure_silent(self):
         # 工作目录路径被一个文件占用：makedirs 抛错 → 静默返回空串，绝不挡任务
         blocker = self.tmp / "afile"

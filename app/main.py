@@ -31,7 +31,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import activity, automation, board, catalog, flows, jobs, manager, market, market_remote, preview, registry, remote, runner, settings, store
+from core import activity, automation, board, catalog, experts, flows, jobs, manager, market, market_remote, preview, registry, remote, runner, settings, store
 from core import paths
 from core import health
 from core import usage as usage_ledger
@@ -272,6 +272,65 @@ class Handler(BaseHTTPRequestHandler):
                 from core import goal_service
                 return self._json(200, {"current": goal_service.current(),
                                         "goals": goal_service.list_goals()})
+            if path == "/api/sessions":
+                from core import session_runtime
+                # Preserve the legacy agent-session scan consumed by the UI;
+                # expose durable runtime sessions alongside it.
+                from core import sessions
+                return self._json(200, {
+                    "sessions": sessions.scan(force="force=1" in urlparse(self.path).query),
+                    "runtime": session_runtime.default_runtime().list(),
+                })
+            m = re.match(r"^/api/sessions/([^/]+)$", path)
+            if m:
+                from core import session_runtime
+                try:
+                    return self._json(200, session_runtime.default_runtime().get(m.group(1)))
+                except session_runtime.SessionNotFoundError:
+                    return self._json(404, {"error": "session not found"})
+            m = re.match(r"^/api/runs/([^/]+)/provenance$", path)
+            if m:
+                from core import provenance
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "run not found"})
+                task = store.get_task(run.get("task_id")) if run.get("task_id") else {}
+                workdir = (task or {}).get("workdir") or ""
+                return self._json(200, provenance.from_run(run, task,
+                                                           workdir=workdir or paths.DATA_DIR))
+            m = re.match(r"^/api/runs/([^/]+)/attempts$", path)
+            if m:
+                from core import attempt_ledger
+                ledger = attempt_ledger.default_ledger()
+                return self._json(200, {"attempts": ledger.for_run(m.group(1)) if ledger else [],
+                                        "summary": ledger.summary(m.group(1)) if ledger else {}})
+            m = re.match(r"^/api/runs/([^/]+)/session-snapshot$", path)
+            if m:
+                from core import session_snapshot
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "run not found"})
+                snap_path = paths.RUNS_DIR / m.group(1) / "session.snapshot.json"
+                if not snap_path.is_file():
+                    return self._json(404, {"error": "session snapshot not found"})
+                return self._json(200, session_snapshot.read(snap_path))
+            m = re.match(r"^/api/runs/([^/]+)/session-snapshot/replay$", path)
+            if m:
+                from core import session_snapshot
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "run not found"})
+                snap_path = paths.RUNS_DIR / m.group(1) / "session.snapshot.json"
+                if not snap_path.is_file():
+                    return self._json(404, {"error": "session snapshot not found"})
+                query = parse_qs(urlparse(self.path).query)
+                upto = (query.get("upto_seq") or [None])[0]
+                try:
+                    upto = int(upto) if upto not in (None, "") else None
+                except (TypeError, ValueError):
+                    return self._json(400, {"error": "upto_seq must be an integer"})
+                return self._json(200, session_snapshot.replay(
+                    session_snapshot.read(snap_path), upto_seq=upto))
             if path == "/api/openapi.json":
                 from core import openapi
                 return self._json(200, openapi.document())
@@ -330,6 +389,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"sources": modelhub.sources()})
             if path == "/api/flows":
                 return self._json(200, {"flows": flows.list_flows()})
+            if path == "/api/experts":
+                return self._json(200, {"experts": experts.list_experts()})
             if path == "/api/flows/versions":
                 qs = parse_qs(urlparse(self.path).query)
                 fid = (qs.get("id") or [""])[0]
@@ -957,6 +1018,38 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(e.status, {"error": str(e)})
         if path == "/api/control":
             return self._api_control()
+        if path == "/api/sessions":
+            from core import session_runtime
+            body = self._body()
+            try:
+                row = session_runtime.default_runtime().create(
+                    workspace=body.get("workspace") or paths.DATA_DIR,
+                    owner=body.get("owner") or self._client_id(),
+                    session_id=body.get("id"), route=body.get("route"))
+            except (TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(201, row)
+        m = re.match(r"^/api/sessions/([^/]+)/(prompt|resume|close)$", path)
+        if m:
+            from core import session_runtime
+            runtime = session_runtime.default_runtime()
+            sid, op = m.group(1), m.group(2)
+            body = self._body()
+            try:
+                if op == "prompt":
+                    out = runtime.admit_turn(sid, body.get("content") or "",
+                                             route=body.get("route") or {})
+                elif op == "resume":
+                    out = runtime.resume(sid, owner=body.get("owner") or self._client_id())
+                else:
+                    out = runtime.close(sid)
+            except session_runtime.SessionBusyError:
+                return self._json(409, {"error": "session busy"})
+            except session_runtime.SessionNotFoundError:
+                return self._json(404, {"error": "session not found"})
+            except (RuntimeError, ValueError) as exc:
+                return self._json(409, {"error": str(exc)})
+            return self._json(200, out)
         if path == "/api/control/heartbeat":
             ok, view = remote.heartbeat(self._client_id())
             return self._json(200, {"ok": ok, "control": view})
@@ -1884,7 +1977,7 @@ class Handler(BaseHTTPRequestHandler):
             from core import knowledge
             n = knowledge.learn_from_run((self._body().get("run_id") or ""))
             return self._json(200, {"ok": True, "learned": n})
-        m = re.match(r"^/api/plugins/([^/]+)/(install|enable|disable|remove)$", path)
+        m = re.match(r"^/api/plugins/([^/]+)/(install|enable|disable|remove|grant)$", path)
         if m:
             # 本地插件生命周期：只搬文件+记账（skills 走 market.install_files、
             # MCP 只暴露声明），永不执行插件代码。前端 loadPlugins 拉的就是
@@ -1892,10 +1985,14 @@ class Handler(BaseHTTPRequestHandler):
             from core import plugins
             pid, op = m.group(1), m.group(2)
             if op == "install":
-                result, err = plugins.install(pid)
+                body = self._body()
+                result, err = plugins.install(pid, grants=body.get("grants") or [])
                 if err:
                     return self._json(400, {"error": err})
                 return self._json(200, result or {"ok": True})
+            if op == "grant":
+                err = plugins.grant(pid, self._body().get("grants") or [])
+                return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
             if op == "remove":
                 err = plugins.remove(pid)
                 return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})

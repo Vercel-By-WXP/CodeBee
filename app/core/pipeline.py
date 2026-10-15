@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, agent_context, attachments, branching, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -266,6 +266,28 @@ _sessions_cache = {}
 _sessions_lock = threading.Lock()
 
 
+def _ensure_runtime_session(run_id, workdir, role, prompt, agent):
+    """Bind a run to the durable SessionRuntime/WorkspaceLease contract."""
+    try:
+        from . import session_runtime
+        runtime = session_runtime.default_runtime()
+        try:
+            runtime.get(run_id)
+        except session_runtime.SessionNotFoundError:
+            runtime.create(session_id=run_id, workspace=workdir or paths_mod.DATA_DIR,
+                           owner="run:" + str(run_id))
+        return runtime.admit_turn(run_id, prompt, allow_parallel=True, route={
+            "role": role, "agent": agent.get("id") if isinstance(agent, dict) else "",
+            "model": agent.get("model") if isinstance(agent, dict) else ""})
+    except session_runtime.SessionBusyError:
+        # Parallel review steps share one orchestration run.  The external
+        # session protocol still enforces one prompt per client session; a
+        # busy orchestration session is recorded as an already-admitted turn.
+        return {"session_id": run_id, "busy": True}
+    except Exception:
+        return None
+
+
 def _get_session(run_id):
     """每 run 一个 surface 会话日志（data/runs/<id>/session.jsonl）。"""
     with _sessions_lock:
@@ -370,6 +392,13 @@ def _wait_gate(run_id, ev):
         run = store.get_run(run_id) or {}
         if not run.get("paused") or run.get("status") not in ("queued", "running"):
             return
+        # Do not claim the whole orchestration is stopped while another
+        # parallel step is still running.  Once the current wave has settled,
+        # this durable marker tells the UI that it is safe to inspect outputs.
+        try:
+            store.mark_pause_reached(run_id)
+        except Exception:
+            pass
         if ev is not None and ev.is_set():
             return
         # ev.wait 睡等：取消置位即刻醒来，不必耗满 1s 轮询间隔
@@ -430,6 +459,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     swap_guard 是换将循环交来的 {"exclude": 本轮已试 CLI, "blocked": 已封 403 上游}，
     死链补位据此挑人，绝不把「换将」补位补回刚撞死的那个 CLI。"""
     _wait_gate(run_id, ev)
+    _ensure_runtime_session(run_id, workdir, role, prompt, agent)
     deadline = _ensure_budget(run_id)
     timeout, deadline = _step_timeout(run_id, timeout, deadline)
     # 绑定解析为空分两种（2026-09-18 起 区分对待）：
@@ -929,6 +959,17 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
     # 被取消杀停的步骤如实记「已取消」；超时被杀记「超时」——都只是步骤
     # 显示层的细分，run 级仍是 failed，善后路径（重试/自动续跑）不变
     raw = res.get("raw") or {}
+    try:
+        from . import session_runtime
+        row = session_runtime.default_runtime().get(run_id)
+        # A stale/aborted worker must never suppress durable step finalization.
+        # Only decrement the runtime turn when this worker actually owns an
+        # inflight admission; the store remains the source of truth for steps.
+        if row.get("inflight"):
+            session_runtime.default_runtime().finish_turn(
+                run_id, res.get("text") or res.get("error") or "")
+    except Exception:
+        pass
     if raw.get("cancelled"):
         status = "cancelled"
     elif raw.get("timed_out"):
@@ -952,6 +993,7 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
                       # 智能体的最终回答（runner 已从 JSONL 事件流里抽出 agent_message）。
                       # 对话视图直读这个；日志文件是全量事件流，塞进气泡就成了「看日志」。
                       output=(res.get("text") or ""),
+                      command=raw.get("command"),
                       followups=res.get("followups"),
                       # 思考过程（内置智能体流式抓取）：落进步骤记录，对话气泡折叠展示
                       thinking=res.get("reasoning") or None,
@@ -5793,6 +5835,15 @@ def _write_task_spec(task, workdir):
             "- 创建：%s" % (task.get("created_at") or ""),
             "- 目标：%s" % str(task.get("goal") or "").replace("\n", " "),
         ]
+        expert = task.get("expert_snapshot") or {}
+        if expert:
+            lines.append("- 专家模板：%s（版本 %s，指纹 %s）" % (
+                expert.get("name") or expert.get("id") or "",
+                expert.get("version") or "未知",
+                str(expert.get("content_sha256") or "")[:16]))
+            if expert.get("deliverables"):
+                lines.append("- 专家交付清单：%s" % "、".join(
+                    str(x) for x in expert["deliverables"][:12]))
         if task.get("context"):
             lines.append("- 背景：%s" % str(task["context"]).replace("\n", " "))
         contract = task.get("intent_contract") or {}
@@ -6174,7 +6225,12 @@ def execute_run(run_id):
     original_context = task.get("context") or ""
     if _intent_block and _intent_block not in original_context:
         task["context"] = (_intent_block + "\n\n" + original_context).strip()
+    _expert_block = experts.context_block(task.get("expert_snapshot"))
+    if _expert_block and _expert_block not in task.get("context", ""):
+        task["context"] = (_expert_block + "\n\n" + task.get("context", "")).strip()
     store.update_run(run_id, intent_contract=task.get("intent_contract") or {})
+    if task.get("expert_snapshot"):
+        store.update_run(run_id, expert_snapshot=task.get("expert_snapshot"))
     task["_compiled_spec"] = task_spec
     # 运行内统一使用编译后的难度；store 中历史任务常带 difficulty=auto，
     # 不能让这个兼容值覆盖 easy/default/hard 的模型调度决策。
@@ -6378,6 +6434,30 @@ def execute_run(run_id):
         except Exception:
             pass
     finally:
+        try:
+            from . import session_runtime
+            session_runtime.default_runtime().drain_turns(
+                run_id, "run finalized: %s" % ((store.get_run(run_id) or {}).get("status") or "unknown"))
+        except Exception:
+            pass
+        # Persist keyless replay material and a portable provenance record before
+        # cleanup/notification so diagnostics survive process restart.
+        try:
+            from . import provenance, session_snapshot
+            _session = _get_session(run_id)
+            _snap = session_snapshot.from_session(_session, task.get("workdir") or paths_mod.DATA_DIR)
+            session_snapshot.write(_snap, paths_mod.RUNS_DIR / run_id / "session.snapshot.json")
+            _prov_run = store.get_run(run_id) or {}
+            try:
+                _prov_run["assets"] = store.run_asset_refs(run_id, limit=200)
+            except Exception:
+                pass
+            provenance.dump(
+                provenance.from_run(_prov_run, task,
+                                    workdir=task.get("workdir") or paths_mod.DATA_DIR),
+                paths_mod.RUNS_DIR / run_id / "provenance.json")
+        except Exception:
+            pass
         # 本场停用台账随 run 收尾清理（run 内生效，不跨 run——充值/登录是
         # 用户动作，下一个 run 重新探测，绝不把昨晚的死错错杀成今天的）。
         try:

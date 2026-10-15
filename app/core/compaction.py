@@ -48,6 +48,29 @@ def prune_text(text: str, *, head=PRUNE_HEAD, tail=PRUNE_TAIL, marker=PRUNE_MARK
     return text[:head] + marker + text[-tail:]
 
 
+def prune_event(session, ev, *, head=PRUNE_HEAD, tail=PRUNE_TAIL):
+    """Emit an auditable prune event and return the bounded tool result.
+
+    The original event remains in the append-only log.  Consumers can price the
+    exact replacement through ``source_seq`` and the recorded character/token
+    counts without retaining a second copy in the model surface.
+    """
+    original = _ev_text(ev)
+    bounded = prune_text(original, head=head, tail=tail)
+    if bounded == original:
+        return original
+    session.append("compaction_prune", {
+        "source_seq": ev.seq,
+        "source_event_type": ev.type,
+        "original_chars": len(original),
+        "retained_chars": len(bounded),
+        "pruned_chars": max(0, len(original) - len(bounded)),
+        "original_tokens": estimate_tokens(original),
+        "retained_tokens": estimate_tokens(bounded),
+    }, surface_op="shadow")
+    return bounded
+
+
 def select_range(session, *, retain_tail_tokens=RETAIN_TAIL_TOKENS,
                  max_region_events=MAX_REGION_EVENTS):
     """选可压缩区域 [start_seq, end_seq]（闭区间）。
@@ -135,7 +158,7 @@ def compact_region(session, start_seq: int, end_seq: int, llm_caller,
         for ev in region_events:
             text = _ev_text(ev)
             if ev.type == "tool_result":
-                text = prune_text(text)
+                text = prune_event(session, ev)
             if text.strip():
                 parts.append(f"[{ev.type}#{ev.seq}] {text}")
         region_text = "\n\n".join(parts)
@@ -199,3 +222,12 @@ def maybe_compact(session, *, model: str = "", llm_caller=None,
     log.info("compaction triggered run=%s ratio=%.2f region=[%d,%d]",
              rid, ratio, start, end)
     return compact_region(session, start, end, llm_caller, reason=f"pressure={ratio:.2f}")
+
+
+def prune_summary(session):
+    """Return aggregate evidence for prune events in a session."""
+    rows = [e.data for e in session.events() if e.type == "compaction_prune"]
+    return {"events": len(rows),
+            "original_tokens": sum(int(x.get("original_tokens") or 0) for x in rows),
+            "retained_tokens": sum(int(x.get("retained_tokens") or 0) for x in rows),
+            "pruned_tokens": sum(max(0, int(x.get("pruned_chars") or 0) // 4) for x in rows)}

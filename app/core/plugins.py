@@ -40,6 +40,35 @@ class PluginError(ValueError):
     """A user-actionable plugin validation or lifecycle error."""
 
 
+_SAFE_CAPABILITIES = {"skills.read", "filesystem.read"}
+
+
+def authorize(descriptor, grants=None):
+    """Evaluate a plugin's declared capabilities without executing it.
+
+    Capability grants are exact strings.  Read-only skill plugins remain
+    installable by default; filesystem/network/process capabilities require an
+    explicit grant so marketplace metadata cannot silently widen authority.
+    """
+    required = sorted({str(x).strip() for x in (descriptor or {}).get("capabilities", []) if str(x).strip()})
+    granted = {str(x).strip() for x in (grants or []) if str(x).strip()}
+    missing = sorted(set(required) - granted - _SAFE_CAPABILITIES)
+    return {"allowed": not missing, "required": required, "granted": sorted(granted),
+            "missing": missing, "reason": "explicit_grant_required" if missing else "ok"}
+
+
+def grant(plugin_id, capabilities):
+    """Persist an explicit capability grant for an installed plugin."""
+    with _LOCK:
+        reg = _load_registry()
+        rec = (reg.setdefault("installed", {}).get(str(plugin_id)))
+        if not rec:
+            return "插件尚未安装"
+        rec["grants"] = sorted({str(x).strip() for x in (capabilities or []) if str(x).strip()})
+        _save_registry(reg)
+    return None
+
+
 def _registry_file():
     return Path(paths.DATA_DIR) / "plugins.json"
 
@@ -552,12 +581,15 @@ def _installed_record(plugin_id):
     return _load_registry().get("installed", {}).get(plugin_id)
 
 
-def install(plugin_id, roots=None):
+def install(plugin_id, roots=None, grants=None):
     """Install a discovered plugin and its skills without executing code."""
     plugin_id = str(plugin_id or "").strip()
     desc = _descriptor_for(plugin_id, roots=roots)
     if not desc:
         return None, "插件不存在或 manifest 无效: %s" % plugin_id
+    policy = authorize(desc, grants=grants)
+    if not policy["allowed"]:
+        return None, "插件需要显式能力授权: %s" % ", ".join(policy["missing"])
     with _LOCK:
         old = _installed_record(plugin_id)
         if old and Path(str(old.get("install_dir") or "")).is_dir():
@@ -598,6 +630,7 @@ def install(plugin_id, roots=None):
                 "install_dir": str(target), "source": str(source),
                 "market_id": market_id if files else "", "skill_pack_ids": skill_pack_ids,
                 "enabled": False, "installed_at": _now(),
+                "grants": sorted({str(x).strip() for x in (grants or []) if str(x).strip()}),
                 "has_mcp": bool(installed_desc.get("mcp_path") or installed_desc.get("mcp_inline")),
             }
             _save_registry(reg)
@@ -735,6 +768,11 @@ def view(roots=None):
         row["enabled"] = bool(rec.get("enabled", True))
         row["install_dir"] = str(target) if target is not None else ""
         row["skill_pack_ids"] = list(rec.get("skill_pack_ids") or [])
+        row["grants"] = list(rec.get("grants") or [])
+        try:
+            row["authorization"] = authorize(row, grants=row["grants"])
+        except Exception:
+            row["authorization"] = {"allowed": False, "missing": list(row.get("capabilities") or [])}
     items = sorted(rows.values(), key=lambda x: (str(x.get("category") or ""), str(x.get("display_name") or x.get("name") or "")))
     cats = sorted({str(x.get("category")) for x in items if x.get("category")})
     return {"plugins": items, "categories": cats, "total": len(items)}
@@ -913,6 +951,10 @@ def active_mcp_servers():
             continue
         path = Path(str(rec.get("install_dir") or ""))
         try:
+            desc = load_manifest(path)
+            policy = authorize(desc, grants=rec.get("grants") or [])
+            if not policy["allowed"]:
+                continue
             out.extend(mcp_servers(plugin_id, roots=[path]))
         except PluginError:
             continue

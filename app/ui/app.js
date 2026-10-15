@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, experts: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
 /* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
 const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
@@ -796,6 +796,28 @@ async function loadFlows() {
   renderTypeOptions();
 }
 
+async function loadExperts() {
+  try {
+    const r = await api("/api/experts");
+    S.experts = r.experts || [];
+  } catch (e) { S.experts = []; }
+  renderExpertOptions();
+}
+
+function renderExpertOptions() {
+  const sel = $("f-expert");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">' + esc(t("通用执行")) + "</option>" +
+    (S.experts || []).map((x) => '<option value="' + esc(x.id) + '">' +
+      esc(t(x.name)) + " · " + esc(t(x.description || "")) + "</option>").join("");
+  if (prev && (S.experts || []).some((x) => x.id === prev)) sel.value = prev;
+}
+
+function expertById(id) {
+  return (S.experts || []).find((x) => x.id === id) || null;
+}
+
 function invalidateFlowRubricDraft(flowId) {
   if (S.flowRubricDrafts) delete S.flowRubricDrafts[flowId];
   const rubric = $("f-rubric");
@@ -1144,6 +1166,11 @@ function onTypeChange() {
   syncTypeBtn();
   renderQuickChips();
   const flow = flowById($("f-type").value);
+  const expertSel = $("f-expert");
+  if (expertSel && expertSel.value) {
+    const expert = expertById(expertSel.value);
+    if (!expert || expert.flow_id !== (flow && flow.id)) expertSel.value = "";
+  }
   const engine = flow ? flow.engine : "code";
   const isReview = engine === "review";
   const isDirect = engine === "direct";
@@ -3668,6 +3695,8 @@ async function createTask() {
     workdir: $("f-workdir").value.trim(),
     thinking: $("f-thinking").value,
   };
+  const expertId = (($('f-expert') || {}).value || "").trim();
+  if (expertId) payload.expert_id = expertId;
   if (cmpPlanMode) payload.plan_mode = true;
   const sandboxBackend = $("f-sandbox-backend").value;
   if (sandboxBackend === "docker") {
@@ -4812,6 +4841,13 @@ async function newFromTaskAsync(id) {
   if (flow && $("f-type").value !== tk.type) {
     $("f-type").value = tk.type;
     onTypeChange();  // 先带出流程默认（引擎区显隐/稿件名/维度），再覆盖为任务值
+  }
+  // 基于任务新建时保留原专家模板；仅当模板仍绑定当前流程时回填。
+  const expertSel = $("f-expert");
+  if (expertSel) {
+    const expertId = String(tk.expert_id || (tk.expert_snapshot || {}).id || "");
+    const expert = expertById(expertId);
+    expertSel.value = expert && expert.flow_id === tk.type ? expert.id : "";
   }
   $("f-title").value = tk.title || "";
   $("f-goal").value = tk.goal || "";
@@ -11799,6 +11835,8 @@ function renderDetailOverview(run, runs, task, aggregate) {
   const etaText = runEtaText(run);
   const goal = (task && task.goal) || run.goal || run.title || "";
   const contract = (task && task.contract) || S.taskContracts[(task && task.id) || run.task_id] || null;
+  const expert = task && task.expert_snapshot && task.expert_snapshot.id
+    ? task.expert_snapshot : null;
   const actions = [];
   if (total) actions.push('<button type="button" class="ghost" data-overview-tab="steps">' + esc(t("查看步骤")) + "</button>");
   if (last && last.log) actions.push('<button type="button" class="ghost" data-overview-run="' + esc(run.id) + '" data-overview-log="' + esc(last.log) + '">' + esc(t("打开 CLI 日志")) + "</button>");
@@ -11808,6 +11846,12 @@ function renderDetailOverview(run, runs, task, aggregate) {
       '<div class="rd-overview-kicker">' + esc(t("任务概览")) + '</div>' +
       '<div class="rd-overview-title" title="' + esc(run.title || "") + '">' + esc(run.title || "") + '</div>' +
       (goal ? '<div class="rd-overview-goal" title="' + esc(goal) + '">' + esc(goal) + '</div>' : "") +
+      (expert ? '<div class="rd-expert-proof" title="' + esc((expert.prompt || "").slice(0, 300)) + '">' +
+        '<span class="rd-expert-proof-label">' + esc(t("专家模板")) + '</span>' +
+        '<strong>' + esc(expert.name || expert.id) + '</strong>' +
+        '<span class="rd-expert-proof-version">v' + esc(expert.version || "?") + '</span>' +
+        (expert.content_sha256 ? '<code>' + esc(String(expert.content_sha256).slice(0, 12)) + '</code>' : "") +
+        '</div>' : "") +
     '</div>' +
     '<div class="rd-overview-state">' +
       '<span class="state-label">' + esc(t("当前状态")) + '</span>' +
@@ -19240,6 +19284,15 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-git-rev").addEventListener("change", renderGitHint);
   if ($("f-workdir").value) queueGitProbe();  // 回填的目录：进页面即探测代码版本
   $("f-type").addEventListener("change", onTypeChange);
+  const expertSelect = $("f-expert");
+  if (expertSelect) expertSelect.addEventListener("change", () => {
+    const expert = expertById(expertSelect.value);
+    if (!expert || !flowById(expert.flow_id)) return;
+    const typeSelect = $("f-type");
+    S.typeTouched = true;
+    typeSelect.value = expert.flow_id;
+    typeSelect.dispatchEvent(new Event("change"));
+  });
   // 编排模式/思考程度 pill：选项变化同步短名（含语言切换后的 option 文本变化）
   $("f-mode").addEventListener("change", () => syncCmpSelFace("f-mode"));
   $("f-thinking").addEventListener("change", () => syncCmpSelFace("f-thinking"));
@@ -19374,6 +19427,7 @@ document.addEventListener("DOMContentLoaded", () => {
   startSSE();
   startCtrlHeartbeat();
   loadFlows();   // 任务类型下拉（内置 + 自定义流程）
+  loadExperts(); // 专家模板（绑定现有流程，不改变执行链）
   refreshSessionAgents();  // 继续会话下拉的工具集合（服务端 60s 缓存，开销小）
   loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排设置页时会再拉一次）
   loadSettings();          // 启动即拉设置：新建表单「默认选中默认路径」依赖它

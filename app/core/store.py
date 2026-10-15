@@ -145,6 +145,15 @@ def create_task(payload):
     if flow is None:
         raise ValueError("未知任务类型：%s（可选：%s）"
                          % (payload.get("type"), "、".join(f["id"] for f in flows_mod.list_flows())))
+    expert = None
+    expert_id = str(payload.get("expert_id") or "").strip()
+    if expert_id:
+        from . import experts as experts_mod
+        expert = experts_mod.get_expert(expert_id)
+        if expert is None:
+            raise ValueError("未知专家模板：%s" % expert_id)
+        if expert.get("flow_id") != flow.get("id"):
+            raise ValueError("专家模板 %s 绑定的流程与任务类型不一致" % expert_id)
     title = _text(payload.get("title"), "title")
     goal = _text(payload.get("goal"), "goal")
     workdir = _text(payload.get("workdir"), "workdir")
@@ -191,6 +200,10 @@ def create_task(payload):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
+    if expert:
+        from . import experts as experts_mod
+        task["expert_id"] = expert["id"]
+        task["expert_snapshot"] = experts_mod.snapshot(expert)
     plan_mode = payload.get("plan_mode", False)
     if not isinstance(plan_mode, bool):
         raise ValueError("plan_mode 必须是布尔值")
@@ -830,6 +843,9 @@ def _execution_snapshot(task):
             r"(\s*[:=]\s*|\s+)([^\s]+)")
         return pattern.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", value)
 
+    expert_snapshot = task.get("expert_snapshot")
+    if not isinstance(expert_snapshot, dict):
+        expert_snapshot = {}
     snapshot = {
         "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "task_id": task.get("id") or "",
@@ -837,6 +853,12 @@ def _execution_snapshot(task):
         "flow_revision_id": flow_revision_id,
         "flow_content_sha256": flow_content_sha,
         "flow_snapshot": flow_snapshot,
+        "expert_snapshot": {
+            "id": str(expert_snapshot.get("id") or "")[:80],
+            "name": str(expert_snapshot.get("name") or "")[:120],
+            "version": str(expert_snapshot.get("version") or "")[:40],
+            "content_sha256": str(expert_snapshot.get("content_sha256") or ""),
+        } if expert_snapshot else {},
         "workdir": str(task.get("workdir") or "")[:500],
         "git_rev": str(task.get("git_rev") or "")[:160],
         "verify_command": _redact_command(task.get("verify_command") or ""),
@@ -2321,7 +2343,8 @@ def clear_stream_state(run_id=None, n=None):
 
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
-                followups=None, thinking=None, partial=False, acp_events=None):
+                followups=None, thinking=None, partial=False, acp_events=None,
+                command=None, verify_command=None):
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -2339,6 +2362,11 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                 s["tokens"] = tokens
                 if model:
                     s["model"] = str(model)[:80]
+                if command:
+                    s["command"] = ([str(x)[:500] for x in command]
+                                     if isinstance(command, list) else str(command)[:1000])
+                if verify_command:
+                    s["verify_command"] = str(verify_command)[:1000]
                 if duration_s is not None:
                     s["duration_s"] = round(duration_s, 1)
                 elif s.get("started_at_epoch") is not None:

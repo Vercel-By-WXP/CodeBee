@@ -35,6 +35,15 @@ from .error_codes import (
     is_transient_error as _shared_transient_error,
 )
 
+
+def _attempt_ledger(run_id=""):
+    """Return the shared attempt ledger without making it a hard dependency."""
+    try:
+        from . import attempt_ledger, paths
+        return attempt_ledger.AttemptLedger(paths.DATA_DIR / "attempts" / "attempts.jsonl")
+    except Exception:
+        return None
+
 # 非 Windows 必须置 0：POSIX 的 Popen 对非零 creationflags 直接抛 ValueError，
 # 置 0 则两边通用（remote.py 同款守卫）。
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -125,6 +134,32 @@ def resolve_command(command):
     if low.endswith(".cmd") or low.endswith(".bat"):
         return ["cmd", "/c", path]
     return [path]
+
+
+def redact_command(argv):
+    """Return an audit-safe argv snapshot with credential-like values masked."""
+    out = []
+    hide_next = False
+    names = {"--api-key", "--apikey", "--token", "--auth-token", "--password",
+             "--secret", "api_key", "api-key", "token", "password"}
+    secret_pattern = re.compile(
+        r"(?i)(sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._-]+|"
+        r"(?:api[_ -]?key|token|password|secret)\s*[:=]\s*[^\s]+)")
+    for raw in argv or ():
+        value = str(raw)
+        low = value.lower()
+        if hide_next:
+            out.append("<redacted>")
+            hide_next = False
+        elif low in names or any(k in low for k in ("api_key=", "api-key=", "token=", "password=")):
+            if "=" in value:
+                out.append(value.split("=", 1)[0] + "=<redacted>")
+            else:
+                out.append(value)
+                hide_next = True
+        else:
+            out.append(secret_pattern.sub("<redacted>", value[:500]))
+    return out[:80]
 
 
 def _orphan_pack_files(workdir):
@@ -2002,6 +2037,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 # claude 以 argv 的 --settings 为准，见 _cred_audit_note
                 audit_notes = [_cred_audit_note(kind, att, argv)]
                 try:
+                    ledger = _attempt_ledger(checkpoint_run_id)
+                    if ledger:
+                        ledger.start(checkpoint_run_id or "unbound", command_context.get("role", "")
+                                     if isinstance(command_context, dict) else "",
+                                     ((att.get("provider") or {}).get("name", "")
+                                      if isinstance(att.get("provider"), dict) else ""),
+                                     att.get("model") or "")
                     repeat_guard = (("Reconnecting...", 2)
                                     if kind == "codex" else None)
                     stream_abort_markers = (
@@ -2025,6 +2067,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       repeat_abort=repeat_guard,
                                       abort_markers=stream_abort_markers,
                                       audit_notes=audit_notes)
+                    res["command"] = redact_command(argv)
                 finally:
                     # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
                     for tf in tmp_files:
@@ -2185,6 +2228,28 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             break
         _report_key(att, out)
         raw = out.get("raw") or {}
+        try:
+            ledger = _attempt_ledger(checkpoint_run_id)
+            if ledger:
+                usage = out.get("usage") or {}
+                retry_class = ""
+                if not out.get("ok"):
+                    code = error_code_value(out.get("error_code"))
+                    retry_class = "rate_limit" if _rate_limited(out.get("error")) else (
+                        "transient" if _transient_error(out.get("error")) else code)
+                ledger.finish(
+                    checkpoint_run_id or "unbound",
+                    command_context.get("role", "") if isinstance(command_context, dict) else "",
+                    ((att.get("provider") or {}).get("name", "")
+                     if isinstance(att.get("provider"), dict) else ""),
+                    out.get("model") or att.get("model") or "", ok=bool(out.get("ok")),
+                    error=out.get("error") or "", usage=usage,
+                    duration_s=raw.get("duration", 0.0), retry_class=retry_class,
+                    ttft_ms=(raw.get("first_token_ms") or 0),
+                    tokens_per_sec=(raw.get("tokens_per_sec") or 0),
+                    attempt=attempt + 1)
+        except Exception:
+            pass
         attempt_history.append({
             "model": out.get("model") or att.get("model") or "",
             "provider_id": out.get("provider_id") or att.get("provider_id") or "",
