@@ -18,6 +18,13 @@ def review(scores):
         for dim in scores], "issues": [], "summary": "内部文本诊断"}
 
 
+def feedback_review(scores, feedback_id):
+    value = review(scores)
+    value["feedback_check"] = [{"id": feedback_id, "status": "addressed", "chapter": 1,
+                                 "quote": TEXT[:20], "analysis": "已把原流程改为主角承担代价的选择。"}]
+    return value
+
+
 class EvidenceValidationTests(BaseTest):
     def test_all_dimensions_need_real_chapter_quotes_and_analysis(self):
         from app.core import novel_quality as nq
@@ -127,12 +134,56 @@ class OpeningEvidenceGateTests(BaseTest):
 
     def test_signing_review_receives_feedback_as_case_not_manuscript(self):
         from app.core import novel_quality as nq
-        value = review(dict.fromkeys(nq.SIGNING_RUBRIC, 8))
+        value = feedback_review(dict.fromkeys(nq.SIGNING_RUBRIC, 8), "nf-qimao-shentong-20261015")
         self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
         prompt = self.signing_prompts[0]
         self.assertIn("nf-qimao-shentong-20261015", prompt)
         self.assertIn("待完成，未验证改后效果", prompt)
         self.assertIn("非平台规则", prompt)
+
+    def test_feedback_without_explicit_check_cannot_count_as_valid_review(self):
+        from app.core import novel_quality as nq
+        value = review(dict.fromkeys(nq.SIGNING_RUBRIC, 9))
+        saved, _, _ = self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
+        self.assertEqual(saved["status"], "failed")
+        self.assertIn("未完成有效文本评估", saved.get("error", ""))
+
+    def test_feedback_check_requires_manuscript_quote_and_blocks_unaddressed(self):
+        from app.core import novel_quality as nq
+        rows = [{"id": "f1"}]
+        missing = {"feedback_check": [{"id": "f1", "status": "addressed", "chapter": 1,
+                                        "quote": "不存在的正文片段", "analysis": "已处理"}]}
+        self.assertTrue(nq.feedback_check_errors(missing, {1: TEXT}, rows))
+        unaddressed = {"feedback_check": [{"id": "f1", "status": "not_addressed", "chapter": 1,
+                                            "quote": TEXT[:20], "analysis": "还没改"}]}
+        self.assertEqual(nq.feedback_check_errors(unaddressed, {1: TEXT}, rows), [])
+        self.assertEqual(nq.feedback_check_issues(unaddressed, rows)[0]["severity"], "major")
+        self.assertEqual(nq.feedback_check_issues({"feedback_check": [
+            {"id": "f1", "status": "not_addressed"}]}, rows), [])
+        addressed = {"feedback_check": [{"id": "f1", "status": "addressed", "chapter": 1,
+                                          "quote": TEXT[:20], "analysis": "改为主动选择"}]}
+        self.assertEqual(nq.feedback_check_errors(addressed, {1: TEXT}, rows), [])
+        addressed["feedback_check"].append(dict(addressed["feedback_check"][0]))
+        self.assertTrue(nq.feedback_check_errors(addressed, {1: TEXT}, rows))
+
+    def test_unaddressed_feedback_triggers_revision_even_with_high_scores(self):
+        from app.core import novel_quality as nq
+        value = feedback_review(dict.fromkeys(nq.SIGNING_RUBRIC, 9), "nf-qimao-shentong-20261015")
+        value["feedback_check"][0]["status"] = " not_addressed "
+        saved, _, rebuilt = self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
+        self.assertEqual(rebuilt, 1)
+        self.assertEqual(saved["status"], "failed")
+        self.assertIn("major", saved.get("error", ""))
+        self.assertEqual(saved["signing_evals"]["opening_gate"]["feedback_check"][0]["status"].strip(),
+                         "not_addressed")
+
+    def test_feedback_gate_survives_rendered_block_truncation(self):
+        from app.core import novel_feedback, novel_quality as nq
+        value = feedback_review(dict.fromkeys(nq.SIGNING_RUBRIC, 9), "nf-qimao-shentong-20261015")
+        with patch.object(novel_feedback, "block_for", return_value="（复盘记录因预算截断）"):
+            self._exercise(_res(json.dumps(value)), goal="七猫鉴宝，优化情节推进")
+        self.assertIn("nf-qimao-shentong-20261015", self.signing_prompts[0])
+        self.assertIn("能力是否改变双方行动", self.signing_prompts[0])
 
 
 if __name__ == "__main__":

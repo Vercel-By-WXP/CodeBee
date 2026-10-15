@@ -23,6 +23,67 @@ OPENING_DIM = "开篇吸引力"
 SIGNING_CHECKPOINT_WORDS = 20000   # 项目检查点默认值；不是通用平台规则，调用方应核对当前后台
 
 
+def feedback_check_errors(review: Any, chapters: Mapping[int, str], records: list[dict]) -> list[str]:
+    """Require an explicit, manuscript-anchored response to each reused feedback case.
+
+    This closes the gap between injecting a rejection record and actually testing
+    the proposed fix. ``not_applicable`` is allowed only with a real quote and
+    explanation; ``not_addressed`` is valid evidence of a defect, handled as a
+    blocking issue by the caller so that revision can still run.
+    """
+    if not records:
+        return []
+    rows = review.get("feedback_check") if isinstance(review, dict) else None
+    by_id = {str(x.get("id")): x for x in rows if isinstance(x, dict)} if isinstance(rows, list) else {}
+    errors = []
+    for record in records:
+        rid = str(record.get("id") or "")
+        if isinstance(rows, list) and sum(isinstance(x, dict) and str(x.get("id")) == rid for x in rows) > 1:
+            errors.append("拒稿复盘 %s 出现重复处理结论" % rid)
+        row = by_id.get(rid)
+        if not row:
+            errors.append("拒稿复盘 %s 缺少逐条处理结论" % rid)
+            continue
+        status = str(row.get("status") or "").strip()
+        if status not in ("addressed", "not_addressed", "not_applicable"):
+            errors.append("拒稿复盘 %s 的 status 无效" % rid)
+        try:
+            chapter = int(row.get("chapter"))
+        except (TypeError, ValueError, OverflowError):
+            chapter = -1
+        text = chapters.get(chapter, "")
+        text = "\n".join(line for line in text.splitlines()
+                         if not re.match(r"^\s{0,3}#{1,6}\s", line))
+        quote = str(row.get("quote") or "").strip()
+        analysis = str(row.get("analysis") or "").strip()
+        if len(re.sub(r"\s+", "", quote)) < 8 or quote not in text or not analysis:
+            errors.append("拒稿复盘 %s 缺少可定位正文引文与处理分析" % rid)
+    return errors
+
+
+def feedback_check_issues(review: Any, records: list[dict]) -> list[dict]:
+    """Translate validated unresolved checks into normal, anchored repair work."""
+    wanted = {str(r.get("id")) for r in records}
+    out = []
+    for row in (review.get("feedback_check") or []) if isinstance(review, dict) else ():
+        if not isinstance(row, dict) or str(row.get("id")) not in wanted:
+            continue
+        if str(row.get("status") or "").strip() != "not_addressed":
+            continue
+        try:
+            chapter = int(row.get("chapter"))
+        except (TypeError, ValueError, OverflowError):
+            chapter = None
+        quote = str(row.get("quote") or "").strip()
+        analysis = str(row.get("analysis") or "").strip()
+        if chapter is None or not quote or not analysis:
+            continue  # feedback_check_errors owns malformed-row diagnostics
+        out.append({"dim": "拒稿复盘", "severity": "major", "chapter": chapter,
+                    "quote": quote,
+                    "note": "[%s] 原问题仍未处理：%s" % (row["id"], analysis)})
+    return out
+
+
 def review_evidence_errors(review: Any, chapters: Mapping[int, str]) -> list[str]:
     """Require a real chapter quote and an explanation for each scored dimension.
 

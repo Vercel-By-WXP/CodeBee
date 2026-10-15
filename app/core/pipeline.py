@@ -3783,15 +3783,36 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         feedback = novel_feedback.block_for(task)
         if feedback:
             prompt += "\n\n" + feedback
+        try:
+            # Use the ledger selection itself rather than the rendered block: a
+            # prompt budget truncation must never silently disable the gate.
+            feedback_records = novel_feedback.relevant(task)
+        except (OSError, ValueError, KeyError, TypeError):
+            feedback_records = []
+        if feedback_records:
+            prompt += ("\n\n## 拒稿反馈逐条核验（必须输出 feedback_check）\n"
+                       "对每个记录 id 输出 status=addressed/not_addressed/not_applicable、chapter、"
+                       "quote（至少8字的送审正文逐字片段，不得引用复盘记录或章名）和 analysis；not_addressed 是待修订 major，"
+                       "not_applicable 也必须用正文证据说明。\n"
+                       '{"feedback_check": [{"id": "记录id", "status": "addressed", "chapter": 1, '
+                       '"quote": "正文原句", "analysis": "如何处理及仍有限制"}]}\n'
+                       "以下记录的复验问题须逐条回答：\n%s" % "\n".join(
+                           "- [%s] %s；建议实验：%s" % (x["id"], x["recheck_question"][:200],
+                                                       x["experiment"][:200])
+                           for x in feedback_records))
         evidence_errors = []
+        feedback_checks = []
         for idx, agent in enumerate(reviewers):
             res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
                             prompt, workdir, readonly=True, ev=ev, timeout=2400,
                             note=("签约评估 %s" % (note or "")).strip())
             cj = _critique_json(res, novel_quality.SIGNING_RUBRIC)
             errors = novel_quality.review_evidence_errors(cj, style_chapters)
+            errors.extend(novel_quality.feedback_check_errors(cj, style_chapters, feedback_records))
             evidence_errors.extend(errors)
             if res.get("ok") and cj.get("scores") and not errors:
+                feedback_checks.extend(cj.get("feedback_check") or [])
+                issues.extend(novel_quality.feedback_check_issues(cj, feedback_records))
                 reviews.append({"id": agent.get("id") or "signing-%d" % idx,
                                 "scores": cj.get("scores")})
                 summaries.append(str(cj.get("summary") or ""))
@@ -3802,6 +3823,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         signing_review_meta.update({"reviewer_count": agg.get("reviewer_count", 0),
                                     "consensus": agg.get("consensus", False),
                                     "spreads": agg.get("spreads", {}),
+                                    "feedback_check": feedback_checks,
                                     "evidence_errors": list(dict.fromkeys(evidence_errors))})
         means = agg.get("means") or {}
         if not agg.get("consensus") or not means:
