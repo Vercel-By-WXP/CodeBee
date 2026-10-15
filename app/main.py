@@ -3141,6 +3141,9 @@ class Handler(BaseHTTPRequestHandler):
         if not run:
             return self._json(404, {"error": "not found"})
         body = (self._body() or {}) if body is None else body
+        created = self._try_create_requested_task(body, run)
+        if created is not None:
+            return created
         text = body.get("text") or ""
         att_ids = body.get("attachments") or []
         workdir = store.run_workdir(run_id)
@@ -3448,6 +3451,10 @@ class Handler(BaseHTTPRequestHandler):
         delivery = body.get("delivery") or "queue"
         if delivery not in ("queue", "now"):
             return self._json(400, {"error": "delivery 必须是 queue 或 now"})
+        if not body.get("message_id"):
+            created = self._try_create_requested_task(body, run, task)
+            if created is not None:
+                return created
         latest = store.task_runs(task["id"])
         # IDs are time based and can share a second; status is the source of
         # truth for a conversation currently in flight. Prefer the active turn
@@ -3621,11 +3628,39 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass  # 客户端断开是常态，线程随进程退出
 
+    def _try_create_requested_task(self, body, run, task=None):
+        """Handle an explicit new task before inbox/CLI/serial-QA routing."""
+        from core import task_request
+        task = task or store.get_task(run.get("task_id") or "")
+        if not task:
+            return None
+        payload = task_request.parse(body.get("text"), workdir=task.get("workdir") or "")
+        if payload is None:
+            return None
+        sandbox = dict(task.get("sandbox") or {})
+        if "create_task" in (sandbox.get("disabled_tools") or []):
+            return self._json(403, {"error": "当前任务策略禁止创建新任务"})
+        # This HTTP request is a fresh user workspace selection. Retain the
+        # execution restrictions, with a policy rooted in the selected folder.
+        if Path(payload["workdir"]).resolve() != Path(task.get("workdir") or ".").resolve():
+            sandbox.pop("allowed_roots", None)
+        payload["sandbox"] = sandbox
+        payload["attachments"] = body.get("attachments") or []
+        status, result = self._create_and_start(payload)
+        if status == 200:
+            result.update(ok=True, created_task=True, delivery="sent")
+        return self._json(status, result)
+
     def _create_and_start(self, body):
         """建任务并起跑（UI /api/tasks 与外部 webhook /api/hooks/run 共用一条链）。
 
         返回 (http_status, response_dict)；失败路径都已收口（run/任务状态不会
         永久卡在排队中）。"""
+        if isinstance(body, dict) and body.get("type") == "direct":
+            from core import task_request
+            requested = task_request.parse(body.get("goal"), workdir=body.get("workdir") or "")
+            if requested:
+                body = {**body, **requested}
         try:
             task = store.create_task(body)
         except ValueError as e:

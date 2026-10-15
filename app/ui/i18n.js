@@ -1623,6 +1623,7 @@
     "已排队：随下一步一起送达": "Queued — will be delivered with the next step",
     "运行中：新消息会排队，本轮回答完后依次送达": "Running: new messages queue up and are delivered after this turn",
     "已开新一轮，接着做…": "New round started — continuing…",
+    "已新建 CodeBee 任务，开始执行": "Created a CodeBee task — starting now",
     "已结束：发送后将自动开新一轮接着做": "Run finished — sending will start a new round and continue",
     "本轮已完成，可以继续对话": "This round is complete — you can continue the conversation",
     "继续对话": "Continue conversation",

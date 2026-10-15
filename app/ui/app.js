@@ -9202,10 +9202,11 @@ window.inspSend = async function () {
   const btn = $("insp-send-btn");
   btn.disabled = true;
   try {
-    await api("/api/runs/" + encodeURIComponent(inspRunId) + "/messages", {
+    const result = await api("/api/runs/" + encodeURIComponent(inspRunId) + "/messages", {
       method: "POST", body: JSON.stringify({ text, attachments: [] }),
     });
     ta.value = "";
+    if (result.created_task) { toast(t("已新建 CodeBee 任务，开始执行")); jumpToRun(result.run_id); return; }
     toast(t("指令已入箱，将在下一个步骤下达"));
   } catch (e) { toast(t("发送失败：") + e.message, true); }
   finally { btn.disabled = false; }
@@ -10588,12 +10589,13 @@ window.dirSend = async function () {
   const btn = $("rd-send-btn");
   btn.disabled = true;
   try {
-    await api("/api/runs/" + encodeURIComponent(dirRunId) + "/messages", {
+    const result = await api("/api/runs/" + encodeURIComponent(dirRunId) + "/messages", {
       method: "POST",
       body: JSON.stringify({ text, attachments: dirAtts.map((a) => a.id) }),
     });
     ta.value = "";
     dirAtts = []; drawDirAtts();
+    if (result.created_task) { toast(t("已新建 CodeBee 任务，开始执行")); jumpToRun(result.run_id); return; }
     toast(t("指令已入箱，将在下一个步骤下达"));
     // 不等 SSE 回程：本地立即拉一次该 run 刷新消息流
     const d = await api("/api/runs/" + encodeURIComponent(dirRunId));
@@ -10647,12 +10649,13 @@ window.rdTalkSend = async function () {
   const btn = $("rd-talk-send");
   btn.disabled = true;
   try {
-    await api("/api/runs/" + encodeURIComponent(run.id) + "/messages",
+    const result = await api("/api/runs/" + encodeURIComponent(run.id) + "/messages",
       { method: "POST", body: JSON.stringify({ text, attachments: talkAtts.map((a) => a.id) }) });
     if (ta) ta.value = "";
     talkAtts = []; drawTalkAtts();
     const box = $("rd-talk");
     if (box) box.classList.add("hidden");
+    if (result.created_task) { toast(t("已新建 CodeBee 任务，开始执行")); jumpToRun(result.run_id); return; }
     const active = run.status === "running" || run.status === "queued";
     if (!active && run.task_id) {
       await retryTask(run.task_id);
@@ -12292,7 +12295,8 @@ window.chatSend = async function (delivery = "queue") {
     if (delivery === "now" && (!r.run_id || r.delivery !== "now" && r.delivery !== "sent")) {
       throw new Error(t("后端尚未支持消息引导，请更新并重启服务"));
     }
-    toast(t(r.delivery === "now" ? "已立即发送，正在按新消息继续"
+    toast(t(r.created_task ? "已新建 CodeBee 任务，开始执行"
+      : r.delivery === "now" ? "已立即发送，正在按新消息继续"
       : r.run_id ? "已开新一轮，接着做…" : "已排队：当前步骤结束后送达"));
     if (chatRunId !== submittedRun) return;
     // Preserve any new draft/attachments composed while this request was in flight.
@@ -12301,7 +12305,8 @@ window.chatSend = async function (delivery = "queue") {
     chatSig = "";   // 强制重画时间线
     chatJumpLatest();   // 发完滚到最新：看到自己刚发的消息与正在来的回复
     if (r.run_id) {
-      if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
+      if (r.created_task) { jumpToRun(r.run_id); }
+      else if (S.detailTaskKey) { S.taskSig = ""; renderTaskDetail(); }
       else jumpToRun(r.run_id);
     } else {
       try {

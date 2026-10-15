@@ -2,7 +2,7 @@
   "version": 1,
   "#": "架构策略（借鉴 zai-org/ZCode 开源的 architecture-policy 体系）。层号小→大单向依赖：L_i 只准 import L_j (j>=i)。存量违规走 .architecture-baseline.json 豁免，新增违规零容忍。scripts/architecture_check.py 是检查器。",
   "layers": {
-    "0": ["paths", "settings", "settings_schema", "registry", "usage", "flows",
+    "0": ["paths", "settings", "settings_schema", "registry", "usage", "flows", "task_request",
           "tlsctx", "remote", "error_codes", "attachments", "dispatch",
           "capability", "aiflavor", "token_meter", "compaction", "session_log",
           "repeat_guard", "diagnostics", "bookmeta_catalog", "env_scrub", "util",
