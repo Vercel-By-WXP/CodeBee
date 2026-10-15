@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, agent_context, attachments, branching, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -771,6 +771,14 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
                             on_activity=_on_activity,
                             task_creator=_create_task_from_builtin,
                             sandbox=sandbox, checkpoint_run_id=run_id)
+    try:
+        _raw = res.get("raw") or {}
+        capability_runtime.note_mcp(run_id, discovered=_raw.get("mcp_discovered"),
+                                    called=_raw.get("mcp_calls") or [])
+        cap = capability_runtime.evidence(store.get_task((store.get_run(run_id) or {}).get("task_id")) or {}, run_id)
+        store.update_run(run_id, capabilities=cap)
+    except Exception:
+        pass
     if followups and res.get("ok"):
         clean, fups = _parse_followups(res.get("text") or "")
         if fups:
@@ -2385,6 +2393,10 @@ def _run_direct(run, task, agents, ev, stats, mode):
     difficulty = task.get("difficulty") or "default"
     step_wd = _resume_workdir(resume_ctx, workdir) if resume_ctx else workdir
     store.update_run(run_id, route=route, difficulty=difficulty)
+    # Direct used to bypass the experience/knowledge path entirely.  Resolve
+    # once per run so every turn (builtin or external CLI) receives the same
+    # auditable block and does not reshuffle lesson ordering mid-conversation.
+    capability_block = capability_runtime.block_for(task, run_id)
 
     sid = (resume_ctx["session"] if resume_ctx else "") or ""
     last_text = ""
@@ -2435,6 +2447,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
             if task.get("plan_mode"):
                 prompt += ("\n\n## 计划模式\n先给出简明、可执行的步骤计划，再按计划逐步完成；"
                            "完成后逐项核对结果。不要只输出计划，除非用户明确要求只做规划。")
+            if capability_block:
+                prompt += "\n\n" + capability_block
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:
@@ -2448,6 +2462,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
                 if not sid and last_text:
                     # 无会话续接能力的 CLI（如 dsh 一次性任务）：把上一轮输出尾部带进上下文
                     prompt += "\n\n## 上一轮输出（结尾）\n" + last_text[-3000:]
+            if capability_block:
+                prompt += "\n\n" + capability_block
             note = "对话续轮"
             images = None
         # 续轮判据：只有「本步执行期间新到」的消息才再开一轮。
@@ -3598,14 +3614,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             # 逐项目标审稿（借鉴 AI-Novel-Writer v1.1）：本章大纲要点逐项核对
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % event_check, 1)
         # stable_order：评审分轮次调用，hits 中途变化会打碎前缀缓存（§07 T1.2'）
-        sk, _ = skills.block_for(task, stable_order=True, run_id=run_id)
-        if sk:
-            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
+        cap = capability_runtime.block_for(task, run_id)
+        if cap:
+            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % cap, 1)
         if bible:
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % bible, 1)
-        kb = knowledge.block_for(task)
-        if kb:
-            tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % kb, 1)
         # 确定性检测（AI 味/叙事架构/节奏）此前只挂在单稿件评审上，连载逐章
         # 从未拿到——逐章节奏与钩子恰恰最需要这条参考线（命中才追加，不扣分）
         tpl = aiflavor.inject_into_prompt(tpl, text, task.get("type"))
@@ -4173,9 +4186,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
             # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
             # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
-            sk_lessons, _ = skills.block_for(task, stable_order=True, run_id=run_id)
-            kb_block = knowledge.block_for(task)
-            sk_block = "\n\n".join(p for p in (sk_lessons, bible, kb_block) if p)
+            cap_block = capability_runtime.block_for(task, run_id)
+            # Keep the legacy shrinker contract: the unified capability block
+            # is the stable, shrinkable context; the story bible remains a
+            # separate section so retries can preserve its chapter boundaries.
+            sk_lessons, kb_block = cap_block, ""
+            sk_block = "\n\n".join(p for p in (cap_block, bible) if p)
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
 
@@ -4697,6 +4713,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           .replace("__STYLE__", style_tpl)
                           .replace("__CRITIQUE__", "\n".join(crit_lines))
                           .replace("__WORDS__", str(wpc)))
+                cap = capability_runtime.block_for(task, run_id)
+                if cap:
+                    prompt += "\n\n" + cap
                 prompt = attachments.append_task_context(prompt, task)
                 _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
                           step_wd, readonly=False, ev=ev, timeout=2400,
@@ -5569,9 +5588,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         # 单链注入」闭环半开。在 _draft_prompt_for 外取一次（bestof 多稿件
         # 共用一份，命中计数不重复累加）；stable_order 保前缀缓存，预算纪律
         # 由块内自带（skills 包区限额+教训保底 / knowledge 装箱截断）。
-        sk_lessons, _ = skills.block_for(task, stable_order=True, run_id=run_id)
-        kb_block = knowledge.block_for(task)
-        ctx_block = "\n\n".join(p for p in (sk_lessons, kb_block) if p)
+        ctx_block = capability_runtime.block_for(task, run_id)
 
         def _draft_prompt_for(vfile):
             p = (_tpl(task, "draft_prompt", NOVEL_DRAFT_PROMPT).replace("__FILE__", vfile)
@@ -5673,17 +5690,15 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
         # 经验库/知识库注入（serial 逐章评审同款；「## 待评审稿件」锚点由
         # _ensure_critique_placeholders 保证存在），按证据强度随评审下发
-        sk, _ = skills.block_for(task, stable_order=True, run_id=run_id)
-        if sk:
+        cap = capability_runtime.block_for(task, run_id)
+        if cap:
             crit_prompt = crit_prompt.replace(
-                "## 待评审稿件", "%s\n\n## 待评审稿件" % sk, 1)
-        kb = knowledge.block_for(task)
-        if kb:
-            crit_prompt = crit_prompt.replace(
-                "## 待评审稿件", "%s\n\n## 待评审稿件" % kb, 1)
+                "## 待评审稿件", "%s\n\n## 待评审稿件" % cap, 1)
         # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
         # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
         crit_prompt = aiflavor.inject_into_prompt(crit_prompt, manuscript, task.get("type"))
+        if is_selection:
+            crit_prompt += _content_contract(task) + "\n" + selection.REVIEW
         for agent in critics:
             role = "critique-r%d" % r
             if agent.get("mode") == "mock":
@@ -5749,6 +5764,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                       .replace("__GOAL__", task["goal"])
                       .replace("__CRITIQUE__", "\n".join(crit_lines)))
             prompt += _content_contract(task)
+            cap = capability_runtime.block_for(task, run_id)
+            if cap:
+                prompt += "\n\n" + cap
             prompt = attachments.append_task_context(prompt, task)
             _run_step(run_id, "revise-r%d" % r, modelhub.bind_agent(impl, difficulty), prompt,
                       workdir, readonly=False, ev=ev,
@@ -6427,6 +6445,16 @@ def execute_run(run_id):
             store.update_run(run_id, hook_inject=hook_txt[:400])
     except Exception:
         pass   # 外部钩子故障绝不挡主流程
+    # Resolve all task capabilities after task_start context is final.  The
+    # snapshot is persisted before the first model call, making it possible to
+    # answer exactly which lessons/plugins/Skills were available to this run.
+    try:
+        _capability_evidence = capability_runtime.evidence(task, run_id)
+        store.update_run(run_id, capabilities=_capability_evidence)
+    except Exception as _capability_error:
+        store.update_run(run_id, warnings=[
+            *((store.get_run(run_id) or {}).get("warnings") or []),
+            "能力快照生成失败，已按已有提示词继续：%s" % str(_capability_error)[:180]])
     # engine 决定流水线：code=实现/验证/评审/修复；review=起草/多维评审/修订/门禁；
     # direct=单 CLI 直达（无拆解/评审，信箱续轮即对话）
     engine = task.get("engine") or ("code" if task["type"] == "code" else "review")

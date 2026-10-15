@@ -1,0 +1,132 @@
+# -*- coding: utf-8 -*-
+"""真实运行时能力解析回归：不是只测目录展示，而是检查最终注入块和证据。"""
+from __future__ import annotations
+
+import threading
+from unittest import mock
+
+from base import BaseTest
+
+
+class CapabilityRuntimeTests(BaseTest):
+    def test_direct_cli_prompt_receives_capabilities_and_run_evidence(self):
+        """The external CLI path must receive the same block as builtin direct."""
+        from app.core import knowledge, pipeline, skills, store
+
+        skills.upsert_lesson("direct", "直连证据规则", "回答前先核对用户给出的事实。")
+        knowledge.upsert_entry("direct", "直连知识事实", "该任务的已确认事实。", status="approved")
+        task = store.create_task({
+            "type": "direct", "title": "CLI 能力注入", "goal": "核对已确认事实",
+            "workdir": str(self.workdir), "direct_agent": "mock-a",
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], status="running")
+        seen = {}
+
+        def fake_step(_run_id, _role, _agent, prompt, *_args, **_kwargs):
+            seen["prompt"] = prompt
+            return {"ok": True, "text": "完成", "sid": "", "error": "", "raw": {}}
+
+        pipeline._agents = self.mock_agents
+        with mock.patch.object(pipeline, "_run_step", side_effect=fake_step):
+            pipeline.execute_run(run["id"])
+
+        self.assertIn("直连证据规则", seen["prompt"])
+        self.assertIn("直连知识事实", seen["prompt"])
+        saved = store.get_run(run["id"])
+        self.assertEqual(saved["status"], "done", saved.get("error"))
+        self.assertTrue(saved["capabilities"]["skills"])
+        self.assertTrue(saved["capabilities"]["knowledge"])
+
+    def test_serial_capabilities_include_platform_rules(self):
+        from app.core import capability_runtime
+
+        block = capability_runtime.block_for({
+            "type": "serial_novel", "title": "七猫番茄连载签约", "goal": "按七猫和番茄规则检查开篇",
+        }, "serial-capabilities")
+        self.assertIn("七猫签约标准与写作规范", block)
+        self.assertIn("番茄小说写作与流量守则", block)
+
+    def test_mcp_evidence_is_updated_without_changing_prompt_snapshot(self):
+        from app.core import capability_runtime
+
+        task = {"type": "direct", "title": "MCP 证据", "goal": "检查工具"}
+        before = capability_runtime.prepare(task, "mcp-run")
+        capability_runtime.note_mcp("mcp-run", discovered=3,
+                                    called=["mcp__browser__open", "mcp__browser__open"])
+        after = capability_runtime.evidence(task, "mcp-run")
+        self.assertEqual(before["block"], capability_runtime.prepare(task, "mcp-run")["block"])
+        self.assertEqual(after["mcp"], {
+            "discovered": 3, "called": ["mcp__browser__open"],
+        })
+
+    def test_prepare_contains_lessons_knowledge_plugin_and_auditable_ids(self):
+        from app.core import capability_runtime, knowledge, plugins, skills
+
+        skills.upsert_lesson("novel", "七猫签约开篇证据", "前三章必须用具体冲突验证卖点。")
+        knowledge.upsert_entry("novel", "平台规则事实", "平台规则以当前官方后台为准。", status="approved")
+        with mock.patch.object(plugins, "view", return_value={"plugins": [{
+                "id": "demo-plugin", "name": "demo-plugin", "display_name": "签约检查插件",
+                "enabled": True, "available": True, "default_prompt": ["逐条核对签约证据。"],
+                "skill_pack_ids": [],
+            }]}):
+            task = {"id": "t1", "type": "novel", "title": "七猫签约开篇", "goal": "检查七猫签约证据"}
+            block = capability_runtime.block_for(task, "run-1")
+            evidence = capability_runtime.evidence(task, "run-1")
+        self.assertIn("经验库", block)
+        self.assertIn("知识库", block)
+        self.assertIn("插件默认提示", block)
+        self.assertIn("demo-plugin", evidence["plugins"])
+        self.assertTrue(evidence["skills"])
+        self.assertTrue(evidence["knowledge"])
+
+    def test_snapshot_is_stable_for_followup_turns(self):
+        from app.core import capability_runtime, skills
+
+        skills.upsert_lesson("direct", "对话续轮", "先读取上一轮产出再继续。")
+        task = {"id": "t2", "type": "direct", "goal": "继续处理文件"}
+        first = capability_runtime.prepare(task, "run-2")
+        skills.upsert_lesson("direct", "后来新增", "不应改变本轮已解析的能力块。")
+        second = capability_runtime.prepare(task, "run-2")
+        self.assertEqual(first["block"], second["block"])
+
+    def test_unauthorized_plugin_is_not_prompt_input_and_defaults_are_bounded(self):
+        from app.core import capability_runtime, plugins
+
+        huge = ["x" * 900 for _ in range(8)]
+        rows = [{
+            "id": "blocked", "name": "blocked", "display_name": "Blocked",
+            "enabled": True, "available": True,
+            "authorization": {"allowed": False, "missing": ["network"]},
+            "default_prompt": ["DO NOT INJECT"], "skill_pack_ids": [],
+        }, {
+            "id": "large", "name": "large", "display_name": "Large",
+            "enabled": True, "available": True,
+            "authorization": {"allowed": True},
+            "default_prompt": huge, "skill_pack_ids": [],
+        }, {
+            "id": "large-2", "name": "large-2", "display_name": "Large 2",
+            "enabled": True, "available": True,
+            "authorization": {"allowed": True},
+            "default_prompt": huge, "skill_pack_ids": [],
+        }]
+        task = {"type": "direct", "title": "large", "goal": "large large-2"}
+        with mock.patch.object(plugins, "view", return_value={"plugins": rows}):
+            block = capability_runtime._plugin_block(task, [])
+        self.assertNotIn("DO NOT INJECT", block)
+        self.assertLessEqual(len(block), capability_runtime._PLUGIN_PROMPT_BUDGET)
+
+    def test_external_skill_budget_includes_headers(self):
+        from app.core import capability_runtime, plugins
+
+        rows = [{
+            "id": "codex-skill:%d" % i, "name": "skill-%d" % i,
+            "display_name": "skill-%d" % i, "description": "large",
+            "source_type": "codex", "enabled": True, "available": True,
+            "prompt": "x" * 8000,
+        } for i in range(4)]
+        with mock.patch.object(plugins, "capabilities_view", return_value={"skills": rows}):
+            block, ids = capability_runtime._external_skill_block({
+                "type": "direct", "goal": "skill-0 skill-1 skill-2 skill-3"})
+        self.assertTrue(ids)
+        self.assertLessEqual(len(block), capability_runtime._EXTERNAL_SKILL_BUDGET)

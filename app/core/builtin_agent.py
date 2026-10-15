@@ -1864,6 +1864,12 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     candidates = list(modelhub._protocol_candidates(prov))
     tools_ok = all(proto != "google" for proto, _ in candidates)   # google wire 无工具协议
     total_usage = {"input": 0, "cached": 0, "output": 0, "total": 0}
+    mcp_called = []
+    mcp_discovered = 0
+    try:
+        mcp_discovered = len(_mcp_specs(sandbox=sandbox, workdir=workdir))
+    except Exception:
+        mcp_discovered = 0
     tool_output_run_id = checkpoint_run_id or secrets.token_hex(16)
     text = ""
     iters = 0
@@ -1919,7 +1925,11 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
         return {"ok": False, "text": "", "usage": dict(total_usage), "error": err,
                 "model": model, "provider_name": bi["provider_name"],
                 "provider_id": bi["provider_id"], "iterations": iters, "cost_usd": 0.0,
-                "raw": _perf(),
+                # Keep capability evidence on failed/early-return calls too;
+                # otherwise a run that discovered MCP but hit a provider error
+                # is indistinguishable from one that never had MCP available.
+                "raw": dict(_perf(), mcp_calls=list(mcp_called),
+                             mcp_discovered=mcp_discovered),
                 "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS]}
 
     def _cancel_fail():
@@ -2079,6 +2089,10 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         done = True
                         break
                     if calls:
+                        for _call in calls:
+                            _name = str(_call.get("name") or "")
+                            if _name.startswith("mcp__") and _name not in mcp_called:
+                                mcp_called.append(_name)
                         sig = json.dumps(
                             [(c.get("name"), c.get("args") or {}) for c in calls],
                             ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -2189,11 +2203,13 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             "请检查工作目录中的产出文件，或继续追问以完成剩余事项。")
         partial["error"] = last_err or "已完成工具操作，但未生成最终总结"
         partial.setdefault("raw", {})["partial"] = True
+        partial.setdefault("raw", {})["mcp_calls"] = list(mcp_called)
+        partial["raw"]["mcp_discovered"] = mcp_discovered
         return partial
     if not ok and not text:
         return _fail(last_err or "工具循环达上限仍无最终回答")
     return {"ok": True, "text": (text or "").strip(), "usage": dict(total_usage),
             "error": "", "model": model, "provider_name": bi["provider_name"],
             "provider_id": bi["provider_id"], "iterations": iters, "cost_usd": 0.0,
-            "raw": _perf(),
+            "raw": dict(_perf(), mcp_calls=list(mcp_called), mcp_discovered=mcp_discovered),
             "reasoning": "\n\n".join(r for r in reasons if r)[:THINK_MAX_CHARS]}
