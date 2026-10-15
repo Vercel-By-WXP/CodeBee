@@ -40,11 +40,10 @@ _TERNARY = re.compile(
 class FullTypeImprovementTests(BaseTest):
 
     def test_new_types_are_direct_engine(self):
-        """正常路径：两型在注册表是 direct 引擎快档流程——「专用数据链路」
-        文案只会弹给真的无门禁、有专用链路的类型（engine 漂移则口径失真）。"""
+        """选材已升级为 review；缺陷复盘仍用 direct 专用数据链路。"""
         from app.core.flows import BUILTIN_FLOWS
         engines = {f["id"]: f.get("engine") for f in BUILTIN_FLOWS}
-        self.assertEqual(engines.get("rank_scan"), "direct")
+        self.assertEqual(engines.get("rank_scan"), "review")
         self.assertEqual(engines.get("defect_retro"), "direct")
 
     def test_suggestion_copy_splits_by_engine(self):
@@ -58,15 +57,12 @@ class FullTypeImprovementTests(BaseTest):
             "或 review/code 门禁旧文案被改丢）")
 
     def test_direct_engine_rules_exactly_new_two(self):
-        """边界：direct 引擎上有推荐规则的类型恰好是本轮两型——「专用数据
-        链路」文案的可达面就此锁定（后续给其他 direct 引擎流程加规则须
-        consciously 更新本断言）。direct 自身无规则（不自荐）由
-        test_recommend_rules 锁定，此处不重复。"""
+        """只有缺陷复盘继续使用 direct 推荐口径；扫榜选材提示质量门禁。"""
         from app.core.flows import BUILTIN_FLOWS
         engines = {f["id"]: f.get("engine") for f in BUILTIN_FLOWS}
         direct_with_rules = sorted(
             fid for fid, _ in _rules() if engines.get(fid) == "direct")
-        self.assertEqual(direct_with_rules, ["defect_retro", "rank_scan"])
+        self.assertEqual(direct_with_rules, ["defect_retro"])
 
     def test_rank_scan_broad_word_known_tradeoff(self):
         """边界（已知取舍锚定）：「排行榜」宽词在末位兜底，罕见目标

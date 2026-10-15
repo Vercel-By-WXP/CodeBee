@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
 
@@ -120,15 +121,16 @@ def rank_scan_prompt(goal):
 
     报告契约含逐条 A-E 跨平台证据分级（借鉴 career-ops 的分级报告交付形态）：
     分级只认素材实际出现情况——抑制单源孤证被模型放大成「大热题材」。"""
-    blocks, seen = [], set()
-    for label, fname in _SOURCES:
-        items = [t for t in globals()[fname](30) if t not in seen]
-        seen.update(items)
+    blocks = []
+    urls = (QIMAO_RANK_URL, FANQIE_RANK_URL, QIDIAN_M_RANK_URL, ZONGHENG_RANK_URL)
+    for (label, fname), url in zip(_SOURCES, urls):
+        # Keep cross-platform overlap: it is the evidence used for A/B grading.
+        items = list(dict.fromkeys(globals()[fname](30)))
         if items:
-            blocks.append("### %s\n%s" % (label, "、".join(items)))
+            blocks.append("### %s\n来源：%s\n%s" % (label, url, "、".join(items)))
     if not blocks:
         return None
-    material = "\n\n".join(blocks)
+    material = "采集时间：%s\n\n%s" % (datetime.now(timezone.utc).isoformat(), "\n\n".join(blocks))
     return (
         "你是网文选题分析师。以下是刚刚抓取的各平台排行榜页面的书目与分类素材：\n\n"
         "## 榜单元素材\n%s\n\n"
@@ -136,16 +138,16 @@ def rank_scan_prompt(goal):
         "## 你的产出（Markdown 报告）\n"
         "报告第一行给图例（一行）：「证据分级：A=三平台及以上重合，B=两平台重合，"
         "C=单平台多次出现，D=单平台仅一次，E=素材无直接证据、系推断」。\n"
-        "1. **热门题材 Top3**：各自的共同特征与上榜代表书目（跨平台重合的题材单独点出——多平台都热说明是真风口）\n"
+        "榜单元素可能混有分类或导航，只作线索；不得由书名推断作品核心机制、编辑偏好或过签概率。\n"
+        "1. **热门题材 Top3**：各自的共同特征与上榜代表书目，跨平台重合只说明本次页面有共同元素，不证明市场风口\n"
         "2. **高频人设/套路总结**：3-5 条，点名反复出现的元素\n"
         "3. **差异化切入建议**：2-3 个，结合用户方向给出「题材+人设」组合与一句话理由\n"
         "4. **饱和度与立项风险**：把用户方向与榜单素材正面对比——同「题材+核心机制」"
-        "组合（换朝代/换职业/换性别只算换皮）在素材中出现 ≥3 次（跨平台累计）即标"
+        "组合（换朝代/换职业/换性别只算换皮）经可定位的简介或正文证实出现 ≥3 次（同书跨平台只计一部）才标"
         "【饱和风险】并列出出现处；命中饱和的候选取舍：要么给机制层差异（核心玩法/"
         "冲突结构真正不同），要么直接建议换组合，只换皮不换机制的不进建议。\n"
-        "立项红线（2026-10 平台实拒教训）：免费平台编辑按「剧情缺乏创新、代入感较弱」"
-        "一句话拒稿且作品条目永久锁定——内部 8.5 分的书因题材+机制饱和照拒。报告必须"
-        "直接回答「用户方向这个组合是不是已经写烂了」，答不出就回到素材里找证据。\n"
+        "个案拒稿不能泛化为平台规则或永久锁定政策。报告必须回答当前证据能否判断机制饱和；"
+        "只有书名或分类时写「无法判断、待核实」，列出需要精读的作品与验证方法。\n"
         "以上每一项结论末尾标注【证据X】（X 为 A-E 之一）。分级只看素材里真实出现的"
         "情况：组合条目按其组成元素的较低档取值，拿不准就降一档、不升级。\n"
         "直接输出分析报告，不要复述素材清单，不要输出与报告无关的内容。"

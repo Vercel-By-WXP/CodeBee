@@ -20,6 +20,7 @@ _ACP_EVENT_TYPES = {
     "agent_thought_chunk", "tool_call", "tool_call_update", "plan",
     "current_mode_update", "config_option_update", "session_info_update",
     "available_commands_update", "usage_update", "session_notification",
+    "compaction_update", "compaction_summary_chunk", "notice",
 }
 
 
@@ -32,7 +33,8 @@ def _record_session_update(events, update):
         return
     from .redact import scrub_text
     item = {"sessionUpdate": kind}
-    for key in ("toolCallId", "title", "status", "modeId", "configId", "commandId"):
+    for key in ("toolCallId", "title", "status", "modeId", "configId", "commandId",
+                "compactionId", "severity"):
         value = update.get(key)
         if isinstance(value, (str, int, float, bool)):
             item[key] = scrub_text(str(value), limit=160)
@@ -42,7 +44,36 @@ def _record_session_update(events, update):
             "content": scrub_text(str(entry.get("content") or ""), limit=160),
             "status": scrub_text(str(entry.get("status") or ""), limit=40),
         } for entry in entries[:12] if isinstance(entry, dict)]
+    if kind == "notice":
+        for key, limit in (("title", 240), ("description", 600)):
+            value = update.get(key)
+            if isinstance(value, str) and value:
+                item[key] = scrub_text(value, limit=limit)
+    elif kind == "compaction_update":
+        summary = update.get("summary")
+        if isinstance(summary, list):
+            item["summary"] = _summary_blocks(summary)
+        error = update.get("error")
+        if isinstance(error, str) and error:
+            item["error"] = scrub_text(error, limit=600)
+    elif kind == "compaction_summary_chunk":
+        content = update.get("content")
+        if isinstance(content, dict) and content.get("type") == "text":
+            item["content"] = scrub_text(str(content.get("text") or ""), limit=600)
     events.append(item)
+
+
+def _summary_blocks(blocks):
+    """Keep only bounded, user-displayable ACP compaction summary text."""
+    from .redact import scrub_text
+    out = []
+    for block in blocks[:8]:
+        if not isinstance(block, dict) or block.get("type") != "text":
+            continue
+        text = str(block.get("text") or "")
+        if text:
+            out.append({"type": "text", "text": scrub_text(text, limit=800)})
+    return out
 
 
 class ACPError(Exception):
@@ -392,6 +423,10 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
 
         client_capabilities = {"fs": {"readTextFile": True,
                                        "writeTextFile": not readonly},
+                               # ACP v1 gates these session updates behind
+                               # explicit client capabilities.  The events are
+                               # retained in the bounded activity stream above.
+                               "session": {"compaction": {}, "notices": {}},
                                "terminal": not readonly and
                                    command_context.get("allow_terminal", True)}
         initialized = connection.request("initialize", {

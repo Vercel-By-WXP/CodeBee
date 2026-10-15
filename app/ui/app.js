@@ -837,7 +837,7 @@ function flowIconHtml(f) {
 }
 
 function flowDesc(f) {
-  if (f.id === "rank_scan") return t("抓四平台榜 → AI 选题洞察·附证据分级");
+  if (f.id === "rank_scan") return t("四平台选材 → 评审打磨 → 标准输入 → 新开连载");
   if (f.engine === "direct") return t("单智能体直达（快）");
   if (f.engine === "code") return t("实现 → 验证 →（复杂任务进）评审");
   // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑
@@ -1895,6 +1895,11 @@ function runStatusText(run) {
   }
   const txt = { queued: t("排队中"), running: t("运行中"), done: t("完成"),
     failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
+  if ((st === "queued" || st === "running") && run && run.paused) {
+    return run.pause_phase === "paused"
+      ? t("已到达暂停点·等待放行")
+      : t("暂停请求已接收·当前步骤完成后挂起");
+  }
   // 「跑完」≠「通过」：done 但评审未过（verdict.pass=false）必须一眼可辨——
   // 此前一律显示「完成」，用户以为修好了（2026-09-23 禅道双单实案反馈）
   if (st === "done" && run && run.verdict && run.verdict.pass === false)
@@ -3724,7 +3729,7 @@ async function createTask() {
     if (suggested) {
       const flow = flowById(suggested) || {};
       resetSubmit();
-      // 快档目标（rank_scan/defect_retro）没有评审门禁，卖点如实换成各自的
+      // direct 目标（如 defect_retro）没有评审门禁，卖点如实换成各自的
       // 专用数据链路/产出模板；review/code 目标维持门禁口径。
       const tail = flow.engine === "direct"
         ? t("这个需求更适合「{0}」流程，能使用对应的专用数据链路与产出模板。是否切换后执行？")
@@ -4796,6 +4801,59 @@ async function continueSerial(id) {
 }
 window.continueSerial = continueSerial;
 
+function setSelectionSerialButton(task) {
+  const button = $("btn-selection-serial");
+  if (!button) return;
+  button.classList.toggle("hidden", !(task && task.type === "rank_scan"));
+  button.disabled = !!(task && (task.status === "running" || task.status === "queued"));
+}
+
+async function serialFromSelection(id) {
+  let info;
+  try { info = await api("/api/tasks/" + encodeURIComponent(id) + "/selection", { busy: true }); }
+  catch (e) { toast(e.message, true); return; }
+  openModal(t("从选材新开连载"),
+    '<p class="hint">' + esc(t("选择已审核方案，自动在选材目录下按书名新建文件夹并开始试写。内部通过不代表平台签约。")) + '</p>' +
+    '<div class="field"><label for="sel-book">' + t("立项方案") + '</label><select id="sel-book">' +
+    info.candidates.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.title + ' · ' + c.platform) + '</option>').join("") +
+    '</select></div><p id="sel-premise" class="hint"></p><p id="sel-path" class="hint"></p>' +
+    '<div class="field"><label for="sel-chapters">' + t("试写章数") + '</label><input id="sel-chapters" type="number" min="2" max="20" value="8"></div>' +
+    '<div class="field"><label for="sel-words">' + t("每章字数") + '</label><input id="sel-words" type="number" min="500" max="8000" value="2500"></div>' +
+    '<p id="sel-error" class="msg" role="alert"></p>',
+    '<button id="sel-cancel" class="ghost">' + t("取消") + '</button><button id="sel-start" class="primary">' + t("新建目录并开始连载") + '</button>');
+  const showCandidate = () => {
+    const c = info.candidates.find((x) => x.id === $("sel-book").value);
+    $("sel-premise").textContent = c ? c.premise : "";
+    $("sel-path").textContent = c ? info.parent_dir.replace(/[\\/]$/, "") + "/" + c.title : "";
+  };
+  $("sel-book").addEventListener("change", showCandidate);
+  showCandidate();
+  $("sel-cancel").onclick = closeModal;
+  $("sel-start").onclick = async () => {
+    const button = $("sel-start");
+    const error = $("sel-error");
+    const chapters = Number($("sel-chapters").value);
+    const words = Number($("sel-words").value);
+    if (!Number.isInteger(chapters) || chapters < 2 || chapters > 20 ||
+        !Number.isInteger(words) || words < 500 || words > 8000) {
+      error.textContent = t("章节数范围2-20，每章字数范围500-8000"); return;
+    }
+    const body = { run_id: info.run_id, candidate_id: $("sel-book").value,
+      chapters, words_per_chapter: words };
+    button.disabled = true;
+    try {
+      const result = await api("/api/tasks/" + encodeURIComponent(id) + "/selection/serial",
+        { method: "POST", body: JSON.stringify(body) });
+      closeModal();
+      chatJumpLatest(); jumpToRun(result.run_id); poll();
+    } catch (e) {
+      // Keep the chosen book and editable inputs after validation/queue errors.
+      error.textContent = e.message;
+      button.disabled = false;
+    }
+  };
+}
+
 /* 基于此任务新建（通用，不限连载）：把旧任务的类型/目标/目录/评审设置预填进
  * 新建表单，确认或修改后提交——「接着写下一批章节」请用连载任务的「继续连载」，
  * 那里才带章节衔接；这里开的是一个全新任务。 */
@@ -5132,7 +5190,7 @@ function renderRunList() {
       '<span class="name">' + esc(r.title) + runKindTag(r.kind) + "</span>" +
       (sub ? '<span class="desc">' + esc(t(sub)) + "</span>" : "") +
       "</div>" +
-      '<span class="chip ' + esc(r.status || "") + '">' + esc(runStatusText(r)) + "</span>" +
+      '<span class="chip ' + esc(r.status || "") + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="time" title="' + esc(r.created_at) + '">' + esc(relTime(r.created_at)) + "</span>" +
       '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div></div>';
   }).join("");
@@ -5658,6 +5716,7 @@ function renderTaskDetail() {
   // 任务级按钮只看任务本身（state 里有 serial），不依赖 run 拉取——
   // 没跑过运行的任务也不能残留上一个任务留下的按钮状态
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
+  setSelectionSerialButton(tk);
   const bc = $("btn-continue");
   if (bc) bc.classList.toggle("hidden",
     !(tk && tk.serial && tk.status !== "running" && tk.status !== "queued"));
@@ -6099,7 +6158,7 @@ function drawTaskDetail(key, runs, appendFrom) {
           const r = item.run;
           batch.push('<div class="run-sep"><span class="rs-i">' + t("第 ") + item.runNo + "/" + totalRuns + t(" 次运行") + '</span>' +
             '<span class="rs-t">' + esc(String(r.created_at || "").slice(5, 16)) + "</span>" +
-            '<span class="chip ' + esc(r.status || "") + '">' + esc(runStatusText(r)) + "</span>" +
+            '<span class="chip ' + esc(r.status || "") + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
             (r.error ? '<span class="rs-err" title="' + esc(r.error.slice(0, 200)) + '">' + esc(r.error.slice(0, 60)) + "</span>" : "") +
             "</div>");
           continue;
@@ -6813,7 +6872,8 @@ async function renderRunDetail() {
   if (!rdCurrent(id, token) || fetchSeq !== S._rdFetchSeq) return;   // 拉取期间已切走/被更新请求取代
   $("rd-title").textContent = run.title;
   const chip = $("rd-status");
-  chip.className = "chip " + run.status +
+  chip.className = "chip " + run.status + (run.paused
+    ? " pause-" + (run.pause_phase || "requested") : "") +
     (run.status === "done" && run.verdict && run.verdict.pass === false ? " unqualified" : "");
   chip.textContent = runStatusText(run);
   const active = run.status === "queued" || run.status === "running";
@@ -6848,6 +6908,7 @@ async function renderRunDetail() {
   // 归档按钮：非运行中任务可归档/取消归档（此前只有侧栏右键菜单入口，
   // 用户反馈「归档按钮不见了」——补显式入口，文案随状态切换）
   syncArchBtn(rcTask, active);
+  setSelectionSerialButton(rcTask);
   setRetryBtn(run, rcTask);
   $("btn-continue").classList.toggle("hidden",
     !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));
@@ -10598,7 +10659,10 @@ function renderDirector(run, active) {
         '" onclick="dirRetract(\'' + esc(String(m.id || "")) + '\')">' + t("撤回") + "</button>")) +
     "</div>").join("");
   const hint = $("rd-direct-hint");
-  if (hint) hint.textContent = run.paused ? t("已暂停：指令入箱，放行后随下一步送达")
+  if (hint) hint.textContent = run.paused
+    ? (run.pause_phase === "paused"
+      ? t("已到达暂停点：当前步骤已结束，放行后继续")
+      : t("暂停请求已接收：当前步骤完成后挂起"))
     : (msgs.some((m) => !m.consumed) ? t("将在下一个步骤开始前送达执行者") : "");
 }
 
@@ -10607,9 +10671,13 @@ window.dirTogglePause = async function () {
   if (!run) return;
   const to = !run.paused;
   try {
-    await api("/api/runs/" + encodeURIComponent(run.id) + "/pause",
+    const result = await api("/api/runs/" + encodeURIComponent(run.id) + "/pause",
       { method: "POST", body: JSON.stringify({ paused: to }) });
-    toast(to ? t("已暂停：当前步骤跑完后挂起") : t("已放行，继续执行"));
+    toast(to
+      ? (result && result.pause_phase === "paused"
+        ? t("已到达暂停点：当前步骤已结束，放行后继续")
+        : t("暂停请求已接收：当前步骤完成后挂起"))
+      : t("已放行，继续执行"));
   } catch (e) { toast(t("操作失败：") + e.message, true); }
 };
 
@@ -12937,6 +13005,7 @@ const MAX_ORCH_MODELS = 3;   // 与后端 modelhub.MAX_BIND_MODELS、runner 降�
 /* 供应商有无可用密钥：keys 结构以「有启用且未冷却」为准；老数据单 KEY 看
  * api_key 镜像（与后端 _chain_keys / resolve_binding 的「无可用密钥」同口径） */
 function provKeyOk(p) {
+  if ((p || {}).credential_mode === "cli" && (p || {}).native_models) return true;
   const ks = (p || {}).keys || [];
   if (ks.length) return ks.some((k) => k.enabled !== false && !k.cooling);
   return !!(p || {}).api_key;
@@ -12952,7 +13021,9 @@ function modelGroups() {
       .sort((a, b) => (a.priority || 0) - (b.priority || 0))
       .map((m) => m.name).filter(Boolean);
     if (ms.length) out.push({ id: p.id, name: p.name, models: ms,
-      protocol: p.protocol || "", caps: p.wire_caps || {}, keyOk: provKeyOk(p) });
+      protocol: p.protocol || "", caps: p.wire_caps || {}, keyOk: provKeyOk(p),
+      credential_mode: p.credential_mode || "", native_cli: p.native_cli || "",
+      native_models: !!p.native_models });
   }
   return out;
 }
@@ -13015,7 +13086,7 @@ function modelSelectHtml(id, current, kind) {
   // 无可用密钥的供应商不进下拉：默认模型配上去解析时也会被跳过（死配置）
   const groups = modelGroups().filter((g) => {
     const p = (S.providers || []).find((x) => x.id === g.id);
-    return g.keyOk !== false && provAdaptedProto(p, allow, kind);
+    return g.keyOk !== false && nativeCliMatches(p, kind) && provAdaptedProto(p, allow, kind);
   });
   let opts = '<option value="">' + t("（未设置）") + '</option>';
   if (cur && !groups.some((g) => g.models.includes(cur))) {
@@ -13141,9 +13212,23 @@ function recommendFor(c) {
 function chainProvUsable(p, allow, kind) {
   if (!p || p.enabled === false) return false;
   if (!provAdaptedProto(p, allow, kind)) return false;
+  if (p.credential_mode === "cli" && p.native_models) {
+    return String(p.native_cli || "").toLowerCase() === String(kind || "").toLowerCase();
+  }
   const ks = p.keys || [];
   if (!ks.length) return !!p.api_key;   // 老数据单 KEY（api_key 镜像）；两者皆无=没配密钥，不推荐
   return ks.some((k) => k.enabled !== false && !k.cooling);
+}
+
+function nativeCliMatches(p, kind) {
+  if (!p || p.credential_mode !== "cli" || !p.native_models) return true;
+  return String(p.native_cli || "").toLowerCase() === String(kind || "").toLowerCase();
+}
+
+function nativeCliHint(p) {
+  const cli = String((p || {}).native_cli || "").toLowerCase();
+  const labels = { opencode: "OpenCode", "gemini-cli": "Gemini CLI", "kimi-code": "Kimi Code", "grok-build": "Grok Build", pi: "Pi", "codex-cli": "Codex CLI", "claude-code": "Claude Code", "mimo-code": "MiMo Code" };
+  return t("仅支持 {cli} 原生模型").replace("{cli}", labels[cli] || cli || t("该 CLI"));
 }
 
 /* 绑定链里的死条目：厂商已删/停用/协议不再适配/KEY 全冷却，或该模型已被
@@ -13155,6 +13240,8 @@ function chainDeadReasons(c, chain) {
     const pv = (S.providers || []).find((p) => p.id === x.p);
     if (!pv) return t("供应商已删除");
     if (pv.enabled === false) return t("供应商已停用");
+    if (pv.credential_mode === "cli" && pv.native_models)
+      return nativeCliMatches(pv, c.orch_kind) ? "" : nativeCliHint(pv);
     if (!provAdaptedProto(pv, allow, c.orch_kind))
       return chatShapedFace(pv, allow)
         ? t("openai 面仅 chat 形态（codex 只讲 responses）")
@@ -13307,16 +13394,21 @@ function bindPanel(c) {
         // 无命中 = 勾了也会被解析层整条跳过，标死防止白配。
         // 无可用密钥同理：勾了也是死条目（解析层「无可用密钥」跳过）
         const wire = provAdaptedProto(g, allow, c.orch_kind);
-        const dead = !wire || g.keyOk === false;
+        const nativeOk = g.credential_mode === "cli" && g.native_models &&
+          String(g.native_cli || "").toLowerCase() === String(c.orch_kind || "").toLowerCase();
+        const nativeWrong = g.credential_mode === "cli" && g.native_models && !nativeOk;
+        const dead = nativeWrong || !wire || (g.keyOk === false && !nativeOk);
         const has = st.chain.some((x) => x.p === g.id && x.m === m);
         return '<label class="oitem' + (dead ? " dim" : "") + '"><input type="checkbox" value="' + esc(m) + '" data-p="' + esc(g.id) + '"' +
           (has ? " checked" : "") + (dead ? " disabled" : "") +
           " onchange=\"bindPick('" + esc(c.id) + "', this, this.checked)\">" + esc(m) +
           (modelHasImage(g.id, m)
             ? ' <span class="tag ok" title="' + esc(t("支持图片输入")) + '">' + t("图") + "</span>" : "") +
-          (dead ? ' <span class="hint warn">' + esc(!wire
+          (dead ? ' <span class="hint warn">' + esc(nativeWrong
+            ? nativeCliHint(g)
+            : (!wire
             ? t("无可用 wire，解析时跳过")
-            : t("无可用密钥，解析时跳过")) + "</span>" : "") +
+            : t("无可用密钥，解析时跳过"))) + "</span>" : "") +
           "</label>";
       }).join("") +
       "</div>").join("") + "</div>";
@@ -18164,7 +18256,7 @@ function ovRenderRecent() {
       (sub ? "<i>" + esc(sub.length > 90 ? sub.slice(0, 89) + "…" : sub) + "</i>" : "") +
       "</span>" +
       '<span class="ov-run-meta">' +
-      '<span class="chip ' + esc(st) + '">' + esc(runStatusText(r)) + "</span>" +
+      '<span class="chip ' + esc(st) + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="ov-run-time">' + esc(relTime(r.created_at)) + "</span>" +
       "</span></button>";
   }).join("");
@@ -19089,6 +19181,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-continue").addEventListener("click", () => {
     const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
     if (tid) continueSerial(tid);
+  });
+  $("btn-selection-serial").addEventListener("click", () => {
+    const tid = S.detailTaskKey || (S.lastRun && S.lastRun.task_id) || "";
+    if (tid) serialFromSelection(tid);
   });
   $("btn-newfrom").addEventListener("click", () => {
     const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";

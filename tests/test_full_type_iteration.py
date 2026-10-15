@@ -162,12 +162,12 @@ class RoadmapClearingAnchorTests(BaseTest):
             src, "评审侧未接 aiflavor")
 
     def test_rank_scan_wired_to_four_platform_fetchers(self):
-        """扫榜选材：rank_scan 注册为 direct 引擎，paihang 四源聚合接线在位。"""
+        """扫榜选材：review 引擎立项评审，paihang 四源聚合接线在位。"""
         import inspect
         from app.core import flows, paihang
         f = flows.get_flow("rank_scan")
         self.assertIsNotNone(f)
-        self.assertEqual(f["engine"], "direct")
+        self.assertEqual(f["engine"], "review")
         fetchers = ("fetch_qimao_rank", "fetch_fanqie_rank",
                     "fetch_qidian_rank", "fetch_zongheng_rank")
         for fn in fetchers + ("fetch_rank_items", "rank_scan_prompt"):

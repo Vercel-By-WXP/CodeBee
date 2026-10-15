@@ -163,6 +163,10 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
     light_types = {"email", "weekly_report", "translation"}
     deep_types = {"novel", "research", "tech_proposal"}
 
+    if ttype == "rank_scan":
+        return {"outline": True, "reviewers": 2, "review_rounds": max(2, requested_rounds),
+                "reason": "选材保留独立评审与定向打磨复审，快速模式也不跳过立项门禁"}
+
     if mode == "fast":
         return {"outline": False, "reviewers": 1, "review_rounds": 1,
                 "reason": "快速模式省略独立大纲，仅保留一次快速评审"}

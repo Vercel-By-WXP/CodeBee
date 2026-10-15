@@ -100,7 +100,9 @@ class RankScanPromptTests(BaseTest):
         self.assertIn("饱和度与立项风险", p)
         self.assertIn("饱和风险", p)
         self.assertIn("只换皮不换机制", p)
-        self.assertIn("永久锁定", p)
+        self.assertIn("无法判断、待核实", p)
+        self.assertIn("同书跨平台只计一部", p)
+        self.assertNotIn("一句话拒稿且作品条目永久锁定", p)
 
     def test_quad_source_merged(self):
         p = self._make(["盖世神医"], ["逆天邪神"], qd=["夜无疆"], zh=["剑来"])
@@ -117,16 +119,16 @@ class RankScanPromptTests(BaseTest):
 
     def test_dedup_across_sources(self):
         p = self._make(["书A"], ["书A", "书B"], qd=["书B", "书C"])
-        # 书A/书B 去重后只出现一次（源顺序即优先级）
-        self.assertEqual(p.count("书A"), 1)
-        self.assertEqual(p.count("书B"), 1)
+        # Cross-platform repetitions are evidence and must remain attributed to each source.
+        self.assertEqual(p.count("书A"), 2)
+        self.assertEqual(p.count("书B"), 2)
         self.assertIn("书C", p)
 
     def test_flow_registered(self):
         from app.core import flows
         flow = flows.get_flow("rank_scan")
         self.assertIsNotNone(flow)
-        self.assertEqual(flow["engine"], "direct")
+        self.assertEqual(flow["engine"], "review")
 
 
 if __name__ == "__main__":

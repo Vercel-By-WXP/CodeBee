@@ -51,31 +51,12 @@ class TestSelfUpdate(BaseTest):
         # 6) _port_free：未占用端口为 True（1 端口几乎不可能被我们监听）
         self.assertTrue(su._port_free(1))
 
-        # 7) 升级命令 cwd 必须钉在包外：Windows 上 npm 换版本靠整体改名包目录，
-        #    cwd 在包内 = 目录被自身占用，rename 必 EBUSY（真实事故：升级 9 秒即挂）
-        from app.core import runner as _runner
-        captured = {}
-
-        def _fake_run_process(argv=None, cwd=None, timeout=None,
-                              log_path=None, **kw):
-            captured["argv"] = argv
-            captured["cwd"] = cwd
-            return {"ok": True, "exit_code": 0, "stdout": "", "stderr": "",
-                    "timed_out": False, "cancelled": False}
-
-        orig_run = _runner.run_process
-        _runner.run_process = _fake_run_process
-        try:
+        # 7) 升级走 registry 直传，不调用 npm/node。
+        with mock.patch.object(su, "_direct_upgrade", return_value={
+                "ok": True, "exit_code": 0, "stdout": "", "stderr": ""}) as direct:
             res = su.run_upgrade("r-test", None)
-        finally:
-            _runner.run_process = orig_run
         self.assertTrue(res["ok"])
-        self.assertIn("install", captured["argv"])
-        root = su.paths.ROOT.resolve()
-        cwd = Path(captured["cwd"]).resolve()
-        self.assertFalse(cwd == root or root in cwd.parents,
-                         "npm 的 cwd 不得落在包目录内（Windows rename EBUSY）")
-
+        direct.assert_called_once_with(None)
         # 8) relaunch 同理：新实例 cwd 不落包内，且脚本用绝对路径（cwd 已不再是 APP_DIR）
         class _FakePopen:
             def __init__(self, args, **kw):
@@ -100,77 +81,58 @@ class TestSelfUpdate(BaseTest):
         finally:
             su.subprocess.Popen = orig_popen
         cwd2 = Path(popen_kw["cwd"]).resolve()
+        root = su.paths.ROOT.resolve()
         self.assertFalse(cwd2 == root or root in cwd2.parents)
         self.assertTrue(Path(popen_kw["args"][1]).is_absolute())
         self.assertTrue(str(popen_kw["args"][1]).endswith("main.py"))
 
+    def test_direct_upgrade_failure_is_reported(self):
+        """内置 registry 通道失败时保留可读错误。"""
+        import app.core.selfupdate as su
+        with mock.patch.object(su, "_direct_upgrade", return_value={
+                "ok": False, "exit_code": 1, "stdout": "",
+                "stderr": "内置升级失败：网络不可用"}):
+            result = su.run_upgrade("r-direct-fail", None)
+        self.assertFalse(result["ok"])
+        self.assertIn("网络不可用", result["error"])
+
     def test_ebusy_retry_and_friendly_error(self):
-        """EBUSY/EPERM（包目录被占用）自动重试 + 人话错误映射；其他错误不重试。"""
-        import tempfile
+        """保留历史 npm 占用错误映射测试，验证兼容辅助函数不回归。"""
+        import app.core.selfupdate as su
+        ebusy = "npm error EBUSY: resource busy or locked"
+        self.assertTrue(su._locked_error({"stderr": ebusy, "stdout": ""}))
+        self.assertFalse(su._locked_error({"stderr": "network timeout", "stdout": ""}))
+    def test_missing_npm_error_is_actionable(self):
+        """Win7 的 npm 缺失时，版本页给安装和重启指引而不是裸 cmd 错误。"""
+        import app.core.selfupdate as su
+        raw = "'npm' 不是内部或外部命令，也不是可运行的程序或批处理文件。"
+        hint = su._npm_missing_error(raw)
+        self.assertIn("安装 Node.js", hint)
+        self.assertIn("重启 CodeBee", hint)
+        self.assertEqual("", su._npm_missing_error("npm error network timeout"))
+
+        with mock.patch.object(su, "_direct_npm_meta",
+                                  return_value=("", "", "", "", "offline")):
+            latest, notes, error = su._npm_meta()
+
+        self.assertEqual((latest, notes), ("", ""))
+        self.assertIn("内置 registry", error)
+
+    def test_missing_npm_uses_builtin_upgrade_channel(self):
+        """npm 缺失时升级本身切到内置下载，不要求用户另装 Node.js。"""
         import app.core.selfupdate as su
         from app.core import runner as _runner
 
-        ebusy = ("npm error code EBUSY\nnpm error syscall rename\n"
-                 "npm error EBUSY: resource busy or locked, rename "
-                 "'D:\\x\\node_modules\\codebee' -> 'D:\\x\\node_modules\\.cb-1'\n")
-        calls, sleeps = [], []
+        raw = "启动失败：找不到可执行文件「npm」。CLI 未安装或已卸载"
+        with mock.patch.object(_runner, "run_process", return_value={
+                "ok": False, "exit_code": None, "stdout": "", "stderr": raw,
+                "cancelled": False}), \
+                mock.patch.object(su, "_direct_upgrade", return_value={
+                    "ok": True, "exit_code": 0, "stdout": "", "stderr": ""}) as direct:
+            result = su.run_upgrade("r-direct", None)
 
-        def _fake(argv=None, cwd=None, timeout=None, log_path=None, **kw):
-            calls.append(log_path)
-            if log_path:
-                with open(log_path, "ab") as fh:
-                    fh.write(ebusy.encode("utf-8"))
-            return {"ok": False, "exit_code": 1, "stdout": "", "stderr": ebusy,
-                    "timed_out": False, "cancelled": False}
-
-        def _ok_after_retries(argv=None, cwd=None, timeout=None, log_path=None, **kw):
-            calls.append(log_path)
-            done = len(calls) >= 3
-            return {"ok": done, "exit_code": 0,
-                    "stdout": "", "stderr": "" if done else ebusy,
-                    "timed_out": False, "cancelled": False}
-
-        with mock.patch.object(su.time, "sleep", side_effect=sleeps.append):
-            # a) 前两次 EBUSY、第三次成功：共 3 次 npm，两次退避 5s/15s，日志有重试说明
-            log1 = Path(tempfile.mkdtemp(dir=str(self.tmp))) / "a.log"
-            calls.clear()
-            with mock.patch.object(_runner, "run_process", side_effect=_ok_after_retries):
-                su._CHECK_CACHE["result"] = {"stale": True}
-                res = su.run_upgrade("r1", str(log1))
-            self.assertTrue(res["ok"])
-            self.assertEqual(len(calls), 3)
-            self.assertEqual(sleeps, [5, 15])
-            self.assertIsNone(su._CHECK_CACHE["result"])  # 成功后查新缓存已过期
-            log_text = log1.read_text(encoding="utf-8")
-            self.assertIn("第 1/2 次", log_text)
-            self.assertIn("第 2/2 次", log_text)
-
-            # b) 三连 EBUSY：不 ok，错误是人话结论（300 字内可见），且非裸 npm 输出
-            log2 = Path(tempfile.mkdtemp(dir=str(self.tmp))) / "b.log"
-            calls.clear()
-            with mock.patch.object(_runner, "run_process", side_effect=_fake):
-                res = su.run_upgrade("r2", str(log2))
-            self.assertFalse(res["ok"])
-            self.assertEqual(len(calls), 3)
-            self.assertIn("被其他程序占用", res["error"])
-            self.assertIn("已自动重试 2 次", res["error"])
-            self.assertNotIn("npm error", res["error"][:300])  # 裸输出不进摘要头部
-
-            # c) 非占用类失败（如网络）：不重试，错误透传原始输出
-            net_err = "npm error network request to https://registry.npmjs.org failed"
-            calls.clear()
-
-            def _net_fail(argv=None, cwd=None, timeout=None, log_path=None, **kw):
-                calls.append(log_path)
-                return {"ok": False, "exit_code": 1, "stdout": "", "stderr": net_err,
-                        "timed_out": False, "cancelled": False}
-
-            with mock.patch.object(_runner, "run_process", side_effect=_net_fail):
-                res = su.run_upgrade("r3", None)
-            self.assertFalse(res["ok"])
-            self.assertEqual(len(calls), 1)
-            self.assertIn("network", res["error"])
-            self.assertNotIn("被其他程序占用", res["error"])
+        self.assertTrue(result["ok"])
+        direct.assert_called_once_with(None)
 
     def test_enqueue_failure_closes_upgrade_run(self):
         import app.core.selfupdate as su
@@ -286,3 +248,4 @@ class TestDesktopUpdateCheck(BaseTest):
         self.assertFalse(info["has_update"])
         self.assertIn("/actions/workflows/desktop-preview.yml", info["download_url"])
         self.assertIn("查询新版本失败", info["note"])
+

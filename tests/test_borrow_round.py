@@ -133,16 +133,16 @@ class AllTypesRegistryContractTests(BaseTest):
         })
 
     def test_review_param_invariants_across_review_types(self):
-        """14 个 review 型共享契约：rubric 4-5 维、threshold≥7.0、rounds≥2。
+        """15 个 review 型共享契约：rubric 4-6 维、threshold≥7.0、rounds≥2。
 
         边界：bid_doc threshold=7.5（标书合规面刻意从严）同过 ≥7.0 口径；
         serial_novel 独有 serial{chapters:8, words_per_chapter:2500} 默认在位。
         """
         from app.core import flows
         review = [f for f in flows.BUILTIN_FLOWS if f["engine"] == "review"]
-        self.assertEqual(len(review), 14)
+        self.assertEqual(len(review), 15)
         for f in review:
-            self.assertTrue(4 <= len(f["rubric"]) <= 5, f["id"])
+            self.assertTrue(4 <= len(f["rubric"]) <= 6, f["id"])
             self.assertGreaterEqual(f["threshold"], 7.0, f["id"])
             self.assertGreaterEqual(f["rounds"], 2, f["id"])
             for field in ("name", "goal_hint", "note", "manuscript"):
@@ -152,7 +152,7 @@ class AllTypesRegistryContractTests(BaseTest):
                          {"chapters": 8, "words_per_chapter": 2500})
 
     def test_non_review_types_carry_no_review_params(self):
-        """direct/code/rank_scan/defect_retro 四型快档直出，不带评审参数。"""
+        """direct/code/defect_retro 无内容评审参数；rank_scan 已有立项评审。"""
         from app.core import flows
         non_review = set()
         for f in flows.BUILTIN_FLOWS:
@@ -162,7 +162,7 @@ class AllTypesRegistryContractTests(BaseTest):
                     {"rubric", "threshold", "rounds", "manuscript"} & set(f),
                     "%s 不应带评审参数" % f["id"])
         self.assertEqual(non_review,
-                         {"direct", "code", "rank_scan", "defect_retro"})
+                         {"direct", "code", "defect_retro"})
 
     def test_no_stale_type_count_copy(self):
         """过时文案六模式在 UI 三件+核心两件+README 零残留（G 专项机械化）。"""

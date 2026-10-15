@@ -991,10 +991,17 @@ def create_run(kind, title, task_id=None, entry_id=None, op=None):
         "task_id": task_id, "entry_id": entry_id, "op": op,
         "status": "queued", "steps": [], "messages": [],
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "created_at_ns": time.time_ns(),
         "started_at": None, "ended_at": None,
         "deadline_at": None,
         "cost_usd": 0.0, "tokens": 0, "error": "",
         "verdict": None, "summary": "",
+        # ``paused`` remains the backwards-compatible user intent flag.
+        # ``pause_phase`` makes the visible lifecycle explicit: the request
+        # may still be waiting for the current step(s), or the run may have
+        # actually reached a step boundary and be waiting at the gate.
+        "pause_phase": "none", "pause_requested_at": None,
+        "pause_reached_at": None,
     }
     # Persist trace identity at run creation so replay remains stable across
     # process restarts and legacy readers can still use the normal run shape.
@@ -1229,6 +1236,12 @@ def update_run(run_id, expected_status=None, **fields):
         # 假「工作中」）。run 终态后不可能还有步骤在真跑。
         st = fields.get("status")
         if st in ("done", "failed", "cancelled", "timeout"):
+            # A terminal run can retain the legacy ``paused`` intent for
+            # recovery/audit compatibility, but it must never look like a
+            # live run waiting at a gate.
+            run["pause_phase"] = "none"
+            run["pause_requested_at"] = None
+            run["pause_reached_at"] = None
             end_s = time.strftime("%H:%M:%S")
             for s in run["steps"]:
                 if s.get("status") in ("queued", "running"):
@@ -2609,12 +2622,27 @@ def retract_message(run_id, msg_id):
 
 
 def set_paused(run_id, paused):
-    """暂停/放行：标志位挂在下一个步骤开始前（pipeline 轮间闸门读取）。"""
+    """暂停/放行，并记录请求是否已经到达下一步闸门。
+
+    ``paused`` is kept for old callers.  New readers should use
+    ``pause_phase``: ``requested`` means the current step is still running;
+    ``paused`` means the gate has actually been reached.
+    """
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
             return False
-    update_run(run_id, paused=bool(paused))
+        target = bool(paused)
+        if target:
+            phase = "paused" if run.get("pause_phase") == "paused" else "requested"
+            update = {"paused": True, "pause_phase": phase,
+                      "pause_requested_at": run.get("pause_requested_at") or
+                      time.strftime("%Y-%m-%d %H:%M:%S"),
+                      "pause_reached_at": run.get("pause_reached_at") if phase == "paused" else None}
+        else:
+            update = {"paused": False, "pause_phase": "none",
+                      "pause_requested_at": None, "pause_reached_at": None}
+    update_run(run_id, **update)
     return True
 
 
@@ -2626,6 +2654,42 @@ def pause_control():
                   and run.get("status") in ("queued", "running")]
         return {"active": len(active),
                 "paused": sum(1 for run in active if run.get("paused"))}
+
+
+def pause_observability():
+    """Return the split pause lifecycle without changing the legacy summary."""
+    with LOCK:
+        active = [run for run in _RUNS.values()
+                  if run.get("kind") == "orchestration"
+                  and run.get("status") in ("queued", "running")]
+        requested = sum(1 for run in active
+                        if run.get("paused") and
+                        run.get("pause_phase", "requested") == "requested")
+        reached = sum(1 for run in active
+                      if run.get("paused") and
+                      run.get("pause_phase") == "paused")
+        return {"active": len(active), "requested": requested, "reached": reached}
+
+
+def mark_pause_reached(run_id):
+    """Mark the gate reached once no step from the current parallel wave runs."""
+    changed = False
+    with LOCK:
+        run = _RUNS.get(run_id)
+        if (not run or not run.get("paused") or
+                run.get("status") not in ("queued", "running")):
+            return False
+        if any(s.get("status") == "running" for s in run.get("steps") or []):
+            return False
+        if run.get("pause_phase") == "paused":
+            return True
+        run["pause_phase"] = "paused"
+        run["pause_reached_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+        changed = True
+    if changed:
+        bump_state()
+    return True
 
 
 def set_paused_all(paused):
@@ -2643,8 +2707,21 @@ def set_paused_all(paused):
             if bool(run.get("paused")) == target:
                 continue
             run["paused"] = target
+            if target:
+                run["pause_phase"] = ("paused" if run.get("pause_phase") == "paused"
+                                       else "requested")
+                run["pause_requested_at"] = run.get("pause_requested_at") or time.strftime(
+                    "%Y-%m-%d %H:%M:%S")
+                if run["pause_phase"] != "paused":
+                    run["pause_reached_at"] = None
+            else:
+                run["pause_phase"] = "none"
+                run["pause_requested_at"] = None
+                run["pause_reached_at"] = None
             _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)
             changed += 1
+    if changed:
+        bump_state()
     return changed
 
 

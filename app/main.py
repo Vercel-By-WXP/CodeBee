@@ -845,6 +845,13 @@ class Handler(BaseHTTPRequestHandler):
                 from core import contracts
                 payload["contract"] = contracts.get(m.group(1))
                 return self._json(200, payload)
+            m = re.match(r"^/api/tasks/([^/]+)/selection$", path)
+            if m:
+                from core import selection_launch as selection
+                try:
+                    return self._json(200, selection.selection_info(m.group(1)))
+                except ValueError as exc:
+                    return self._json(400, {"error": str(exc)})
             m = re.match(r"^/api/tasks/([^/]+)/bible$", path)
             if m:
                 # 故事圣经：查看（无令牌豁免走 _authed 已过；本机免令牌）
@@ -1191,6 +1198,14 @@ class Handler(BaseHTTPRequestHandler):
                 return deny
         if path == "/api/tasks":
             return self._api_create_task()
+        m = re.match(r"^/api/tasks/([^/]+)/selection/serial$", path)
+        if m:
+            from core import selection_launch as selection
+            try:
+                status, result = selection.launch_serial(m.group(1), self._body(), self._create_and_start)
+                return self._json(status, result)
+            except (ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
         if path == "/api/goals":
             from core import goal_service
             body = self._body() or {}
@@ -1807,9 +1822,14 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             # 暂停/放行：标志位挂在下一个步骤开始前；取消不必先解除暂停
             body = self._body() or {}
-            if not store.set_paused(m.group(1), bool(body.get("paused"))):
+            if not isinstance(body, dict) or not isinstance(body.get("paused"), bool):
+                return self._json(400, {"error": "paused 必须是布尔值"})
+            paused = body["paused"]
+            if not store.set_paused(m.group(1), paused):
                 return self._json(404, {"error": "not found"})
-            return self._json(200, {"ok": True, "paused": bool(body.get("paused"))})
+            run = store.get_run(m.group(1)) or {}
+            return self._json(200, {"ok": True, "paused": paused,
+                                    "pause_phase": run.get("pause_phase", "none")})
         if path == "/api/runs/pause_all":
             body = self._body() or {}
             if not isinstance(body, dict) or not isinstance(body.get("paused"), bool):
@@ -3699,12 +3719,12 @@ class Handler(BaseHTTPRequestHandler):
                 store.update_task_status(task["id"], "failed")
             except Exception:
                 log.exception("收口失败的任务状态失败 task=%s", task.get("id"))
-            return 503, {"error": "运行记录创建失败，请稍后重试"}
+            return 503, {"error": "运行记录创建失败，请稍后重试", "task_id": task["id"]}
         queued, qerr = self._enqueue_run(
             run["id"], task["id"],
             {"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
         if not queued:
-            return 503, {"error": qerr, "run_id": run["id"]}
+            return 503, {"error": qerr, "task_id": task["id"], "run_id": run["id"]}
         return 200, {"task_id": task["id"], "run_id": run["id"]}
 
     def _api_create_task(self):
@@ -3949,6 +3969,7 @@ def _state_payload(client_id="", ver=None):
         # 列表与 SSE 只带摘要；日志、模型输出、计划、消息正文等走详情 API。
         "runs": [_state_run_summary(run) for run in runs],
         "pause_control": store.pause_control(),
+        "pause_observability": store.pause_observability(),
         "control": remote.control_view(client_id),
         # 供应商健康/告警（顶栏横幅数据源；有告警时 bump_state 会推给所有端）
         "health": health.snapshot(),
@@ -3967,7 +3988,8 @@ def _state_task_summary(task):
 def _state_run_summary(run):
     """列表/SSE 投影，不重复携带运行详情中的大字段。"""
     fields = ("id", "task_id", "kind", "op", "title", "status", "created_at",
-              "started_at", "ended_at", "summary", "error", "paused", "direct_session",
+              "started_at", "ended_at", "summary", "error", "paused", "pause_phase",
+              "pause_requested_at", "pause_reached_at", "direct_session",
               "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens")
     fields += ("project_memory_id",)
     summary = {key: run[key] for key in fields if key in run}

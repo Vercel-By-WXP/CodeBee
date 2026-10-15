@@ -26,6 +26,7 @@ tmp_*
 !/tests/ui_mobile_workbench.mjs
 !/tests/ui_chat_delivery.mjs
 !/tests/ui_task_request.mjs
+!/tests/ui_selection_handoff.mjs
 !/tests/ui_chat_activity.mjs
 .playwright-cli/
 作品信息-*.md

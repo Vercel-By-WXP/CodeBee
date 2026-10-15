@@ -61,6 +61,27 @@ class HttpContractRouteTests(unittest.TestCase):
         self.assertEqual(payload, {"ok": True, "paused": True, "count": 3})
         pause_all.assert_called_once_with(True)
 
+    def test_single_pause_route_returns_observable_phase(self):
+        h = self.handler("/api/runs/run-1/pause", {"paused": True})
+        with patch.object(main.store, "set_paused", return_value=True) as set_paused, \
+             patch.object(main.store, "get_run", return_value={
+                 "id": "run-1", "paused": True, "pause_phase": "requested"}):
+            status, payload = h._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, {"ok": True, "paused": True,
+                                   "pause_phase": "requested"})
+        set_paused.assert_called_once_with("run-1", True)
+
+    def test_single_pause_route_requires_explicit_boolean(self):
+        for body in ({}, {"paused": "false"}, [True]):
+            with self.subTest(body=body):
+                h = self.handler("/api/runs/run-1/pause", body)
+                with patch.object(main.store, "set_paused") as set_paused:
+                    status, payload = h._route_post()
+                self.assertEqual(status, 400)
+                self.assertIn("paused", payload["error"])
+                set_paused.assert_not_called()
+
     def test_pause_all_route_requires_explicit_boolean(self):
         for body in ({}, {"paused": "false"}, [True]):
             with self.subTest(body=body):
@@ -81,6 +102,8 @@ class HttpContractRouteTests(unittest.TestCase):
 
     def test_state_includes_full_pause_control_counts(self):
         with patch.object(main.store, "pause_control", return_value={"active": 41, "paused": 40}), \
+             patch.object(main.store, "pause_observability",
+                          return_value={"active": 41, "requested": 2, "reached": 38}), \
              patch.object(main.store, "list_runs", return_value=[]), \
              patch.object(main.registry, "effective_agents", return_value=[]), \
              patch.object(main.catalog, "load", return_value=[]), \
@@ -93,6 +116,8 @@ class HttpContractRouteTests(unittest.TestCase):
              patch.object(main.jobs, "workers_info", return_value={}):
             payload = main._state_payload()
         self.assertEqual(payload["pause_control"], {"active": 41, "paused": 40})
+        self.assertEqual(payload["pause_observability"],
+                         {"active": 41, "requested": 2, "reached": 38})
 
     def test_contract_evidence_and_approval_http_shape(self):
         contracts.create("t1", {"acceptance_criteria": ["测试通过"], "approval_required": True})

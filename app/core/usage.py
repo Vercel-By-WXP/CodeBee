@@ -876,7 +876,7 @@ def summary(days=30, recent_limit=30):
 THIN_SAMPLES = 10   # 低于此样本数即「薄样本」，口径见执行标准第 6 条
 
 _DURATION_BASELINES = {
-    "direct": 90, "rank_scan": 240, "email": 180, "weekly_report": 240,
+    "direct": 90, "rank_scan": 1200, "email": 180, "weekly_report": 240,
     "translation": 240, "speech": 360, "video_script": 360, "article": 480,
     "doc": 480, "resume": 420, "code": 600, "tech_proposal": 720,
     "research": 900, "novel": 720, "serial_novel": 2400,

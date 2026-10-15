@@ -19,12 +19,16 @@ class TestResolveCommandFallback(BaseTest):
 
     def setUp(self):
         self._saved = {k: os.environ.get(k)
-                       for k in ("PATH", "LOCALAPPDATA", "APPDATA", "USERPROFILE")}
+                       for k in ("PATH", "LOCALAPPDATA", "APPDATA", "USERPROFILE",
+                                 "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)")}
         self.tmp = Path(tempfile.mkdtemp(prefix="tutti_resolve_"))
         # PATH 剥空逼 which 落空；三个家目录全指临时盘，探测只看得到夹具
         os.environ["PATH"] = ""
         for key in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
             os.environ[key] = str(self.tmp)
+        os.environ["ProgramW6432"] = str(self.tmp / "Program Files")
+        os.environ["ProgramFiles"] = str(self.tmp / "Program Files")
+        os.environ["ProgramFiles(x86)"] = str(self.tmp / "Program Files (x86)")
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -58,6 +62,14 @@ class TestResolveCommandFallback(BaseTest):
         argv = runner.resolve_command("probecli")
         self.assertEqual(argv[0], "cmd")
         self.assertEqual(argv[2].lower(), str(self.tmp / "npm/probecli.bat").lower())
+
+    def test_fallback_nodejs_install_dir(self):
+        # Node.js 官方安装器目录：服务 PATH 未刷新时仍应找到 npm.cmd。
+        self._fake_bin("Program Files/nodejs", "probecli.cmd")
+        argv = runner.resolve_command("probecli")
+        self.assertEqual(argv[:2], ["cmd", "/c"])
+        self.assertEqual(argv[2].lower(),
+                         str(self.tmp / "Program Files/nodejs/probecli.cmd").lower())
 
     def test_fallback_winget_packages_one_level_glob(self):
         self._fake_bin("Microsoft/WinGet/Packages/Vendor.Probe_XYZ", "probecli.EXE")

@@ -93,7 +93,7 @@ class TestIntentContract(BaseTest):
         self.assertTrue(any("不要改变 API" in item
                             for item in seen["contract"]["must_not"]))
 
-    def test_special_direct_flows_receive_context_without_attachments(self):
+    def test_special_data_flows_receive_context_without_attachments(self):
         from app.core import pipeline, store
 
         tasks = [store.create_task({
@@ -109,7 +109,8 @@ class TestIntentContract(BaseTest):
             store.update_run(_run["id"], status="done")
 
         with patch.object(pipeline, "_agents", return_value=self.mock_agents()), \
-                patch.object(pipeline, "_run_direct", side_effect=capture_direct):
+                patch.object(pipeline, "_run_direct", side_effect=capture_direct), \
+                patch.object(pipeline, "_run_content_review", side_effect=capture_direct):
             for task in tasks:
                 pipeline.execute_run(
                     store.create_run("orchestration", task["type"], task_id=task["id"])["id"])

@@ -102,6 +102,20 @@ def document():
     ok = response("成功", {"type": "object", "properties": {"ok": {"type": "boolean"}}})
 
     paths = {
+        "/api/tasks/{task_id}/selection": {"get": {
+            "summary": "读取最新运行审核通过的选材候选（旧直出报告须先重跑审核）", "security": security,
+            "parameters": [{"name": "task_id", "in": "path", "required": True, "schema": {"type": "string"}}],
+            "responses": {"200": response("已审核候选和来源运行", {"type": "object"}),
+                          "400": errors["400"], "401": errors["401"]}}},
+        "/api/tasks/{task_id}/selection/serial": {"post": {
+            "summary": "从审核快照按书名新建目录并启动连载，重复请求复用任务", "security": security,
+            "parameters": [{"name": "task_id", "in": "path", "required": True, "schema": {"type": "string"}}],
+            "requestBody": body({"type": "object", "required": ["run_id", "candidate_id"], "properties": {
+                "run_id": {"type": "string"}, "candidate_id": {"type": "string"},
+                "chapters": {"type": "integer", "minimum": 2, "maximum": 20, "default": 8},
+                "words_per_chapter": {"type": "integer", "minimum": 500, "maximum": 8000, "default": 2500}}}),
+            "responses": {"200": response("新建或复用的连载任务", ref("TaskResult")),
+                          "503": response("启动失败，新书任务保留供重试", ref("Error")), **errors}}},
         "/api/tasks": {"post": {"summary": "创建并启动任务", "security": security,
             "requestBody": body(ref("TaskCreate")),
             "responses": {"200": response("已排队", ref("TaskResult")),
@@ -322,6 +336,13 @@ def document():
             "responses": {"200": response("Sandbox policy", {"type": "object"})}}},
         "/api/runs/{run_id}/resume_now": {"post": {"summary": "立即重试运行", "security": security,
             "responses": {"200": ok, "400": errors["400"], "401": errors["401"], "404": errors["404"], "423": errors["423"]}}},
+        "/api/runs/{run_id}/pause": {"post": {"summary": "请求暂停或放行运行", "security": security,
+            "requestBody": body({"type": "object", "required": ["paused"],
+                                  "properties": {"paused": {"type": "boolean"}}}),
+            "responses": {"200": response("运行暂停状态", {"type": "object", "properties": {
+                "ok": {"type": "boolean"}, "paused": {"type": "boolean"},
+                "pause_phase": {"type": "string", "enum": ["none", "requested", "paused"]}
+            }}), "401": errors["401"], "404": errors["404"]}}},
         "/api/runs/pause_all": {"post": {"summary": "暂停或放行全部活动编排运行", "security": security,
             "requestBody": body({"type": "object", "required": ["paused"],
                                   "properties": {"paused": {"type": "boolean"}}}),

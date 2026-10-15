@@ -25,7 +25,7 @@ class ContentContractTests(BaseTest):
     def test_non_review_and_custom_types_keep_generic_fallback(self):
         from app.core import pipeline
 
-        for flow_id in ("direct", "code", "rank_scan", "my_custom_flow"):
+        for flow_id in ("direct", "code", "my_custom_flow"):
             task = {"type": flow_id}
             self.assertEqual("", pipeline._content_contract(task))
             self.assertEqual("内容交付专家", pipeline._content_role(task))

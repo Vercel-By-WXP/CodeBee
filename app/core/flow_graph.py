@@ -13,7 +13,10 @@ def build(flow_id):
     if not flow:
         raise ValueError("流程不存在")
     engine = flow.get("engine") or "review"
-    if engine == "code":
+    if flow.get("id") == "rank_scan":
+        names = [("outline", "选材规划"), ("draft", "榜单分析与立项包"), ("review", "立项评审"),
+                 ("revise", "定向打磨与复审"), ("publish", "连载输入门禁")]
+    elif engine == "code":
         names = [("plan", "规划"), ("implement", "实现"), ("verify", "验证"),
                  ("review", "评审"), ("repair", "修复")]
     elif engine == "direct":

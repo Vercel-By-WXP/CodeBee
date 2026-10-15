@@ -1,0 +1,135 @@
+diff --git a/app/core/pipeline.py b/app/core/pipeline.py
+index fcaf88f..62a25f7 100644
+--- a/app/core/pipeline.py
++++ b/app/core/pipeline.py
+@@ -1265,7 +1265,8 @@ def _run_verify(run_id, task, workdir, ev):
+         v_sum = "验证通过" if ok else "验证失败（exit %s）" % r["exit_code"]
+     store.finish_step(run_id, step["n"], v_status,
+                       summary=v_sum,
+-                      exit_code=r["exit_code"], duration_s=time.time() - start)
++                      exit_code=r["exit_code"], duration_s=time.time() - start,
++                      verify_command=task.get("verify_command"))
+     if r.get("deadline_exceeded"):
+         store.update_run(run_id, expected_status="running", status="timeout",
+                          ended_at=_now(), error="任务总时限已到")
+@@ -1746,7 +1747,7 @@ def _run_code(run, task, agents, ev, stats, mode):
+             _resume_workdir(resume_ctx, workdir), ev,
+             resume=resume_ctx["session"] if resume_ctx else None,
+             log_path=str(plan_log) if plan_log else None,
+-            deadline=_run_deadline(run_id))
++            deadline=_run_deadline(run_id), run_id=run_id)
+         _ensure_budget(run_id)
+         # 规划器判定优先于启发式（仅当用户未显式指定难度）
+         if not explicit and plan.get("difficulty") in ("easy", "hard"):
+@@ -2561,6 +2562,10 @@ __RUBRIC__
+ # review 引擎共用执行骨架，但交付物不能只靠 rubric 猜格式。每个内置类型给出
+ # 最小成品契约，起草和修订都注入；自定义流程继续使用通用回退，避免强加结构。
+ CONTENT_DELIVERY_CONTRACTS = {
++    "rank_scan": ("网文选题策划与立项编辑", (
++        "按榜单证据分析市场，再比较具体的故事机制；不把书名分类当作正文证据。",
++        "按标准立项 JSON 契约交付可直接作为连载输入的完整方案。",
++    )),
+     "novel": ("小说作者", [
+         "遵守用户给定的题材、篇幅、视角和风格；未给出的核心设定不要擅自扩张。",
+         "用场景、行动和对话推进冲突，人物动机与前后因果保持一致。",
+@@ -2657,7 +2662,11 @@ def _content_contract(task):
+     spec = CONTENT_DELIVERY_CONTRACTS.get(str(task.get("type") or ""))
+     if not spec:
+         return ""
+-    return "\n\n## 本类型交付约束\n" + "\n".join("- " + item for item in spec[1])
++    block = "\n\n## 本类型交付约束\n" + "\n".join("- " + item for item in spec[1])
++    if task.get("type") == "rank_scan":
++        from . import selection
++        block += "\n" + selection.CONTRACT
++    return block
+ 
+ # 调研报告类稿件的追加要求（借鉴 gpt-researcher 迭代深研）：有网络/读文件工具时
+ # 多源交叉验证，单源结论降权——调研的可信度来自证据链而非文采。
+@@ -4062,6 +4071,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
+                 issues_all.extend({"chapter": i, **it} for it in (cj.get("issues") or [])[:6])
+ 
+             # 有效评审不足两名时补位；仅一人出分也不能形成发布共识。
++            # 补位池同样绕开本场停用的 CLI——拿欠费死链补位只是把失败换个人重演。
+             if scored < quality_gate.MIN_REVIEWERS:
+                 tried = {a.get("id") for a in critics}
+                 pool = [a for a in (agents or [])
+@@ -5484,6 +5494,14 @@ def _bestof_draft(run_id, task, impl, prompt_fn, ms_name, workdir, step_wd, ev,
+ 
+ 
+ def _run_content_review(run, task, agents, ev, stats, mode):
++    is_selection = task.get("type") == "rank_scan"
++    if is_selection:
++        from . import selection
++        # 四平台排行榜来源供起草、修订与评审共用，只抓一次；CLI/API 同一入口。
++        material = (paihang.rank_scan_prompt(task.get("goal") or "")
++                    if not agents or any(a.get("mode") != "mock" for a in agents) else None)
++        task = dict(task, context=(task.get("context") or "") + "\n\n" +
++                    (material or "四平台本次未取得有效榜单素材；市场结论标 E/待核实，不得伪造榜单或精读证据。"))
+     run_id = run["id"]
+     workdir = task["workdir"]
+     ms_name = _ms_name(task.get("manuscript"))
+@@ -5555,7 +5573,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
+     # 编排者大纲：只对真实执行有意义；失败静默退回无大纲（喂入带指令的任务副本）
+     outline = (_planner_call(planner.make_review_outline,
+                              _steered_task(run_id, task),
+-                             deadline=_run_deadline(run_id))
++                             deadline=_run_deadline(run_id), run_id=run_id)
+                if workflow["outline"] and impl.get("mode") != "mock" else None)
+     _ensure_budget(run_id)
+     if outline:
+@@ -5717,6 +5735,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
+                 res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
+                                 crit_prompt, workdir, readonly=True, ev=ev)
+                 cj = runner.extract_json(res.get("text") or "")
++                if is_selection and not res.get("ok"):
++                    cj = None
+                 if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
+                     cj = {"scores": {}, "issues": [],
+                           "summary": "评审输出无法解析：%s" % (res.get("text") or "")[:150]}
+@@ -5730,6 +5750,16 @@ def _run_content_review(run, task, agents, ev, stats, mode):
+                     if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
+             means[d] = round(sum(vals) / len(vals), 1) if vals else 0.0
+         publishable = bool(means) and all(v >= threshold for v in means.values())
++        if is_selection:
++            _, package_errors = selection.parse_report(manuscript)
++            issues_all.extend({"dim": "交接完整", "severity": "major", "note": error}
++                              for error in package_errors)
++            # A missing critic/dimension and unresolved major cannot be hidden by averaging.
++            complete = bool(per_agent) and all(
++                all(d in cj.get("scores", {}) and 1 <= float(cj["scores"][d]) <= 10
++                    for d in dims) for cj in per_agent.values())
++            publishable = publishable and complete and not any(
++                str(i.get("severity") or "major").lower() != "minor" for i in issues_all)
+         history_rounds.append({"round": r, "means": means,
+                                "per_agent": {k: v.get("scores", {}) for k, v in per_agent.items()},
+                                "issues": issues_all, "passed": publishable})
+@@ -5783,11 +5813,15 @@ def _run_content_review(run, task, agents, ev, stats, mode):
+         "workflow": workflow,
+     }
+ 
++    if is_selection:
++        verdict.update(selection.finalize(run_id, task, manuscript, publishable, store.run_dir(run_id)))
++
+     # 3) 报告
+     lines = ["# 评审报告：%s" % task["title"], "",
+              "- 任务类型：%s" % task["type"],
+              "- 结论：**%s**（综合 %.1f / 阈值 %.1f，%d 轮评审）"
+-             % ("✅ 达到发布标准" if publishable else "❌ 未达标，建议再修",
++             % (("✅ 立项审核通过，可进入试写（不代表平台签约）" if is_selection else "✅ 达到发布标准")
++                if publishable else "❌ 未达标，建议再修",
+                 overall, threshold, verdict["rounds_used"]),
+              "- 编排模式：%s　起草/修订：%s　评审组：%s" % (
+                  {"auto": "自动", "fast": "快速", "expert": "专家",
+@@ -6289,6 +6323,12 @@ def execute_run(run_id):
+     except TaskTimeout:
+         return
+     # 统一任务编译：旧字段继续供各引擎读取，规格作为运行级诊断与调度输入落盘。
++    if task.get("type") == "rank_scan" and task.get("engine") == "direct":
++        # Historical fast scans can be retried into the reviewed workflow; no persisted edits.
++        task = dict(task)
++        rank_flow = flows.get_flow("rank_scan") or {}
++        for key in ("engine", "manuscript", "rubric", "rounds", "threshold"):
++            task[key] = rank_flow[key]
+     task_spec = task_compile.compile_task(task)
+     store.update_run(run_id, task_spec=task_spec,
+                      task_spec_summary=task_compile.summary(task_spec),
