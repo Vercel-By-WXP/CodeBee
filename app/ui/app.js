@@ -5184,7 +5184,7 @@ function beepAttention() {
   } catch (e) { /* 音频不可用则忽略 */ }
 }
 
-/* 注意力状态快照：每任务 [git_state, 最近 run 状态]；新进入 待裁决/失败/取消 才响 */
+/* 注意力状态快照：每任务 [git_state, 最近 run 状态]；新进入 待裁决/失败 才响 */
 function scanAttention(groups) {
   const cur = {};
   groups.forEach((g) => {
@@ -5197,13 +5197,13 @@ function scanAttention(groups) {
     const was = prev[id];
     if (was === undefined || was === cur[id]) return false;   // 新任务/无变化不响
     const [vNow, sNow] = cur[id].split("|");
-    return vNow === "isolated" || sNow === "failed" || sNow === "cancelled";
+    return vNow === "isolated" || sNow === "failed";
   });
   if (fired) beepAttention();
   // 标题提醒：有待裁决/失败任务时加前缀，切走页面也能瞄到
   const attention = Object.values(cur).some((v) => {
     const [vNow, sNow] = v.split("|");
-    return vNow === "isolated" || sNow === "failed" || sNow === "cancelled";
+    return vNow === "isolated" || sNow === "failed";
   });
   const base = (document.title || "").replace(/^[!?]\s*/, "");
   document.title = (attention ? "! " : "") + base;
