@@ -5306,13 +5306,6 @@ function scanAttention(groups) {
     return vNow === "isolated" || sNow === "failed";
   });
   if (fired) beepAttention();
-  // 标题提醒：有待裁决/失败任务时加前缀，切走页面也能瞄到
-  const attention = Object.values(cur).some((v) => {
-    const [vNow, sNow] = v.split("|");
-    return vNow === "isolated" || sNow === "failed";
-  });
-  const base = (document.title || "").replace(/^[!?]\s*/, "");
-  document.title = (attention ? "! " : "") + base;
 }
 
 window.toggleNotifySound = function () {
