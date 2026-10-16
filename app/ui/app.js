@@ -2166,10 +2166,78 @@ function md2html(md) {
   return html.join("\n");
 }
 
+/* ---------------------------------------------------------- 运行完成右下角通知 */
+/* 任务跑完没有主动提示，台账徽章不盯屏幕就不知道。run 从活跃态翻到终态时
+ * 右下角弹卡。不用居中 toast：它是单例，连载/并行多任务接连完成会互相覆盖。
+ * 只对「本会话亲眼见过在跑」的 run 弹：首帧、刷新后回看、换轮次只记账不轰炸。 */
+const RUN_ACTIVE_STATUS = new Set(["queued", "running", "waiting"]);
+
+function runSettleWatch(prev, next) {
+  try {
+    if (!next || typeof next !== "object") return;
+    const seen = (S._runSeen = S._runSeen || new Map());
+    const names = new Map();
+    for (const tk of (next.tasks || []).concat(next.archived_tasks || [])) {
+      if (tk && tk.id) names.set(tk.id, tk.title || tk.goal || "");
+    }
+    const latest = next.task_latest || {};
+    for (const [taskId, run] of Object.entries(latest)) {
+      if (!run || !run.id) continue;
+      const st = String(run.status || "");
+      const active = RUN_ACTIVE_STATUS.has(st);
+      const was = seen.get(taskId);
+      if (!was || was.runId !== run.id) {   // 首见/新一轮：只记账
+        seen.set(taskId, { runId: run.id, active });
+        continue;
+      }
+      seen.set(taskId, { runId: run.id, active });
+      if (was.active && !active && st !== "cancelled") {   // 取消是自己点的，不回执
+        runSettleNotice(taskId, names.get(taskId) || t("未命名任务"), run);
+      }
+    }
+    for (const taskId of Array.from(seen.keys())) {
+      if (!(taskId in latest)) seen.delete(taskId);   // 任务删档/清场：台账跟着清
+    }
+  } catch (e) { /* 通知环节失败不许影响状态同步 */ }
+}
+
+function runSettleNotice(taskId, title, run) {
+  let box = $("notice-stack");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "notice-stack";
+    document.body.appendChild(box);
+  }
+  const st = String((run && run.status) || "");
+  const unqualified = st === "done" && run && run.verdict && run.verdict.pass === false;
+  const tone = st === "done" ? (unqualified ? "warn" : "good") : "bad";
+  const head = t({ done: "任务已完成", failed: "任务失败", timeout: "任务超时" }[st]
+    || String(runStatusText(run))) + (unqualified ? t("·未达标") : "");
+  const card = document.createElement("div");
+  card.className = "notice-card " + tone;
+  card.innerHTML = '<div class="notice-head"><span class="notice-ico">' +
+    (tone === "good" ? "✓" : tone === "warn" ? "⚠" : "✕") + "</span>" + esc(head) + "</div>" +
+    '<div class="notice-title">' + esc(title) + "</div>" +
+    '<div class="notice-hint">' + esc(t("点击查看任务")) + "</div>";
+  card.addEventListener("click", () => {
+    card.remove();
+    if (typeof sideOpenTask === "function") sideOpenTask(taskId);   // 任务点击默认进对话
+  });
+  box.appendChild(card);
+  requestAnimationFrame(() => card.classList.add("in"));   // 触发滑入过渡
+  while (box.children.length > 4) box.firstChild.remove();   // 连环完成只留最近 4 张
+  setTimeout(() => {
+    card.classList.add("out");
+    setTimeout(() => card.remove(), 300);
+  }, 7000);
+}
+
 /* ---------------------------------------------------------- 状态同步：SSE 实时 + 轮询降级 */
 /* 应用 /api/state 或 SSE 推送的状态载荷 */
 function applyState(d) {
+  const prevState = S.state;
   S.state = d;
+  runSettleWatch(prevState, d);
   if (d.control) setControl(d.control);
   if (d.health) renderHealthBanner(d.health);
   $("conn").textContent = t("已连接");
