@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import {
   ID, SECRET, PAIR_CODE, SESSION_SECONDS, REQUEST_HEADERS, RESPONSE_HEADERS,
   digest, randomSecret, sessionCookie, readSession, sameOrigin, safePath,
-  encode, decode, boundedBody, securityHeaders, json,
+  encode, decode, boundedBody, securityHeaders, json, preferredLang,
 } from "./policy.mjs";
 
 async function allowed(env, request, action, limit, seconds) {
@@ -16,7 +16,7 @@ async function allowed(env, request, action, limit, seconds) {
 
 async function portal(env, request) {
   const url = new URL(request.url);
-  url.pathname = "/index.html";
+  url.pathname = preferredLang(request.headers.get("accept-language")) === "en" ? "/index.en.html" : "/index.html";
   url.search = "";
   const asset = await env.ASSETS.fetch(new Request(url, { method: "GET" }));
   const headers = securityHeaders();
@@ -45,12 +45,12 @@ export default {
         return env.DEVICES.getByName(connector[1]).fetch(request);
       }
       if (path === "/relay/pair" && request.method === "POST") {
-        if (!sameOrigin(request)) return json({ error: "来源验证失败" }, 403);
-        if (!await allowed(env, request, "pair", 10, 60)) return json({ error: "尝试过于频繁，请稍后再试" }, 429);
+        if (!sameOrigin(request)) return json({ error: "来源验证失败", code: "bad_origin" }, 403);
+        if (!await allowed(env, request, "pair", 10, 60)) return json({ error: "尝试过于频繁，请稍后再试", code: "rate_limited" }, 429);
         let body;
         try { body = JSON.parse(new TextDecoder().decode(await boundedBody(request, 2048))); }
-        catch { return json({ error: "连接码格式不正确" }, 400); }
-        if (!ID.test(body?.device) || !PAIR_CODE.test(body?.code)) return json({ error: "连接码格式不正确" }, 400);
+        catch { return json({ error: "连接码格式不正确", code: "invalid_code" }, 400); }
+        if (!ID.test(body?.device) || !PAIR_CODE.test(body?.code)) return json({ error: "连接码格式不正确", code: "invalid_code" }, 400);
         return env.DEVICES.getByName(body.device).fetch(new Request(request.url, {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
         }));
@@ -74,7 +74,9 @@ export default {
       }
       return response;
     } catch (error) {
-      return json({ error: error instanceof RangeError ? "请求超过 16 MiB 限制" : "连接服务暂时不可用" }, error instanceof RangeError ? 413 : 503);
+      const tooLarge = error instanceof RangeError;
+      return json({ error: tooLarge ? "请求超过 16 MiB 限制" : "连接服务暂时不可用",
+        code: tooLarge ? "too_large" : "service_unavailable" }, tooLarge ? 413 : 503);
     }
   },
 };
@@ -129,8 +131,8 @@ export class DeviceRelay extends DurableObject {
         await storage.put("sessions", sessions);
         return 200;
       });
-      if (result === 401) return json({ error: "连接码已失效或电脑离线，请在电脑上重新生成" }, 401);
-      if (result === 409) return json({ error: "已配对设备达到上限，请在电脑上撤销旧连接" }, 409);
+      if (result === 401) return json({ error: "连接码已失效或电脑离线，请在电脑上重新生成", code: "pair_unavailable" }, 401);
+      if (result === 409) return json({ error: "已配对设备达到上限，请在电脑上撤销旧连接", code: "device_limit" }, 409);
       this.socket()?.send(JSON.stringify({ type: "paired" }));
       return json({ ok: true }, 200, { "set-cookie": sessionCookie(`${device}.${token}`) });
     }

@@ -39,6 +39,24 @@ export function sameOrigin(request) {
   return origin === new URL(request.url).origin;
 }
 
+// zh-speaking browsers get the Chinese portal; everyone else — including an
+// absent header from bots — gets English, the neutral default for i18n.
+export function preferredLang(acceptLanguage) {
+  let zhQ = -1, enQ = -1;
+  for (const part of String(acceptLanguage || "").split(",")) {
+    const pieces = part.trim().split(";");
+    const tag = (pieces[0] || "").trim().toLowerCase();
+    let q = 1;
+    for (const p of pieces.slice(1)) {
+      const m = p.trim().match(/^q=([0-9.]+)$/);
+      if (m) q = parseFloat(m[1]) || 0;
+    }
+    if (tag.startsWith("zh") && q > zhQ) zhQ = q;
+    else if (tag.startsWith("en") && q > enQ) enQ = q;
+  }
+  return zhQ >= 0 && zhQ >= enQ ? "zh" : "en";
+}
+
 export function safePath(path) {
   if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") ||
       /[\r\n\\\x00]/.test(path) || path.length > 8192) return false;

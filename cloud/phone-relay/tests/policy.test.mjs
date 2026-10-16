@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COOKIE, digest, readSession, sameOrigin, safePath, boundedBody, encode, decode } from "../src/policy.mjs";
+import { COOKIE, digest, readSession, sameOrigin, safePath, boundedBody, encode, decode, preferredLang } from "../src/policy.mjs";
 
 test("device credentials yield stable, separate identities", async () => {
   const a = await digest("a".repeat(64)), b = await digest("b".repeat(64));
@@ -33,4 +33,15 @@ test("body cap applies even without content-length", async () => {
 test("binary bodies survive transport encoding", () => {
   const value = Uint8Array.from([0, 255, 128, 13, 10, 42]);
   assert.deepEqual(decode(encode(value)), value);
+});
+
+test("portal language follows Accept-Language with English as neutral default", () => {
+  assert.equal(preferredLang("zh-CN,zh;q=0.9,en;q=0.8"), "zh");
+  assert.equal(preferredLang("zh-Hans-CN"), "zh");
+  assert.equal(preferredLang("en-US,en;q=0.9"), "en");
+  assert.equal(preferredLang("zh;q=0.3,en;q=0.9"), "en");
+  // Unrecognised or absent headers get English, never a blank guess.
+  assert.equal(preferredLang("fr-FR,fr;q=0.9"), "en");
+  assert.equal(preferredLang(""), "en");
+  assert.equal(preferredLang(undefined), "en");
 });

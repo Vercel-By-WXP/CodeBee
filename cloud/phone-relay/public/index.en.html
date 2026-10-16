@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f4ee">
+  <title>Codebee · Connect to your computer</title>
+  <link rel="stylesheet" href="/relay/portal.css">
+  <script defer src="/relay/portal.js"></script>
+</head>
+<body>
+  <main>
+    <a class="brand" href="https://codebeeagent.com"><img class="mark" src="/relay/codebee-logo.png" alt="CodeBee">CodeBee</a>
+    <div class="eyebrow"><span class="dot"></span>Your workbench, always with you</div>
+    <h1>Connect to your computer<span>Continue your work.</span></h1>
+    <p class="intro">Track tasks, reply to agents, and take over Codebee from your phone.<br>Everything keeps running on your own computer.</p>
+    <section class="card" aria-labelledby="pair-title">
+      <div class="step">01 / Pair your devices</div>
+      <h2 id="pair-title">Start on the computer, continue on your phone.</h2>
+      <p>In CodeBee on your computer, open “Phone connection”, click “Generate pairing code”, then scan the QR code with your phone — or simply open the link copied from the computer.</p>
+      <p class="auto">The link pairs automatically and opens your own CodeBee — no need to type a pairing code.</p>
+      <p id="status" role="status" aria-live="polite"></p>
+      <div class="paired" id="paired" hidden><a href="/">Open your paired workbench ↗</a><button type="button" id="logout">Forget this computer</button></div>
+    </section>
+    <div class="notes"><span>One pairing — connects only to your computer.</span><span>Keep the computer on and Codebee running.</span></div>
+    <footer>Codebee <span>·</span> Your agents. Your computer.</footer>
+  </main>
+</body>
+</html>
