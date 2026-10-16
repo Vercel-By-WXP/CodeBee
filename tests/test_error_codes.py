@@ -136,6 +136,8 @@ class TestSharedFailureClassification(BaseTest):
             ("stream disconnected before response.completed", ErrorCode.NETWORK),
             ("deadline exceeded", ErrorCode.TIMEOUT),
             ("Unexpected error database is locked", ErrorCode.LOCAL_STATE),
+            ("ModuleNotFoundError: No module named 'mistral_vibe'", ErrorCode.TOOL_LAUNCH),
+            ("dsh: command not found", ErrorCode.TOOL_LAUNCH),
         )
         for message, expected in cases:
             with self.subTest(message=message):

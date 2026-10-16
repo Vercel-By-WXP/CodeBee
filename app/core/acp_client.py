@@ -16,6 +16,7 @@ from .env_scrub import scrub_env
 _MAX_LINE = 2 * 1024 * 1024
 _MAX_TEXT = 2 * 1024 * 1024
 _MAX_ACP_EVENTS = 200
+_MAX_COMPACTION_CONTENT = 2400
 _ACP_EVENT_TYPES = {
     "agent_thought_chunk", "tool_call", "tool_call_update", "plan",
     "current_mode_update", "config_option_update", "session_info_update",
@@ -60,6 +61,11 @@ def _record_session_update(events, update):
         content = update.get("content")
         if isinstance(content, dict) and content.get("type") == "text":
             item["content"] = scrub_text(str(content.get("text") or ""), limit=600)
+        elif isinstance(content, str) and content:
+            # ACP implementations in the wild use both a text ContentBlock
+            # and a plain string for summary chunks; normalize both to the
+            # persisted display shape.
+            item["content"] = scrub_text(content, limit=600)
     events.append(item)
 
 
@@ -76,6 +82,63 @@ def _summary_blocks(blocks):
             # character so the persisted ACP summary never exceeds 800.
             out.append({"type": "text", "text": scrub_text(text, limit=799)})
     return out
+
+
+def _coalesce_compaction_events(events):
+    """Collapse streamed compaction updates into bounded replayable events.
+
+    ACP permits one compaction to arrive as a status update followed by many
+    ``compaction_summary_chunk`` notifications.  Keeping every raw chunk
+    makes the UI's bounded activity window lose the beginning of a summary.
+    Keep the first position in the timeline, retain the latest update fields,
+    and join text chunks into one display-safe value.  The input is copied so
+    callers can still use the raw stream for diagnostics while the persisted
+    representation stays compact.
+    """
+    if not isinstance(events, list):
+        return []
+    output = []
+    positions = {}
+    for event in events[:_MAX_ACP_EVENTS]:
+        if not isinstance(event, dict):
+            continue
+        kind = str(event.get("sessionUpdate") or "")
+        compaction_id = event.get("compactionId")
+        mergeable = compaction_id and kind in (
+            "compaction_update", "compaction_summary_chunk")
+        if not mergeable:
+            output.append(dict(event))
+            continue
+        key = str(compaction_id)
+        index = positions.get(key)
+        if index is None:
+            merged = dict(event)
+            if kind == "compaction_summary_chunk":
+                merged["_compactionHasChunks"] = True
+            output.append(merged)
+            positions[key] = len(output) - 1
+            continue
+        merged = output[index]
+        if kind == "compaction_summary_chunk":
+            part = event.get("content")
+            if isinstance(part, str) and part:
+                previous = merged.get("content")
+                pieces = [value for value in (previous, part)
+                          if isinstance(value, str) and value]
+                content = "\n".join(pieces)
+                if len(content) > _MAX_COMPACTION_CONTENT:
+                    content = content[:_MAX_COMPACTION_CONTENT - 1] + "…"
+                merged["content"] = content
+                merged["_compactionHasChunks"] = True
+            continue
+        streamed = merged.get("content")
+        had_chunks = bool(merged.get("_compactionHasChunks"))
+        merged.update(dict(event))
+        if isinstance(streamed, str) and streamed and not merged.get("content"):
+            merged["content"] = streamed
+        if had_chunks:
+            merged["_compactionHasChunks"] = True
+    return output
 
 
 class ACPError(Exception):
@@ -467,7 +530,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
                 "cost_usd": 0.0, "tokens": 0, "usage": None, "error": "",
                 "error_code": "", "raw": {"exit_code": 0,
                                                "duration": time.monotonic() - started,
-                                               "acp_events": acp_events},
+                                               "acp_events": _coalesce_compaction_events(acp_events)},
                 "kind": "acp", "model": None, "sid": session_id,
                 "attempts": []}
     except InterruptedError as exc:

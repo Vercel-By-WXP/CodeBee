@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from unittest import mock
 from base import BaseTest
 
 FIXTURES = Path(__file__).parent
@@ -102,6 +103,20 @@ class TestPipelineRepeatGuardWiring(BaseTest):
         res = pipeline._run_step(run["id"], "review", _real_agent(), "same",
                                  str(self.workdir), readonly=True, ev=None)
         self.assertTrue(res["ok"])  # 另一角色从 1 计数
+
+    def test_readonly_step_skips_git_checkpoint_probe(self):
+        """只读评审不应因临时工作目录缺少 HEAD 而附加快照警告。"""
+        from app.core import pipeline, store
+        run = _tasked_run(store, self.workdir, "guard-readonly-checkpoint")
+        with mock.patch.object(
+                pipeline.checkpoints, "begin_git_step",
+                side_effect=AssertionError("readonly must not snapshot")):
+            res = pipeline._run_step(run["id"], "review", _real_agent(),
+                                     "只读评审", str(self.workdir),
+                                     readonly=True, ev=None)
+        self.assertTrue(res["ok"], res.get("error"))
+        self.assertNotIn("checkpoint_warning", res)
+        self.assertNotIn("没有可用 HEAD", res.get("text") or "")
 
 
 class TestPipelineDiagnosticsWiring(BaseTest):

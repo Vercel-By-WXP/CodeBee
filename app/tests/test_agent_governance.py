@@ -192,6 +192,17 @@ class FakeACPProcess:
                                            "sessionUpdate": "compaction_update",
                                            "compactionId": "cmp-1",
                                            "status": "in_progress"}}}) + "\n")
+            for chunk in ("kept context", "and tool results"):
+                self.lines.put(json.dumps({"jsonrpc": "2.0", "method": "session/update",
+                                           "params": {"sessionId": "session-1", "update": {
+                                               "sessionUpdate": "compaction_summary_chunk",
+                                               "compactionId": "cmp-1",
+                                               "content": chunk}}}) + "\n")
+            self.lines.put(json.dumps({"jsonrpc": "2.0", "method": "session/update",
+                                       "params": {"sessionId": "session-1", "update": {
+                                           "sessionUpdate": "compaction_update",
+                                           "compactionId": "cmp-1",
+                                           "status": "completed"}}}) + "\n")
             self.lines.put(json.dumps({"jsonrpc": "2.0", "method": "session/update",
                                        "params": {"sessionId": "session-1", "update": {
                                            "sessionUpdate": "notice",
@@ -248,7 +259,9 @@ class ACPClientTests(unittest.TestCase):
         self.assertEqual(process.requests[0]["params"]["clientCapabilities"]["session"],
                          {"compaction": {}, "notices": {}})
         self.assertEqual(events[1], {"sessionUpdate": "compaction_update",
-                                     "compactionId": "cmp-1", "status": "in_progress"})
+                                     "compactionId": "cmp-1", "status": "completed",
+                                     "content": "kept context\nand tool results",
+                                     "_compactionHasChunks": True})
         self.assertEqual(events[2], {"sessionUpdate": "notice", "severity": "warning",
                                      "title": "Using fallback context"})
 
@@ -280,6 +293,40 @@ class ACPClientTests(unittest.TestCase):
         self.assertEqual(events[0]["summary"][0]["type"], "text")
         self.assertLessEqual(len(events[0]["summary"][0]["text"]), 800)
         self.assertNotIn("must-not-persist", json.dumps(events))
+
+    def test_acp_compaction_events_coalesce_before_persistence(self):
+        """同一 compactionId 的流式分块应在后端回放前合并。"""
+        from core import acp_client
+        raw = [
+            {"sessionUpdate": "plan", "entries": []},
+            {"sessionUpdate": "compaction_update", "compactionId": "cmp-9",
+             "status": "in_progress"},
+            {"sessionUpdate": "compaction_summary_chunk", "compactionId": "cmp-9",
+             "content": "first"},
+            {"sessionUpdate": "compaction_summary_chunk", "compactionId": "cmp-9",
+             "content": "second"},
+            {"sessionUpdate": "compaction_update", "compactionId": "cmp-9",
+             "status": "completed", "summary": [{"type": "text", "text": "final"}]},
+            {"sessionUpdate": "notice", "severity": "info", "title": "done"},
+        ]
+        merged = acp_client._coalesce_compaction_events(raw)
+        self.assertEqual([item["sessionUpdate"] for item in merged],
+                         ["plan", "compaction_update", "notice"])
+        self.assertEqual(merged[1]["status"], "completed")
+        self.assertEqual(merged[1]["content"], "first\nsecond")
+        self.assertTrue(merged[1]["_compactionHasChunks"])
+        self.assertEqual(raw[2]["content"], "first")
+
+    def test_acp_compaction_replay_has_a_bounded_joined_summary(self):
+        from core import acp_client
+        merged = acp_client._coalesce_compaction_events([
+            {"sessionUpdate": "compaction_summary_chunk", "compactionId": "cmp-cap",
+             "content": "x" * 600}
+            for _ in range(8)
+        ])
+        self.assertEqual(len(merged), 1)
+        self.assertLessEqual(len(merged[0]["content"]), 2400)
+        self.assertTrue(merged[0]["content"].endswith("…"))
 
 
 if __name__ == "__main__":

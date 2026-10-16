@@ -143,6 +143,63 @@ class TestGlobalReviewAllDead(SerialReviewBase):
         self.assertTrue(v["global_pass"])
         self.assertIn("spare", seen_agents)   # 补位确实被派上场
 
+    def test_signing_eval_skips_previously_benched_reviewers(self):
+        """前面已确认额度耗尽的评审，不应在后续签约评估中再次调用。"""
+        from app.core import bench, novel_quality, pipeline, store
+        task, run = self._make()
+        # 开篇签约评估只在真实作者上触发；补位评审保证章级评审仍有
+        # 两个有效样本，这样测试能实际走到 signing-eval，而不是在章评
+        # 阶段提前结束。
+        task["serial"] = dict(task["serial"], chapters=1)
+        agents, critics, _mock_impl = self._agents(extra_ids=("c3",))
+        impl = {"id": "author", "mode": "real", "kind": "generic",
+                "command": "x", "label": "author"}
+        called = []
+
+        signing_scores = {dim: 9.0 for dim in novel_quality.SIGNING_RUBRIC}
+        signing_evidence = [
+            {"dim": dim, "chapter": 1, "quote": "山" * 12,
+             "analysis": "正文证据"}
+            for dim in novel_quality.SIGNING_RUBRIC
+        ]
+        signing_result = json.dumps({"scores": signing_scores,
+                                     "evidence": signing_evidence,
+                                     "issues": []}, ensure_ascii=False)
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
+            if role == "draft-c1":
+                pipeline._write_chapter(workdir, 1, "山" * 300)
+                return _ok("第 1 章完成")
+            if role == "signing-eval":
+                called.append(agent["id"])
+            if role.startswith("critique-c"):
+                return _ok(GOOD)
+            if role == "signing-eval":
+                return _ok(signing_result)
+            if role == "global-critique":
+                return _ok(GOOD)
+            return _ok()
+
+        orig = pipeline._run_step
+        orig_outline = pipeline.planner.make_serial_outline
+        bench.reset(run["id"])
+        bench.bench(run["id"], "c1", "QUOTA")
+        pipeline._run_step = fake_step
+        pipeline.planner.make_serial_outline = lambda *a, **kw: {
+            "book_title": "评审链失效回归",
+            "chapters": [{"title": "第一章", "beats": "开局冲突",
+                          "hook": "留下悬念", "highlight": "反转"}],
+        }
+        try:
+            self._run_review(task, run, agents, critics, impl)
+        finally:
+            pipeline._run_step = orig
+            pipeline.planner.make_serial_outline = orig_outline
+            bench.reset(run["id"])
+
+        self.assertNotIn("c1", called)
+        self.assertIn("c2", called)
+
 
 class TestPolishKeepsScoresWhenReviewDead(SerialReviewBase):
     def test_polish_rereview_dead_keeps_previous_scores(self):

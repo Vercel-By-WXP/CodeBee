@@ -104,7 +104,16 @@ _LOCAL_STATE = ("database is locked", "database locked", "sqlite busy",
 # 报错都不会长这个样子，所以单靠前缀即可零误判地识别「本地工具链起不来」。
 # 2026-09-30 claude 垫片被清案：这类失败被记成供应商健康故障，把健康的
 # Bigmodel 评测作废、整链判死——必须先于一切上游分类识别。
-_TOOL_LAUNCH = ("启动失败",)
+# A CLI can start successfully and still fail before making an API request
+# (missing Python module, shell command not found, or a missing executable
+# referenced by a wrapper). Treat these as local tool-chain failures so the
+# run-level bench disables that agent immediately instead of replaying the same
+# broken command for every chapter/reviewer.
+_TOOL_LAUNCH = (
+    "启动失败", "modulenotfounderror", "no module named", "command not found",
+    "not recognized as an internal or external command", "no such file or directory",
+    "cannot find the path specified",
+)
 _TRANSIENT_HINTS = ("stream closed before response.completed", "output stall", "timed out",
                     "timeout", "output stalled", "ENOTFOUND", "Reconnecting...",
                     "initialize", "[1211]")

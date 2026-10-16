@@ -25,7 +25,8 @@ from . import diagnostics
 from . import paths as paths_mod
 from . import session_log as session_log_mod
 from . import step_runner as step_runner_mod
-from .error_codes import error_code_value, safe_error_summary
+from .error_codes import (error_code_value, is_account_dead_error,
+                          safe_error_summary)
 from .repeat_guard import guard as repeat_guard
 
 DEFAULT_RUBRIC = ["情节", "人物", "文笔", "节奏", "吸引力"]
@@ -581,11 +582,16 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         if directive_block:
             prompt = directive_block + "\n\n---\n\n" + prompt
         effective_prompt = (guard["reminder"] + "\n\n---\n\n" + prompt) if guard["reminder"] else prompt
-        git_checkpoint = None
-        try:
-            git_checkpoint = checkpoints.begin_git_step(run_id, workdir)
-        except Exception:
-            git_checkpoint = {"ok": False, "error": "文件检查点准备失败，外部智能体未启动"}
+        # 只读评审不会被允许改写工作区，无需为它创建文件快照。此前这里
+        # 无论 readonly 取值都探测 Git HEAD，导致临时/空仓库的只读评审在
+        # 真正的供应商错误旁边追加“没有可用 HEAD”，把诊断噪音误当成失败原因。
+        if readonly:
+            git_checkpoint = {"ok": True, "supported": False}
+        else:
+            try:
+                git_checkpoint = checkpoints.begin_git_step(run_id, workdir)
+            except Exception:
+                git_checkpoint = {"ok": False, "error": "文件检查点准备失败，外部智能体未启动"}
         if not git_checkpoint.get("ok"):
             res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                    "tokens": 0, "usage": None,
@@ -615,8 +621,6 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
             res["checkpoint_warning"] = checkpoint_warning
             if res.get("ok"):
                 res["text"] = (res.get("text") or "") + "\n\n（检查点范围提示：%s）" % checkpoint_warning
-            elif res.get("error"):
-                res["error"] = res["error"] + "；" + checkpoint_warning
             if log_abs:
                 try:
                     with log_abs.open("a", encoding="utf-8") as handle:
@@ -3788,7 +3792,25 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         signing_review_meta["read_scope"] = read_scope
         if not texts:
             return None, [], ""
-        reviewers = critics or [impl]
+        # 评审链在前面的章级评审中可能已经证实某些 CLI 是账号级死错
+        # （欠费、缺凭据、权限封禁或本地工具未安装）。签约评估不能再把
+        # 原名单原样送回去，否则同一批失败会被重复放大成 N×M 次调用。
+        # 优先保留未停用的显式评审者；名单全停时再尝试未停用的实现者，
+        # 仍没有可用模型就返回“未评估”，由上层按证据不足收口。
+        from . import bench as _bench
+        configured_reviewers = list(critics or [impl])
+        reviewers = [a for a in configured_reviewers
+                     if a.get("mode") == "mock"
+                     or not _bench.is_benched(run_id, a.get("id"))]
+        if not reviewers and impl and (
+                impl.get("mode") == "mock"
+                or not _bench.is_benched(run_id, impl.get("id"))):
+            reviewers = [impl]
+        if not reviewers:
+            signing_review_meta.update({"reviewer_count": 0,
+                                        "consensus": False,
+                                        "evidence_errors": ["无可用评审模型"]})
+            return None, [], ""
         reviews, summaries, issues = [], [], []
         # 项目体例检查与文学判断分开，不能推断它就是平台拒稿原因。
         issues.extend(novel_quality.style_consistency_notes(style_chapters))
@@ -3830,6 +3852,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         evidence_errors = []
         feedback_checks = []
         for idx, agent in enumerate(reviewers):
+            # reviewers 是进入本次评估时的快照，但 _run_step 失败会立即
+            # 把账号级错误写入本场 bench。重读台账，避免同一评估流程内
+            # 接着启动其它已被刚才失败证明不可用的 reviewer。
+            if (agent.get("mode") != "mock"
+                    and _bench.is_benched(run_id, agent.get("id"))):
+                continue
             res = _run_step(run_id, "signing-eval", modelhub.bind_agent(agent, difficulty),
                             prompt, workdir, readonly=True, ev=ev, timeout=2400,
                             note=("签约评估 %s" % (note or "")).strip())
@@ -4342,6 +4370,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         # 仍是同一句 "Request not allowed"，只会把 30/60s 退避和白烧
                         # 的三遍撞墙留到重复守卫才收口（2026-09-24 draft-c9 案）。
                         # 立即跳出交换将——换到异上游才是新机会。
+                        break
+                    if (not res["ok"]
+                            and is_account_dead_error(res.get("error_code"))):
+                        # 额度耗尽、凭据失效、权限封禁和 CLI 启动失败都属于
+                        # 确定性账号级错误。_finish_step_result 已把它记入本场
+                        # 停用台账；继续走 30/60 秒的同作者重试只会重复撞墙，
+                        # 应立即进入下面的备用 CLI 换将流程。
                         break
                     good, txt = _chapter_state()
                     if good:
