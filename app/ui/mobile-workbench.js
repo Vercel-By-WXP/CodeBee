@@ -152,7 +152,9 @@
       select.innerHTML = (data.experts || []).map(expert => '<option value="' + esc(expert.id) + '">' + esc(expert.name || expert.id) + '</option>').join("");
     }).catch(() => {});
     button.addEventListener("click", async () => {
-      const goal = window.prompt("告诉专家要完成什么");
+      const goal = typeof window.uiPrompt === "function"
+        ? await window.uiPrompt("告诉专家要完成什么", "")
+        : null;
       if (!goal || !goal.trim() || !select.value) return;
       button.disabled = true;
       try {

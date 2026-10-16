@@ -1847,6 +1847,11 @@ function uiPrompt(title, value) {
   }).then((ok) => ((ok && inp) ? inp.value.trim() : null));
 }
 
+// 供独立的 UI 模块（例如 mobile-workbench.js）复用统一弹框，避免模块
+// 各自退回浏览器原生 confirm/prompt，造成视觉和交互不一致。
+window.uiConfirm = uiConfirm;
+window.uiPrompt = uiPrompt;
+
 /* 访问令牌门（仅远程设备会碰到） */
 function showTokenGate(err) {
   const g = $("token-gate");
@@ -18426,7 +18431,8 @@ function renderPhoneRelay(relay) {
 
 async function phoneRelayAction(action) {
   if ((action === "revoke" || action === "disable") &&
-      !window.confirm(action === "disable" ? "关闭远程连接并撤销全部已配对手机？" : "撤销全部已配对手机？")) return;
+      !await uiConfirm(action === "disable" ? t("关闭远程连接并撤销全部已配对手机？") : t("撤销全部已配对手机？"),
+        { title: t("确认操作"), ok: action === "disable" ? t("关闭并撤销") : t("撤销"), danger: true })) return;
   try {
     const result = await api("/api/connect/relay", { method: "POST", timeout: 15000,
       body: JSON.stringify({ action }) });
