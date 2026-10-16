@@ -142,6 +142,9 @@ def wait_for_decision(request_id, timeout=None):
                     if remaining <= 0:
                         return "waiting"
                     wait_for = remaining if wait_for is None else min(wait_for, remaining)
+                # Poll briefly as well as waiting on the in-process condition:
+                # an approval may be written by another service process.
+                wait_for = 0.5 if wait_for is None else min(wait_for, 0.5)
                 _CONDITION.wait(wait_for)
                 continue
             if status == "expired":
