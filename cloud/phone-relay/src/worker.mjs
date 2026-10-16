@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   ID, SECRET, PAIR_CODE, SESSION_SECONDS, REQUEST_HEADERS, RESPONSE_HEADERS,
-  digest, randomSecret, sessionCookie, readSession, sameOrigin, safePath,
+  digest, randomSecret, sessionCookie, readSession, sameOrigin, safePath, assetTarget,
   encode, decode, boundedBody, securityHeaders, json, preferredLang,
 } from "./policy.mjs";
 
@@ -24,6 +24,29 @@ async function portal(env, request) {
   headers.set("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self'; " +
     "connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'");
   return new Response(asset.body, { status: asset.status, headers });
+}
+
+// Static workbench assets live at the same paths the desktop serves; see
+// assetTarget in policy.mjs for the shape rules and sync-ui.mjs for the copy.
+async function workbenchAsset(env, request, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") return null;
+  const target = assetTarget(url.pathname);
+  if (!target) return null;
+  const assetURL = new URL(url);
+  assetURL.pathname = target;
+  assetURL.search = "";
+  const etag = request.headers.get("if-none-match");
+  const asset = await env.ASSETS.fetch(new Request(assetURL,
+    { headers: etag ? { "if-none-match": etag } : {} }));
+  if (asset.status !== 200 && asset.status !== 304) return null;
+  const headers = securityHeaders();
+  headers.set("content-type", asset.headers.get("content-type") || "application/octet-stream");
+  // Short TTL: an unversioned URL must pick up a redeployed bundle quickly.
+  headers.set("cache-control", "public, max-age=300");
+  if (asset.headers.get("etag")) headers.set("etag", asset.headers.get("etag"));
+  headers.set("x-codebee-edge", "assets");
+  const body = request.method === "HEAD" || asset.status === 304 ? null : asset.body;
+  return new Response(body, { status: asset.status, headers });
 }
 
 export default {
@@ -62,6 +85,9 @@ export default {
       }
       if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return json({ error: "Method not allowed" }, 405);
       if (!["GET", "HEAD"].includes(request.method) && !sameOrigin(request)) return json({ error: "来源验证失败" }, 403);
+      // Edge-served workbench assets: no relay hop, no relay rate budget.
+      const asset = await workbenchAsset(env, request, url);
+      if (asset) return asset;
       if (path.startsWith("/relay/") && !["/relay/logout", "/relay/session"].includes(path)) return json({ error: "Not found" }, 404);
       if (!path.startsWith("/relay/") && !safePath(path + url.search)) return json({ error: "此操作请在电脑上完成" }, 403);
       if (!await allowed(env, request, "request", 600, 60)) return json({ error: "请求过于频繁" }, 429);
@@ -71,6 +97,21 @@ export default {
         const headers = new Headers(landing.headers);
         if (response.headers.has("set-cookie")) headers.set("set-cookie", response.headers.get("set-cookie"));
         return new Response(landing.body, { status: 200, headers });
+      }
+      // Durable Object responses cross an internal fetch boundary. Preserve
+      // the connector's compression marker there, then expose the standard
+      // response header only at the public Worker boundary.
+      const encoding = response.headers.get("x-codebee-content-encoding");
+      if (encoding) {
+        const headers = new Headers(response.headers);
+        headers.delete("x-codebee-content-encoding");
+        headers.set("content-encoding", encoding);
+        // Re-stream the body so the public response owns the encoding header;
+        // Wrangler otherwise treats a streamed DO response as an internal
+        // fetch and removes the standard content-encoding metadata.
+        const stream = new TransformStream();
+        response.body?.pipeTo(stream.writable).catch(() => {});
+        return new Response(stream.readable, { status: response.status, statusText: response.statusText, headers });
       }
       return response;
     } catch (error) {
@@ -162,6 +203,13 @@ export class DeviceRelay extends DurableObject {
     // to reach the computer after its session was deleted.
     const current = await this.ctx.storage.get("sessions") || [];
     if (!current.some(x => x.hash === hash && x.expires > Date.now())) return json({ error: "连接已撤销" }, 401);
+    // In-memory after the first wake; one storage read when hibernated.
+    const caps = this.caps || (this.caps = await this.ctx.storage.get("caps")) || null;
+    // Wrangler's local Durable Object bridge strips content-encoding from
+    // streamed responses; Cloudflare marks real edge requests with this
+    // header, so local browser tests stay identity-encoded.
+    const acceptsGzip = request.headers.has("cf-ray") &&
+      /(?:^|,)\s*gzip\s*(?:;|,|$)/i.test(headers["accept-encoding"] || "");
     const id = crypto.randomUUID();
     return new Promise(resolve => {
       const stream = new TransformStream();
@@ -171,7 +219,8 @@ export class DeviceRelay extends DurableObject {
       this.touch(id);
       request.signal.addEventListener("abort", () => this.finish(id, "cancelled"), { once: true });
       try { socket.send(JSON.stringify({ type: "request", id, method: request.method,
-        path: url.pathname + url.search, headers, body: encode(body) })); }
+        path: url.pathname + url.search, headers, body: encode(body),
+        gzip: caps && caps.gzip && acceptsGzip ? true : undefined })); }
       catch { this.finish(id, "disconnected"); }
     });
   }
@@ -190,7 +239,10 @@ export class DeviceRelay extends DurableObject {
     clearTimeout(item.timer);
     if (!item.started) item.resolve(json({ error: "电脑连接已中断，请稍后重试" }, 503));
     if (reason) {
-      item.writer.abort(new Error(reason)).catch(() => {});
+      // The cancellation reason is sent over the control socket. Aborting
+      // with an Error leaks an unhandled stream rejection in Wrangler and
+      // turns normal disconnects into noisy runtime exceptions.
+      item.writer.abort().catch(() => {});
       try { item.socket.send(JSON.stringify({ type: "cancel", id })); } catch { /* already closed */ }
     } else if (item.empty) item.writer.abort().catch(() => {});
     else item.writer.close().catch(() => {});
@@ -213,6 +265,15 @@ export class DeviceRelay extends DurableObject {
       ws.send(JSON.stringify({ type: "revoked" }));
       return;
     }
+    if (message.type === "hello") {
+      // Connector transport capabilities, persisted so a hibernated object
+      // still offers gzip after waking for a phone request. Ignored entirely
+      // by older connectors, which simply never compress.
+      const caps = { gzip: message.gzip === true };
+      this.caps = caps;
+      await this.ctx.storage.put("caps", caps);
+      return;
+    }
     const item = this.pending.get(message.id);
     if (!item || item.socket !== ws) return;
     this.touch(message.id);
@@ -220,6 +281,13 @@ export class DeviceRelay extends DurableObject {
       const headers = securityHeaders();
       for (const [key, value] of Object.entries(message.headers || {})) {
         if (RESPONSE_HEADERS.has(key.toLowerCase())) headers.set(key, value);
+      }
+      // Trust the connector's announcement, not the request flag: it may
+      // have declined (e.g. a byte-range body). Old connectors never send
+      // enc and old workers never honored it, so both directions stay plain.
+      if (message.enc === "gzip") {
+        headers.set("x-codebee-content-encoding", "gzip");
+        headers.delete("content-length");
       }
       if (!Number.isInteger(message.status) || message.status < 200 || message.status > 599) return this.finish(message.id, "invalid response");
       const empty = item.method === "HEAD" || [204, 205, 304].includes(message.status);

@@ -4926,6 +4926,12 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 .rd-contract b { color: var(--text); }
 .rd-contract .err { color: var(--bad); }
 .rd-contract-evidence { display: flex; flex-wrap: wrap; gap: 4px 8px; width: 100%; }
+.rd-contract-evidence-details { display: grid; gap: 6px; width: 100%; }
+.rd-contract-evidence-item { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; }
+.rd-contract-evidence-item p { margin: 3px 0 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.rd-contract-evidence-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.rd-contract-evidence-tag { padding: 2px 6px; border-radius: 5px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.rd-contract-evidence-item ul { margin: 0; padding-left: 18px; }
 .rd-contract-criterion { padding: 2px 6px; border-radius: 5px; background: color-mix(in srgb, var(--text) 7%, transparent); }
 .rd-contract-criterion.passed { color: var(--ok); }
 .rd-contract-criterion.failed { color: var(--bad); }

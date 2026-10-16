@@ -12239,10 +12239,31 @@ function contractOverviewHtml(contract) {
       '<button type="button" class="rd-contract-mark fail" title="' + esc(t("标记失败")) + '" onclick="contractEvidenceAction(\'' + jsq(taskId) + '\',\'' + jsq(c) + '\',\'failed\')">×</button>';
     return '<span class="rd-contract-criterion ' + (e ? esc(e.status) : "pending") + '">' + esc(c) + ': ' + esc(e ? e.status : t("待验收")) + controls + '</span>';
   }).join("");
+  const evidenceDetails = evidence.map((e) => {
+    if (!e || typeof e !== "object") return "";
+    const coverage = e.coverage && typeof e.coverage === "object" ? e.coverage : {};
+    const provenance = e.provenance && typeof e.provenance === "object" ? e.provenance : {};
+    const tags = [
+      t("覆盖") + "：" + (coverage.status || "unknown") + (coverage.scope ? " · " + coverage.scope : ""),
+      provenance.source || e.source ? t("来源") + "：" + (provenance.source || e.source) : "",
+      provenance.run_id ? t("运行") + "：" + provenance.run_id : "",
+      provenance.step_id ? t("步骤") + "：" + provenance.step_id : "",
+      provenance.untrusted_content ? t("包含未验证内容") : "",
+    ].filter(Boolean).map((value) => '<span class="rd-contract-evidence-tag">' + esc(value) + '</span>').join("");
+    const lists = [
+      ...(Array.isArray(e.unknown) ? e.unknown : []),
+      ...(Array.isArray(e.limitations) ? e.limitations : []),
+    ].filter((value) => typeof value === "string" && value.trim()).map((value) => '<li>' + esc(value) + '</li>').join("");
+    return '<article class="rd-contract-evidence-item"><div><b>' + esc(e.criterion || t("补充证据")) + '</b>' +
+      (e.summary ? '<p>' + esc(e.summary) + '</p>' : "") + '</div>' +
+      (tags ? '<div class="rd-contract-evidence-tags">' + tags + '</div>' : "") +
+      (lists ? '<ul>' + lists + '</ul>' : "") + '</article>';
+  }).filter(Boolean).join("");
   return '<div class="rd-contract"><b>' + esc(t("任务契约")) + '</b>' +
     '<span>' + esc(t("验收")) + ' ' + passed + '/' + criteria.length + '</span>' +
     '<span>' + esc(t("审批")) + ' ' + esc(approval) + '</span>' +
-    (evidenceText ? '<div class="rd-contract-evidence">' + evidenceText + '</div>' : "") + approvalAction +
+    (evidenceText ? '<div class="rd-contract-evidence">' + evidenceText + '</div>' : "") +
+    (evidenceDetails ? '<section class="rd-contract-evidence-details"><b>' + esc(t("验证证据详情")) + '</b>' + evidenceDetails + '</section>' : "") + approvalAction +
     (contract.blocked_reason ? '<span class="err">' + esc(t("Blocked：")) + esc(contract.blocked_reason) + '</span>' : "") +
     '</div>';
 }

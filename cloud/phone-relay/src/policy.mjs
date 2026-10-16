@@ -6,7 +6,7 @@ export const SECRET = /^[a-f0-9]{64}$/;
 export const PAIR_CODE = /^[a-f0-9]{32}$/;
 export const REQUEST_HEADERS = new Set([
   "accept", "accept-language", "content-type", "range", "if-none-match",
-  "if-modified-since", "x-codebee-client", "x-codebee-name", "origin",
+  "if-modified-since", "accept-encoding", "x-codebee-client", "x-codebee-name", "origin",
 ]);
 export const RESPONSE_HEADERS = new Set([
   "content-type", "content-disposition", "content-length", "content-range", "accept-ranges",
@@ -65,6 +65,19 @@ export function safePath(path) {
     return !decoded.startsWith("//") && !/[\\\r\n\x00]/.test(decoded) &&
       !decoded.startsWith("/relay/") && !decoded.startsWith("/api/connect");
   } catch { return false; }
+}
+
+// Static workbench files under the same paths the desktop serves (its route
+// regex on the unslashed path), mirrored into public/ui by sync-ui.mjs. The
+// desktop's index.html deliberately stays on the relay so the HTML that names
+// the APIs always matches the computer actually answering them.
+const STATIC_NAME = /^[\w.-]+(\/[\w.-]+)*$/;
+const STATIC_EXT = /\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|map|json|txt)$/i;
+
+export function assetTarget(pathname) {
+  const name = pathname.slice(1);
+  if (!STATIC_NAME.test(name) || !STATIC_EXT.test(name)) return null;
+  return "/ui" + pathname;
 }
 
 export function encode(bytes) {

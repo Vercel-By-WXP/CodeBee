@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COOKIE, digest, readSession, sameOrigin, safePath, boundedBody, encode, decode, preferredLang } from "../src/policy.mjs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { COOKIE, digest, readSession, sameOrigin, safePath, assetTarget, boundedBody, encode, decode, preferredLang } from "../src/policy.mjs";
 
 test("device credentials yield stable, separate identities", async () => {
   const a = await digest("a".repeat(64)), b = await digest("b".repeat(64));
@@ -44,4 +46,31 @@ test("portal language follows Accept-Language with English as neutral default", 
   assert.equal(preferredLang("fr-FR,fr;q=0.9"), "en");
   assert.equal(preferredLang(""), "en");
   assert.equal(preferredLang(undefined), "en");
+});
+
+test("workbench asset targets mirror desktop paths, APIs stay on the relay", () => {
+  assert.equal(assetTarget("/app.js"), "/ui/app.js");
+  assert.equal(assetTarget("/icons/icon-192.png"), "/ui/icons/icon-192.png");
+  assert.equal(assetTarget("/manifest.json"), "/ui/manifest.json");
+  // API, documents, and odd shapes never take the asset shortcut.
+  for (const path of ["/", "/api/state", "/api/events", "/relay/portal", "/index.html",
+                      "/a//b.js", "/x y.js", "/a/b/", "/a.b/c", "/big"]) {
+    assert.equal(assetTarget(new URL("https://x" + path).pathname), null, path);
+  }
+  // The desktop route regex allows dots inside segment names but not trailing.
+  assert.equal(assetTarget("/preview/r-1/tok/app.js"), "/ui/preview/r-1/tok/app.js");
+});
+
+test("synced asset mirror covers the desktop workbench bundle", () => {
+  const ui = join(import.meta.dirname, "..", "..", "..", "app", "ui");
+  const mirror = join(import.meta.dirname, "..", "public", "ui");
+  const files = readdirSync(ui).filter(f => /\.(?:js|css|html|json|txt)$/i.test(f) && f !== "index.html");
+  assert.ok(files.includes("app.js") && files.includes("style.css"), "desktop bundle detected");
+  for (const name of files) {
+    const copied = join(mirror, name);
+    assert.ok(existsSync(copied), `missing from mirror: ${name}`);
+    assert.equal(statSync(copied).size, statSync(join(ui, name)).size, `size drift: ${name}`);
+  }
+  // The biggest payload really is served from the edge, not the relay.
+  assert.ok(statSync(join(mirror, "app.js")).size > 500 * 1024);
 });

@@ -10,6 +10,13 @@
   const LANG_KEY = "orch.lang";
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
+    "验证证据详情": "Verification evidence details",
+    "覆盖": "Coverage",
+    "来源": "Source",
+    "运行": "Run",
+    "步骤": "Step",
+    "包含未验证内容": "Contains untrusted content",
+    "补充证据": "Additional evidence",
     " 个工作区": " workspaces",
     " 轮": " rounds",
     "CLI提示词": "CLI prompt",

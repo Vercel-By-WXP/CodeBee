@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --ip 127.0.0.1 --port 18791",
-    "deploy": "wrangler deploy",
-    "test": "node --test tests/*.test.mjs"
+    "sync-ui": "node sync-ui.mjs",
+    "deploy": "node sync-ui.mjs && wrangler deploy",
+    "test": "npm run sync-ui && node --test tests/*.test.mjs"
   },
   "devDependencies": { "wrangler": "^4.0.0" }
 }

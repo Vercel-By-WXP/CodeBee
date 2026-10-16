@@ -46,3 +46,5 @@ tmpcheck_*
 /app/current-browser.png
 /.mimocode/
 /.workbuddy/
+cloud/phone-relay/public/ui/
+cloud/phone-relay/.wrangler-validation-*/
