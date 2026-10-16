@@ -1804,22 +1804,54 @@ def retry_task(task_id):
         if inherited:
             run["messages"] = [m for key, m in inherited.items() if key not in delivered][-50:]
         if task.get("serial"):
+            # 按 id 倒序≈按时间倒序，但 id 后缀是随机数（_new_id），同秒双发
+            # （watchdog 补队实测有同秒对）会乱序——账本/成稿都认「最新创建」，
+            # 这里必须按创建时刻排（无 ns 的老 run 兜 0，id 决胜）。
             prev_runs = sorted((r for r in _RUNS.values()
                                 if r.get("task_id") == task_id and r["id"] != run["id"]),
-                               key=lambda r: r["id"], reverse=True)
+                               key=lambda r: (r.get("created_at_ns") or 0, r["id"]),
+                               reverse=True)
+            # 原因账与成稿解耦（2026-10-16 实案）：成稿（大纲/done 章/分数）取
+            # 最新终态 prev；原因账（redo/redo_issues）独立向前扫最近一个
+            # publishable=False 的完结 verdict——中间插着的失败 run（服务重启/
+            # 超时/漂移闸拦截：落了步骤没出 verdict）不再把账本遮蔽成空表
+            # （不周山续5：5151 判 3 条 major 后两日 13 跑全空账盲写实案）。
+            # running/pending 的 prev 不作成稿与账本来源：retry_task 本身拒在
+            # 跑任务，此闸是双实例/状态陈旧时代的兜底（r-20261012-160116 实案：
+            # 活实例还在写、本实例按收尸态继承了半程快照）；达标完结
+            # （publishable=True）即清账，更旧的未达标 verdict 不再追溯。
+            outline = None
+            done = []
+            base_scores = []
+            ledger = None       # (redo, redo_issues, scores)——账本已定，可为空账
             for prev in prev_runs:
-                outline = prev.get("outline")
-                # 降级大纲没有真实情节，继承只会让每一遍都按空模板写废——
-                # 跳过它，让新运行重新生成（编排者恢复后即可拿到真大纲）。
-                # mock 模板的 outline 无 degraded 标记，正常继承不受影响。
-                if not outline or outline.get("degraded"):
+                if outline is None:
+                    o = prev.get("outline")
+                    # 降级大纲没有真实情节，继承只会让每一遍都按空模板写废——
+                    # 跳过它，让新运行重新生成（编排者恢复后即可拿到真大纲）。
+                    # mock 模板的 outline 无 degraded 标记，正常继承不受影响。
+                    if o and not o.get("degraded"):
+                        outline = o
+                if prev.get("status") not in ("done", "failed", "cancelled", "timeout"):
                     continue
-                done = sorted({int(s["role"].split("c")[-1])
-                               for s in (prev.get("steps") or [])
-                               if s.get("status") == "done"
-                               and (s.get("role") or "").startswith("draft-c")
-                               and str(s.get("role")).split("c")[-1].isdigit()})
-                v_scores = (prev.get("verdict") or {}).get("chapter_scores") or []
+                if not done:
+                    got = sorted({int(s["role"].split("c")[-1])
+                                  for s in (prev.get("steps") or [])
+                                  if s.get("status") == "done"
+                                  and (s.get("role") or "").startswith("draft-c")
+                                  and str(s.get("role")).split("c")[-1].isdigit()})
+                    if got:
+                        done = got
+                        base_scores = ((prev.get("verdict") or {}).get("chapter_scores")
+                                       or prev.get("chapter_scores") or [])
+                if outline is not None and done and ledger is not None:
+                    break
+                pv = prev.get("verdict") or {}
+                if ledger is not None:
+                    continue
+                if pv.get("publishable") is True:
+                    ledger = (set(), [], [])
+                    continue
                 # 重写未达标章：上一遍完整跑完但质量未过线（verdict.publishable
                 # =False）时，未过线章的成稿与分数都不进继承——流水线对缺继承
                 # 的章走正常起草+评审，等于只重写这几章；已过线章照常复用不烧
@@ -1828,6 +1860,7 @@ def retry_task(task_id):
                 # retry）区别于断点续跑的语义。
                 redo = set()
                 redo_issues = []
+                v_scores = pv.get("chapter_scores") or []
                 if (prev.get("verdict") or {}).get("publishable") is False:
                     _pv = prev.get("verdict") or {}
                     # 病灶章以 note 文案点名为准（与 pipeline._chapters_named_in
@@ -1841,9 +1874,11 @@ def retry_task(task_id):
                         _vlo = 1
                     try:
                         _vhi = int(_pv.get("end_chapter") or 0) or (
-                            _vlo + max(len(outline.get("chapters") or []) - 1, 0))
+                            _vlo + max(len((prev.get("outline") or {}).get(
+                                "chapters") or []) - 1, 0))
                     except (TypeError, ValueError):
-                        _vhi = _vlo + max(len(outline.get("chapters") or []) - 1, 0)
+                        _vhi = _vlo + max(len((prev.get("outline") or {}).get(
+                            "chapters") or []) - 1, 0)
                     redo = {int(c["chapter"]) for c in v_scores
                             if not c.get("passed") and c.get("chapter") is not None}
                     unlocated_majors = []
@@ -1972,34 +2007,35 @@ def retry_task(task_id):
                                 break
                             if len(targeted) >= route_cap:
                                 break
-                if redo:
-                    # 已发布正文不能被质量回炉覆盖，否则平台与本地版本分叉。
-                    from .publish import ledger
-                    published = (ledger.published_chapters(task_id, "fanqie")
-                                 | ledger.published_chapters(task_id, "qimao"))
-                    redo.difference_update(published)
-                if redo:
-                    done = [n for n in done if n not in redo]
-                    v_scores = [c for c in v_scores if c.get("passed")
-                                and c.get("chapter") not in redo]
-                if done or redo:
-                    if redo:
-                        scores = v_scores          # 未达标重写：只带已过线章的分数
-                    else:
-                        scores = ((prev.get("verdict") or {}).get("chapter_scores")
-                                  or prev.get("chapter_scores") or [])
-                    run["inherit"] = {
-                        "outline": outline,
-                        "done_chapters": done,
-                        # 分数优先取 verdict（整轮成功时的最终账）；
-                        # failed/cancelled 的 run 没有 verdict，退回每章实时
-                        # 落账的 chapter_scores——否则多轮失败恢复会把全部
-                        # 已过线章节重新评审（实测一晚白烧数百万 token）
-                        "chapter_scores": scores,
-                        # 未达标重写的原因账（达标续跑时为空表）
-                        "redo_issues": redo_issues,
-                    }
-                    break
+                    # 账本落袋（循环后统一合成 inherit）：scores 先带该 verdict
+                    # 里全部已过线章，回炉剔除在循环后做（已发布章豁免先行）。
+                    ledger = (redo, redo_issues,
+                              [c for c in v_scores if c.get("passed")])
+            # 账本合成：回炉集先剔已发布章（平台与本地版本不能分叉），再从
+            # 最新成稿里剔除；原因账随继承下发——达标续跑/断点续跑均为空表。
+            redo, redo_issues, ledger_scores = ledger or (set(), [], [])
+            if redo:
+                from .publish import ledger as _pub_ledger
+                published = (_pub_ledger.published_chapters(task_id, "fanqie")
+                             | _pub_ledger.published_chapters(task_id, "qimao"))
+                redo.difference_update(published)
+                done = [n for n in done if n not in redo]
+                ledger_scores = [c for c in ledger_scores
+                                 if c.get("chapter") not in redo]
+            if outline is not None and (done or redo):
+                run["inherit"] = {
+                    "outline": outline,
+                    "done_chapters": done,
+                    # 分数优先取 verdict（整轮成功时的最终账）；
+                    # failed/cancelled 的 run 没有 verdict，退回每章实时
+                    # 落账的 chapter_scores——否则多轮失败恢复会把全部
+                    # 已过线章节重新评审（实测一晚白烧数百万 token）。
+                    # 未达标重写（redo 非空）只带账本 verdict 里已过线
+                    # 且不在回炉集的章分。
+                    "chapter_scores": ledger_scores if redo else base_scores,
+                    # 未达标重写的原因账（达标续跑/断点续跑时为空表）
+                    "redo_issues": redo_issues,
+                }
         else:
             # 断点续跑（代码等非连载任务，A+B）：上一遍失败/取消/超时 run 的
             # 实现会话（inherit_session，跨 run 续 CLI 会话）与断点简报

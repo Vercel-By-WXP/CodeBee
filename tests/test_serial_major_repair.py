@@ -348,6 +348,51 @@ class TestRetryRedoByMention(BaseTest):
                             and "全书节奏失衡" in x.get("note", "")
                             for x in inherit["redo_issues"]))
 
+    def test_ledger_survives_failed_run_in_between(self):
+        """2026-10-16 实案：未达标 verdict 与 retry 之间插一个带 done 步骤的
+        失败 run（服务重启/超时——落了步骤没出 verdict），原因账不得被遮蔽
+        成空表。旧代码取最新 prev 即 break，不周山续5 两日 13 跑全空账盲写。"""
+        from app.core import store
+        task = self._prev_run([
+            {"chapter": 3, "dim": "情节", "severity": "major", "note": AMOUNT_NOTE},
+        ])
+        # 插队失败 run：带 1/2/3 章 done 步骤、无 verdict（金额账 redo={2,3}）
+        mid = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(mid["id"], status="failed",
+                         error="服务重启中断，可重试",
+                         steps=[{"n": k + 1, "role": "draft-c%d" % (k + 1),
+                                 "status": "done"} for k in range(3)])
+        ok, err, new_run = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inh = new_run.get("inherit") or {}
+        self.assertEqual(inh.get("done_chapters"), [1])
+        self.assertEqual([c["chapter"] for c in inh.get("chapter_scores") or []], [1])
+        self.assertEqual(len(inh.get("redo_issues") or []), 1)
+
+    def test_ledger_cleared_by_passing_run(self):
+        """达标完结（publishable=True）即清账：其后 retry 不再追溯更旧的
+        未达标 verdict——达标重跑语义是重来，不带陈账。"""
+        from app.core import store
+        task = self._prev_run([
+            {"chapter": 3, "dim": "情节", "severity": "major", "note": AMOUNT_NOTE},
+        ])
+        prev = store.task_runs(task["id"])[-1]
+        passed = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(passed["id"], status="done",
+                         outline=prev.get("outline"),
+                         steps=[{"n": k + 1, "role": "draft-c%d" % (k + 1),
+                                 "status": "done"} for k in range(3)],
+                         verdict={"type": "serial_novel", "publishable": True,
+                                  "threshold": 7.0, "global_scores": {},
+                                  "start_chapter": 1, "end_chapter": 3,
+                                  "chapter_scores": prev["verdict"]["chapter_scores"],
+                                  "major_issues": []})
+        ok, err, new_run = store.retry_task(task["id"])
+        self.assertTrue(ok, err)
+        inh = new_run.get("inherit") or {}
+        self.assertEqual(inh.get("done_chapters"), [1, 2, 3])
+        self.assertEqual(inh.get("redo_issues"), [])
+
 
 class TestRedoIssueRouting(_SerialFixture):
     def test_redraft_prompt_routes_issues_by_mention(self):
