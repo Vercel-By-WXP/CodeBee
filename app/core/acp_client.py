@@ -72,7 +72,9 @@ def _summary_blocks(blocks):
             continue
         text = str(block.get("text") or "")
         if text:
-            out.append({"type": "text", "text": scrub_text(text, limit=800)})
+            # scrub_text appends an ellipsis after truncating; reserve one
+            # character so the persisted ACP summary never exceeds 800.
+            out.append({"type": "text", "text": scrub_text(text, limit=799)})
     return out
 
 
