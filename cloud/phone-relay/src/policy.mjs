@@ -9,7 +9,7 @@ export const REQUEST_HEADERS = new Set([
   "if-modified-since", "x-codebee-client", "x-codebee-name", "origin",
 ]);
 export const RESPONSE_HEADERS = new Set([
-  "content-type", "content-disposition", "content-range", "accept-ranges",
+  "content-type", "content-disposition", "content-length", "content-range", "accept-ranges",
   "etag", "last-modified", "location",
 ]);
 

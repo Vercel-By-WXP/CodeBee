@@ -56,6 +56,22 @@ class ConnectorPolicyTest(unittest.TestCase):
                 self.assertEqual(config, phone_relay._config())
                 self.assertEqual(len(config["secret"]), 64)
 
+    def test_pair_code_survives_connector_reconnect(self):
+        config = {"secret": secrets.token_hex(32), "enabled": True}
+        with patch.dict(os.environ, {"CODEBEE_RELAY_URL": "http://127.0.0.1:18791"}):
+            connector = phone_relay.Connector(18891, config)
+            first = connector.new_pair()
+            self.assertFalse(first["pair_ready"])
+            with connector.lock:
+                connector.pair_ready = True
+            confirmed = connector.view()
+            self.assertTrue(confirmed["pair_url"])
+            connector.connected = False
+            still_visible = connector.view()
+            self.assertEqual(still_visible["pair_code"], confirmed["pair_code"])
+            self.assertEqual(still_visible["pair_url"], confirmed["pair_url"])
+            self.assertTrue(still_visible["pair_ready"])
+
 
 @unittest.skipUnless(RELAY, "Set CODEBEE_RELAY_TEST_URL to a running local Worker")
 class RelayIntegrationTest(unittest.TestCase):

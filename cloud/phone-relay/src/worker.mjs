@@ -226,7 +226,10 @@ export class DeviceRelay extends DurableObject {
       item.resolve(new Response(empty ? null : item.body, { status: message.status, headers }));
     } else if (message.type === "chunk" && item.started) {
       try {
-        if (typeof message.data !== "string" || message.data.length > 65536) throw new Error("Chunk limit");
+        // The connector uses 128 KiB source chunks (about 171 KiB base64).
+        // Keep the cap bounded while avoiding a WebSocket round trip for every
+        // 48 KiB of the desktop bundle.
+        if (typeof message.data !== "string" || message.data.length > 192 * 1024) throw new Error("Chunk limit");
         await item.writer.write(decode(message.data));
         ws.send(JSON.stringify({ type: "ack", id: message.id }));
       } catch { this.finish(message.id, "cancelled"); }

@@ -93,10 +93,15 @@ class Connector:
     def view(self):
         with self.lock:
             pair = self.pair if self.pair and self.pair["expires"] > time.time() * 1000 else None
-            ready = bool(pair and self.pair_ready and self.connected)
+            # Keep a cloud-confirmed code visible while the connector is
+            # reconnecting.  The pairing record remains in the Durable Object
+            # until expiry, so hiding it on a transient socket flap only makes
+            # the desktop QR disappear and forces the user to start over.
+            ready = bool(pair and self.pair_ready)
             code = self.device + "." + pair["code"] if ready else ""
             return {"enabled": True, "connected": self.connected, "error": self.error,
                     "entry": self.base_url, "device": self.device,
+                    "pair_ready": ready,
                     "pair_url": self.base_url + "/relay/portal#pair=" + code if ready else "",
                     "pair_code": code, "expires_at": pair["expires"] if ready else 0}
 
@@ -106,7 +111,11 @@ class Connector:
                          "expires": int((time.time() + 300) * 1000)}
             self.pair_ready = False
             if self.connected:
-                self._send(self.pair)
+                try:
+                    self._send(self.pair)
+                except (ConnectionError, OSError):
+                    # Keep the code; _run will resend it on the next connection.
+                    self.error = "连接正在恢复，配对码会自动重试"
         return self.view()
 
     def _send(self, value, socket=None):
@@ -208,7 +217,10 @@ class Connector:
             finally:
                 with self.lock:
                     self.connected = False
-                    self.pair_ready = False
+                    # Do not clear a confirmed code during a transient network
+                    # disconnect; the cloud-side pairing record is still valid.
+                    if not self.pair or self.pair["expires"] <= time.time() * 1000:
+                        self.pair_ready = False
                     self.socket = None
                     self._cancel_all()
                 if socket:
@@ -254,13 +266,16 @@ class Connector:
             connection.request(method, path, body=body, headers=headers)
             response = connection.getresponse()
             response_headers = {k.lower(): v for k, v in response.getheaders() if k.lower() in
-                                ("content-type", "content-disposition", "content-range", "accept-ranges",
-                                 "etag", "last-modified", "location")}
+                                ("content-type", "content-disposition", "content-length", "content-range",
+                                 "accept-ranges", "etag", "last-modified", "location")}
             self._send({"type": "headers", "id": rid, "status": response.status,
                         "headers": response_headers}, socket)
             if method != "HEAD" and response.status not in (204, 205, 304):
                 while not item["cancel"].is_set():
-                    chunk = response.read1(48 * 1024)
+                    # The relay acknowledges every chunk.  Larger chunks keep
+                    # the same bounded backpressure while avoiding dozens of
+                    # round trips for the ~1 MiB desktop bundle on a phone.
+                    chunk = response.read1(128 * 1024)
                     if not chunk:
                         break
                     item["ack"].clear()
