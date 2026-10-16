@@ -1244,6 +1244,8 @@
   #sub-tasks details#f-advanced[open] .adv-body {
     position: absolute;
     bottom: calc(100% + 8px);
+    /* 浮层必须压过 .cmp-box 的 z-index:1（reference-composer.css），否则输入卡盖住面板底部字段 */
+    z-index: 2;
     width: 100%;
     box-sizing: border-box;
     max-height: min(58vh, 620px);
