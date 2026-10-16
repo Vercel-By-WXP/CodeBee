@@ -54,6 +54,10 @@ mac:
   hardenedRuntime: true
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
+  # Universal merge: each arch bundles its own native runtime under python/<arch>.
+  # Without this rule electron-builder sees the x64-side files as "same in both
+  # builds" and aborts the universal build.
+  x64ArchFiles: "Contents/Resources/python/x64/**"
   target:
     - target: dmg
       arch: [arm64, x64]

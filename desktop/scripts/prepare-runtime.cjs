@@ -77,8 +77,12 @@ async function prepare(platform = process.platform, arch = process.arch, profile
     }
   }
   console.log('SHA256 verified. Extracting Python runtime…');
+  // Windows: use the bundled-in-Windows bsdtar (System32) — Git Bash's GNU tar
+  // both treats "D:\..." as a remote host and cannot read zip archives.
+  const tarBin = process.platform === 'win32'
+    ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
   const tarFlags = asset.archiveType === 'zip' ? ['-tf', archive] : ['-tzf', archive];
-  const listing = spawnSync('tar', tarFlags, { encoding: 'utf8', maxBuffer: 4194304, windowsHide: true });
+  const listing = spawnSync(tarBin, tarFlags, { encoding: 'utf8', maxBuffer: 4194304, windowsHide: true });
   if (listing.status !== 0) throw new Error(`Cannot inspect runtime archive: ${listing.error || listing.stderr}`);
   const entries = listing.stdout.trim().split(/\r?\n/).filter(Boolean);
   for (const entry of entries) {
@@ -90,7 +94,7 @@ async function prepare(platform = process.platform, arch = process.arch, profile
   const staging = fs.mkdtempSync(path.join(cacheRoot, 'extract-'));
   try {
     const extractFlags = asset.archiveType === 'zip' ? ['-xf', archive, '-C', staging] : ['-xzf', archive, '-C', staging];
-    const extracted = spawnSync('tar', extractFlags, { windowsHide: true, encoding: 'utf8' });
+    const extracted = spawnSync(tarBin, extractFlags, { windowsHide: true, encoding: 'utf8' });
     if (extracted.status !== 0) throw new Error(`Runtime extraction failed: ${extracted.error || extracted.stderr}`);
     // The official Win7 embeddable zip has files at its archive root. Keep the
     // same runtime/python layout used by the modern standalone archives.
