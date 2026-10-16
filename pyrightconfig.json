@@ -1,0 +1,12 @@
+{
+  "include": ["app", "tools", "scripts"],
+  "exclude": [
+    "app/output",
+    "**/__pycache__",
+    "**/.mimosa",
+    "**/.playwright-cli"
+  ],
+  "pythonVersion": "3.8",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none"
+}
