@@ -1802,6 +1802,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/register-book$", path)
         if m:
             return self._api_publish_register_book(m.group(1))
+        m = re.match(r"^/api/publish/task/([^/]+)/unbind-book$", path)
+        if m:
+            return self._api_publish_unbind_book(m.group(1))
         m = re.match(r"^/api/publish/task/([^/]+)/publish-all$", path)
         if m:
             return self._api_publish_auto(m.group(1))
@@ -2851,6 +2854,20 @@ class Handler(BaseHTTPRequestHandler):
                                     book_id=str(body.get("book_id") or ""))
         if not ok:
             return self._json(400, {"error": err or "登记失败"})
+        return self._json(200, {"ok": True})
+
+    def _api_publish_unbind_book(self, task_id):
+        """解除本地作品绑定（POST /api/publish/task/<id>/unbind-book，
+        body: {platform}）。只删 books.json 登记，不碰平台线上作品；
+        用于登记错链/书已废后清位重建——此前只能手工翻 books.json。"""
+        from core import store
+        from core.publish import manager as pub
+        if not store.get_task(task_id):
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        ok, err = pub.unbind_book(task_id, (body.get("platform") or "").strip())
+        if not ok:
+            return self._json(400, {"error": err or "解绑失败"})
         return self._json(200, {"ok": True})
 
     def _api_publish_auto(self, task_id):

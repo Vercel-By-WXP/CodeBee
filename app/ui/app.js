@@ -7516,6 +7516,14 @@ function pbBlock(task, platform, selectionOnly = false) {
     btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
       ' onclick="pbSyncPublished(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
       esc(t("按平台实况纠正已发章数")) + '">' + t("校准") + "</button>";
+    // 改绑定/解除绑定（2026-10-16）：登记的书名/ID对不上或书已废时就地
+    // 纠错/清位，不再只能手工翻 books.json（登记在连载链根任务上根本不好找）
+    btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
+      ' onclick="pbRegToggle(\'' + esc(task.id) + "','" + platform + '\')" title="' +
+      esc(t("登记的书名或ID与平台对不上？在这里改成真实的作品名/ID，改完直接发章")) + '">' + t("改绑定") + "</button>";
+    btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
+      ' onclick="pbUnbind(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
+      esc(t("只清除本地的作品登记，不动平台上的作品；清掉后可重新创建作品或改绑其他书")) + '">' + t("解除绑定") + "</button>";
     // 批量发布（publish/auto.py）：待发清单 + 护栏 + 进度都来自 /pending 视图
     const au = (((S.pubAuto && S.pubAuto.books) || [])
       .find((b) => b.platform === platform)) || {};
@@ -7690,18 +7698,23 @@ function pbBlock(task, platform, selectionOnly = false) {
   if (st === "error" && !bookReady && ps.last_action === "create_book") {
     extra += '<div class="pb-hint">' + esc(t("若作品其实已在平台建好，点「登记已有作品」补登记，勿重复创建")) + "</div>";
   }
-  if (!bookReady) {
-    // 展开态+草稿值外置（S.pbRegDraft，按任务+平台键）：整块重绘不再清空
-    // 用户填了一半的作品名/ID——输入即存，重绘按草稿回填，登记成功才清。
-    const reg = (S.pbRegDraft || {})[task.id + ":" + platform] || {};
+  // 展开态+草稿值外置（S.pbRegDraft，按任务+平台键）：整块重绘不再清空
+  // 用户填了一半的作品名/ID——输入即存，重绘按草稿回填，登记成功才清。
+  // 已建书态的「改绑定」复用这块表单：展开才渲染，没草稿就回填当前绑定值，
+  // 改起来不用先抄一遍旧值。
+  const reg = (S.pbRegDraft || {})[task.id + ":" + platform] || {};
+  if (!bookReady || reg.open) {
+    const curTitle = reg.title != null ? reg.title : (book && book.title || "");
+    const curId = reg.id != null ? reg.id : (book && book.book_id || "");
     extra += '<div class="pb-reg' + (reg.open ? "" : " hidden") + '" id="pb-reg-' + platform + '">' +
-      '<input id="pb-reg-title-' + platform + '" value="' + esc(reg.title || "") +
+      '<input id="pb-reg-title-' + platform + '" value="' + esc(curTitle) +
       '" placeholder="' + esc(t("平台上的作品名（必填）")) +
       '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'title\',this.value)">' +
-      '<input id="pb-reg-id-' + platform + '" value="' + esc(reg.id || "") +
+      '<input id="pb-reg-id-' + platform + '" value="' + esc(curId) +
       '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) +
       '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'id\',this.value)">' +
-      '<button class="ghost" onclick="pbRegister(\'' + esc(task.id) + "', '" + platform + '\')">' + t("确认登记") + "</button>" +
+      '<button class="ghost" onclick="pbRegister(\'' + esc(task.id) + "', '" + platform + '\'' + (bookReady ? ", true" : "") + ')">' +
+      t(bookReady ? "确认修改" : "确认登记") + "</button>" +
       "</div>";
   }
   return '<div class="bm-pub">' +
@@ -7881,18 +7894,29 @@ window.pbRegToggle = function (taskId, platform) {
   d.open = !box.classList.contains("hidden");   // 展开态也外置：重绘不再把表单折回去
 };
 
-window.pbRegister = async function (taskId, platform) {
+window.pbRegister = async function (taskId, platform, rebind) {
   const title = (($("pb-reg-title-" + platform) || {}).value || "").trim();
   const bookId = (($("pb-reg-id-" + platform) || {}).value || "").trim();
   if (!title) { toast(t("请填写平台上的作品名"), true); return; }
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/register-book",
       { method: "POST", body: JSON.stringify({ platform: platform, title: title, book_id: bookId }) });
-    toast(t("已登记，可直接发章"));
+    toast(rebind ? t("已更新绑定，可直接发章") : t("已登记，可直接发章"));
     const box = $("pb-reg-" + platform);
     if (box) box.classList.add("hidden");
     if (S.pbRegDraft) delete S.pbRegDraft[taskId + ":" + platform];   // 登记落定，草稿使命完成
-  } catch (e) { toast(t("登记失败：") + e.message, true); }
+  } catch (e) { toast((rebind ? t("更新绑定失败：") : t("登记失败：")) + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbUnbind = async function (taskId, platform) {
+  if (!await uiConfirm(t("解除该平台的作品绑定？\n只清除本地登记，不会删除平台上的作品；之后可重新创建作品或登记已有作品。"),
+      { danger: true, ok: t("解除绑定") })) return;
+  try {
+    await api("/api/publish/task/" + encodeURIComponent(taskId) + "/unbind-book",
+      { method: "POST", body: JSON.stringify({ platform: platform }) });
+    toast(t("已解绑，可重新创建作品或登记已有作品"));
+  } catch (e) { toast(t("解绑失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
 

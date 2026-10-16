@@ -291,6 +291,26 @@ def update_book(task_id, platform, **fields):
         tmp.replace(_BOOKS_FILE)
 
 
+def remove_book(task_id, platform):
+    """删除任务在某平台的作品绑定（解绑）。沿链找实际落点条目删——登记在
+    根任务上时从批次发起也能删干净；平台子条目删空后连任务壳一起摘掉。
+    只动本地台账，不碰平台线上作品。没登记过返回 False（幂等，不报错）。"""
+    with LOCK:
+        books = load_books()
+        target = next((t for t in _chain_order(task_id)
+                       if (books.get(t) or {}).get(str(platform))), None)
+        if target is None:
+            return False
+        del books[target][str(platform)]
+        if not books[target]:
+            del books[target]
+        tmp = _BOOKS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(_BOOKS_FILE)
+    return True
+
+
 def book_for(task_id, platform):
     """任务在某平台的作品绑定；连载链沿链继承（自己条目优先，其次祖先根）。"""
     books = load_books()

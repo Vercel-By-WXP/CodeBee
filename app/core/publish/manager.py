@@ -842,6 +842,24 @@ def register_book(task_id, plat, title, book_id=""):
     return True, ""
 
 
+def unbind_book(task_id, plat):
+    """解除本地作品绑定：删 books.json 里沿链命中的平台登记条目。
+    只动本地台账不碰浏览器/平台——线上书还在不在由用户先核实，这里
+    一律清登记；清掉后卡片回「创建作品」态，可重建或改绑别的书。
+    平台忙时拒改：在飞的建书/发章链收尾会 save_book 写回，边删边写
+    会把绑定又立回来。"""
+    from .. import store
+    if plat not in PLATFORMS:
+        return False, "未知平台"
+    if not store.get_task(task_id):
+        return False, "任务不存在"
+    if _st(plat).get("status") == "busy":
+        return False, "该平台有操作正在进行中"
+    if not ledger.remove_book(task_id, plat):
+        return False, "该平台没有已登记的作品绑定"
+    return True, ""
+
+
 def _with_tag_steps(steps, groups, values, mod=None):
     """标签走数据驱动：清单进 values["_tags"]（[组名, 标签] 对），由 flow 的
     "tags" 步骤按组切换点选。组显示名映射来自**对应平台模块**的
