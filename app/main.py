@@ -3400,6 +3400,13 @@ class Handler(BaseHTTPRequestHandler):
                 "kind": "agent",
                 "at": s.get("ended_at") or s.get("started_at") or "",
                 "who": s.get("agent_label") or s.get("agent") or "",
+                # Keep the execution identity separate from the friendly label:
+                # the conversation can now say which CLI actually ran and which
+                # model/provider it resolved to, rather than only repeating the
+                # router's recommendation.
+                "cli": s.get("agent") or "",
+                "model": s.get("model") or "",
+                "provider": s.get("provider") or "",
                 "role": s.get("role") or "",
                 "n": s.get("n"),
                 "status": s.get("status") or "",
@@ -3527,6 +3534,21 @@ class Handler(BaseHTTPRequestHandler):
                 files = []   # 与 /files 端点同口径：无步骤的任务不给成品（fixture 防误报）
         except Exception:
             wd, files = "", []
+        calls = []
+        seen_calls = set()
+        for step in latest.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            call = {
+                "cli": str(step.get("agent") or ""),
+                "label": str(step.get("agent_label") or ""),
+                "model": str(step.get("model") or ""),
+                "provider": str(step.get("provider") or ""),
+            }
+            key = tuple(call.values())
+            if any(call.values()) and key not in seen_calls:
+                seen_calls.add(key)
+                calls.append(call)
         return {
             "status": st,
             "partial": partial,
@@ -3538,6 +3560,7 @@ class Handler(BaseHTTPRequestHandler):
             "duration_s": duration_s,
             "workdir": wd,
             "files": files,
+            "calls": calls,
         }
 
     def _api_direct_chat(self, run_id):

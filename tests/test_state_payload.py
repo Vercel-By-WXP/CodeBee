@@ -71,6 +71,28 @@ class TestStatePayload(BaseTest):
 
         self.assertEqual(result["duration_s"], 5)
 
+    def test_direct_result_exposes_actual_cli_model_and_provider(self):
+        run = {
+            "id": "r-call", "status": "done", "steps": [
+                {"status": "done", "agent": "codex-cli", "agent_label": "Codex CLI",
+                 "model": "gpt-5.5", "provider": "openai@api.test"},
+                # Repeated retries should not duplicate the same call identity.
+                {"status": "done", "agent": "codex-cli", "agent_label": "Codex CLI",
+                 "model": "gpt-5.5", "provider": "openai@api.test"},
+                {"status": "done", "agent": "claude-code", "agent_label": "Claude Code",
+                 "model": "sonnet", "provider": "anthropic@api.test"},
+            ],
+        }
+
+        result = self._direct_result(run)
+
+        self.assertEqual(result["calls"], [
+            {"cli": "codex-cli", "label": "Codex CLI", "model": "gpt-5.5",
+             "provider": "openai@api.test"},
+            {"cli": "claude-code", "label": "Claude Code", "model": "sonnet",
+             "provider": "anthropic@api.test"},
+        ])
+
     def test_state_snapshot_omits_run_details_and_chat_messages(self):
         from unittest import mock
 

@@ -11702,6 +11702,7 @@ function drawChatFlow(run, data, active) {
   // 没开思考的 CLI 步骤 running→done 两态签名相同，气泡会永远停在打字动画
   const liveSig = items.reduce((a, it) => a + "|" + (it.kind || "") + ":" +
     (it.status || "") + ":" + String(it.text || "").length + ":" +
+    (it.cli || "") + ":" + (it.model || "") + ":" + (it.provider || "") + ":" +
     (it.duration_s == null ? "" : it.duration_s) + ":" +
     String(it.thinking || "").length + ":" + String(it.stream || "").length + ":" +
     (it.activity || []).length + ":" + (it.followups || []).length +
@@ -11780,7 +11781,15 @@ function drawChatFlow(run, data, active) {
     const duration = it.duration_s;
     const caption = typeof duration === "number" && Number.isFinite(duration) && duration >= 0
       ? '<div class="chat-step-caption">' + esc(t("用时")) + " " + esc(chatDurTxt(duration)) + "</div>" : "";
-    const stepMeta = [it.who, it.role, it.n != null ? "#" + it.n : "", it.status === "running" ? t("CLI 执行中") :
+    const callMeta = [
+      it.cli ? (it.cli === "builtin"
+        ? t("调用通道") + " " + (it.who || t("内置直连"))
+        : t("调用 CLI") + " " + it.cli) : "",
+      it.model ? t("模型") + " " + it.model : "",
+      it.provider ? t("供应商") + " " + it.provider : "",
+    ].filter(Boolean).join(" · ");
+    const stepMeta = [it.who, it.role, it.n != null ? "#" + it.n : "", callMeta,
+      it.status === "running" ? t("CLI 执行中") :
       (it.status === "failed" ? t("失败") : (it.status === "cancelled" ? t("已取消") : t("完成"))), it.note].filter(Boolean).join(" · ");
     // 助手正文与工具活动共用左缘，不再为头像预留一列。
     return '<div class="chat-row">' +
@@ -11992,6 +12001,15 @@ function chatResultHTML(run, res) {
   const label = partial ? t("本轮部分完成") : (ok ? t("本轮完成") : (bad ? t("本轮失败") : t("已取消")));
   const meta = [];
   if (res.executor) meta.push(esc(res.executor));
+  const calls = Array.isArray(res.calls) ? res.calls : [];
+  calls.forEach((call) => {
+    const channelLabel = call.cli === "builtin" ? t("调用通道") : t("调用 CLI");
+    const identity = [call.label || call.cli,
+      call.model ? t("模型") + " " + call.model : "",
+      call.provider ? t("供应商") + " " + call.provider : ""]
+      .filter(Boolean).join(" · ");
+    if (identity) meta.push(esc(channelLabel + " " + identity));
+  });
   if (res.turns) meta.push(res.turns + " " + t("轮对话"));
   if (res.duration_s != null) meta.push(chatDurTxt(res.duration_s));
   const files = res.files || [];

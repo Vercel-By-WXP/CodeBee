@@ -264,3 +264,6 @@ class TestTimelineExposesThinking(BaseTest):
         self.assertEqual(done_item["thinking"], "这是思考")   # 收尾：思维链随项下发
         self.assertEqual(done_item["stream"], "")             # 非运行中无实时正文
         self.assertEqual(done_item["text"], "这是回答")
+        self.assertEqual(done_item["cli"], "builtin")
+        self.assertEqual(done_item["model"], "th-model")
+        self.assertEqual(done_item["provider"], "prov-th")
