@@ -29,22 +29,18 @@ def requires_workspace_snapshot(agent):
 
 
 def writable_agents(agents, workdir):
-    """Filter auto-route candidates to writers with a recoverable workspace.
+    """Return the route pool and report checkpoint capability.
 
-    Returns ``(usable, excluded, capability)``.  The exclusion is intentionally
-    performed before scoring, so a non-Git workspace cannot select KIMI (or any
-    other real external writer) and report an unrecoverable snapshot warning
-    only after the process has already been launched.
+    A non-Git workspace affects recoverability, not which agent the user asked
+    the system to run. Do not remove real CLIs here: that would silently make
+    the router select the in-process mock agents. The runner records a warning
+    for non-Git workspaces while still executing the selected real CLI.
     """
     from . import checkpoints
 
     capability = checkpoints.external_snapshot_capability(workdir)
     pool = list(agents or [])
-    if capability.get("supported"):
-        return pool, [], capability
-    excluded = [a for a in pool if requires_workspace_snapshot(a)]
-    usable = [a for a in pool if not requires_workspace_snapshot(a)]
-    return usable, excluded, capability
+    return pool, [], capability
 
 
 def _task_type(ttype):

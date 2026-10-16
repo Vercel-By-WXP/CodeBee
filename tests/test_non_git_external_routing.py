@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Automatic routing must not launch file-writing CLIs without recovery."""
+"""Automatic routing must not silently replace real CLIs with demo agents."""
 from __future__ import annotations
 
 import subprocess
@@ -11,7 +11,7 @@ from base import BaseTest
 
 
 class TestNonGitExternalRouting(unittest.TestCase):
-    def test_non_git_workspace_excludes_kimi_and_other_real_writers(self):
+    def test_non_git_workspace_keeps_real_writers_and_reports_capability(self):
         from app.core import router
 
         with tempfile.TemporaryDirectory() as td:
@@ -26,15 +26,15 @@ class TestNonGitExternalRouting(unittest.TestCase):
             usable, excluded, capability = router.writable_agents(agents, td)
 
         self.assertFalse(capability["supported"])
-        self.assertEqual([a["id"] for a in excluded],
-                         ["kimi-code", "claude-code"])
-        self.assertEqual([a["id"] for a in usable], ["mock-a"])
+        self.assertEqual(excluded, [])
+        self.assertEqual({a["id"] for a in usable},
+                         {"kimi-code", "claude-code", "mock-a"})
         picked, _ = router.pick(usable, "implement", "code", {})
-        self.assertEqual(picked["id"], "mock-a")
+        self.assertIn(picked["id"], {"kimi-code", "claude-code"})
         plan = router.route_plan(usable, "implement", "code", {})
-        self.assertEqual(plan["selected"], "mock-a")
-        self.assertEqual([row["agent_id"] for row in plan["candidates"]],
-                         ["mock-a"])
+        self.assertIn(plan["selected"], {"kimi-code", "claude-code"})
+        self.assertEqual({row["agent_id"] for row in plan["candidates"]},
+                         {"kimi-code", "claude-code", "mock-a"})
 
     def test_git_repository_keeps_real_writers_eligible(self):
         from app.core import router
@@ -59,7 +59,7 @@ class TestNonGitExternalRouting(unittest.TestCase):
 
 
 class TestExecuteRunNonGitRouting(BaseTest):
-    def test_all_automatic_modes_exclude_external_writers(self):
+    def test_all_automatic_modes_keep_external_writers(self):
         from unittest.mock import patch
         from app.core import pipeline, store
 
@@ -90,15 +90,17 @@ class TestExecuteRunNonGitRouting(BaseTest):
 
             saved = store.get_run(run["id"])
             self.assertEqual(saved["status"], "done", saved.get("error"))
-            self.assertEqual(saved["route_plan"]["implement"]["selected"], "mock-a")
-            self.assertEqual([row["agent_id"] for row in
-                              saved["route_plan"]["implement"]["candidates"]],
-                             ["mock-a"])
-            self.assertTrue(any("Kimi Code" in warning
+            self.assertEqual(saved["route_plan"]["implement"]["selected"], "kimi-code")
+            self.assertEqual({row["agent_id"] for row in
+                              saved["route_plan"]["implement"]["candidates"]},
+                             {"kimi-code", "mock-a"})
+            self.assertTrue(any("正式智能体仍按自动路由执行" in warning
                                 for warning in saved.get("warnings", [])))
 
         self.assertEqual(observed, {
-            "auto": ["mock-a"], "fast": ["mock-a"], "expert": ["mock-a"]})
+            "auto": ["kimi-code", "mock-a"],
+            "fast": ["kimi-code", "mock-a"],
+            "expert": ["kimi-code", "mock-a"]})
 
     def test_manual_selection_keeps_explicit_external_agent(self):
         from unittest.mock import patch

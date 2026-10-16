@@ -6459,6 +6459,13 @@ def execute_run(run_id):
         prior_warnings = (store.get_run(run_id) or {}).get("warnings") or []
         if warning not in prior_warnings:
             store.update_run(run_id, warnings=prior_warnings + [warning])
+    elif auto_route and not snapshot_capability.get("supported", True):
+        warning = ((snapshot_capability.get("reason") or
+                    "外部 CLI 文件改动无法安全快照") +
+                   "；正式智能体仍按自动路由执行，改动无法生成可恢复快照")
+        prior_warnings = (store.get_run(run_id) or {}).get("warnings") or []
+        if warning not in prior_warnings:
+            store.update_run(run_id, warnings=prior_warnings + [warning])
     global _CURRENT_AGENTS
     _CURRENT_AGENTS = agents
     # 续会话是对该 CLI 的显式指定：目标未启用编排时也注入本次运行（不影响路由池）
