@@ -894,6 +894,18 @@ def _norm_subtasks(data):
         if not title:
             continue
         step = {"title": title[:60], "detail": detail[:1500]}
+        # Optional DAG edge list. Keep the title as the stable default id so
+        # old plans remain compatible while new plans can declare dependencies.
+        ident = str(s.get("id") or title).strip()
+        if ident:
+            step["id"] = ident[:80]
+        deps = s.get("depends_on")
+        if isinstance(deps, str):
+            deps = [deps]
+        if isinstance(deps, list):
+            clean_deps = [str(dep).strip()[:80] for dep in deps if str(dep).strip()]
+            if clean_deps:
+                step["depends_on"] = clean_deps[:20]
         files = s.get("files")
         if isinstance(files, list):
             clean = [str(f).strip()[:200] for f in files if str(f).strip()][:10]

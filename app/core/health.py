@@ -36,6 +36,8 @@ DOWN_AFTER_FAILURES = 4      # 连续失败 ≥4 → down（告警）
 DOWN_AFTER_SECONDS = 600     # 或 failing 持续 10 分钟 → down
 PROBE_BACKOFF = (60, 120, 300)   # 探测退避秒数（封顶 300）
 SILENCE_FOREVER = -1         # 手动静默不自动过期（恢复时才清除）
+CLI_FAILURE_THRESHOLD = 3
+CLI_COOLDOWN_SECONDS = 300
 
 _LOCK = threading.RLock()
 _PROVIDERS = {}              # name -> 状态 dict
@@ -134,6 +136,7 @@ def report_success(provider: str):
             st["alerted"] = False
             st["silenced"] = False       # 静默只管一次故障期；恢复后重新武装
             st["silence_until"] = 0
+            st["half_open"] = False
             log.info("[health] %s 已恢复（告警自动解除）", provider)
         else:
             st["last_ok_at"] = _now()
@@ -218,6 +221,9 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             st["first_fail_at"] = _now()
             st["probe_next_at"] = _now() + PROBE_BACKOFF[0]
             st["probe_backoff_idx"] = 0
+        if n >= CLI_FAILURE_THRESHOLD:
+            st["status"] = "down"
+            st["circuit_open_until"] = _now() + CLI_COOLDOWN_SECONDS
         # failing → down：连续次数或持续时间任一达到
         if st["status"] == "failing":
             dur = _now() - (st.get("first_fail_at") or _now())
@@ -321,7 +327,28 @@ def is_down(provider: str) -> bool:
     """链降级查询：该供应商当前是否 down（供 resolve_binding 跳过）。"""
     with _LOCK:
         st = _PROVIDERS.get(provider)
-        return bool(st and st.get("status") == "down")
+        if not st:
+            return False
+        if st.get("status") != "down":
+            return False
+        until = float(st.get("circuit_open_until") or 0)
+        if until and until <= _now():
+            # Half-open permits one probe; callers should report the outcome.
+            st["half_open"] = True
+            return False
+        return True
+
+
+def cli_status(cli: str):
+    """Return circuit-breaker state for a local CLI/provider."""
+    with _LOCK:
+        st = _PROVIDERS.get(cli) or {}
+        until = float(st.get("circuit_open_until") or 0)
+        return {"cli": cli, "status": st.get("status", "ok"),
+                "consecutive_failures": int(st.get("consecutive_failures") or 0),
+                "last_error": st.get("last_error", ""),
+                "open_until": until, "half_open": bool(st.get("half_open")),
+                "available": not is_down(cli)}
 
 
 def down_names() -> set:

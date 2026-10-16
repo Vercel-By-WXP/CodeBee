@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, task_graph, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -57,6 +57,30 @@ class UpstreamExhausted(Exception):
     与 Cancelled（用户主动）和 TaskTimeout（时限）分开：这是路由层的
     「该取消就取消」，run 终态 failed、错误行写人话。"""
     pass
+
+
+_TASK_BUDGETS = {}
+_TASK_BUDGET_LOCK = threading.RLock()
+
+
+def _task_budget(run_id, task=None):
+    """Return a run-local tracker for optional task max_* quotas."""
+    with _TASK_BUDGET_LOCK:
+        budget = _TASK_BUDGETS.get(run_id)
+        if budget is None:
+            task = task or {}
+            budget = task_graph.Budget(
+                max_calls=int(task.get("max_calls") or 0),
+                max_duration=float(task.get("max_duration") or 0),
+                max_tokens=int(task.get("max_tokens") or 0),
+            )
+            _TASK_BUDGETS[run_id] = budget
+        return budget
+
+
+def _clear_task_budget(run_id):
+    with _TASK_BUDGET_LOCK:
+        _TASK_BUDGETS.pop(run_id, None)
 
 
 def _now():
@@ -460,6 +484,11 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     swap_guard 是换将循环交来的 {"exclude": 本轮已试 CLI, "blocked": 已封 403 上游}，
     死链补位据此挑人，绝不把「换将」补位补回刚撞死的那个 CLI。"""
     _wait_gate(run_id, ev)
+    quota = _task_budget(run_id)
+    allowed, quota_error = quota.consume(calls=1)
+    if not allowed:
+        return {"ok": False, "error": "任务预算已达上限：%s" % quota_error,
+                "budget": quota.snapshot()}
     _ensure_runtime_session(run_id, workdir, role, prompt, agent)
     deadline = _ensure_budget(run_id)
     timeout, deadline = _step_timeout(run_id, timeout, deadline)
@@ -1018,6 +1047,12 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
                       partial=bool(res.get("partial")),
                       acp_events=(raw.get("acp_events") or []))
     try:
+        quota = _task_budget(run_id)
+        quota.tokens += max(0, int(res.get("tokens") or 0))
+        store.update_run(run_id, budget=quota.snapshot())
+    except Exception:
+        pass
+    try:
         checkpoint_status = ("unknown" if raw.get("unknown") else
                              "timeout" if status == "timeout" else
                              "cancelled" if status == "cancelled" else
@@ -1463,7 +1498,23 @@ def _code_bestof(run, task, impl, difficulty, ev):
         def _race_one(k, wt_path):
             agt_b = modelhub.bind_agent(impl, difficulty)
             res = None
-            for i, sub in enumerate(subtasks):
+            try:
+                execution_steps = task_graph.topological_order(subtasks)
+            except task_graph.DependencyError as exc:
+                return False, {"ok": False, "error": "任务依赖无效：%s" % exc}
+            # Checkpoint replay is conservative: only an explicitly completed
+            # step is skipped; running/unknown steps are always re-proposed.
+            cp_preview = checkpoints.replay_preview(run_id)
+            completed_steps = {
+                int(item.get("step")) for item in cp_preview.get("steps", [])
+                if item.get("status") == "done"
+            }
+            for i, sub in enumerate(execution_steps):
+                original_index = next((n for n, item in enumerate(subtasks)
+                                       if item is sub), i)
+                if (original_index + 1) in completed_steps:
+                    mark_task_plan(workdir, original_index + 1, "done")
+                    continue
                 prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__", sub["detail"] if sub["detail"] else sub["title"])
@@ -1854,7 +1905,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                     done_titles = "、".join(
                         (s.get("title") or "")[:40] for s in subtasks[:i]) or "（无）"
                     prog = ("\n\n## 计划进度（第 %d/%d 项）\n已完成：%s。当前接着做下面这一项，"
-                            "不要重做已完成的。" % (i + 1, len(subtasks), done_titles))
+                            "不要重做已完成的。" % (i + 1, len(execution_steps), done_titles))
                 prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__",
@@ -1862,8 +1913,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                           .replace("__FILES__", _files_hint(sub))
                           .replace("__CONTEXT__", task.get("context") or "（无）")
                           .replace("__VERIFY_HINT__", _verify_hint(task))) + prog
-                role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
-                mark_task_plan(workdir, i + 1, "run")   # 活计划：起跑即标进行中
+                role = "implement" if len(execution_steps) == 1 else "implement-%d/%d" % (i + 1, len(execution_steps))
+                mark_task_plan(workdir, original_index + 1, "run")   # 活计划：起跑即标进行中
                 res = _run_step(run_id, role, agt_b, prompt, step_wd,
                                 readonly=False, ev=ev,
                                 note=prefix_note if i == 0 else "",
@@ -1892,9 +1943,9 @@ def _run_code(run, task, agents, ev, stats, mode):
                     except Exception:
                         pass
                 if not res["ok"]:
-                    mark_task_plan(workdir, i + 1, "fail")
+                    mark_task_plan(workdir, original_index + 1, "fail")
                     return False, res
-                mark_task_plan(workdir, i + 1, "done")
+                mark_task_plan(workdir, original_index + 1, "done")
             return True, res
 
         ok, res = _run_one(impl_agent)
@@ -6361,6 +6412,9 @@ def execute_run(run_id):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="找不到任务 %s" % run.get("task_id"), ended_at=_now())
         return
+    # Optional per-task quotas are independent from the legacy global budget.
+    # They remain no-op when all max_* values are zero.
+    _task_budget(run_id, task)
     # 流程修订漂移诊断（借鉴 WorkDSH ADR-0010 修订钉住）：任务参数创建时已
     # 固化，改流程不影响固化字段；但历史任务缺失字段的兜底仍取当前流程定义，
     # 续跑/重试可能静默吃到新流程。漂移不阻断——「改完流程再重跑」是合法
