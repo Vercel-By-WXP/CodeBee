@@ -5,6 +5,7 @@ data/
 .DS_Store
 Thumbs.db
 .ui-shots/
+scratch/
 .zcode/
 .codebee/
 tests/_shots/
