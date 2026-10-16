@@ -8,6 +8,12 @@ from base import BaseTest
 
 
 class TestReleaseGate(BaseTest):
+    def test_production_guard_rejects_port_8765_without_connecting(self):
+        from scripts.production_guard.sitecustomize import _guard
+
+        with self.assertRaisesRegex(RuntimeError, "8765"):
+            _guard("socket.connect", (None, ("127.0.0.1", 8765)))
+
     def test_npm_publish_has_physical_pre_gate(self):
         package = json.loads((Path(__file__).resolve().parents[1] /
                               "package.json").read_text(encoding="utf-8"))
