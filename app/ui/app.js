@@ -12,6 +12,9 @@ document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh"
 const $ = (id) => document.getElementById(id);
 const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, experts: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
+// 第二批运营能力的轻量 UI 缓存；后端接口不存在时各面板仍保持可用。
+const UI_FEATURES = { reviewPolicy: null, templates: null, analytics: null, analyticsDays: 1, interventions: [], cliDiscovery: null };
+
 /* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
 const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
 const WORKSPACE_MODES = {
@@ -2037,6 +2040,118 @@ async function loadReviewQueue() {
   }
 }
 
+/* ---------------- 第二批运营面板：评审策略 / HITL / CLI 能力 / 指标 ---------------- */
+function reviewPolicyDimensions() {
+  return (UI_FEATURES.reviewPolicy && UI_FEATURES.reviewPolicy.dimensions) || [];
+}
+
+function renderReviewPolicy() {
+  const rows = reviewPolicyDimensions();
+  const box = $("review-policy-dimensions");
+  if (!box) return;
+  box.innerHTML = rows.map((row, index) =>
+    '<div class="review-policy-row" data-index="' + index + '">' +
+    '<input class="review-dim-name" aria-label="' + esc(t("评审维度名称")) + '" value="' + esc(row.name || row.id || "") + '" maxlength="80">' +
+    '<input class="review-dim-weight" aria-label="' + esc(t("评审维度权重")) + '" type="number" min="0.01" max="100" step="0.1" value="' + esc(String(row.weight == null ? 1 : row.weight)) + '">' +
+    '<button type="button" class="ghost small" data-remove-review-dim="' + index + '" aria-label="' + esc(t("删除维度")) + '">×</button></div>').join("") ||
+    '<p class="hint">' + esc(t("暂无评审维度")) + '</p>';
+  box.insertAdjacentHTML("beforeend", '<button type="button" class="ghost small" id="review-add-dimension" data-i18n="新增维度">＋ ' + esc(t("新增维度")) + '</button>');
+  box.querySelectorAll("[data-remove-review-dim]").forEach((button) => button.addEventListener("click", () => {
+    const index = Number(button.dataset.removeReviewDim);
+    const next = reviewPolicyDimensions().filter((_, i) => i !== index);
+    UI_FEATURES.reviewPolicy.dimensions = next.length ? next : [{ id: "custom", name: t("新维度"), weight: 1 }];
+    renderReviewPolicy();
+  }));
+  const add = $("review-add-dimension");
+  if (add) add.onclick = () => {
+    UI_FEATURES.reviewPolicy.dimensions = reviewPolicyDimensions().concat([{ id: "custom-" + Date.now(), name: t("新维度"), weight: 1 }]);
+    renderReviewPolicy();
+  };
+  const policy = UI_FEATURES.reviewPolicy || {};
+  if ($("review-min-score")) $("review-min-score").value = policy.min_score == null ? 7 : policy.min_score;
+  if ($("review-min-confidence")) $("review-min-confidence").value = policy.min_confidence == null ? 0 : policy.min_confidence;
+  if ($("review-min-family")) $("review-min-family").value = policy.min_model_family || "";
+}
+
+async function loadReviewPolicy() {
+  const message = $("review-policy-message");
+  try {
+    UI_FEATURES.reviewPolicy = await api("/api/review-policy", { timeout: 15000 });
+    renderReviewPolicy();
+    if (message) message.textContent = "";
+  } catch (error) { if (message) message.textContent = t("评审策略加载失败：") + error.message; }
+}
+
+async function saveReviewPolicy() {
+  const message = $("review-policy-message");
+  const dimensions = Array.from(document.querySelectorAll("#review-policy-dimensions .review-policy-row")).map((row) => {
+    const name = (row.querySelector(".review-dim-name") || {}).value || "";
+    const weight = Number((row.querySelector(".review-dim-weight") || {}).value || 1);
+    return { id: name.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 60), name: name.trim(), weight };
+  }).filter((row) => row.name);
+  try {
+    const result = await api("/api/review-policy", { method: "POST", body: JSON.stringify({
+      dimensions, min_score: Number($("review-min-score").value),
+      min_confidence: Number($("review-min-confidence").value), min_model_family: $("review-min-family").value.trim() }) });
+    UI_FEATURES.reviewPolicy = result.policy || result;
+    renderReviewPolicy();
+    if (message) { message.className = "msg ok"; message.textContent = t("评审策略已保存"); }
+  } catch (error) { if (message) { message.className = "msg err"; message.textContent = t("保存失败：") + error.message; } }
+}
+
+function renderInterventions() {
+  const box = $("hitl-list");
+  if (!box) return;
+  const rows = UI_FEATURES.interventions || [];
+  box.innerHTML = rows.length ? rows.map((row) =>
+    '<article class="hitl-row"><div><strong>' + esc(row.point || t("人工确认")) + '</strong><span class="chip warn">' + esc(t("等待人工确认")) + '</span>' +
+    '<div class="hint">' + esc(t("运行 ID")) + ': <code>' + esc(row.run_id || "") + '</code></div>' +
+    (row.payload && row.payload.summary ? '<p>' + esc(row.payload.summary) + '</p>' : '') + '</div><div class="actions">' +
+    '<button type="button" class="primary small" data-hitl-action="approve" data-hitl-id="' + esc(row.id) + '">' + esc(t("批准继续")) + '</button>' +
+    '<button type="button" class="danger small" data-hitl-action="reject" data-hitl-id="' + esc(row.id) + '">' + esc(t("拒绝")) + '</button></div></article>').join("") :
+    '<p class="hint">' + esc(t("暂无待确认介入")) + '</p>';
+  box.onclick = async (event) => {
+    const button = event.target.closest("[data-hitl-action]");
+    if (!button) return;
+    button.disabled = true;
+    try { await api("/api/interventions/" + encodeURIComponent(button.dataset.hitlId) + "/decide", { method: "POST", body: JSON.stringify({ action: button.dataset.hitlAction }) }); await loadInterventions(); }
+    catch (error) { toast(t("人工确认失败：") + error.message, true); button.disabled = false; }
+  };
+}
+
+async function loadInterventions() {
+  try { const result = await api("/api/interventions", { timeout: 15000 }); UI_FEATURES.interventions = result.requests || []; renderInterventions(); }
+  catch (error) { const box = $("hitl-list"); if (box) box.innerHTML = '<p class="hint bad">' + esc(t("介入请求加载失败：") + error.message) + '</p>'; }
+}
+
+function renderCliDiscovery() {
+  const box = $("cli-discovery-list");
+  if (!box) return;
+  const rows = UI_FEATURES.cliDiscovery || [];
+  box.innerHTML = rows.length ? rows.map((row) =>
+    '<div class="cli-discovery-row"><strong>' + esc(row.name || row.executable || "CLI") + '</strong><span class="chip ' + (row.available ? "done" : "failed") + '">' + esc(row.available ? t("可用") : t("未检测到")) + '</span>' +
+    '<span class="mono">' + esc(row.version || row.path || "") + '</span><span class="hint">' + esc((row.supports_stdin ? "stdin · " : "") + (row.output_format || "text")) + '</span>' +
+    (!row.available && row.install_hint ? '<small class="hint">' + esc(row.install_hint) + '</small>' : '') + '</div>').join("") : '<p class="hint">' + esc(t("尚无能力探测结果")) + '</p>';
+}
+
+async function loadCliDiscovery(force) {
+  const box = $("cli-discovery-list");
+  if (box && force) box.innerHTML = '<p class="hint">' + esc(t("正在探测…")) + '</p>';
+  try { const result = await api("/api/cli-discovery", { timeout: 15000 }); UI_FEATURES.cliDiscovery = result.clis || []; renderCliDiscovery(); }
+  catch (error) { if (box) box.innerHTML = '<p class="hint bad">' + esc(t("CLI 能力加载失败：") + error.message) + '</p>'; }
+}
+
+async function generateAdapterScaffold() {
+  const message = $("scaffold-message"), resultBox = $("scaffold-result");
+  try {
+    const result = await api("/api/scaffold-adapter", { method: "POST", body: JSON.stringify({
+      name: $("scaffold-name").value.trim(), executable: $("scaffold-executable").value.trim(),
+      invocation: $("scaffold-invocation").value.trim(), output_format: $("scaffold-output-format").value.trim() }) });
+    if (resultBox) { resultBox.textContent = JSON.stringify(result, null, 2); resultBox.classList.remove("hidden"); }
+    if (message) { message.className = "msg ok"; message.textContent = t("脚手架已生成，请按提示补充实现"); }
+  } catch (error) { if (message) { message.className = "msg err"; message.textContent = t("脚手架生成失败：") + error.message; } }
+}
+
 function openReviewRequest() {
   if (REVIEW_QUEUE.saving) return;
   const runs = ((S.state || {}).runs || []).slice(0, 100);
@@ -2213,6 +2328,7 @@ function runSettleNotice(taskId, title, run) {
   const tone = st === "done" ? (unqualified ? "warn" : "good") : "bad";
   const head = t({ done: "任务已完成", failed: "任务失败", timeout: "任务超时" }[st]
     || String(runStatusText(run))) + (unqualified ? t("·未达标") : "");
+  sendBrowserRunNotification(taskId, title, run, head);
   const card = document.createElement("div");
   card.className = "notice-card " + tone;
   card.innerHTML = '<div class="notice-head"><span class="notice-ico">' +
@@ -2230,6 +2346,43 @@ function runSettleNotice(taskId, title, run) {
     card.classList.add("out");
     setTimeout(() => card.remove(), 300);
   }, 7000);
+}
+
+function browserNotifyEnabled() { return localStorage.getItem("orch.browser-notify") === "1"; }
+function notifySoundEnabled() { return localStorage.getItem("orch.notify-sound") !== "0"; }
+function sendBrowserRunNotification(taskId, title, run, head) {
+  try {
+    if (browserNotifyEnabled() && "Notification" in window && Notification.permission === "granted") {
+      const note = new Notification("CodeBee · " + head, { body: title + " · " + (run && run.id ? run.id : taskId), tag: "codebee-" + taskId });
+      note.onclick = () => { window.focus(); if (typeof sideOpenTask === "function") sideOpenTask(taskId); note.close(); };
+    }
+    if (notifySoundEnabled() && soundEnabled()) beepAttention();
+  } catch (error) { /* 浏览器权限/音频限制不应影响任务状态 */ }
+}
+
+async function requestBrowserNotification() {
+  const status = $("browser-notify-status");
+  if (!("Notification" in window)) { if (status) status.textContent = t("当前浏览器不支持通知"); return; }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") localStorage.setItem("orch.browser-notify", "1");
+    if (status) status.textContent = permission === "granted" ? t("通知权限已开启") : t("通知权限未授予");
+    paintBrowserNotify();
+  } catch (error) { if (status) status.textContent = t("通知权限请求失败：") + error.message; }
+}
+
+function paintBrowserNotify() {
+  const browser = $("set-browser-notify"), sound = $("set-notify-sound"), status = $("browser-notify-status");
+  if (browser) browser.checked = browserNotifyEnabled();
+  if (sound) sound.checked = notifySoundEnabled();
+  if (status && "Notification" in window) status.textContent = t("当前权限：") + Notification.permission;
+}
+
+function saveBrowserNotifyPreference() {
+  const browser = $("set-browser-notify"), sound = $("set-notify-sound");
+  if (browser) localStorage.setItem("orch.browser-notify", browser.checked ? "1" : "0");
+  if (sound) localStorage.setItem("orch.notify-sound", sound.checked ? "1" : "0");
+  paintBrowserNotify();
 }
 
 /* ---------------------------------------------------------- 状态同步：SSE 实时 + 轮询降级 */
@@ -3768,6 +3921,50 @@ function renderClarify(questions, goal, resetSubmit) {
     $("btn-create").click();
   });
   $("f-goal").focus();
+}
+
+function renderTaskTemplates() {
+  const select = $("f-template");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = '<option value="">' + esc(t("不使用模板")) + '</option>' + (UI_FEATURES.templates || []).map((item) =>
+    '<option value="' + esc(item.id || "") + '">' + esc(item.name || item.id || "") + '</option>').join("");
+  if ((UI_FEATURES.templates || []).some((item) => item.id === current)) select.value = current;
+}
+
+async function loadTaskTemplates() {
+  try { const result = await api("/api/task-templates", { timeout: 15000 }); UI_FEATURES.templates = result.templates || []; renderTaskTemplates(); }
+  catch (error) { UI_FEATURES.templates = []; renderTaskTemplates(); }
+}
+
+function applyTaskTemplate(template, start) {
+  if (!template) return;
+  if ($("f-goal")) $("f-goal").value = template.goal || "";
+  if ($("f-title") && !$("f-title").value) $("f-title").value = template.name || "";
+  if ($("f-rubric") && Array.isArray(template.rubric)) $("f-rubric").value = template.rubric.join(", ");
+  if ($("f-type") && template.type) {
+    const type = flowById(template.type) ? template.type : (template.type === "doc" ? "document" : template.type);
+    if (flowById(type)) { $("f-type").value = type; $("f-type").dispatchEvent(new Event("change")); }
+  }
+  if (start) createTask();
+}
+
+function selectTaskTemplate(start) {
+  const id = ($("f-template") || {}).value;
+  const template = (UI_FEATURES.templates || []).find((item) => item.id === id);
+  if (!template) { if (start) toast(t("请选择任务模板"), true); return; }
+  applyTaskTemplate(template, start);
+}
+
+async function saveCurrentAsTemplate() {
+  const name = window.prompt(t("模板名称"), ($("f-title") || {}).value || t("我的任务模板"));
+  if (!name || !name.trim()) return;
+  try {
+    await api("/api/task-templates", { method: "POST", body: JSON.stringify({ name: name.trim(), type: $("f-type").value,
+      goal: $("f-goal").value.trim(), rubric: (($("f-rubric") || {}).value || "").split(/[,，、]/).map((x) => x.trim()).filter(Boolean),
+      max_calls: 0 }) });
+    await loadTaskTemplates(); toast(t("模板已保存"));
+  } catch (error) { toast(t("模板保存失败：") + error.message, true); }
 }
 
 async function createTask() {
@@ -12167,6 +12364,19 @@ function renderDetailOverview(run, runs, task, aggregate) {
   const etaText = runEtaText(run);
   const goal = (task && task.goal) || run.goal || run.title || "";
   const contract = (task && task.contract) || S.taskContracts[(task && task.id) || run.task_id] || null;
+  const budget = run.budget && typeof run.budget === "object" ? run.budget : null;
+  const budgetItems = budget ? [["calls", budget.calls, budget.max_calls], ["tokens", budget.tokens, budget.max_tokens], ["duration", budget.elapsed, budget.max_duration]] : [];
+  const budgetHtml = budgetItems.some((item) => item[2])
+    ? '<div class="rd-budget"><b>' + esc(t("预算进度")) + '</b>' + budgetItems.filter((item) => item[2]).map((item) => {
+      const pct = Math.min(100, Math.round(Number(item[1] || 0) * 100 / Number(item[2])));
+      const label = item[0] === "calls" ? t("调用") : item[0] === "tokens" ? t("Tokens") : t("耗时");
+      return '<div class="rd-budget-row"><span>' + esc(label) + '</span><div class="rd-budget-track"><i style="width:' + pct + '%"></i></div><small>' + esc(String(item[1] || 0)) + '/' + esc(String(item[2])) + '</small></div>';
+    }).join("") + '</div>' : "";
+  const verdict = run.verdict && typeof run.verdict === "object" ? run.verdict : {};
+  const degraded = verdict.review_degraded || verdict.quality_status === "degraded";
+  const reviewHtml = degraded ? '<div class="rd-review-degraded" role="status"><strong>' + esc(t("评审降级")) + '</strong><span>' + esc((verdict.review_degradation_reasons || []).join("；") || t("当前没有满足门槛的评审者")) + '</span></div>' : "";
+  const dagNodes = (run.plan && run.plan.steps) || run.subtasks || [];
+  const dagHtml = Array.isArray(dagNodes) && dagNodes.length ? '<div class="rd-dag"><b>' + esc(t("任务 DAG")) + '</b>' + dagNodes.map((node, index) => '<div class="rd-dag-node"><span>' + (index + 1) + '</span><strong>' + esc(node.title || node.id || node.role || t("步骤")) + '</strong>' + ((node.depends_on || []).length ? '<small>← ' + esc(node.depends_on.join(", ")) + '</small>' : '') + '</div>').join("") + '</div>' : "";
   const expert = task && task.expert_snapshot && task.expert_snapshot.id
     ? task.expert_snapshot : null;
   const actions = [];
@@ -12196,7 +12406,7 @@ function renderDetailOverview(run, runs, task, aggregate) {
       (duration != null ? '<span>' + esc(t("耗时")) + ' <b>' + esc(chatDurTxt(duration < 1 ? Number(duration.toFixed(1)) : Math.round(duration))) + '</b></span>' : "") +
       (etaText ? '<span class="rd-eta">' + esc(etaText) + '</span>' : "") +
     '</div>' +
-    capabilityEvidenceHtml(run.capabilities) +
+    reviewHtml + budgetHtml + dagHtml + capabilityEvidenceHtml(run.capabilities) +
     (lastText ? '<div class="rd-overview-last"><b>' + esc(t("最近一步")) + '</b><span>' + esc(lastText) + '</span></div>' : "") +
     (contract ? contractOverviewHtml(contract) : "") +
     (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
@@ -16592,6 +16802,7 @@ function fillNotifyPush() {
   set("set-notify-serverchan", "notify_serverchan_key");
   set("set-notify-tg-token", "notify_telegram_token");
   set("set-notify-tg-chat", "notify_telegram_chat_id");
+  paintBrowserNotify();
 }
 
 function notifyPushPatch() {
@@ -18315,6 +18526,36 @@ function renderUsage() {
   $("usage-recent").innerHTML = usageRecentTable(u.recent || []);
 }
 
+function analyticsSince(days) {
+  const n = Number(days);
+  if (!n) return "";
+  return String(Date.now() / 1000 - n * 86400);
+}
+
+function renderAnalytics() {
+  const data = UI_FEATURES.analytics || {};
+  const metrics = data.metrics || {};
+  const box = $("analytics-kpis");
+  if (box) box.innerHTML = [
+    [t("总任务数"), metrics.total_tasks || 0],
+    [t("成功率"), Math.round(Number(metrics.success_rate || 0) * 100) + "%"],
+    [t("平均耗时"), metrics.average_duration_s == null ? "—" : fmtDur(metrics.average_duration_s)],
+    [t("评审降级次数"), metrics.review_degraded || 0],
+  ].map(([label, value]) => '<div class="analytics-kpi"><span>' + esc(label) + '</span><strong>' + esc(String(value)) + '</strong></div>').join("");
+  const table = $("analytics-cli");
+  const rows = data.cli || [];
+  if (table) table.innerHTML = '<table class="usage-table"><thead><tr><th>' + esc(t("CLI")) + '</th><th>' + esc(t("调用次数")) + '</th><th>' + esc(t("成功率")) + '</th></tr></thead><tbody>' +
+    (rows.length ? rows.map((row) => '<tr><td>' + esc(row.cli || "") + '</td><td class="num">' + Number(row.calls || 0) + '</td><td class="num">' + Math.round(Number(row.success_rate || 0) * 100) + '%</td></tr>').join("") : '<tr><td colspan="3" class="hint">' + esc(t("暂无 CLI 调用数据")) + '</td></tr>') + '</tbody></table>';
+  document.querySelectorAll("#analytics-ranges [data-days]").forEach((button) => button.classList.toggle("active", Number(button.dataset.days) === Number(UI_FEATURES.analyticsDays)));
+}
+
+async function loadAnalytics(days) {
+  UI_FEATURES.analyticsDays = Number(days) || 0;
+  const query = analyticsSince(UI_FEATURES.analyticsDays);
+  try { UI_FEATURES.analytics = await api("/api/analytics" + (query ? "?since=" + encodeURIComponent(query) : ""), { timeout: 15000 }); renderAnalytics(); }
+  catch (error) { const box = $("analytics-kpis"); if (box) box.innerHTML = '<p class="hint bad">' + esc(t("指标加载失败：") + error.message) + '</p>'; }
+}
+
 
 
 /* ---------------------------------------------------------- 概览首页 */
@@ -19123,7 +19364,7 @@ function switchTab(name, shell) {
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   renderPageCrumb();   // 页名 + 面包屑组名一起刷新（组名从左栏导航现读）
   if (name === "runs" && !S.detailRunId) closeRun();
-  if (name === "agents") { autoCheckUpdates(); loadReviewQueue(); }
+  if (name === "agents") { autoCheckUpdates(); loadReviewQueue(); loadReviewPolicy(); loadInterventions(); loadCliDiscovery(false); }
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
@@ -19136,7 +19377,7 @@ function switchTab(name, shell) {
   if (name === "__wxdigest") { beeRefresh(); beeMarkSeen(); }   // 进群摘要页：拉取视图并清未读
   if (name === "market") loadMarket();   // 进插件市场页拉取目录
   if (name === "data") loadDataPage();   // 进数据与备份页：清理配置/状态/可清理预估
-  if (name === "usage") { syncUsageRange(); loadUsage(); }   // 进用量页：对齐范围选中态并拉取
+  if (name === "usage") { syncUsageRange(); loadUsage(); loadAnalytics(UI_FEATURES.analyticsDays); }   // 进用量页：对齐范围选中态并拉取
   if (name === "overview") { ovDays(); loadOverview(); }   // 进概览页：对齐趋势范围并拉两期台账
   if (name === "overview") goalLoad();
   if (name === "browser") browserDraw();
@@ -19201,6 +19442,13 @@ window.bindRemove = bindRemove;
 window.bindPromote = bindPromote;
 window.mgmt = mgmt;
 window.switchTab = switchTab;
+window.loadReviewPolicy = loadReviewPolicy;
+window.saveReviewPolicy = saveReviewPolicy;
+window.loadInterventions = loadInterventions;
+window.loadCliDiscovery = loadCliDiscovery;
+window.generateAdapterScaffold = generateAdapterScaffold;
+window.loadAnalytics = loadAnalytics;
+window.requestBrowserNotification = requestBrowserNotification;
 window.setUsageDays = setUsageDays;
 window.setOvDays = setOvDays;
 window.renderPageCrumb = renderPageCrumb;   // i18n.js 换语言后补画标题用
@@ -19355,6 +19603,18 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-prov-side").addEventListener("click", () => switchTab("orch"));   // 供应商指示 → 编排设置页更换
   document.querySelectorAll("#usage-ranges [data-days]").forEach((b) =>
     b.addEventListener("click", () => setUsageDays(b.dataset.days)));
+  document.querySelectorAll("#analytics-ranges [data-days]").forEach((b) =>
+    b.addEventListener("click", () => loadAnalytics(b.dataset.days)));
+  const templateSelect = $("f-template");
+  if (templateSelect) templateSelect.addEventListener("change", () => selectTaskTemplate(false));
+  const templateApply = $("btn-template-start");
+  if (templateApply) templateApply.addEventListener("click", () => selectTaskTemplate(true));
+  const templateSave = $("btn-template-save");
+  if (templateSave) templateSave.addEventListener("click", saveCurrentAsTemplate);
+  $("set-browser-notify") && $("set-browser-notify").addEventListener("change", saveBrowserNotifyPreference);
+  $("set-notify-sound") && $("set-notify-sound").addEventListener("change", saveBrowserNotifyPreference);
+  paintBrowserNotify();
+  loadTaskTemplates();
   $("btn-usage-refresh").addEventListener("click", loadUsage);
   const ubtn = $("btn-usage-export");
   if (ubtn) ubtn.addEventListener("click", () => {

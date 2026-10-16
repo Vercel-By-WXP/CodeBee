@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="chat-delivery.css">
 <link rel="stylesheet" href="mobile-workbench.css">
 <link rel="stylesheet" href="project-overview.css">
+<link rel="stylesheet" href="task-ops.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -579,6 +580,14 @@
           </div>
           <!-- 快捷类型：点一个即选定并聚焦目标框（renderQuickChips 渲染） -->
           <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
+          <div id="cmp-template" class="cmp-template" role="group" aria-label="任务模板" data-i18n-aria="任务模板">
+            <label for="f-template" data-i18n="任务模板">任务模板</label>
+            <select id="f-template" aria-label="任务模板" data-i18n-aria="任务模板">
+              <option value="" data-i18n="不使用模板">不使用模板</option>
+            </select>
+            <button id="btn-template-start" type="button" class="ghost small" data-i18n="套用模板">套用模板</button>
+            <button id="btn-template-save" type="button" class="ghost small" data-i18n="保存为模板">保存为模板</button>
+          </div>
           <!-- 开跑前成本预估（refreshEstimate 填充；无同类样本时保持隐藏） -->
           <p class="hint cmp-estimate hidden" id="cmp-estimate"></p>
           <!-- 需求拷问采访卡（renderClarify 渲染；goal 模糊时出现，跳过=直接创建） -->
@@ -1070,6 +1079,18 @@
         <div id="usage-dims"></div>
         <h3 data-i18n="最近调用" class="sec-title">最近调用</h3>
         <div id="usage-recent" class="list"></div>
+        <section class="panel analytics-panel" aria-labelledby="analytics-title">
+          <div class="panel-head">
+            <h3 id="analytics-title" data-i18n="任务指标看板">任务指标看板</h3>
+            <div class="seg" id="analytics-ranges" role="group" aria-label="指标时间范围" data-i18n-aria="指标时间范围">
+              <button type="button" class="seg-btn active" data-days="1" data-i18n="今天">今天</button>
+              <button type="button" class="seg-btn" data-days="7" data-i18n="本周">本周</button>
+              <button type="button" class="seg-btn" data-days="0" data-i18n="全部">全部</button>
+            </div>
+          </div>
+          <div id="analytics-kpis" class="analytics-kpis"></div>
+          <div id="analytics-cli" class="analytics-table"></div>
+        </section>
       </div>
       </div>
 
@@ -1114,6 +1135,38 @@
         </div>
         <p id="review-queue-message" class="hint" role="status" aria-live="polite"></p>
         <div id="review-queue-list" class="review-queue-list" aria-busy="false"></div>
+      </section>
+      <section class="panel wide review-policy-panel" aria-labelledby="review-policy-title">
+        <div class="panel-head"><h2 id="review-policy-title" data-i18n="评审策略">评审策略</h2><button type="button" class="ghost small" onclick="loadReviewPolicy()" data-i18n="刷新">刷新</button></div>
+        <p class="hint" data-i18n="自定义评审维度、权重和最低质量门槛；不满足时任务会明确标记为评审降级。">自定义评审维度、权重和最低质量门槛；不满足时任务会明确标记为评审降级。</p>
+        <div id="review-policy-dimensions" class="review-policy-dimensions"></div>
+        <div class="grid-3 review-policy-thresholds">
+          <label class="field"><span data-i18n="最低评分">最低评分</span><input id="review-min-score" type="number" min="1" max="10" step="0.1"></label>
+          <label class="field"><span data-i18n="最低可信度">最低可信度</span><input id="review-min-confidence" type="number" min="0" max="1" step="0.05"></label>
+          <label class="field"><span data-i18n="最低模型族">最低模型族</span><input id="review-min-family" type="text" placeholder="例如 OpenAI"></label>
+        </div>
+        <div class="actions"><button type="button" class="primary small" onclick="saveReviewPolicy()" data-i18n="保存评审策略">保存评审策略</button><span id="review-policy-message" class="msg" role="status"></span></div>
+      </section>
+      <section class="panel wide hitl-panel" aria-labelledby="hitl-title">
+        <div class="panel-head"><h2 id="hitl-title" data-i18n="等待人工确认">等待人工确认</h2><button type="button" class="ghost small" onclick="loadInterventions()" data-i18n="刷新">刷新</button></div>
+        <p class="hint" data-i18n="拆解后、评审后或修复前暂停的任务会出现在这里。批准继续，拒绝则终止该介入点。">拆解后、评审后或修复前暂停的任务会出现在这里。批准继续，拒绝则终止该介入点。</p>
+        <div id="hitl-list" class="hitl-list" aria-live="polite"></div>
+      </section>
+      <section class="panel wide cli-discovery-panel" aria-labelledby="cli-discovery-title">
+        <div class="panel-head"><h2 id="cli-discovery-title" data-i18n="已检测到的 CLI">已检测到的 CLI</h2><button type="button" class="ghost small" onclick="loadCliDiscovery(true)" data-i18n="重新探测">重新探测</button></div>
+        <p class="hint" data-i18n="启动时读取 PATH 中的受支持 CLI，并记录版本、stdin 与输出格式能力。">启动时读取 PATH 中的受支持 CLI，并记录版本、stdin 与输出格式能力。</p>
+        <div id="cli-discovery-list" class="cli-discovery-list"></div>
+      </section>
+      <section class="panel wide adapter-scaffold-panel" aria-labelledby="adapter-scaffold-title">
+        <div class="panel-head"><h2 id="adapter-scaffold-title" data-i18n="新 CLI 适配器脚手架">新 CLI 适配器脚手架</h2></div>
+        <div class="grid-2">
+          <label class="field"><span data-i18n="CLI 名称">CLI 名称</span><input id="scaffold-name" maxlength="60"></label>
+          <label class="field"><span data-i18n="可执行文件">可执行文件</span><input id="scaffold-executable" maxlength="120"></label>
+          <label class="field"><span data-i18n="调用方式">调用方式</span><input id="scaffold-invocation" value="argv" maxlength="120"></label>
+          <label class="field"><span data-i18n="输出格式">输出格式</span><input id="scaffold-output-format" value="text" maxlength="60"></label>
+        </div>
+        <div class="actions"><button type="button" class="primary small" onclick="generateAdapterScaffold()" data-i18n="生成脚手架">生成脚手架</button><span id="scaffold-message" class="msg" role="status"></span></div>
+        <pre id="scaffold-result" class="scaffold-result hidden"></pre>
       </section>
       </div>
 
@@ -1316,6 +1369,12 @@
               <input id="set-notify-webhook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" data-i18n-ph="https://oapi.dingtalk.com/robot/send?access_token=…">
             </div>
             <p data-i18n="任务收尾把结果摘要推到群里；也接受任意 https 地址（按钉钉 text 形状发，自建 n8n 等自选）。" class="hint">任务收尾把结果摘要推到群里；也接受任意 https 地址（按钉钉 text 形状发，自建 n8n 等自选）。</p>
+          </div>
+          <div class="field browser-notify-settings">
+            <label class="toggle"><input id="set-browser-notify" type="checkbox"> <span data-i18n="任务完成或失败时显示浏览器通知">任务完成或失败时显示浏览器通知</span></label>
+            <label class="toggle"><input id="set-notify-sound" type="checkbox"> <span data-i18n="任务完成或失败时播放提示音">任务完成或失败时播放提示音</span></label>
+            <button type="button" class="ghost small" onclick="requestBrowserNotification()" data-i18n="请求通知权限">请求通知权限</button>
+            <span id="browser-notify-status" class="hint" role="status"></span>
           </div>
           <div class="field"><label data-i18n="个人推送（推到你的手机，配任意一条即可）">个人推送（推到你的手机，配任意一条即可）</label>
             <div class="grid-2">
