@@ -1,595 +1,91 @@
-# CodeBee · 多智能体编排台
+# CodeBee
 
-> 官网：<https://codebeeagent.com>
+> 把多个 AI 编码 CLI 编排成协作团队。
 
-> All agents, one hive. —— 一声令下，群蜂齐作。
-> *CodeBee*，码蜂：蜂后统筹（编排者）、侦察蜂定方向（规划/评审）、工蜂采蜜（实现）——
-> 一个蜂巢，多只蜜蜂，酿同一份蜜。
+[快速开始 → QUICKSTART.md](QUICKSTART.md)
 
-[![npm version](https://img.shields.io/npm/v/codebee)](https://www.npmjs.com/package/codebee)
-[![python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
-[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+## 它解决什么问题
 
-**AI 是引擎，你的经验是方向盘。** CodeBee 为你指挥一支跨厂商的执笔/编码小队：
-统一调度本机已装的 AI 编码 CLI（Codex CLI、Claude Code、Qwen Code、OpenCode、Aider、
-Kimi Code、MiMo Code、Grok Build、Pi、DeepSeek Harness、Gemini CLI、CodeBuddy CLI、
-Trae Agent、MiniMax Code、Goose、Mistral Vibe、Cline CLI、GitHub Copilot CLI、OpenClaw……），提供
-**目标 → 自动拆解 → 智能路由 → 执行 → 客观验证 → 跨厂商评审 → 自动修复/换将 → 汇总报告**
-的完整闭环。你不在时它们自动推进、自我打磨；需要你拍板的地方——质量闸门、任务分支的
-采纳与丢弃——它们会亮起「待裁决」等你，绝不静默替你决定。
+开发者装了多个 AI 编码 CLI，但它们往往彼此孤立。CodeBee 把这些 CLI 统一接入，
+按任务路由、执行、验证、评审并在需要时自动修复，最后生成可审计的报告。
 
-<img src="docs/screenshots/home.png" width="820" alt="CodeBee 主界面：极简新建任务 + 任务列表">
+## 核心特性
 
-零第三方依赖：纯 Python 标准库（3.8+），本地 Web 界面，数据全部落盘可回放，
-不会把你的任务内容交给任何第三方。
+- 跨厂商 CLI 统一调度：Codex CLI、Claude Code、OpenCode、QwenCode、Aider、Kimi Code、
+  MiMo Code、Grok Build、Pi、DeepSeek Harness、Gemini CLI、CodeBuddy CLI、Trae Agent、
+  MiniMax Code、Mistral Vibe、Cline CLI、OpenClaw（Goose 与 GitHub Copilot CLI 当前仅检测）。
+- 智能路由与跨厂商降级。
+- 对抗式评审：评审者优先来自不同模型族。
+- 本地运行，隐私优先，运行时零第三方 Python 依赖。
+- 全程落盘，可回放任务、步骤、日志和报告。
 
+## 和同类工具的差异
 
----
-
-<!-- relnotes:start -->
-### 最新版更新内容（v0.1.115）
-
-- 原生 CLI 免费与 OAuth 通道：更多编码 CLI 免 Key 接入
-- 项目空间与共享：工作区升级，选书转连载链路落地
-- 运行能力全程可审计：注入编排者、评审面与质量闸
-- 连载质量强化：拒稿必须给证据回炉 + 七猫双拒防线
-- 番茄发布排期修复批 + 编排额度类死错自动停用降级
-<!-- relnotes:end -->
-
-
----
-
-## 功能速览
-
-### 🐝 蜂巢工作台：实时盯进度，像看蜂群干活
-
-运行详情按智能体分格，谁在采蜜一目了然：每只蜜蜂带忙碌动画，点一下直接看该 CLI
-的实时日志流；步骤卡片记录每一步的角色、耗时、token 与费用。
-
-<div>
-<img src="docs/screenshots/hive.png" width="400" align="top" alt="蜂巢工作台">
-<img src="docs/screenshots/run_steps.png" width="400" align="top" alt="步骤时间线与 CLI 日志">
-</div>
-
-### 🖥 实时数据大屏：挂副屏当监控墙
-
-独立深色大屏页：运行中任务的实时输出逐条滚动，执行池占用、今日完成/失败、
-近 7 日 token 消耗与模型 TOP5 一屏尽收；顶栏仪表盘按钮直达。
-
-<img src="docs/screenshots/board.png" width="820" alt="实时数据大屏：运行中任务实时输出 + 执行池 + 模型 TOP5">
-
-### 💬 对话与成果：边跑边聊，跑完即交付
-
-任务点击默认进对话：运行中随时递话（文字 / 截图 / 附件），下一轮自动生效；
-成果页逐文件预览每章成稿与全书手稿，平台作品资料逐字段复制即用。
-
-<div>
-<img src="docs/screenshots/chat.png" width="400" align="top" alt="任务对话：运行中递话，边跑边聊">
-<img src="docs/screenshots/result.png" width="400" align="top" alt="成果交付：章节与全书手稿逐文件预览">
-</div>
-
-### ⚔️ 跨厂商对抗式评审
-
-评审者强制来自与作者不同的模型族——同族自评有同款盲区，换一双"眼睛"才挑得出
-陈词滥调。评审按维度独立打分 + 提行级意见，不达标自动回炉修订；无跨厂商可用时
-如实备注，绝不伪装。
-
-<img src="docs/screenshots/bindings.png" width="820" alt="CLI 绑定：跨厂商模型链">
-
-### 🔗 模型链跨厂商降级
-
-「CLI 绑定」页把模型链配成 `主模型 → 备选 → 再备选`，每条自带供应商凭据注入
-（API key + 地址，只影响 CodeBee 发起的调用，不改写 CLI 全局配置）。主模型瞬态失败
-（503/限流）自动切下一条——可能是另一家厂商的模型。配额耗尽、供应商欠费也能自动接力。
-
-### 🧠 经验库：越跑越好，无需人工维护
-
-每次任务结束由编排者复盘评审暴露的问题，自动沉淀为教训并归类（情节逻辑 / 人物塑造 /
-节奏爽点 / 文笔风格 / 一致性 / 流程规范），下次同类任务自动注入提示词。内置规范包
-（如七猫签约标准）自动注入小说类任务；「插件市场」一键安装社区经验包。
-
-<div>
-<img src="docs/screenshots/skills.png" width="400" align="top" alt="经验库">
-<img src="docs/screenshots/market.png" width="400" align="top" alt="插件市场">
-</div>
-
-### 📚 知识库：你的个人知识管理库
-
-与经验库是一对搭档——教训记「别这么做」，知识记「已知是这样」。任务结束由编排者
-从产出材料（调研报告/文档）自动提炼可复用知识条目，默认直接转正参与注入；也可手动
-新建。条目按任务类型与相关性自动注入同类任务的规划与评审提示词；事实带账龄，
-as_of 超 90 天注入时自动标注「可能过期」。
-
-<img src="docs/screenshots/knowledge.png" width="820" alt="知识库：自动提炼 + 标签过滤 + 手动新建">
-
-### 🛠 智能体管理台：检测 / 安装 / 升级 / 一键绑模型
-
-自动检测本机全部 CLI（含版本号），安装失败时 AI 读日志自动诊断给修正命令；「默认模型」
-写回各家 CLI 自己的配置文件；「一键绑定推荐模型」按协议适配与可用性自动配好跨厂商链。
-
-<img src="docs/screenshots/agents.png" width="820" alt="智能体管理：目录检测与一键绑定">
-
-### 📡 模型接入：十种来源聚合
-
-点「导入」扫描本机 CCSwitch / Claude Code / Codex CLI / ZCode / Qwen / Gemini /
-OpenCode / Continue / Cursor / Trae 十种工具的配置，一次带入全部供应商（自动拉取模型
-列表与价格表）；也支持手动添加任意 OpenAI / Anthropic 兼容网关。密钥只存本机。
-
-<img src="docs/screenshots/models.png" width="820" alt="模型接入：多来源供应商聚合">
-
-### 🧪 模型评测台：同题赛马，谁强用谁
-
-不知道该用哪家模型？固定样题（章节写作 / 小 bug 修复 / 结构化摘要 / 红队诱导防线）
-让候选模型同题赛马，统一评委链打分出能力榜单；14 天内的实测分自动作为软信号参与
-运行时选模——评测即反哺。
-
-<img src="docs/screenshots/evalbench.png" width="820" alt="模型评测台：固定样题同题赛马 + 能力榜单">
-
-### 📊 用量台账：每一分钱都有账
-
-所有真实 LLM 调用（编排步骤、编排者直连、连通性冒烟、AI 修复）计入 append-only
-台账：总 tokens、成功率、累计费用、每日趋势（纯 SVG 零依赖），按工具 / 智能体 /
-模型 / 角色 / 任务类型五维排行，支持今天 / 近 7 天 / 近 30 天 / 全部。
-「概览」页再给你全局一眼：近 30 天执行次数、成功率与花费走势，配「长目标」
-把跨天大工程挂起来随时推进。
-
-<div>
-<img src="docs/screenshots/usage.png" width="400" align="top" alt="用量统计：五维排行与活动热力图">
-<img src="docs/screenshots/overview.png" width="400" align="top" alt="数据概览：执行次数 / 成功率 / 费用趋势 + 长目标">
-</div>
-
-### ⏱ 自动化：定时任务无人值守
-
-按计划自动运行任务（每天 / 每周 / 间隔 / 一次性），复用真实运行链到点开跑；
-错过的临时任务标记跳过不补跑，连载类错过自动断点续跑。
-
-<img src="docs/screenshots/automation.png" width="820" alt="自动化：定时任务列表与下次运行时间">
-
-### 🌐 内置浏览器：查资料、登平台不切窗口
-
-工作台自带浏览器页签：查资料、看榜单、登发布平台一站式完成；与「发布上架」
-打通，平台登录与发布确认都在软件里。
-
-<img src="docs/screenshots/browser.png" width="820" alt="内置浏览器：页签式浏览，与发布上架打通">
-
-### 📖 帮助中心与作品信息
-
-**F1** 随时呼出多章帮助中心（快速上手 / 模型接入与绑定 / 功能一览 / 连载创作流程 /
-发布上架 / 代码任务与版本 / 自动化与技能市场 / 常见问题），设置页与工作台头部的
-「?」直达对应章节。连载任务详情页「作品信息」按发布平台生成建书表单资料
-（番茄 / 七猫），逐字段复制即用；封面生成与发布上架通道打通最后一公里。
-
-<div>
-<img src="docs/screenshots/help.png" width="400" align="top" alt="帮助中心">
-<img src="docs/screenshots/bookmeta.png" width="400" align="top" alt="作品信息：按平台生成建书资料">
-</div>
-
-### 更多内置能力
-
-- **18 种任务类型**：直接执行、代码、小说、连载小说、自媒体文章、短视频脚本、
-  文档、翻译、扫榜选材、缺陷复盘、调研报告、演讲稿、演示文稿、工作汇报、商务邮件、技术方案、简历、标书编制；
-  全部支持自定义流程（引擎 / 评审维度 / 阈值 / 轮数 / 提示词覆盖）；
-- **质量闸门与裁决**：评审失败≠0 分照过、降级大纲不开写、超时但已落盘的稿件照常
-  送评审；需要人拍板的事项进「待裁决」队列（徽章 + 提示音），`tools/bee.py`
-  命令行不开浏览器也能过裁决；
-- **产物隔离在任务分支**：指定代码版本的任务，产物提交在 `codebee/<task-id>`
-  分支上（工作区始终干净），详情页 Git 工作台看 diff，一键合并回原分支或丢弃；
-- **运行中指挥**：任务跑着也能递话——文字 / 截图 / 附件注入下一轮；
-- **对话模式**：不拆步骤、直接执行，时间线式对话页，随时追话续上下文；
-- **自动化**：定时任务复用真实运行链，到点自动开跑（错过的一次性任务不补跑）；
-- **禅道 Bug 自动修复**：多产品档案（每产品配我方端/前后端仓库/负责人），定时扫描
-  激活 Bug 先排查定责（模块路由规则 > AI 判端 > 留人工）——我方端自动建修复任务
-  跑完整代码链，修完自动合并；双端问题修完我方部分后带修复报告转派另一端负责人，
-  非我方转回报告人；测试指错人也按排查结论改派；修复失败自动升级转派；群机器人
-  全程播报（设置页「禅道」子页配置）；
-- **多任务并发**：任务默认立即启动、无等待队列，并发保护上限默认 12；连载任务超时/中断自动
-  断点续跑；
-- **桌面版（预览）**：Electron 窗口 + 随包 Python，双击安装即用，无需 Node/Python；
-  关窗口缩托盘后台、任务继续；提供 Windows 7/8.1/10/11 x64 兼容包与 macOS Universal（Intel/Apple Silicon）
-  安装包；与 CLI 共用数据、自动接管已在运行的服务实例；
-- **远程访问**：手机同一 WiFi 直开、Tailscale 外网可达、Cloudflare Tunnel 固定
-  域名——8 位访问令牌保护，多端实时同步（SSE），单设备控制权防互踩；
-- **7 套皮肤**（默认「深海」），每套自带日间 / 夜间两版，安装默认即 深海·日间 + 中文。
-
----
+| 维度 | CodeBee | Aider | 其他 agent 框架 |
+| --- | --- | --- | --- |
+| 多 CLI 支持 | 原生多 CLI 目录与适配器 | 以单一 CLI 为主 | 取决于框架 |
+| 跨厂商评审 | 内置模型族隔离与降级 | 需自行组合 | 通常需自行实现 |
+| 零运行时依赖 | Python 标准库 | 需要 Python 依赖 | 取决于实现 |
+| 本地优先 | 默认本机 Web UI 与本地数据 | 本地运行 | 取决于部署方式 |
+| Web UI | 内置本地 Web UI | 以终端工作流为主 | 取决于框架 |
 
 ## 快速开始
 
-**方式一：npm 安装（推荐，普通用户）**
+请按 [QUICKSTART.md](QUICKSTART.md) 操作。
 
-需要本机装有 [Node.js](https://nodejs.org) 与 [Python 3.8+](https://www.python.org/downloads/)
-（Windows 装 Python 时勾选 “Add python.exe to PATH”）。然后：
+## 支持的 CLI
 
-```bat
-npm install -g codebee
-codebee
-```
-
-`codebee` 命令会启动服务并自动打开浏览器（默认 `http://127.0.0.1:8765`）。
-**启动后那个命令行窗口就是服务本身**——保持开着别关，Ctrl+C 即退出。
-每一步启动进度都会实时打印，卡在哪一步一眼可见。
-
-升级：`npm update -g codebee`，或在界面「设置 → 关于与更新」里一键升级；
-发现新版本时页面会直接展示本次更新内容。
-
-数据存放在用户目录（Windows `%APPDATA%\CodeBee`，macOS/Linux `~/.codebee`），
-升级/重装不影响；老版本 Tutti 目录（`%APPDATA%\Tutti`）会被自动沿用，无需迁移。
-
-### macOS：npm 全局安装报 EACCES（permission denied）
-
-官方 pkg 安装的 Node，全局目录 `/usr/local/lib/node_modules` 归 root，直接
-`npm install -g codebee` 会报
-`EACCES: permission denied, mkdir '/usr/local/lib/node_modules/codebee'`。
-**不要用 sudo 装**：装完目录归 root，应用内「一键升级」（以普通用户跑
-`npm install -g codebee@latest`）之后每次都会撞同样的权限错误。
-正确做法是把 npm 全局目录改到用户目录下，一次配好、安装与自动升级都畅通：
-
-```bash
-mkdir -p ~/.npm-global
-npm config set prefix "~/.npm-global"
-echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-npm install -g codebee
-```
-
-默认 shell 是 bash 的话，把第 3 行的 `~/.zshrc` 换成 `~/.bash_profile`。
-用 Homebrew 装的 Node（prefix 在 `/opt/homebrew`）没有这个问题，可直接安装。
-验证 `which codebee` 指向 `~/.npm-global/bin/codebee` 即配置成功。
-
-### macOS：HTTPS 请求报 SSL 证书错误（CERTIFICATE_VERIFY_FAILED）
-
-python.org 安装的 Python 不读 macOS 系统钥匙串，本机又没有可用的 CA 束时，
-「获取模型列表 / 适配测试 / 插件市场」等所有 HTTPS 检测会报
-`certificate verify failed: unable to get local issuer certificate`。
-CodeBee 已内置兜底：出站请求自动加载 certifi 与 macOS 系统证书束
-（`/etc/ssl/cert.pem`），多数机器无需任何操作。若仍报错，补齐证书后重试：
-
-```bash
-python3 -m pip install --upgrade certifi   # CodeBee 自动采用，装完即生效
-# 或：Finder → 应用程序 → Python 3.x → 双击 Install Certificates.command
-```
-
-**方式二：桌面版安装包（预览，免装 Node/Python）**
-
-安装包自带 Python 运行环境，双击安装即用。到
-[桌面 Releases](https://github.com/Vercel-By-WXP/CodeBee/releases)
-下载对应平台的安装包：**Windows 7/8.1/10/11 x64 兼容版、
-macOS Intel / Apple Silicon 包**。装好后从开始菜单/启动台打开 CodeBee；关闭窗口缩进托盘
-后台、任务继续跑；与 npm/CLI 版共用数据目录，一边已在跑时另一边直接接管显示同一实例。
-桌面端菜单和托盘里的“下载并安装桌面新版”会自动下载对应安装包、退出旧版本并启动安装器，任务与配置保留。
-（预览版未签名，首次安装会有系统安全提示。）
-
-**方式三：源码运行（开发者）**
-
-```bat
-git clone https://github.com/Vercel-By-WXP/CodeBee.git
-cd CodeBee
-start.bat
-:: 或
-python app\main.py --port 8765
-```
-
-自动打开 `http://127.0.0.1:8765`。源码模式数据落仓库 `data/` 目录。
-
-## 作者侧命令行（可选）
-
-不开浏览器也能过裁决队列（本机免令牌）：
-
-```bat
-python tools\bee.py status            :: 任务总览（含待裁决标记）
-python tools\bee.py pending           :: 待裁决队列（分支 / 变更文件）
-python tools\bee.py diff    <task>    :: 看本次变更
-python tools\bee.py approve <task>    :: 采纳——任务分支合并回原分支
-python tools\bee.py discard <task>    :: 否决——删除任务分支（需输 yes）
-```
-
-## 任务类型与自定义流程
-
-主表单的「类型」下拉即流程列表，点「管理」可新增/编辑自定义流程（引擎、评审维度、
-阈值、轮数、产出文件名、起草/评审提示词覆盖）。内置 18 种；禅道工单是自动转成
-`code` 修复任务的集成入口，不另占菜单类型：
-
-| 类型 | 引擎 | 流程 |
-|---|---|---|
-| 💬 直接执行 | direct | 不拆步骤直接跑，时间线对话页可追话续上下文 |
-| 💻 代码 | code | 实现 → 验证 → 跨厂商评审 → 自动修复/换将 |
-| 📖 小说 | review | 起草 → 多维评审（情节/人物/文笔/节奏/吸引力）→ 修订 → 发布门禁 |
-| 📚 连载小说 | review | 大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书（断点续跑/继续连载） |
-| 📰 自媒体文章 | review | 平台化标题/开头/结构 → 多维评审 → 修订 → 发布门禁 |
-| 🎬 短视频脚本 | review | 画面 + 口播 + 字幕/音效 → 多维评审 → 修订 → 发布门禁 |
-| 📝 文档 | review | 起草 → 多维评审（准确性/结构/表达/实用）→ 修订 → 门禁 |
-| 🌐 翻译 | review | 起草 → 多维评审（忠实度/流畅度/术语/风格）→ 修订 → 门禁 |
-| 📈 扫榜选材 | direct | 抓七猫/番茄/起点/纵横四平台榜单 → 跨平台题材/人设/切入点洞察，逐条附 A-E 证据分级 |
-| 🕓 缺陷复盘 | direct | 读禅道/Jira 导出 → 产品/开发/测试三视角复盘报告 |
-| 🔍 调研报告 | review | 起草 → 多维评审（全面性/深度/论据/结论）→ 修订 → 门禁 |
-| 🎤 演讲稿 | review | 起草 → 多维评审（主题/结构/感染力/语言）→ 修订 → 门禁 |
-| 🖥️ 演示文稿 | review | 逐页大纲 + 讲稿（Markdown，不生成 PPT 二进制）→ 多维评审（结构/密度/呈现/演讲适配）→ 修订 → 门禁 |
-| 📅 工作汇报 / ✉️ 商务邮件 / 📋 技术方案 / 📄 简历 | review | 各自专属角色、交付约束与评审维度 |
-| 📑 标书编制 | review | 招标文件对齐评分点 → 多维评审（应答/合规/针对性）→ 修订 → 门禁 |
-
-三种引擎：
-- **direct 引擎**：单智能体直接执行目标，保留会话上下文，适合问答、探索和无需评审链的快捷任务；
-- **code 引擎**：实现者在工作目录直接改代码 → 执行验证命令（确定性结果）→ 跨厂商评审
-  （结构化 JSON）→ 不通过则自动修复循环（至多 2 轮）→ 仍失败自动换将全量重实现；
-- **review 引擎**：作者起草产出文件 → 多个评审智能体按维度独立打分 + 提问题 →
-  任一维度低于阈值则汇总 major 意见回炉修订 → 所有维度达标才标记"达到发布标准"。
-
-自定义流程的参数在创建任务时固化到任务上，之后修改流程定义不影响已建任务。
-
-### 连载小说与继续连载
-
-「连载小说」按批次写作：大纲 → 逐章起草/每章评审修订 → 全局一致性评审 → 合并成书。
-写完一批想接着写下一批（比如先写了前 10 章，现在续写 11–20 章）：
-
-- **侧栏任务右键 → 「继续连载（新任务）」**，或打开任务/运行详情点「继续连载」按钮；
-- 弹框填续写章数（默认与上一批相同）→ 自动**新建一个任务**开跑。
-
-续写任务沿用原任务的目标/上下文/工作目录/评审设置，从已写到的新一章接着写：
-旧章一字不动，章节文件（`chapter-NN.md`）与成书合并（`manuscript.md`）都按
-全书章号衔接；续写大纲会自动注入前情大纲与最新一章结尾作衔接锚点，保证跨批
-剧情连贯；新任务标题自动带「·续 / ·续2」代数。若上一批没写完（超时/中断），
-先用「↻ 重试任务」断点续跑补完本批（继承大纲与已完成章），再「继续连载」写
-下一批。「继续连载」只出现在连载任务上（带章节衔接语义）。
-
-任何任务右键 → 「基于此任务新建」可把同款配置预填进新建表单（连载的章节衔接
-请用「继续连载」；沿用同一工作目录会覆盖原产出，表单会提醒）。
-
-## 极简输入 + 会话延续
-
-主表单只有 3 项：**类型、目标（一句话）、工作目录**（自动记住上次填写）。
-标题自动取目标首行；其余（上下文/验证命令/编排模式/实现者/评审组/轮数/阈值）全部
-收进"高级选项"折叠，默认全智能无需改动。
-
-**在已有会话上继续**：「继续会话」下拉列出本机**已安装且支持会话恢复**的 CLI
-（Codex CLI、Claude Code、OpenCode、QwenCode、MiMo Code 等），选中后 CodeBee 扫描
-其本地会话（时间 / 项目 / 内容预览），挑一条即可延续那个会话的完整上下文——
-实现者自动指定为对应智能体，规划、实现、修复都在原会话上进行（评审仍用新鲜
-上下文避免偏见）。
-
-各家会话存放位置与恢复方式（2026-09 本机实测）：
-
-| CLI | 会话位置 | 恢复方式 |
+| CLI | 版本要求 | 编排状态 |
 | --- | --- | --- |
-| Codex CLI | `~/.codex/sessions/**.jsonl` | `codex exec resume <sid>` |
-| Claude Code | `~/.claude/projects/*/<sid>.jsonl` | `claude -p --resume <sid>` |
-| OpenCode | `~/.local/share/opencode/opencode.db`（SQLite） | `opencode run -s <sid>` |
-| QwenCode | `~/.qwen/projects/*/chats/<sid>.jsonl` | `qwen -r <sid>` |
-| MiMo Code | `~/.local/share/mimocode/mimocode.db`（SQLite） | `mimo run -s <sid>` |
+| Codex CLI | 【占位：按官方当前稳定版】 | 支持 |
+| Claude Code | 【占位：按官方当前稳定版】 | 支持 |
+| OpenCode / QwenCode / Aider | 【占位：按各项目官方当前稳定版】 | 支持 |
+| Kimi Code / MiMo Code / Grok Build / Pi | 【占位：按各项目官方当前稳定版】 | 支持 |
+| DeepSeek Harness / Gemini CLI / CodeBuddy CLI | 【占位：按各项目官方当前稳定版】 | 支持 |
+| Trae Agent / MiniMax Code / Mistral Vibe / Cline CLI | 【占位：按各项目官方当前稳定版】 | 支持 |
+| OpenClaw | 【占位：按官方当前稳定版】 | 支持 |
+| Goose / GitHub Copilot CLI | 【占位：按各项目官方当前稳定版】 | 仅检测，暂不自动派发 |
 
-两点注意：续会话是**显式指定**，不要求该 CLI 在设置页开启「参与编排」；
-headless 一次性调用的 CLI（如 DeepSeek Harness）不支持会话恢复，不出现在下拉里。
+CodeBee 不安装或替换这些 CLI。请先按各项目官方文档完成登录和凭据配置。
 
-## 手机 / 远程访问
+## 文档
 
-服务默认监听 `0.0.0.0`，启动时控制台会打印所有可用地址：
+- [QUICKSTART.md](QUICKSTART.md)：安装、启动和第一个任务
+- [ARCHITECTURE.md](ARCHITECTURE.md)：模块、数据流和扩展点
+- [docs/routing_strategy.md](docs/routing_strategy.md)：可插拔路由策略接口
+- [docs/review_storage.md](docs/review_storage.md)：评审数据结构化存储方案
+- [CONTRIBUTING.md](CONTRIBUTING.md)：开发和贡献流程
+- [SECURITY.md](SECURITY.md)：安全设计和漏洞报告
 
-```
-[CodeBee] 本机      http://127.0.0.1:8765
-[CodeBee] 局域网    http://192.168.x.x:8765/?token=xxxxxxxx   ← 手机同一 WiFi 直接打开
-[CodeBee] Tailscale http://100.x.x.x:8765/?token=xxxxxxxx     ← 外网随时随地访问
-```
+## 本地 Web UI 安全说明
 
-- **令牌**：远程访问受访问令牌保护（首次启动生成，存于 `data/remote.json`；本机
-  127.0.0.1 免令牌）。手机打开带 `?token=` 的地址后自动记住；令牌错误会弹输入门。
-- **多端同步**：所有设备看到同一份实时状态（SSE 推送，秒级），断线自动降级为轮询。
-- **控制权**：同一时刻只有一台设备能操作，空闲时任意操作自动接管，其他设备只读，
-  顶栏胶囊一键抢回；45 秒无操作自动释放。
-- **外网**：手机与电脑都装 [Tailscale](https://tailscale.com) 登录同一账号即随时随地访问。
+本地 Web UI 默认仅监听 127.0.0.1，不会暴露到局域网。如需从其他设备访问，请自行评估安全风险，并显式传入 `--host 0.0.0.0`，同时配置令牌、反向代理或其他访问控制。
 
-### 公网访问（自己的域名 + Cloudflare Tunnel）
+源码启动：
 
-```bat
-:: 一次性配置：cloudflared 登录后创建隧道并绑定子域名
-cloudflared tunnel login
-cloudflared tunnel create codebee
-cloudflared tunnel route dns --overwrite-dns <隧道UUID> codebee.你的域名.com
+~~~bat
+python app\main.py --port 8765
+~~~
 
-:: 日常启动服务（本机后台窗口）：
-start-service.bat
+默认打开 http://127.0.0.1:8765。需要局域网访问时：
 
-:: 启动隧道（另开一个窗口；也可 cloudflared service install 注册为开机自启）：
-cloudflared tunnel --config "%USERPROFILE%\.cloudflared\config.yml" run
-```
-
-- 真本机（不带转发头的 loopback）不受影响。
-- `--public-url` 让「手机连接」弹框的二维码直接给公网地址。
-- 公网暴露面 = 8 位访问令牌；想更强可叠加 Cloudflare Access（零信任，免费档 50 用户）。
-- Cloudflare 免费版即可：无需公网 IP、无需备案、不开任何入站端口。
-
-### 公网访问（零配置临时隧道）
-
-装了 [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
-（`winget install Cloudflare.cloudflared`）后，**默认启动即自动建立 Cloudflare 临时隧道**：
-控制台打印一个随机的 `https://xxx.trycloudflare.com` 公网地址，出门扫码即用。
-每次重启地址会变（手机重新扫码即可）。
-
-- 已有 Cloudflare 隧道凭据的机器（`~/.cloudflared` 下有 `*.json`）不会自动起临时隧道，
-  请走固定域名路径；`--no-public-tunnel` 可彻底关闭该行为。
-- 打开即自动强制 `--trusted-proxy`：公网暴露 ⇆ 反代回源令牌校验，二者永不分离。
-
-## 多任务并发
-
-任务执行器采用直接启动模式（并发保护上限默认 12，设置页「编排设置」可调 1-12）：多个任务同时跑、
-互不打扰——每个任务独立线程，运行数据按 run 隔离，不进入等待队列。达到保护上限时本次请求明确失败并提示稍后重试；并发数调小只影响后续任务，已有任务继续完成。
-连载任务超时/中断会自动断点续跑；重试前按明确时间退避，防止在网关限流墙上连续撞死，
-这段等待不占执行位，也不属于任务容量排队。
-
-## 编排设置（编排者模型）
-
-「编排设置」页可给 **CodeBee 自己的智能体**指定一个厂商的模型（直连 API，不占
-CLI 会话）：统一负责任务的**规划拆解、难度判定与写作大纲**。未启用或调用失败时
-自动回落为「最强可用 CLI 智能体」规划，流程永不阻塞。三种协议（anthropic /
-openai / google）都可作编排者；一键测试连通。
-
-## 两种智能体
-
-- **真实智能体**：来自 `data/catalog.json`，已安装且在管理页勾选"参与编排"的 CLI；
-- **mock 智能体**（演示智能体 A/B）：内置、零消耗，用于验证流程 / 演示 / 回归测试。
-
-mock 的评分逻辑是确定性的：第 1 轮故意略低于阈值、第 2 轮达标——用来验证发布门禁。
-仅当本机一个真实智能体都没有时才回退显示在表单里。
-
-## 模型接入（API 供应商）
-
-"模型接入"页是**主从视图**：左侧选供应商，右侧看该供应商的模型。
-
-- **导入（多来源）**：点「导入」弹出扫描结果，列出本机所有受支持的 AI 工具及各自可导入
-  的供应商数量，勾选后可一次导入。支持 **CCSwitch（含 Claude Desktop / Codex / Gemini /
-  OpenClaw）、Claude Code、Codex CLI、ZCode、Qwen Code、Gemini CLI、OpenCode、Continue、
-  Cursor、Trae**——只读这些工具的配置，不改写它们本身；导入后**自动拉取各供应商的可用
-  模型列表**（后台并发，CCSwitch 的每百万 token 价格表一并带入）；按「来源 + 原始条目」
-  幂等，重复导入原地更新并保留你设置的模型、启停状态与已删除墓碑；
-- **手动添加**：点「＋」弹出表单（名称 / 协议 / API 地址 / 密钥 / 默认与难度模型），
-  保存后自动拉取模型列表；地址若误填成 `.../v1/chat/completions` 会自动收敛为基址；
-- **协议**：`anthropic` 与 `openai` 可注入 CLI；`google`（Gemini）**仅登记**——
-  可查看、可拉取模型列表，但不会出现在 CLI 绑定的下拉里；
-- **左侧供应商列表**：名称、协议、来源标签、已拉取的模型数；支持批量启用/停用/删除；
-  停用即「暂不参与编排」，配置与墓碑保留，随时可再启用；
-- **右侧供应商详情**：测试连接（连通性 + 延迟）；模型按协议分组、每行可测试
-  （1-token 真实对话，显示 `✓ 850ms` 或 `✗ HTTP 402 欠费`）与启停；批量操作原子生效；
-  拖动 ☰ 调整调用优先级；删除模型是标记隐藏而非物理移除（刷新/重导入不会带回来），
-  「已删除 N 个」可恢复；
-- **自动优先级**：新拉取的模型按名称启发式自动排序（pro/opus 强者靠前，
-  mini/flash 便宜者靠后），手动调序后刷新会保留你的顺序；
-- **协议适配**：网关实际支持的 wire（responses / chat completions）可一键「适配测试」
-  实测登记；`protocol=auto` 的供应商按实测能力集自动归类；
-- **运行时语义**：「CLI 绑定」页的**模型链可跨厂商混搭**——每条自带该供应商的
-  凭据注入（API key + 地址），第 1 条是主模型，其余按序降级：主模型瞬态失败
-  （503/限流/无可用通道）自动切到下一条，**可能是另一家厂商的模型**（最多 3 条）；
-  链空则按供应商默认 / 难度路由自动选；同厂商多密钥可配多把 KEY，欠费/冷却自动切备用；
-- **安全**：拉取与测试仅访问用户自己配置的 http/https 地址，解析 IP 做边界校验、
-  禁用重定向；内网自建网关（私网 IP）导入时自动放行 `allow_private`；
-  密钥只存本机 `data/models.json`。
-
-CLI 默认冒烟、供应商可达性、wire 适配、单模型生成、绑定路由与完整任务验收各有不同的
-通过条件；统一错误分类、换路规则和近期失败复盘见 [执行与评测标准](docs/execution-standard.md)。
-
-## 智能编排（默认模式）
-
-任务表单默认"智能"模式：只填 **目标 + 工作目录**，其余由系统决定：
-
-1. **规划**：最强可用智能体把目标拆成 ≤4 个有序子任务（JSON 计划，失败退化为单步模板），计划在运行详情可见；
-2. **智能路由**：能力基线 × 历史胜率（过往 run 的 verdict 统计）打分选实现者；评审者强制跨厂商；每一步记录"为什么选它"；
-3. **自动修复**：验证或评审不通过 → 问题清单自动发回实现者修复 → 重验证 → 重评审（至多 2 轮）；
-4. **自动换将**：修复穷尽仍失败 → 自动切换到次优智能体全量重实现一次；
-5. **报告**：结论、评分、路由依据、修复轮数、问题清单。
-
-"手动"模式保留完整人工控制（指定实现者、评审组等），行为同 v1。
-
-## 智能体管理
-
-"智能体管理"页提供：
-
-- **检测**：已装 / 未装、版本号（CLI `--version` / UWP AppxManifest / PowerShell）；
-- **安装 / 升级 / 卸载**：执行 catalog 里配置的命令，日志**实时流式落盘**（边跑边看）；
-  **安装失败时 AI 自动诊断**——真实智能体读取失败日志 + 本机环境给出修正命令，
-  只有命中白名单（`npm install` / `winget install` / `pip install` 前缀）才自动执行，
-  否则留待人工确认；卸载命令由安装命令自动推导，特殊渠道可显式覆盖；
-- **模型配置**：工具默认模型（写回各家配置文件，自动备份 `.bak`）；
-  CodeBee 编排运行时用哪个供应商 / 模型统一在「CLI 绑定」页配置；
-- **编排开关**：决定哪些 CLI 参与任务路由。
-
-Kimi Code / MiMo Code / Grok Build / Pi / DeepSeek Harness / Gemini CLI / CodeBuddy CLI /
-Trae Agent / MiniMax Code / Goose / Mistral Vibe / Cline CLI / GitHub Copilot CLI 的安装命令已内置（均取自
-各工具官方渠道）。若某个条目的安装命令缺失，直接编辑 `data/catalog.json` 补上
-`install` 字段保存后点"重新加载 catalog"即可；点"恢复默认 catalog"可回滚。
-
-MiniMax Code 已接入无头 `mcode exec "提示词"`，可参与编排；它的登录和模型配置由
-MCode 自己管理，CodeBee 不向其中写入外部 API Key。Goose 已纳入检测、版本、安装和
-一键打开，但目前只核验到交互 CLI / ACP 入口，尚未加入自动编排路由；待无头协议完成
-真机验证后再开放派工。
-
-Mistral Vibe 已接入无头 `vibe --prompt "提示词" --auto-approve --output text`，
-可参与编排；安装走 `uv tool install mistral-vibe`，登录和模型配置由 Vibe 自己管理。
-
-Cline CLI 已接入跨平台无头 `cline --yolo "提示词"`，可参与编排；其 npm 包提供
-macOS、Windows 和 Linux 的原生构建，CodeBee 沿用 Cline 自己的登录与模型配置。
-GitHub Copilot CLI 已纳入 macOS、Windows、Linux 的检测、安装和一键打开；官方当前
-只核验到交互式 `copilot`，因此暂不自动派发任务。
-
-## 接入原理（已在本机实测）
-
-| CLI | 无头调用 | 输出解析 |
-|---|---|---|
-| Codex CLI | `codex exec --skip-git-repo-check --json -s <sandbox>`（stdin 传提示词） | JSONL 事件流：`item.completed`=回答，`turn.completed`=token 用量 |
-| Claude Code | `claude -p --output-format json`（stdin 传提示词；自动注入 Git Bash 路径与输出上限） | 单个 JSON：`result` / `total_cost_usd` / `usage` |
-| DeepSeek Harness | `dsh --profile headless "<任务>"`（任务只能走位置参数） | stdout 即最终回答；退出码 0=完成 / 1=错误 |
-| MiniMax Code | `mcode exec "<任务>"` | stdout 即最终回答；退出码 0=完成 |
-| Mistral Vibe | `vibe --prompt "<任务>" --auto-approve --output text` | stdout 即最终回答；退出码 0=完成 |
-| Cline CLI | `cline --yolo "<任务>"` | stdout 即最终回答；退出码 0=完成 |
-
-MiniMax Code 与 Mistral Vibe 的命令形态取自官方 CLI 文档；本机未安装时只会显示为
-可安装条目，不会被自动路由。
-
-- **模型指定因 CLI 而异**：codex/claude 支持运行时注入（env / `-c` 覆盖）；dsh 只认
-  `~/.dsh/settings.yaml` 的配置项，凭据走 `DEEPSEEK_API_KEY` 环境变量（不落盘）；
-  kimi/grok-build/mimo/pi/openclaw 的默认模型落点均已逐一实测内置，配置由 CodeBee
-  托管写入（自动备份）。
-- **协议闸门**：claude 只吃 anthropic wire、codex 只吃 openai responses、dsh 只吃
-  OpenAI 兼容 chat——不匹配的供应商在绑定与起跑前就会被剔除并提示，不会产生
-  「必然失败的注入组合」。
-- 所有子进程：并发读管道防死锁、超时/取消杀整棵进程树（`taskkill /T`）、stdout 全量
-  落盘；输出静默看门狗（默认 600s）防个别 CLI 卡死，超时自动换将接力。
-
-## 目录约定
-
-```
-data/（npm 安装：%APPDATA%\CodeBee 或 ~/.codebee；源码模式：仓库 data/）
-  catalog.json          智能体目录（可手动编辑）
-  orchestration.json    编排偏好（参与编排开关）
-  models.json           供应商 / CLI 绑定（跨厂商模型链）/ 多 KEY
-  flows.json            自定义任务流程
-  settings.json         运行设置（最大并发数）
-  tasks/*.json          任务
-  runs/<run_id>/        每次运行：run.json、steps/*.log、report.md、error.log
-  usage/                用量台账（usage-YYYYMM.jsonl，按月分文件，append-only）
-  skills.json           经验库（教训 + 规范包）
-```
-
-安全约束（内置，勿绕过）：配置路径必须位于用户主目录内；任务工作目录必须是已存在的
-绝对路径；稿件文件名消毒后限制在工作目录内；步骤日志读取禁止目录穿越；
-远程写操作需设备控制权 + 访问令牌。
+~~~bat
+python app\main.py --host 0.0.0.0 --port 8765
+~~~
 
 ## 测试
 
-```bat
-cd tests && python -m unittest discover -p "test_*.py" -v
-python tests\e2e_service.py   :: 起真实服务的端到端（临时数据目录 + 独立端口，零配额）
-node tests\ui_check.mjs       :: Edge headless + CDP 的 UI 交互验证
-node tests\ui_audit.mjs       :: 全页面体检（逐页可见性 + 控制台异常）
-node tests\ui_skin.mjs        :: 皮肤核验（调色板变量对齐 + 换肤/持久化）
-```
+~~~bat
+python -m unittest discover -s tests -p "test_*.py" -v
+python -m unittest discover -s app\tests -p "test_*.py" -v
+~~~
 
-单元测试（解析器/消毒/穿越防护/mock 确定性/流程注册表/跨厂商链/编排者/并发池/
-自更新一致性）+ 端到端（mock 全流程、门禁逻辑、验证失败拦截、服务级 API 全链路），
-全部不消耗真实配额。
+测试应使用临时数据目录和独立端口，不要连接生产服务。
 
-发版必须使用根目录的 `npm run release:gate`：它会阻断脏工作区和全量红灯，
-并从实际 npm 归档解包做 Python import 冒烟；只有闸门通过后，`npm run release`
-才会执行 `npm publish`。
+## 贡献
 
-## 更新日志
-
-见 [CHANGELOG.md](CHANGELOG.md)。应用内「设置 → 关于与更新」可检查更新、查看
-每次更新的内容并一键升级（npm 安装模式）。
-
-## 交流与支持
-
-- **官网**：<https://codebeeagent.com> —— 产品介绍与最新动态。
-- **GitHub**：<https://github.com/Vercel-By-WXP/CodeBee> —— 觉得有用就点个 Star，
-  Issue 和 PR 都欢迎。
-- **QQ 交流群**：扫码加入「Codebee 沟通交流1群」（群号 923647047），使用问题、
-  经验分享都在群里。
-- **捐赠共建生态**：CodeBee 的开发与模型调用成本都靠自掏腰包，如果它帮你赚到
-  了稿费、省下了时间，欢迎捐赠支持（微信 / 支付宝都行）——每一笔都会投入
-  生态建设：教程与文档、新功能研发、社区运营，让 CodeBee 长久生长～
-
-<div>
-<img src="app/ui/assets/community-qr.png" width="280" align="top" alt="Codebee 沟通交流1群 QQ 群二维码（群号 923647047）">
-<img src="app/ui/assets/donate-qr.jpg" width="280" align="top" alt="微信支付收款码">
-<img src="app/ui/assets/donate-alipay.jpg" width="280" align="top" alt="支付宝收款码（支持信用卡 / 花呗）">
-</div>
+请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## License
 
-[MIT](LICENSE)
+MIT，详见 [LICENSE](LICENSE)。

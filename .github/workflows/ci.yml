@@ -1,0 +1,115 @@
+name: Python CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-check:
+    name: Syntax check (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile all Python files
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib
+          import py_compile
+          files = [
+              path for path in pathlib.Path(".").rglob("*.py")
+              if ".git" not in path.parts and "__pycache__" not in path.parts
+          ]
+          for path in files:
+              py_compile.compile(str(path), doraise=True)
+          print("compiled", len(files), "Python files")
+          PY
+
+  tests:
+    name: unittest (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: syntax-check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run root tests when present
+        shell: bash
+        run: |
+          if [ -d tests ]; then
+            python -m unittest discover -s tests -p "test_*.py" -v
+          else
+            echo "No root tests directory; skipping"
+          fi
+      - name: Run app tests when present
+        shell: bash
+        run: |
+          if [ -d app/tests ]; then
+            python -m unittest discover -s app/tests -p "test_*.py" -v
+          else
+            echo "No app/tests directory; skipping"
+          fi
+
+  dependency-scan:
+    name: Standard-library dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reject unexpected third-party imports
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          import pathlib
+          import sys
+
+          stdlib = set(getattr(sys, "stdlib_module_names", ()))
+          stdlib.update({"__future__"})
+          roots = {path.name for path in pathlib.Path("app").iterdir() if path.is_dir()}
+          roots.update(path.stem for path in pathlib.Path("app").glob("*.py"))
+          roots.update({"app"})
+          third_party = []
+          for path in pathlib.Path(".").rglob("*.py"):
+              if ".git" in path.parts or "__pycache__" in path.parts:
+                  continue
+              try:
+                  tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              except (OSError, SyntaxError):
+                  continue
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      names = [item.name.split(".")[0] for item in node.names]
+                  elif isinstance(node, ast.ImportFrom) and node.module:
+                      names = [node.module.split(".")[0]]
+                  else:
+                      continue
+                  for name in names:
+                      if name not in stdlib and name not in roots and name not in {"tests"}:
+                          third_party.append(f"{path}: {name}")
+          if third_party:
+              print("Unexpected imports:")
+              print("\n".join(sorted(set(third_party))))
+              raise SystemExit(1)
+          print("No unexpected third-party imports found")
+          PY
