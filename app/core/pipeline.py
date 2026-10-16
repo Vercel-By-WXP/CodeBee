@@ -4955,6 +4955,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                             branching.mark_stale(workdir, j)
                         except Exception:
                             pass
+                        # 重改稿回登记（同打磨波：摘要与 .codebee 副本跟手，
+                        # 防下一轮 run 开场漂移闸误杀）
+                        try:
+                            story_tracking.refresh_prose(
+                                workdir, j, _read_chapter(workdir, j))
+                        except Exception as exc:
+                            try:
+                                store.update_run(run_id, story_tracking_warning=str(exc)[:300])
+                            except Exception:
+                                pass
                     cp_means2, _cpi2, cp_sum2 = _signing_eval(
                         i, "（2万字检查点复核）")
                     if cp_means2:
@@ -5220,6 +5230,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             refresh_actual_route(
                 impl, implement_reason="全局打磨：%s" %
                 (impl.get("label") or impl.get("id")))
+            # 打磨终稿回登记：章稿在验收提交之后又被改写，不刷新故事追踪的
+            # 正文摘要与 .codebee 章稿副本的话，实现端 CLI 同步过副本的章会
+            # 让同一工作目录下一轮 run 的开场漂移闸连环拒跑（2026-10-16
+            # 神瞳 0020 实案）。失败只记警告，不回滚已落盘的打磨稿。
+            try:
+                story_tracking.refresh_prose(workdir, i, _read_chapter(workdir, i))
+            except Exception as exc:
+                try:
+                    store.update_run(run_id, story_tracking_warning=str(exc)[:300])
+                except Exception:
+                    pass
             # 重评该章
             cj_by_agent = {}
             from . import bench as _bench

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from base import BaseTest
 
@@ -256,6 +257,53 @@ class TestPolishNamedPriority(BaseTest):
         notes = [str(x.get("note") or "") for x in v.get("major_issues") or []]
         self.assertTrue(any(NAMED_ISSUE[:20] in n for n in notes),
                         "重评全挂时旧账必须保留：%s" % notes)
+
+    def test_polish_keeps_story_tracking_in_sync(self):
+        """打磨改稿必须回登记故事追踪（2026-10-16 神瞳实案回归）。
+
+        实现端 CLI 打磨时顺手同步了 .codebee 章稿副本（0020），状态摘要留
+        旧账 → 下一轮 run 开场漂移闸连环拒跑；没同步副本的章（0019）则副本
+        静默落后于终稿。修后两条路都必须收敛：摘要与副本都跟到打磨终稿。
+        """
+        from app.core import pipeline, store
+        from app.core import story_tracking as ST
+        task, run = self._make()
+        critics, impl = self._agents()
+        n_global = {"n": 0}
+
+        def fake_step(run_id, role, agent, prompt, workdir, readonly, ev, *a, **kw):
+            if role.startswith("draft-c"):
+                pipeline._write_chapter(workdir, int(role.split("c")[-1]), "山" * 400)
+                return _ok()
+            if role.startswith("critique-c"):
+                i = int(role.split("c")[-1])
+                # 第 3 章草稿分更低：保证分数补位确定选中它（同点名用例）
+                return _ok(OK8 if (i == 3 or "打磨后" in prompt) else GOOD)
+            if role == "global-critique":
+                n_global["n"] += 1
+                return _ok(_global_weak_named() if n_global["n"] <= len(critics) else GOOD)
+            if role.startswith("polish-c"):
+                i = int(role.split("c")[-1])
+                pipeline._write_chapter(workdir, i, "改" * 400)
+                if i == 1:
+                    # 复刻实案：CLI 把 .codebee 章稿副本也同步成了新稿
+                    p = (Path(str(workdir)) / ".codebee" / "chapters"
+                         / ("%04d" % i) / "prose.md")
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text("改" * 400, encoding="utf-8")
+                # 第 3 章不同步副本（复刻 0019 的形态）
+                return _ok()
+            return _ok()
+
+        self._run_with(task, run, critics, impl, fake_step)
+
+        run = store.get_run(run["id"])
+        self.assertEqual(run["status"], "done", run.get("error"))
+        result = ST.check(self.workdir)
+        self.assertTrue(result["ok"], "打磨改稿后故事追踪不得漂移：%s" % result["errors"])
+        # 未同步副本的章：副本由回登记补齐到打磨终稿
+        copy3 = (Path(str(self.workdir)) / ".codebee" / "chapters" / "0003" / "prose.md")
+        self.assertEqual(copy3.read_text(encoding="utf-8").strip(), "改" * 400)
 
 
 class TestAiderLongPromptRead(BaseTest):

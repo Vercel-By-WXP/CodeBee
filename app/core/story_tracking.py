@@ -179,6 +179,45 @@ def commit_chapter(workdir, chapter_no, outline, prose, *, facts=None, character
     return state
 
 
+def refresh_prose(workdir, chapter_no, prose):
+    """打磨/重改后的章稿回登记：只刷新正文摘要与 .codebee 章稿副本。
+
+    全局打磨波与 2 万字检查点重改都在验收提交之后改写章稿，不走
+    commit_chapter。实现端 CLI 若顺手同步了 .codebee 章稿副本（打磨提示词
+    会让它读旧稿，改完回写并不罕见），状态里留的就是打磨前的旧摘要，同一
+    工作目录的下一轮 run 开场漂移闸必拦（2026-10-16 神瞳实案：0020 连环
+    拒跑）。事实/伏笔等取材字段保持验收时的沉淀不动。幂等：正文未变
+    直接返回。
+    """
+    root = _root(workdir)
+    try:
+        number = int(chapter_no)
+    except (TypeError, ValueError):
+        raise ValueError("章节号无效")
+    prose = _norm_lf(str(prose or "").strip())
+    if not prose:
+        raise ValueError("正文不能为空")
+    state = _load(root)
+    if state is None:
+        raise ValueError("缺少故事追踪状态")
+    record = next((x for x in state["chapters"] if x.get("chapter") == number), None)
+    if record is None:
+        raise ValueError("章节 %04d 未登记，无法回登记打磨稿" % number)
+    digest = _digest(prose)
+    if record.get("prose_digest") == digest:
+        return state
+    record["prose_digest"] = digest
+    record["word_count"] = len(prose)
+    record["committed_at"] = _now()
+    state["state_revision"] = int(state.get("state_revision") or 0) + 1
+    state["updated_at"] = _now()
+    chapter_dir = _CHAPTERS / ("%04d" % number)
+    (root / chapter_dir).mkdir(parents=True, exist_ok=True)
+    (root / chapter_dir / "prose.md").write_bytes((prose + "\n").encode("utf-8"))
+    _save(root, state)
+    return state
+
+
 def _render(root, state):
     derived = root / _DERIVED
     derived.mkdir(parents=True, exist_ok=True)
