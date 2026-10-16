@@ -159,6 +159,17 @@ class ArchCheckTests(BaseTest):
         # a 的惰性导入不会把运行时回调边误报成模块初始化环。
         self.assertEqual(ac.main([]), 0)
 
+    def test_unclassified_module_does_not_create_layer_violation(self):
+        ac = self._checker()
+        _mk_repo(self.tmp, {
+            "app/core/paths.py": "x = 1\n",
+            "app/core/store.py": "x = 1\n",
+            "app/core/runner.py": "x = 1\n",
+            "app/core/plugin.py": "from . import paths\n",
+        })
+        self._wire(ac, self.POLICY, {"version": 1, "violations": []})
+        self.assertEqual(ac.main([]), 0)
+
     def test_real_repo_smoke(self):
         """真仓冒烟：守护器与真仓策略自洽、不崩（rc 0/1 均合法——多代理并行
         写入会实时产生新违规，FAIL 是正常输出；rc==2 才是策略/解析崩坏）。"""

@@ -2,8 +2,9 @@
 """架构基线检查器（借鉴 zai-org/ZCode 开源的 architecture-policy 体系）。
 
 机器可执行的三道守护，防多代理并行写入时代码架构漂移：
-1. **层序单向**：policy.layers 定义的层号小→大单向依赖（L_i 只准 import
-   L_j, j>=i）——数据层不得反手依赖编排层。
+    1. **层序单向**：policy.layers 定义的层号小→大单向依赖（L_i 只准 import
+   L_j, j>=i）——数据层不得反手依赖编排层。未列入策略的模块不参与层序
+   判断，但仍参与依赖环检查，避免把未分层模块误报成最高层。
 2. **禁环**：import 图 DFS 找环；基线里的存量环豁免，新边成环即拦。
 3. **行数基线**：超过 maxFileLines 且超过自己历史最高才违规——存量千行
    文件不被挡路，但「越写越长」的漂移即刻点名。
@@ -124,7 +125,7 @@ def layer_of(policy, mod):
     for lay, mods in policy["layers"].items():
         if mod in mods:
             return int(lay)
-    return 99   # 未分层模块视为最高层（只被禁，不禁人）
+    return None   # 未分层模块不参与层序判断，但仍参与环检测
 
 
 def check_layers(policy, graph):
@@ -132,10 +133,13 @@ def check_layers(policy, graph):
     out = []
     for mod, deps in sorted(graph.items()):
         mi = layer_of(policy, mod)
+        if mi is None:
+            continue
         for d in sorted(deps):
-            if layer_of(policy, d) < mi:
+            di = layer_of(policy, d)
+            if di is not None and di < mi:
                 out.append("layer: %s(L%d) -> %s(L%d) 反向依赖" %
-                           (mod, mi, d, layer_of(policy, d)))
+                           (mod, mi, d, di))
     return out
 
 
