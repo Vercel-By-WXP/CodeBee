@@ -4576,6 +4576,14 @@ def main():
     n_rc = store.recover_orphaned_runs()
     if n_rc:
         print("[CodeBee] 崩溃恢复：%d 个遗留运行标记为 failed（interrupted at startup）" % n_rc)
+    try:
+        from core import checkpoints as _checkpoints
+        _incomplete = _checkpoints.scan_incomplete_runs(store.list_runs(limit=None))
+        if _incomplete:
+            print("[CodeBee] 发现 %d 个未完成任务，可通过恢复接口继续或手动放弃" %
+                  len(_incomplete), flush=True)
+    except Exception:
+        pass
     n_mg = store.recover_interrupted_mgmt()
     if n_mg:
         print("[CodeBee] 崩溃恢复：%d 个遗留管理操作标记为 failed（interrupted at startup）" % n_mg)
