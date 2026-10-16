@@ -31,8 +31,12 @@ jobs:
             dist: dist:win
           - os: macos-15
             platform: darwin
-            arch: universal
-            dist: dist:mac:universal
+            arch: arm64
+            dist: dist:mac:arm64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+            dist: dist:mac:x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
@@ -59,9 +63,7 @@ jobs:
       - name: Prepare bundled Python runtime
         shell: bash
         run: |
-          if [ "${{ matrix.arch }}" = universal ]; then
-            npm run prepare:runtime:mac:universal
-          elif [ "${{ matrix.platform }}" = win32 ]; then
+          if [ "${{ matrix.platform }}" = win32 ]; then
             npm run prepare:runtime:win
           else
             npm run prepare:runtime -- ${{ matrix.platform }} ${{ matrix.arch }}
@@ -77,8 +79,10 @@ jobs:
         run: |
           if [ "${{ matrix.platform }}" = win32 ]; then
             './dist/win-unpacked/CodeBee.exe' --smoke-test
+          elif [ "${{ matrix.arch }}" = arm64 ]; then
+            './dist/mac-arm64/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
           else
-            './dist/mac-universal/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
+            './dist/mac/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
           fi
           test -f dist/packaged-smoke/result.json
       - uses: actions/upload-artifact@v4

@@ -40,15 +40,16 @@ function checkInterpreter(executable, platform, arch, runtimeManifest) {
   console.log(`Python ${version} ${actualPlatform}/${machine}: ssl + sqlite3 + ctypes OK`);
 }
 
-async function prepare(platform = process.platform, arch = process.arch, profile = 'modern') {
+async function prepare(platform = process.platform, arch = process.arch, profile = 'modern', opts = {}) {
   const manifest = manifests[profile];
   if (!manifest) throw new Error(`Unsupported runtime profile: ${profile}`);
   const asset = manifest.assets[`${platform}-${arch}`];
   if (!asset) throw new Error(`Unsupported desktop platform: ${platform}-${arch}`);
   fs.mkdirSync(cacheRoot, { recursive: true });
-  // macOS universal builds keep one native runtime per architecture. Windows
-  // and single-architecture macOS builds retain the historical layout.
-  const universal = platform === 'darwin';
+  // macOS universal builds keep one native runtime per architecture; only the
+  // explicit universal flow uses that layout — per-arch builds keep the
+  // historical runtime/python tree (python/bin/python3) the builder expects.
+  const universal = Boolean(opts.universal) && platform === 'darwin';
   const targetRoot = universal ? path.join(runtimeRoot, 'python', arch) : runtimeRoot;
   const marker = path.join(targetRoot, 'manifest.json');
   if (fs.existsSync(marker)) {
@@ -118,8 +119,8 @@ async function prepare(platform = process.platform, arch = process.arch, profile
 }
 
 async function prepareUniversalDarwin() {
-  await prepare('darwin', 'arm64', 'modern');
-  await prepare('darwin', 'x64', 'modern');
+  await prepare('darwin', 'arm64', 'modern', { universal: true });
+  await prepare('darwin', 'x64', 'modern', { universal: true });
 }
 
 if (require.main === module) {
