@@ -15,7 +15,9 @@ module.exports = async function beforePack(context) {
   const runtimeRoot = path.join(desktopRoot, 'runtime');
   const arches = arch === 'universal' ? ['arm64', 'x64'] : [arch];
   for (const targetArch of arches) {
-    const manifestFile = platform === 'darwin'
+    // Universal builds keep one manifest per arch under python/<arch>;
+    // single-arch builds keep the historical runtime/manifest.json.
+    const manifestFile = platform === 'darwin' && arch === 'universal'
       ? path.join(runtimeRoot, 'python', targetArch, 'manifest.json')
       : path.join(runtimeRoot, 'manifest.json');
     if (!fs.existsSync(manifestFile)) throw new Error('Run the matching prepare:runtime command before packaging.');
