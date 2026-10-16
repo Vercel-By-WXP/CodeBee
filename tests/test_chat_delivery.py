@@ -156,6 +156,29 @@ class ChatDeliveryTests(BaseTest):
         self.assertEqual(code, 409)
         self.assertEqual(self.store.get_run(first["run_id"])["status"], "running")
 
+    def test_stale_guidance_routes_to_inherited_pending_message(self):
+        message = self.store.add_message(self.run["id"], "Guide me now")
+        self.store.update_run(self.run["id"], status="cancelled")
+        _, _, followup = self.store.retry_task(self.task["id"])
+        self.store.update_run(followup["id"], status="running")
+        code, result = self.submit({"message_id": message["id"], "delivery": "now"})
+        self.assertEqual(code, 200)
+        self.assertEqual(result["delivery"], "now")
+        self.assertNotEqual(result["run_id"], self.run["id"])
+        current = self.store.get_run(result["run_id"])
+        self.assertEqual(current["messages"][0]["id"], message["id"])
+
+    def test_stale_guidance_retries_when_newer_terminal_run_has_no_copy(self):
+        self.store.update_run(self.run["id"], status="done")
+        newer = self.store.create_run("orchestration", "Newer", task_id=self.task["id"])
+        self.store.update_run(newer["id"], status="done")
+        message = self.store.add_message(self.run["id"], "Retry this queued message")
+        code, result = self.submit({"message_id": message["id"], "delivery": "now"})
+        self.assertEqual(code, 200)
+        self.assertEqual(result["delivery"], "sent")
+        current = self.store.get_run(result["run_id"])
+        self.assertEqual(current["messages"][0]["id"], message["id"])
+
     def test_stale_queue_routes_to_latest_turn(self):
         self.store.update_run(self.run["id"], status="done")
         _, first = self.submit({"text": "New turn"})

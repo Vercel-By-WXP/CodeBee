@@ -1678,9 +1678,12 @@ async function api(path, opts) {
           if (await uiConfirm(t("「{0}」正在控制，接管后自动重试「{1}」？",
             holder, operationLabel(path, { ...opts, operation: true }) || t("提交操作")),
             { ok: t("接管并重试") })) {
-            await ctrlAction("acquire", true);
+            const acquired = await ctrlAction("acquire", true, true);
             api._ctrlPrompting = false;
-            return api(path, Object.assign({}, opts, { _ctrlRetry: true }));
+            if (acquired) {
+              return api(path, Object.assign({}, opts, { _ctrlRetry: true }));
+            }
+            throw new Error(t("接管控制权失败，请点击右上角锁图标接管后重试"));
           }
         } finally {
           api._ctrlPrompting = false;
@@ -2469,11 +2472,12 @@ function renderCtrl() {
   el.setAttribute("aria-label", tip);
 }
 
-async function ctrlAction(action, force) {
+async function ctrlAction(action, force, silent = false) {
   try {
     const d = await api("/api/control", { method: "POST", body: JSON.stringify({ action, force: !!force }) });
     setControl(d.control);
-  } catch (e) { toast(e.message, true); }
+    return !!d.control;
+  } catch (e) { if (!silent) toast(e.message, true); return false; }
 }
 
 async function ctrlClick() {
@@ -12371,6 +12375,12 @@ async function chatPendingAction(event) {
     }
   } catch (error) {
     toast(error.message, true);
+    if (error.status === 409 && error.data && error.data.run_id && chatRunId === viewedRun) {
+      // A stale tab can race a newer follow-up run. Keep the queued message
+      // intact, but move the user to the run the server identified so the
+      // next click acts on the current conversation.
+      jumpToRun(error.data.run_id);
+    }
     if (chatRunId === viewedRun && S.lastRun) {
       chatSig = ""; chatLiveSig = "";
       renderChat(S.lastRun, ["running", "queued"].includes(S.lastRun.status));
@@ -12419,7 +12429,14 @@ window.chatSend = async function (delivery = "queue") {
         if (d.run && chatRunId === submittedRun) renderChat(d.run, d.run.status === "running" || d.run.status === "queued");
       } catch (e) { /* Delivery succeeded; a timeline refresh must not imply send failure. */ }
     }
-  } catch (e) { toast(t("发送失败：") + e.message, true); }
+  } catch (e) {
+    if (e.status === 409 && e.data && e.data.run_id && chatRunId === submittedRun) {
+      toast(t("对话已进入新一轮，已切换到最新会话，请重新发送"), true);
+      jumpToRun(e.data.run_id);
+    } else {
+      toast(t("发送失败：") + e.message, true);
+    }
+  }
   finally { chatSending = false; syncChatSendControls(); }
 };
 

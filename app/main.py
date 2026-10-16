@@ -3498,10 +3498,29 @@ class Handler(BaseHTTPRequestHandler):
         latest_turn = active_latest or (latest[0] if latest else None)
         if latest_turn and latest_turn["id"] != run_id:
             if delivery == "now":
-                return self._json(409, {"error": "对话已进入新一轮，请刷新后再立即发送",
-                                        "run_id": latest_turn["id"]})
-            run = latest_turn
-            run_id = run["id"]
+                # A pending message may have been inherited into the active
+                # follow-up run while this browser still shows the old run.
+                # Resolve that copy before rejecting the guidance request so
+                # the queue's "引导" action remains usable across turns.
+                message_id = body.get("message_id")
+                inherited = (message_id and
+                             store.pending_message(latest_turn["id"], message_id))
+                if inherited:
+                    run = latest_turn
+                    run_id = run["id"]
+                elif (latest_turn.get("status") not in ("queued", "running")
+                      and message_id and store.pending_message(run_id, message_id)):
+                    # The message can still be pending on the run shown by an
+                    # older tab even though a newer terminal run exists. Keep
+                    # that source run so retry_task inherits the message into
+                    # a fresh turn instead of rejecting a valid queue action.
+                    pass
+                else:
+                    return self._json(409, {"error": "对话已进入新一轮，请刷新后再立即发送",
+                                            "run_id": latest_turn["id"]})
+            else:
+                run = latest_turn
+                run_id = run["id"]
         active = run.get("status") in ("queued", "running")
         message_id = body.get("message_id")
         existing = None
