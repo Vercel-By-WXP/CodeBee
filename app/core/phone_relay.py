@@ -93,17 +93,17 @@ class Connector:
     def view(self):
         with self.lock:
             pair = self.pair if self.pair and self.pair["expires"] > time.time() * 1000 else None
-            # Keep a cloud-confirmed code visible while the connector is
-            # reconnecting.  The pairing record remains in the Durable Object
-            # until expiry, so hiding it on a transient socket flap only makes
-            # the desktop QR disappear and forces the user to start over.
+            # Show the code as soon as it is generated.  Cloud confirmation is
+            # still tracked separately in pair_ready, but waiting for that
+            # acknowledgement made the button look dead whenever the relay
+            # was connecting or briefly reconnecting.
             ready = bool(pair and self.pair_ready)
-            code = self.device + "." + pair["code"] if ready else ""
+            code = self.device + "." + pair["code"] if pair else ""
             return {"enabled": True, "connected": self.connected, "error": self.error,
                     "entry": self.base_url, "device": self.device,
                     "pair_ready": ready,
-                    "pair_url": self.base_url + "/relay/portal#pair=" + code if ready else "",
-                    "pair_code": code, "expires_at": pair["expires"] if ready else 0}
+                    "pair_url": self.base_url + "/relay/portal#pair=" + code if pair else "",
+                    "pair_code": code, "expires_at": pair["expires"] if pair else 0}
 
     def new_pair(self):
         with self.lock:

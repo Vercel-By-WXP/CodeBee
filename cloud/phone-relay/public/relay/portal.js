@@ -14,17 +14,32 @@ function connectionCode(value) {
 
 async function pairCurrentLink(value) {
   status.className = "";
-  status.textContent = "正在连接你的电脑…";
+  status.textContent = "正在等待电脑同步配对码…";
   try {
     const body = connectionCode(value);
-    const response = await fetch("/relay/pair", { method: "POST", credentials: "same-origin",
-      headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "配对失败，请重新生成连接码。");
-    // Existing tokens belonged to a previous computer; the relay uses its own
-    // HttpOnly device session and injects the paired computer's local token.
-    localStorage.removeItem("orch.token");
-    location.replace("/");
+    let failure = "配对失败，请重新生成连接码。";
+    // The desktop shows the QR immediately, while the outbound connector may
+    // need a few seconds to write the code into its Durable Object. Retry the
+    // transient 401/429 responses so a fast scan does not look like a dead QR.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const response = await fetch("/relay/pair", { method: "POST", credentials: "same-origin",
+        headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) {
+        // Existing tokens belonged to a previous computer; the relay uses its own
+        // HttpOnly device session and injects the paired computer's local token.
+        localStorage.removeItem("orch.token");
+        location.replace("/");
+        return;
+      }
+      failure = result.error || failure;
+      if (response.status !== 401 && response.status !== 429) throw new Error(failure);
+      if (attempt < 7) {
+        status.textContent = "电脑正在同步，马上重试…";
+        await new Promise(resolve => setTimeout(resolve, 700 + attempt * 300));
+      }
+    }
+    throw new Error(failure);
   } catch (error) {
     status.textContent = error.message || "网络连接失败，请稍后重试。";
     status.className = "error";

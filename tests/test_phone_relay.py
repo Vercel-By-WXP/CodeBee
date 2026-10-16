@@ -62,6 +62,8 @@ class ConnectorPolicyTest(unittest.TestCase):
             connector = phone_relay.Connector(18891, config)
             first = connector.new_pair()
             self.assertFalse(first["pair_ready"])
+            self.assertTrue(first["pair_url"])
+            self.assertTrue(first["pair_code"])
             with connector.lock:
                 connector.pair_ready = True
             confirmed = connector.view()
