@@ -5,7 +5,7 @@
 - 根 npm 包 `package.json` 与 `desktop/package.json` 当前均为 `0.1.116`。
 - 单一版本源为根目录 `VERSION`；`python scripts/sync_version.py` 检查两者一致，`--sync` 从 VERSION 回写。
 - `cloud/phone-relay/package.json` 是独立的 Cloudflare Worker（当前 `1.0.0`），保持独立版本线，不随 CodeBee 桌面/npm 自动升级。
-- npm 已有 `bin/tutti.js`，运行时探测 Python 3.8+，不含 `postinstall`，不会在安装时执行网络或写入用户配置；`files` 白名单限制归档内容。
+- npm 已有 `bin/tutti.js`，运行时探测 Python 3.8+，不含 `postinstall`，不会在安装时执行网络或写入用户配置；`files` 白名单限制归档内容。发布工作流额外执行 `npm pack --dry-run` 元数据闸门，确认 `npx codebee` 的 bin 入口存在。
 - 桌面端已有 GitHub Release 自更新：先校验 Release manifest 的 SHA-256，再下载对应平台安装包；版本升级不删除用户数据。桌面 About 面板标记“桌面预览版”。
 - 桌面 CI 在 `v*` tag 构建 Windows/macOS/Linux；现在同步生成 `SHA256SUMS.txt` 与 `SHA512SUMS.txt`。
 
@@ -13,7 +13,7 @@
 
 1. 修改 `VERSION`、`CHANGELOG.md`，运行 `python scripts/sync_version.py --sync`。
 2. 运行 `python scripts/release_gate.py` 和桌面测试；确认工作树中没有未完成的代理制品。
-3. 推送匹配的 `v<版本>` tag。`npm-publish.yml` 校验 tag 与 VERSION 后使用 npm provenance 发布；`desktop-preview.yml` 构建预览 Release 并上传校验和。
+3. 推送匹配的 `v<版本>` tag。`npm-publish.yml` 校验 tag 与 VERSION 后使用 npm provenance 发布；`desktop-preview.yml` 构建预览 Release、从该版本 CHANGELOG 生成 Release Notes 并上传校验和。
 4. 发布后核对 `npm view codebee version`、GitHub Release 资产和官网 `/sitemap.xml`。npm/GitHub/Cloudflare 实际可达性在当前环境未代为验证【需确认】。
 
 ## 桌面预览、签名和反馈
@@ -27,7 +27,7 @@ Windows 代码签名证书、macOS Developer ID/公证凭据不是仓库内容�
 
 Cloudflare Worker 静态资产现在提供 `/robots.txt`、`/sitemap.xml`、`/docs/`、`/compare/`、`/feedback/`。中英文入口页补充了 canonical、description、Open Graph 和包含关键词的 title。首页演示建议使用 30 秒 GIF/视频：目标输入 → CLI 路由 → 跨厂商评审 → 最终报告，放在根官网首页首屏下方；当前 relay 只是手机连接页，演示媒体和真实案例尚未提供【需确认】。
 
-Google Search Console 与 Bing Webmaster Tools 需要站点所有权验证后手工提交 sitemap，不能在仓库内代为完成【需确认】。
+官网不维护第二个产品版本号，页面始终展示能力与最新 Release 链接，因此不存在网页版本漂移；桌面/npm/Release 的版本一致性由 `VERSION` 与 tag 闸门负责。Google Search Console 与 Bing Webmaster Tools 需要站点所有权验证后手工提交 sitemap，不能在仓库内代为完成【需确认】。
 
 ## 渠道优先级
 

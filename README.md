@@ -57,6 +57,10 @@ CodeBee 不安装或替换这些 CLI。请先按各项目官方文档完成登�
 - [CONTRIBUTING.md](CONTRIBUTING.md)：开发和贡献流程
 - [SECURITY.md](SECURITY.md)：安全设计和漏洞报告
 
+## 反馈
+
+预览版问题、使用卡点和功能建议请统一提交到 [GitHub Issues](https://github.com/Vercel-By-WXP/CodeBee/issues/new/choose)。请附上 CodeBee 版本、系统、CLI 版本和已脱敏的复现信息；桌面版与官网使用同一入口。
+
 ## 本地 Web UI 安全说明
 
 本地 Web UI 默认仅监听 127.0.0.1，不会暴露到局域网。如需从其他设备访问，请自行评估安全风险，并显式传入 `--host 0.0.0.0`，同时配置令牌、反向代理或其他访问控制。

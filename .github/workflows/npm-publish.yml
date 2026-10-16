@@ -30,6 +30,11 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Check VERSION and package metadata
         run: python scripts/sync_version.py
+      - name: Verify npm archive metadata
+        run: |
+          pack_json="$RUNNER_TEMP/codebee-pack.json"
+          npm pack --dry-run --json --ignore-scripts > "$pack_json"
+          PACK_JSON="$pack_json" node -e "const p=require('./package.json'); if (!p.bin || p.bin.codebee !== 'bin/tutti.js') throw new Error('codebee bin missing'); if (p.scripts && p.scripts.postinstall) throw new Error('postinstall is not allowed'); const fs=require('fs'); const info=JSON.parse(fs.readFileSync(process.env.PACK_JSON,'utf8')); if (!Array.isArray(info) || info[0].name !== 'codebee') throw new Error('unexpected npm archive');"
       - name: Validate tag version
         if: startsWith(github.ref, 'refs/tags/v')
         run: test "${GITHUB_REF_NAME#v}" = "$(cat VERSION)"
