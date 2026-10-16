@@ -103,11 +103,21 @@ def _archive_members(archive: Path) -> list[str]:
 def validate_package_members(members: Iterable[str]) -> None:
     """Reject package content that should never reach the registry."""
     forbidden_parts = ("/.git/", "/tests/", "/data/", "/.mimosa/",
-                       "/__pycache__/", "/.pytest_cache/")
+                       "/.mimocode/", "/.workbuddy/", "/.zcode/",
+                       "/__pycache__/", "/.pytest_cache/", "/.playwright-cli/",
+                       "/.ui-shots/", "/.codebee/", "/output/", "/outputs/")
     bad = []
     for name in members:
         normalized = "/" + name.replace("\\", "/").lstrip("/") + "/"
-        if any(part in normalized for part in forbidden_parts):
+        parts = normalized.strip("/").split("/")
+        scratch = any(part.startswith((".tmp", "tmp_")) for part in parts)
+        generated_file = parts[-1].endswith((".log", ".patch", ".diff"))
+        browser_shot = ("/app/" in normalized and len(parts) >= 2
+                        and parts[-2] == "app" and
+                        (parts[-1].startswith("browser-") or
+                         parts[-1] == "current-browser.png"))
+        if (any(part in normalized for part in forbidden_parts)
+                or scratch or generated_file or browser_shot):
             bad.append(name)
     if bad:
         raise GateError("npm 包含禁止发布内容：\n%s" % "\n".join(bad[:50]))

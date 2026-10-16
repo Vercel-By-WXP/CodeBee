@@ -104,7 +104,9 @@ class TestQualityGates(BaseTest):
                 "type": "serial_novel", "title": "闸门-崩溃恢复", "mode": "manual",
                 "implementer": "fakecli", "critics": ["mock-a"],
                 "goal": "写一部短篇连载", "workdir": str(self.workdir),
-                "serial": {"chapters": 2, "words_per_chapter": 800},
+                # This fixture exercises crash recovery, not the independent
+                # opening assessment (covered by test_novel_signing).
+                "serial": {"chapters": 2, "words_per_chapter": 800, "opening_gate": False},
             })
             run = store.create_run("orchestration", task["title"], task_id=task["id"])
             pipeline.execute_run(run["id"])

@@ -69,7 +69,7 @@ class PluginTests(unittest.TestCase):
             data = Path(td) / "data"
             with patch.object(plugins.paths, "DATA_DIR", data), \
                  patch.object(plugins.market.paths, "DATA_DIR", data):
-                result, err = plugins.install("sample-plugin", roots=[root])
+                result, err = plugins.install("sample-plugin", roots=[root], grants=["Write"])
                 self.assertIsNone(err)
                 self.assertTrue(result["ok"])
                 self.assertEqual(result["skill_count"], 1)
@@ -95,7 +95,7 @@ class PluginTests(unittest.TestCase):
                  patch.object(plugins.market.paths, "DATA_DIR", data), \
                  patch.object(settings, "load", return_value={"mcp_servers": "[]"}), \
                  patch.object(mcp_client, "_SETTINGS_TEXT", inject):
-                result, err = plugins.install("sample-plugin", roots=[root])
+                result, err = plugins.install("sample-plugin", roots=[root], grants=["Write"])
                 self.assertIsNone(err)
                 self.assertTrue(result["has_mcp"])
                 self.assertEqual(json.loads(mcp_client._settings_text()), [])

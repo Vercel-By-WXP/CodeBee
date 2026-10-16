@@ -14,6 +14,7 @@ store 变成整个 do_POST 的局部名：其余所有触碰 store 的写路由�
 """
 import json
 import os
+import socket
 import sys
 import tempfile
 import threading
@@ -22,30 +23,34 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PORT = 18944
+with socket.socket() as _port_probe:
+    _port_probe.bind(("127.0.0.1", 0))
+    PORT = _port_probe.getsockname()[1]
 
 sys.path.insert(0, str(ROOT / "app"))
 
-_tmp = Path(tempfile.mkdtemp(prefix="tutti-500guard-"))
-_data = _tmp / "data"
-_data.mkdir()
-(_data / "catalog.json").write_text(json.dumps([
-    {"id": "fakeA", "name": "FakeA", "cli_group": "installable",
-     "detect": {"cli": "ping"},
-     "install": "ping -n 1 127.0.0.1", "upgrade": "ping -n 3 127.0.0.1",
-     "default_enabled": False},
-], ensure_ascii=False), encoding="utf-8")
-os.environ["TUTTI_DATA"] = str(_data)
-# 只加载种盘 catalog：默认合并会把真实 CLI 条目带进来，一键升级类接口
-# 会把真机升级真跑一遍（2026-09-26 e2e_upgrade_all 实弹案）
-os.environ["TUTTI_TEST_NO_DEFAULT_CATALOG"] = "1"
-os.environ["TUTTI_PET_DISABLED"] = "1"
-_fake_home = tempfile.mkdtemp(prefix="tutti-home-")
-os.environ["USERPROFILE"] = _fake_home
-os.environ["HOME"] = _fake_home
+if __name__ == "__main__":
+    _tmp = Path(tempfile.mkdtemp(prefix="tutti-500guard-"))
+    _data = _tmp / "data"
+    _data.mkdir()
+    (_data / "catalog.json").write_text(json.dumps([
+        {"id": "fakeA", "name": "FakeA", "cli_group": "installable",
+         "detect": {"cli": "ping"},
+         "install": "ping -n 1 127.0.0.1", "upgrade": "ping -n 3 127.0.0.1",
+         "default_enabled": False},
+    ], ensure_ascii=False), encoding="utf-8")
+    os.environ["TUTTI_DATA"] = str(_data)
+    # 只加载种盘 catalog：默认合并会把真实 CLI 条目带进来，一键升级类接口
+    # 会把真机升级真跑一遍（2026-09-26 e2e_upgrade_all 实弹案）
+    os.environ["TUTTI_TEST_NO_DEFAULT_CATALOG"] = "1"
+    os.environ["TUTTI_PET_DISABLED"] = "1"
+    _fake_home = tempfile.mkdtemp(prefix="tutti-home-")
+    os.environ["USERPROFILE"] = _fake_home
+    os.environ["HOME"] = _fake_home
 
-import main as app_main  # noqa: E402  进程内起服务（stdin 探针同款已验证）
-from core import store   # noqa: E402
+    import main as app_main  # noqa: E402  进程内起服务（stdin 探针同款已验证）
+    from core import store   # noqa: E402
+
 
 
 def _req(method, path, payload=None, timeout=15):
@@ -131,6 +136,23 @@ class HttpRouteGuard(unittest.TestCase):
         finally:
             conn.close()
             remote.set_trusted_proxy(False)
+
+
+class HttpRouteGuardProcess(unittest.TestCase):
+    """Run the HTTP fixture in its own process so discovery cannot alter home/data."""
+
+    def runTest(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-X", "utf8", str(Path(__file__).resolve()), "-v"],
+            cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+def load_tests(loader, tests, pattern):
+    case = HttpRouteGuard if __name__ == "__main__" else HttpRouteGuardProcess
+    return loader.loadTestsFromTestCase(case)
 
 
 if __name__ == "__main__":

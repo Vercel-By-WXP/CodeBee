@@ -335,8 +335,9 @@ class TestSerialFallbackRouteReturnsToPrimary(BaseTest):
         agents = [primary, backup, critic]
         task = store.create_task({
             "type": "serial_novel", "title": "作者回切", "goal": "写两章",
+            "plan_mode": True,
             "workdir": str(self.workdir), "threshold": 5.0,
-            "serial": {"chapters": 2, "words_per_chapter": 300},
+            "serial": {"chapters": 2, "words_per_chapter": 300, "opening_gate": False},
         })
         task = dict(task)
         task["difficulty"] = "default"
@@ -350,6 +351,8 @@ class TestSerialFallbackRouteReturnsToPrimary(BaseTest):
         ]}
 
         def fake_step(_run_id, role, agent, *_args, **_kwargs):
+            if role.startswith("draft-c"):
+                self.assertIn("## 计划模式", _args[0])
             if role == "draft-c1" and agent["id"] == "author-a":
                 return {"ok": False, "error": "primary unavailable", "text": "", "sid": ""}
             if role.startswith("draft-c"):
@@ -400,7 +403,7 @@ class TestSerialDelayedFallbackRoute(BaseTest):
         task = store.create_task({
             "type": "serial_novel", "title": "延迟落盘归因", "goal": "写一章",
             "workdir": str(self.workdir), "threshold": 5.0,
-            "serial": {"chapters": 1, "words_per_chapter": 300},
+            "serial": {"chapters": 1, "words_per_chapter": 300, "opening_gate": False},
         })
         task = dict(task)
         task["difficulty"] = "default"
@@ -424,7 +427,10 @@ class TestSerialDelayedFallbackRoute(BaseTest):
         with patch.object(pipeline.planner, "make_serial_outline", return_value=outline), \
                 patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, *_: a), \
                 patch.object(pipeline, "_run_step", side_effect=fake_step), \
-                patch.object(pipeline.time, "sleep", side_effect=delayed_write):
+                patch.object(pipeline.time, "sleep", side_effect=delayed_write), \
+                patch.object(pipeline.mocks, "critique", return_value={
+                    "scores": {dim: 9.0 for dim in task["rubric"]},
+                    "issues": [], "summary": "Pass route attribution fixture"}):
             pipeline._run_serial_review(
                 run, task, agents, NoWaitEvent(), {}, "auto", [critic],
                 primary, {"author": "初始主选", "critics": "mock 评审"},

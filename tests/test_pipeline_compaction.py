@@ -24,7 +24,7 @@ class _CompactionEnv:
         if self.on:
             os.environ["TUTTI_COMPACTION"] = "1"
         else:
-            os.environ.pop("TUTTI_COMPACTION", None)
+            os.environ["TUTTI_COMPACTION"] = "0"
         return self
 
     def __exit__(self, *a):
@@ -48,13 +48,16 @@ class TestPipelineCompactionWiring(BaseTest):
     def setUp(self):
         super().setUp()
         from app.core.token_meter import token_meter
+        from app.core import store
+        task = store.create_task({"type": "code", "goal": "压缩接线", "workdir": str(self.workdir)})
+        self.task_id = task["id"]
         self._meter = token_meter
 
-    def test_default_off_no_session_file(self):
-        """默认关：_run_step 走原路径，不产生 session.jsonl。"""
+    def test_disabled_does_not_create_compaction_session(self):
+        """显式关闭时不创建压缩专用会话文件。"""
         from app.core import pipeline, store
         with _CompactionEnv(on=False):
-            run = store.create_run("orchestration", "t")
+            run = store.create_run("orchestration", "t", task_id=self.task_id)
             res = pipeline._run_step(run["id"], "draft", _real_agent(),
                                      "网文主编 出大纲", str(self.workdir),
                                      readonly=True, ev=None)
@@ -66,7 +69,7 @@ class TestPipelineCompactionWiring(BaseTest):
         """开启：_run_step 走 execute_step 路径，session.jsonl 有事件、meter 有累计。"""
         from app.core import pipeline, store
         with _CompactionEnv(on=True):
-            run = store.create_run("orchestration", "t2")
+            run = store.create_run("orchestration", "t2", task_id=self.task_id)
             res = pipeline._run_step(run["id"], "draft", _real_agent(),
                                      "网文主编 出大纲", str(self.workdir),
                                      readonly=True, ev=None)
@@ -85,7 +88,7 @@ class TestPipelineCompactionWiring(BaseTest):
         """同一 run_id 两次取 session 返回同一实例且事件累积。"""
         from app.core import pipeline, store
         with _CompactionEnv(on=True):
-            run = store.create_run("orchestration", "t3")
+            run = store.create_run("orchestration", "t3", task_id=self.task_id)
             pipeline._run_step(run["id"], "draft", _real_agent(),
                                "网文主编", str(self.workdir), readonly=True, ev=None)
             s1 = pipeline._get_session(run["id"])

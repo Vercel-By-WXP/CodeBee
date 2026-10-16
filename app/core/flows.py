@@ -167,6 +167,8 @@ def _norm_serial(serial):
                "words_per_chapter": max(500, min(8000, int(serial.get("words_per_chapter") or 2500)))}
     except Exception:
         return None
+    if isinstance(serial.get("opening_gate"), bool):
+        out["opening_gate"] = serial["opening_gate"]
     # 分卷（可选）：显式卷表优先，其次每卷章数。流程模板里可以预置，
     # 任务级 payload 仍可覆盖/关闭（0 = 不分卷）。
     spec = volumes.norm_spec(serial.get("volumes"))

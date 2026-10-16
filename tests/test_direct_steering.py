@@ -57,7 +57,8 @@ class TestDirectiveInjection(BaseTest):
 
     def runTest(self):
         from app.core import pipeline, runner, store
-        run = store.create_run("orchestration", "注入测试")
+        task = store.create_task({"type": "code", "goal": "注入测试", "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", "注入测试", task_id=task["id"])
         rid = run["id"]
         store.add_message(rid, "把结尾改成开放式", sender="注入测试")
         store.add_message(rid, "", sender="注入测试",
@@ -271,7 +272,8 @@ class TestPauseGate(BaseTest):
     def runTest(self):
         import threading
         from app.core import pipeline, runner, store
-        run = store.create_run("orchestration", "闸门测试")
+        task = store.create_task({"type": "code", "goal": "闸门测试", "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", "闸门测试", task_id=task["id"])
         rid = run["id"]
         agent = {"id": "a1", "kind": "codex", "mode": "real", "command": "codex",
                  "env": {"TUTTI_TEST_SELFCONFIG": "1"}}  # 自带配置：过死链闸门

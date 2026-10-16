@@ -26,6 +26,39 @@ class TestReleaseGate(BaseTest):
         validate_package_members(["package/app/main.py", "package/bin/tutti.js",
                                   "package/README.md"])
 
+    def test_package_member_validation_rejects_session_artifacts(self):
+        from scripts.release_gate import GateError, validate_package_members
+
+        for member in (
+            "package/app/output/_probe_fq_submit.py",
+            "package/app/outputs/state.json",
+            "package/app/.playwright-cli/page.yml",
+            "package/app/.ui-shots/page.png",
+            "package/app/.codebee/session.json",
+            "package/app/.mimocode/session.json",
+            "package/app/.workbuddy/session.json",
+            "package/app/.zcode/session.json",
+            "package/app/.tmp-backup/main.py",
+            "package/app/tmp_probe.py",
+            "package/app/debug.log",
+            "package/app/session.patch",
+            "package/app/session.diff",
+            "package/app/browser-workspace.png",
+            "package/app/current-browser.png",
+            "package\\app\\output\\state.json",
+        ):
+            with self.subTest(member=member), self.assertRaises(GateError):
+                validate_package_members(["package/app/main.py", member])
+
+    def test_package_member_validation_preserves_runtime_assets(self):
+        from scripts.release_gate import validate_package_members
+
+        validate_package_members([
+            "package/app/core/tool_outputs.py", "package/app/core/browser.py",
+            "package/app/pet_bee.png", "package/app/ui/icons/icon-192.png",
+            "package/app/ui/assets/workbench-reference.png",
+        ])
+
     def test_pack_json_accepts_npm_array(self):
         from scripts.release_gate import _pack_json
 

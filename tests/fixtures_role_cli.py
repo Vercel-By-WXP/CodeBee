@@ -32,7 +32,7 @@ if hint:
     except OSError:
         pass
 
-if "网文主编" in blob and "严格的评审" not in blob:
+if ("网文主编" in blob or "你是小说结构编辑" in blob) and "严格的评审" not in blob:
     print(json.dumps({
         "book_title": "闸门测试之书",
         "chapters": [
@@ -50,10 +50,11 @@ else:
     m = re.search(r"chapter-(\d+)\.md", blob)
     if m:
         # 起草/修订角色：向 cwd（=任务工作目录）落盘足量章稿（≥0.6×wpc 验收线）
-        body = "第 %s 章正文。风雪落在长街上，主角握紧了拳，往事一幕幕翻涌，" \
-               "他记得那句话，也记得那块玉佩，路还长，账总要算，天亮之前他必须出城，" \
-               "马蹄声碎，灯火渐远。" % m.group(1)
+        body = "\n\n".join(
+            "第 %s 段风雪落在长街上，主角握紧了拳，第 %s 处线索指向城外，"
+            "他记得第 %s 页账册上的名字，循着第 %s 盏灯继续前行。" % (j, j, j, j)
+            for j in range(1, 31))
         with open(m.group(0), "w", encoding="utf-8") as f:
-            f.write("# 第 %s 章\n\n%s\n" % (m.group(1), body * 30))
+            f.write("# 第 %s 章\n\n%s\n" % (m.group(1), body))
     else:
         print(".role-cli non-json output for this role.")

@@ -35,3 +35,14 @@ tmp_*
 /Microsoft/
 /app/output/
 tmp/
+
+# Agent/session scratch artifacts. Keep temporary snapshots out of commits.
+.tmp*
+tmpcheck_*
+/.pipeline.diff
+/outputs/
+/ui-*.png
+/app/browser-*.png
+/app/current-browser.png
+/.mimocode/
+/.workbuddy/

@@ -125,7 +125,7 @@ class PublishReadinessTests(unittest.TestCase):
         self.assertNotIn(106, [p["chapter_no"] for p in view["items"]])
 
     def test_binding_another_book_clears_old_progress(self):
-        ok, err = manager.register_book("child", "fanqie", "另一书", "b2")
+        ok, err = manager.register_book("child", "fanqie", "另一书", "7123456789012345679")
         self.assertTrue(ok, err)
         self.assertNotIn("confirmed_published_through", ledger.book_for("child", "fanqie"))
         self.assertNotIn("remote_published_nos", ledger.book_for("child", "fanqie"))

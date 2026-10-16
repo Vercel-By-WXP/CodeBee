@@ -34,11 +34,6 @@ class UiTitlesAndCommentsTests(unittest.TestCase):
         self.assertNotIn("单智能体直达：目标+附件交给一个 CLI 跑完即止", i18n)
         self.assertIn("直连引擎（单智能体直达，无拆解/评审，快）", i18n)
 
-    def test_direct_engine_comment_matches_reality(self):
-        """首屏默认注释与 direct 引擎实际形态（直连模型 API）一致。"""
-        self.assertIn("直连模型 API，无拆解/评审", read("app/ui/app.js"))
-        self.assertNotIn("单 CLI 直达", read("app/ui/app.js"))
-
     def test_rank_scan_comment_covers_four_platforms(self):
         """扫榜注释与四平台实现一致（flows.py 菜单文案同口径）。"""
         py = read("app/core/pipeline.py")

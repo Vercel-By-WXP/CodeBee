@@ -34,7 +34,8 @@ class TestUpgradeAllTargets(BaseTest):
             self.manager._UPDATE_CACHE.update(self._old_cache)
 
     def _seed(self, entries, detected, update_cache=None):
-        self.manager.catalog = types.SimpleNamespace(load=lambda: entries)
+        self.manager.catalog = types.SimpleNamespace(
+            load=lambda: entries, command_for=self._old_catalog.command_for)
         self.manager.detect_all = lambda force=False: detected
         with self.manager._LOCK:
             self.manager._UPDATE_CACHE.clear()

@@ -71,7 +71,24 @@ def module_deps(py_file):
         return name, deps, [("syntax", "%s 解析失败 %s" % (name, e))]
     in_core = py_file.relative_to(ROOT).parts[:1] == ("app",) and \
         "core" in py_file.relative_to(ROOT).parts[:2]
-    for node in ast.walk(tree):
+    # 只把模块初始化阶段的导入纳入架构图。函数/方法内部的导入是
+    # 项目刻意使用的惰性依赖（常用于打断运行时循环），把它们当成模块
+    # 级边会把已经隔离的运行时路径重新拼成假环。模块顶层的 try/if
+    # 仍通过递归保留；函数、类和 lambda 的代码块不会进入这里。
+    def top_level_nodes(nodes):
+        for node in nodes:
+            yield node
+            if isinstance(node, (ast.If, ast.Try, ast.With, ast.AsyncWith)):
+                for child in getattr(node, "body", ()):
+                    yield from top_level_nodes((child,))
+                for child in getattr(node, "orelse", ()):
+                    yield from top_level_nodes((child,))
+                for handler in getattr(node, "handlers", ()):
+                    yield from top_level_nodes(handler.body)
+                for child in getattr(node, "finalbody", ()):
+                    yield from top_level_nodes((child,))
+
+    for node in top_level_nodes(tree.body):
         if isinstance(node, ast.ImportFrom) and node.level == 1:
             if node.module:
                 deps.add(node.module.split(".")[0])

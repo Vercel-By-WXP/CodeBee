@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "app"))
 
 
 class BaseTest(unittest.TestCase):
@@ -84,6 +85,13 @@ class BaseTest(unittest.TestCase):
         from app.core import store
         store._TASKS.clear()
         store._RUNS.clear()
+        # Run IDs and catalog entries belong to this data directory. Cached
+        # snapshots from earlier cases must not leak into a freshly seeded case.
+        from app.core import capability_runtime, catalog
+        with capability_runtime._LOCK:
+            capability_runtime._RUNS.clear()
+        with catalog._LOCK:
+            catalog._CACHE["entries"] = None
 
     def tearDown(self):
         # 恢复 monkey-patched 的 pipeline._agents（test_pipeline 等会改成 mock 列表）

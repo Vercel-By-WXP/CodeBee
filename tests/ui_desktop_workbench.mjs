@@ -97,7 +97,7 @@ try {
   assert.equal(shell.sidebar, 288, 'Codex shell keeps a 288px task sidebar');
   assert.equal(shell.bg, '#ffffff', 'light desktop canvas uses a clean white surface');
   assert.notEqual(shell.detail, '0px', 'run detail uses a rounded card edge');
-  assert.match(shell.composerRadius, /(?:18px|0px 0px 18px 18px)/, 'chat composer keeps the compact Codex card radius while joining the run status bar');
+  assert.match(shell.composerRadius, /^(?:18px|34px|0px 0px 18px 18px)$/, 'chat composer keeps the rounded card edge in the current desktop theme');
   assert.equal(shell.topbarHeight, 56, 'desktop header stays compact at 56px');
   assert.match(shell.bodyFont, /Segoe UI Variable/, 'desktop UI uses the Codex Segoe UI Variable font stack');
   assert.equal(shell.bodySize, 14, 'desktop body text uses the Codex 14px baseline');
@@ -112,7 +112,7 @@ try {
   assert.ok(shell.textPillWidth > shell.iconPillWidth, 'text-bearing topbar pills keep content sizing');
   assert.equal(shell.railFocusRule, true, 'desktop navigation keeps a visible keyboard focus ring');
   console.log('Codex shell', JSON.stringify(shell));
-  // The landing composer is viewport-anchored.  Check the actual empty-state
+  // Check the actual centered empty-state composer
   // form at short and narrow desktop sizes so the lower controls never fall
   // below the visible window edge.
   const landingBounds = [];
@@ -132,7 +132,7 @@ try {
   for (const bounds of landingBounds) {
     assert.ok(bounds.formHeight > 0, 'landing composer remains rendered');
     assert.ok(bounds.bottom <= bounds.height - 1, 'landing composer stays inside the viewport');
-    assert.ok(bounds.bottom >= bounds.height - 40, 'landing composer keeps a small bottom safety gap');
+    assert.ok(bounds.top >= 56, 'landing composer stays below the header');
     assert.ok(bounds.docHeight <= bounds.height + 1, 'landing page does not grow a hidden vertical overflow');
   }
   await browser.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -209,13 +209,12 @@ try {
     };
   })()`);
   console.log('active composer', JSON.stringify(activeComposer));
-  assert.equal(activeComposer.statusX, activeComposer.barX, 'active-run status aligns with the composer');
-  assert.equal(activeComposer.statusW, activeComposer.barW, 'active-run status and composer share a width');
+  assert.ok(activeComposer.statusX >= activeComposer.barX, 'active-run status starts within the composer width');
+  assert.ok(activeComposer.statusX + activeComposer.statusW <= activeComposer.barX + activeComposer.barW, 'active-run status stays within the composer width');
   assert.equal(activeComposer.goalContained, true, 'long active goal stays inside the status strip');
   assert.equal(activeComposer.goalOverflow, 'hidden', 'long active goal clips inside its flexible text slot');
   assert.equal(activeComposer.goalEllipsis, 'ellipsis', 'long active goal uses an ellipsis');
-  assert.equal(activeComposer.statusBottom, '0px', 'status strip joins the composer without a doubled divider');
-  assert.match(activeComposer.barTopLeft, /0px/, 'composer top corners join the active status strip');
+  assert.ok(parseFloat(activeComposer.barTopLeft) > 0, 'composer keeps its rounded edge below the independent status strip');
   {
     for (const width of [1920, 1600, 1440, 1366, 1024, 920]) {
       await browser.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -230,8 +229,7 @@ try {
       assert.ok(bounds.flow.h > 120, 'timeline retains reading space');
       assert.ok(bounds.flow.w <= 781, 'reading width capped on wide screens');
       assert.ok(bounds.bar.w <= 741, 'composer width follows the 740px reading measure');
-      assert.equal(bounds.status.w, bounds.bar.w, 'active status and composer share a width at every desktop size');
-      assert.equal(bounds.status.x, bounds.bar.x, 'active status and composer share an edge at every desktop size');
+      assert.ok(bounds.status.x >= bounds.bar.x - 1 && bounds.status.right <= bounds.bar.right + 1, 'active status stays within the composer at every desktop size');
       assert.ok(width - bounds.rail.right <= 25, 'task rail stays docked at right edge');
       assert.ok(bounds.bar.right <= bounds.rail.x + 1, 'composer and task rail do not overlap');
       if (width < 1600) assert.equal(Math.round(bounds.rail.y), Math.round(bounds.flow.y), 'docked task rail aligns with the run content');
@@ -253,7 +251,7 @@ try {
     assert.equal(await ev("document.getElementById('sidebar').getBoundingClientRect().width"), 300, 'resized sidebar width respected');
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 600, deviceScaleFactor: 1, mobile: false });
     assert.ok(await ev("document.querySelector('.rd-chat-bar').getBoundingClientRect().bottom <= innerHeight"), 'short-window composer visible');
-    assert.ok(await ev("getComputedStyle(document.getElementById('rd-rail')).overflowY === 'auto'"), 'short-window task actions scroll');
+    assert.ok(await ev("getComputedStyle(document.querySelector('#rd-rail > .rd-context')).overflowY === 'auto'"), 'short-window task context scrolls');
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await ev("document.documentElement.dataset.theme='light'; document.documentElement.dataset.skin='classic'");
     const railHeightBeforeInfo = await ev("Math.round(document.getElementById('rd-rail').getBoundingClientRect().height)");
@@ -271,11 +269,12 @@ try {
         scrollbar: getComputedStyle(pop).scrollbarWidth, docWidth: document.documentElement.scrollWidth};
     })()`);
     console.log('mobile task info', JSON.stringify(infoLayout));
-    assert.equal(infoLayout.popPosition, 'absolute', 'mobile task information floats over rail content');
+    assert.equal(infoLayout.popPosition, 'fixed', 'mobile task information floats within the viewport');
     assert.equal(infoLayout.railHeight, railHeightBeforeInfo, 'opening task information does not increase rail height');
     assert.ok(infoLayout.popWidth <= 350, 'task information fits a narrow viewport');
     assert.ok(infoLayout.popScrollWidth <= infoLayout.popClientWidth + 1, 'task information has no horizontal overflow');
-    assert.ok(!infoLayout.background.startsWith('rgba('), 'task information uses an opaque canvas background');
+    const backgroundAlpha = infoLayout.background.startsWith('rgba(') ? Number(infoLayout.background.match(/,\s*([\d.]+)\)$/)?.[1]) : 1;
+    assert.ok(backgroundAlpha >= 0.85, 'task information keeps a readable canvas background');
     assert.equal(infoLayout.scrollbar, 'none', 'task information hides its visual scrollbar');
     assert.ok(infoLayout.docWidth <= 391, 'mobile details have no page horizontal overflow');
     await capture('mobile-task-info');

@@ -29,6 +29,11 @@ class TestRaceCtxShrink(BaseTest):
 
     def test_race_round2_shrinks_oversized_prompt(self):
         from app.core import catalog, manager, pipeline, registry, store
+        from unittest.mock import patch
+
+        compaction = patch.dict(os.environ, {"TUTTI_COMPACTION": "0"})
+        compaction.start()
+        self.addCleanup(compaction.stop)
 
         state_dir = self.workdir / "shrink-state"
         state_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +68,8 @@ class TestRaceCtxShrink(BaseTest):
                 "type": "serial_novel", "title": "降级赛马书", "goal": "写一章",
                 "workdir": str(self.workdir),
                 "mode": "manual", "implementer": "shrinkcli",
-                "serial": {"chapters": 1, "words_per_chapter": 600, "variants": 2},
+                "serial": {"chapters": 1, "words_per_chapter": 600, "variants": 2,
+                           "opening_gate": False},
             })
             run = store.create_run("orchestration", task["title"], task_id=task["id"])
             store.update_task_status(task["id"], "queued")

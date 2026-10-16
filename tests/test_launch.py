@@ -281,9 +281,8 @@ class TestLaunch(BaseTest):
         """内置条目全部补上 launch；用户手写的 launch 不被覆盖。"""
         from app.core import catalog
         entries = catalog.load()
-        # 11 内置 + 第三批三新 CLI（gemini-cli/codebuddy/trae-agent，随
-        # _merge_new_defaults 自动补齐）——数量断言随新条目演进
-        self.assertEqual(len(entries), 14)
+        self.assertEqual({entry["id"] for entry in entries},
+                         {entry["id"] for entry in catalog.DEFAULT_CATALOG})
         for e in entries:
             self.assertTrue((e.get("launch") or {}).get("command"), e["id"])
         dsh = catalog.by_id("deepseek-harness")

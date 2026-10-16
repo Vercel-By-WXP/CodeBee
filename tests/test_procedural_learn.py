@@ -29,9 +29,10 @@ class ProceduralLearnTests(BaseTest):
     def test_prompt_asks_for_procedures(self):
         """LEARN_PROMPT 必须要求提炼有效做法（「做法：」约定+高分优先）。"""
         from app.core import skills
-        self.assertIn("已验证有效的做法", skills.LEARN_PROMPT)
+        self.assertIn("候选做法", skills.LEARN_PROMPT)
+        self.assertIn("单次运行不能称为已验证", skills.LEARN_PROMPT)
         self.assertIn("做法：", skills.LEARN_PROMPT)
-        self.assertIn("一次通过的高分运行优先提炼", skills.LEARN_PROMPT)
+        self.assertIn("任务一次通过且分数高时", skills.LEARN_PROMPT)
 
     def test_pass_run_learns_procedure(self):
         """一次通过的运行也进学习链：编排者返回「做法：」条目被 upsert 入库。"""

@@ -25,8 +25,8 @@ class TestCodexSandboxDefaults(BaseTest):
         from app.core import runner as R
         old = os.environ.pop("TUTTI_CODEX_SANDBOX", None)
         try:
-            # 写模式默认全权；只读步永远 read-only（评审者可写会污染 diff 裁决）
-            self.assertEqual(R._codex_sandbox(False), "danger-full-access")
+            # 写模式限制在工作区；只读评审不能改写文件。
+            self.assertEqual(R._codex_sandbox(False), "workspace-write")
             self.assertEqual(R._codex_sandbox(True), "read-only")
             # env 只能钉写模式档位，压不过只读步
             os.environ["TUTTI_CODEX_SANDBOX"] = "workspace-write"
@@ -42,9 +42,11 @@ class TestCodexSandboxDefaults(BaseTest):
             reasoned = dict(agent, reasoning_effort="high")
             argv3, _, _, _ = R._build_call(reasoned, "codex", "", False, None, "p")
             self.assertIn('model_reasoning_effort="high"', argv3)
-            # 非法 env 值 → 回落默认全权
+            # 旧全权覆盖和非法值都回落工作区，不能绕过任务策略。
+            os.environ["TUTTI_CODEX_SANDBOX"] = "danger-full-access"
+            self.assertEqual(R._codex_sandbox(False), "workspace-write")
             os.environ["TUTTI_CODEX_SANDBOX"] = "bogus"
-            self.assertEqual(R._codex_sandbox(False), "danger-full-access")
+            self.assertEqual(R._codex_sandbox(False), "workspace-write")
         finally:
             if old is None:
                 os.environ.pop("TUTTI_CODEX_SANDBOX", None)

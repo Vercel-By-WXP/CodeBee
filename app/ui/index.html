@@ -518,7 +518,7 @@
                   </button>
                   <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型" data-i18n-aria="任务类型"></div>
                 </div>
-                <select id="f-expert" class="expert-pick" aria-label="专家模板" data-i18n-aria="专家模板" title="可选：套用专家工作方法与交付约束">
+                <select id="f-expert" class="expert-pick" aria-label="专家模板" data-i18n-aria="专家模板" title="可选：套用专家工作方法与交付约束" data-i18n-title="可选：套用专家工作方法与交付约束">
                   <option value="">通用执行</option>
                 </select>
               </div>
@@ -703,7 +703,7 @@
             <button data-i18n="删除记录" id="btn-delete" class="danger hidden">删除记录</button>
             <button data-i18n="✉ 继续对话" id="btn-talk" class="ghost hidden" data-i18n-title="人工检查有问题？告诉主智能体，由它判断怎么引导执行" title="人工检查有问题？告诉主智能体，由它判断怎么引导执行">✉ 继续对话</button>
             <button id="rd-more-toggle" class="rd-more-toggle" type="button" aria-label="更多任务信息" data-i18n-aria="更多任务信息" aria-expanded="false" aria-controls="rd-meta-popover" title="更多任务信息" data-i18n-title="更多任务信息">•••</button>
-            <button id="rd-context-toggle" class="rd-context-toggle ghost" type="button" aria-label="任务动态" aria-expanded="false" aria-controls="rd-context" title="任务动态"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg></button>
+            <button id="rd-context-toggle" class="rd-context-toggle ghost" type="button" aria-label="任务动态" aria-expanded="false" aria-controls="rd-context" title="任务动态" data-i18n-title="任务动态" data-i18n-aria="任务动态"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg></button>
           </div>
           <!-- 人工干预（非直连任务）：运行中=递话入箱，下一步开始前送达主智能体；
                已结束=发送后自动断点续跑，主智能体带着反馈重新规划/引导执行 -->
@@ -727,7 +727,7 @@
             <div id="rd-overview" class="rd-overview hidden" aria-live="polite"></div>
           </div>
         </div>
-        <div id="rd-context" class="rd-context hidden" aria-label="任务动态"></div>
+        <div id="rd-context" class="rd-context hidden" aria-label="任务动态" data-i18n-aria="任务动态"></div>
         <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
           <button id="rd-tab-chat" class="rd-tab" role="tab" aria-controls="rd-pane-chat" aria-selected="false" tabindex="-1" data-tab="chat" data-i18n="对话"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-chat"></use></svg>对话<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
@@ -770,9 +770,9 @@
                 <span class="rd-chat-run-goal" data-chat-run-goal></span>
                 <span class="rd-chat-run-elapsed" data-chat-run-elapsed></span>
                 <button type="button" class="ghost" data-chat-run-pause data-i18n="暂停">暂停</button>
-                <button type="button" class="ghost" data-chat-run-cancel data-i18n-title="取消运行" title="取消运行" aria-label="取消运行"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>
-                <button type="button" class="ghost" data-chat-workspace-toggle data-i18n-title="打开工作区" title="打开工作区" aria-label="打开工作区">▣</button>
-                <button type="button" class="ghost" data-chat-run-expand data-i18n-title="展开对话" title="展开对话" aria-label="展开对话" onclick="toggleChatExpanded()">⛶</button>
+                <button type="button" class="ghost" data-chat-run-cancel data-i18n-title="取消运行" title="取消运行" aria-label="取消运行" data-i18n-aria="取消运行"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>
+                <button type="button" class="ghost" data-chat-workspace-toggle data-i18n-title="打开工作区" title="打开工作区" aria-label="打开工作区" data-i18n-aria="打开工作区">▣</button>
+                <button type="button" class="ghost" data-chat-run-expand data-i18n-title="展开对话" title="展开对话" aria-label="展开对话" onclick="toggleChatExpanded()" data-i18n-aria="展开对话">⛶</button>
               </div>
               <div class="rd-chat-bar">
                 <div id="rd-chat-queue" class="chat-queue hidden" role="region" aria-label="待发送消息" data-i18n-aria="待发送消息"></div>
@@ -811,7 +811,7 @@
                   </span>
                   <div class="chat-send-actions">
                     <button id="rd-chat-stop" type="button" class="chat-stop hidden" title="停止运行" aria-label="停止运行" data-i18n-title="停止运行" data-i18n-aria="停止运行"><span aria-hidden="true">■</span></button>
-                    <button id="rd-chat-send" type="button" class="primary chat-send-default" title="发送" aria-label="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg><span id="rd-chat-send-label" data-i18n="发送">发送</span></button>
+                    <button id="rd-chat-send" type="button" class="primary chat-send-default" title="发送" aria-label="发送" data-i18n-title="发送" data-i18n-aria="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg><span id="rd-chat-send-label" data-i18n="发送">发送</span></button>
                     <button id="rd-chat-send-options" type="button" class="ghost chat-send-options hidden" aria-haspopup="menu" aria-controls="rd-chat-send-menu" aria-expanded="false" data-i18n-title="发送方式" title="发送方式" data-i18n-aria="发送方式" aria-label="发送方式"><svg class="ico chat-send-chevron" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
                     <div id="rd-chat-send-menu" class="chat-send-menu hidden" role="menu" data-i18n-aria="发送方式" aria-label="发送方式">
                       <button type="button" role="menuitem" data-chat-delivery="queue"><span><b data-i18n="排队（默认）">排队（默认）</b><small data-i18n="当前步骤结束后送达，继续完成本轮">当前步骤结束后送达，继续完成本轮</small></span><kbd>Enter</kbd></button>

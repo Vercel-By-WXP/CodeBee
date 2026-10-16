@@ -33,8 +33,12 @@ def _reset_v2(*pairs):
 
 
 class TestCompactionEnabled(unittest.TestCase):
-    def test_default_off(self):
+    def test_default_on(self):
         _reset_v2()
+        self.assertTrue(pipeline._compaction_enabled())
+
+    def test_v2_off(self):
+        _reset_v2(("orchestrator", [("compaction.enabled", False)]))
         self.assertFalse(pipeline._compaction_enabled())
 
     def test_v2_on(self):

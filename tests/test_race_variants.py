@@ -61,7 +61,8 @@ class TestRaceVariants(BaseTest):
                 "type": "serial_novel", "title": "赛马书", "goal": "写一章",
                 "workdir": str(self.workdir),
                 "mode": "manual", "implementer": "badcli",
-                "serial": {"chapters": 1, "words_per_chapter": 600, "variants": 2},
+                "serial": {"chapters": 1, "words_per_chapter": 600, "variants": 2,
+                           "opening_gate": False},
             })
             self.assertEqual(task["serial"]["variants"], 2)
             run = store.create_run("orchestration", task["title"], task_id=task["id"])

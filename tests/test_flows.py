@@ -14,6 +14,25 @@ from base import BaseTest
 
 
 class TestFlows(BaseTest):
+    def test_serial_opening_gate_survives_flow_and_task_creation(self):
+        from app.core import flows, store
+        for flag in (False, True):
+            with self.subTest(flag=flag):
+                flow, err = flows.upsert_flow({
+                    "id": "gate-test", "name": "Gate test", "engine": "review",
+                    "rubric": ["plot"],
+                    "serial": {"chapters": 2, "opening_gate": flag},
+                })
+                self.assertIsNone(err)
+                self.assertIs(flow["serial"]["opening_gate"], flag)
+                task = store.create_task({"type": "gate-test", "title": "Gate",
+                                          "goal": "Test", "workdir": str(self.workdir)})
+                self.assertIs(store.get_task(task["id"])["serial"]["opening_gate"], flag)
+        task = store.create_task({"type": "serial_novel", "title": "Default gate",
+                                  "goal": "Test", "workdir": str(self.workdir),
+                                  "serial": {"chapters": 2, "opening_gate": "false"}})
+        self.assertNotIn("opening_gate", task["serial"])
+
     def test_flows_crud_and_task(self):
         from app.core import flows, store
         flows._FILE = self.data_dir / "flows.json"

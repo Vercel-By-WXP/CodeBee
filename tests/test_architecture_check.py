@@ -146,6 +146,19 @@ class ArchCheckTests(BaseTest):
         with mock.patch.object(ac, "changed_files", return_value=changed):
             self.assertEqual(ac.main(["--changed"]), 1)
 
+    def test_function_local_import_is_not_module_dependency(self):
+        ac = self._checker()
+        _mk_repo(self.tmp, {
+            "app/core/a.py": "def run():\n    from . import b\n    return b\n",
+            "app/core/b.py": "from . import a\n",
+            "app/core/paths.py": "x = 1\n",
+            "app/core/store.py": "x = 1\n",
+            "app/core/runner.py": "x = 1\n",
+        })
+        self._wire(ac, self.POLICY, {"version": 1, "violations": []})
+        # a 的惰性导入不会把运行时回调边误报成模块初始化环。
+        self.assertEqual(ac.main([]), 0)
+
     def test_real_repo_smoke(self):
         """真仓冒烟：守护器与真仓策略自洽、不崩（rc 0/1 均合法——多代理并行
         写入会实时产生新违规，FAIL 是正常输出；rc==2 才是策略/解析崩坏）。"""

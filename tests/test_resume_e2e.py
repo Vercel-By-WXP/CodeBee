@@ -26,7 +26,7 @@ class TestResumeE2E(BaseTest):
         # 会话所属项目目录（真实存在，才能被 _resume_workdir 采纳）
         session_dir = self.tmp / "session-project"
         session_dir.mkdir()
-        task_wd = self.workdir  # 与会话目录不同的任务工作目录
+        task_wd = self.tmp  # 父工作区包含会话项目，但不是会话恢复 cwd。
 
         # 假 CLI 注册为已安装且未启用编排（续会话应越过启用开关注入）
         paths.CATALOG_FILE.write_text(json.dumps([
@@ -51,6 +51,7 @@ class TestResumeE2E(BaseTest):
             # pipeline 内部经 manager.detect_all 探测，同样被替换
             task = store.create_task({
                 "type": "code", "goal": "续会话 cwd 验证", "workdir": str(task_wd),
+                "sandbox": {"allowed_roots": [str(session_dir)]},
                 "mode": "manual", "implementer": "fakecli",
                 "resume": {"agent": "fakecli", "session": "ses_demo",
                            "project": str(session_dir), "preview": "p"},
@@ -70,8 +71,9 @@ class TestResumeE2E(BaseTest):
         # 产品详情页一致，走 UTF-8 → GBK → replace 的兼容解码链。
         body = runner.read_text_any_enc(log_abs)
         # 子进程 cwd 必须是会话项目目录（不是任务工作目录）
-        self.assertIn("cwd=%s" % str(session_dir), body)
-        self.assertNotIn("cwd=%s" % str(task_wd), body)
+        cwd_lines = [line for line in body.splitlines() if line.startswith("cwd=")]
+        self.assertEqual(cwd_lines, ["cwd=%s" % str(session_dir)])
+        self.assertNotIn("cwd=%s" % str(task_wd), cwd_lines)
         # 恢复参数与 stdin 提示词
         self.assertIn("-s", body)
         self.assertIn("ses_demo", body)

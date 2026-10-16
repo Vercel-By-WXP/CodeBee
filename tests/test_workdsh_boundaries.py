@@ -133,7 +133,7 @@ class TestWorkdshBoundaries(BaseTest):
         from app.core.publish import ledger, manager
 
         task = store.create_task({"type": "code", "goal": "publish", "workdir": str(self.workdir)})
-        ledger.save_book(task["id"], "fanqie", {"title": "测试书", "book_id": "book-00"})
+        ledger.save_book(task["id"], "fanqie", {"title": "测试书", "book_id": "7123456789012345679"})
         chapter = self.workdir / "第1章.md"
         chapter.write_text("# 第1章\n" + ("正文" * 80), encoding="utf-8")
 
@@ -149,7 +149,7 @@ class TestWorkdshBoundaries(BaseTest):
 
         def resolve_book_id(_plat, _page, book):
             seen_books.append(dict(book))
-            return "book-42"
+            return "7223456789012345679"
 
         with mock.patch.object(manager, "_login_guard", return_value=(True, "")), \
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)), \
@@ -163,8 +163,8 @@ class TestWorkdshBoundaries(BaseTest):
         self.assertEqual(err, "")
         self.assertEqual(len(seen_books), 1)
         self.assertEqual({key: seen_books[0][key] for key in ("book_id", "title", "url")},
-                         {"book_id": "book-00", "title": "测试书", "url": ""})
-        self.assertEqual(ledger.book_for(task["id"], "fanqie")["book_id"], "book-42")
+                         {"book_id": "7123456789012345679", "title": "测试书", "url": ""})
+        self.assertEqual(ledger.book_for(task["id"], "fanqie")["book_id"], "7223456789012345679")
 
     def test_acceptance_needs_evidence_for_every_dimension(self):
         from app.core.acceptance import evaluate_run

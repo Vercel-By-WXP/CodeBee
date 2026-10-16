@@ -23,10 +23,10 @@ class LessonKarmaMarkTests(BaseTest):
         return skills, a
 
     def test_won_marked_in_injection(self):
-        """won=3 → 注入行带「已验证有效 3 次」。"""
+        """won=3 → 注入行带「同类维度达标关联 3 次，非因果证明」。"""
         sk, a = self._mk_lesson("网关限流先看冷却", "网关限流")
         txt, used = sk.block_for({"type": "code", "goal": "网关限流"})
-        self.assertIn("已验证有效 3 次", txt)
+        self.assertIn("同类维度达标关联 3 次，非因果证明", txt)
         self.assertIn(a["id"], used)
 
     def test_low_won_no_mark(self):
@@ -37,14 +37,14 @@ class LessonKarmaMarkTests(BaseTest):
         skills.block_for({"type": "code", "goal": "部署冒烟"}, run_id="r-km9")
         skills.note_outcome("r-km9", True, reward=[a["id"]])
         txt, _ = skills.block_for({"type": "code", "goal": "部署冒烟"})
-        self.assertNotIn("已验证有效", txt)
+        self.assertNotIn("达标关联", txt)
 
     def test_id_and_title_intact(self):
         """编号与标题契约不回归（复盘官点名靠编号）。"""
         sk, a = self._mk_lesson("回归测试必跑", "回归测试")
         txt, _ = sk.block_for({"type": "code", "goal": "回归测试"})
         self.assertIn("[%s] **回归测试必跑**" % a["id"], txt)
-        self.assertIn("（已验证有效 3 次）", txt)
+        self.assertIn("（同类维度达标关联 3 次，非因果证明）", txt)
 
 
 if __name__ == "__main__":

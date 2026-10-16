@@ -2917,7 +2917,7 @@ def _shrink_context_block(sk_block, bible, budget=12000):
     notes = []
     # 1) 先压经验库到 4K（条目短、损失最小）
     if len(sk_block or "") > 4000:
-        sk_block = sk_block[:4000] + "\n\n（经验库已因上下文容量限制精简）"
+        sk_block = capability_runtime.compact_block(sk_block)
         notes.append("经验库→4K")
         if len(sk_block) + len(bible or "") <= budget:
             return sk_block, bible, "；".join(notes)
@@ -4264,7 +4264,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 branch_beats = None
 
             def _draft_prompt(vfile):
-                return (SERIAL_CHAPTER_PROMPT
+                prompt = (SERIAL_CHAPTER_PROMPT
                         .replace("__SKILLS__", sk_block)
                         .replace("__SCOPE__", scope)
                         .replace("__VOLUME__", vol_block_for(i))

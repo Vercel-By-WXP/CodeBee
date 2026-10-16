@@ -182,6 +182,13 @@ def task_for_run(run_id):
         return {}
 
 
+def compact_block(block):
+    """Keep the retry excerpt recognizable to the final prompt injector."""
+    if len(block) <= 4000:
+        return block
+    return block[:4000] + "\n\n（经验库已因上下文容量限制精简）"
+
+
 def inject_prompt(prompt, task=None, run_id=""):
     """Inject the stable capability block exactly once.
 
@@ -198,8 +205,9 @@ def inject_prompt(prompt, task=None, run_id=""):
                       "run_id": str(run_id or "")}
     snapshot = prepare(task, run_id)
     block = snapshot.get("block") or ""
-    if not block or block in text:
-        return text, {"injected": False, "capabilities_present": bool(block and block in text),
+    present = bool(block and (block in text or compact_block(block) in text))
+    if not block or present:
+        return text, {"injected": False, "capabilities_present": present,
                       "run_id": str(run_id or "")}
     return ("## 本次运行可用能力（统一桥接，按证据参考）\n" + block
             + "\n\n---\n\n" + text), {

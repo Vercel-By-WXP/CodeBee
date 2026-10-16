@@ -7655,7 +7655,7 @@ function pbBlock(task, platform, selectionOnly = false) {
           esc(t("已存草稿 {0} 章（未发布）", au.drafted_nos.length)) + '</summary><p>' +
           esc(au.drafted_nos.map((n) => t("第 {0} 章", n)).join(" · ")) + '</p></details>' : '') +
         '<div class="pb-pend-foot"><span class="pb-pend-count" aria-live="polite">' + esc(t("已选 {0}/{1} 章", sel.size, its.length)) + '</span>' +
-        '<span class="pb-pend-mode-hint">' + esc(t("批量发布自动提交；失败会转定时发布后继续，草稿不上线。")) + '</span>' +
+        '<span class="pb-pend-mode-hint">' + esc(t("批量发布自动提交；失败会停止并保留现场，草稿不上线。")) + '</span>' +
         '<div class="pb-pend-btns">' +
         '<button class="primary" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(au.guard_ok ? "" : t("护栏提示：") + (au.guard_reason || "")) + '"' +

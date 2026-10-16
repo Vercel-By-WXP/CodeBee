@@ -10,7 +10,6 @@ import threading
 import time
 import uuid
 
-from . import runner
 from .env_scrub import scrub_env
 
 _MAX_LINE = 2 * 1024 * 1024
@@ -254,6 +253,7 @@ class _Connection:
             self.process.wait(timeout=0.5)
         except Exception:
             try:
+                from . import runner
                 runner._kill_tree(self.process.pid)
             except Exception:
                 try:
@@ -468,6 +468,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
             raise ACPError("ACP 启动命令配置无效")
         env = scrub_env(os.environ.copy())
         env.update({str(k): str(v) for k, v in (profile.get("env") or {}).items()})
+        from . import runner
         argv = runner.resolve_command(command) + args
         process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, cwd=cwd, env=env,
@@ -576,6 +577,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
             connection.close()
         elif process is not None:
             try:
+                from . import runner
                 runner._kill_tree(process.pid)
             except Exception:
                 pass

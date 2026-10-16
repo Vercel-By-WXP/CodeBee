@@ -24,7 +24,7 @@ if hint:
     except OSError:
         pass
 
-if "网文主编" in blob:
+if "网文主编" in blob or "你是小说结构编辑" in blob:
     print(json.dumps({
         "book_title": "崩溃恢复之书",
         "chapters": [
@@ -34,8 +34,10 @@ if "网文主编" in blob:
 elif "网文作者" in blob:
     m = re.search(r"(chapter-\d+\.md)", blob)
     fname = m.group(1) if m else "chapter-01.md"
-    body = ("# %s\n\n" % fname) + ("夜色压下来，她把誓言刻进心里，一步一步走向那扇门。"
-                                   "灯亮起的一瞬，所有蛰伏的线头同时绷紧——这一局，她不会再输。") * 12
+    body = ("# %s\n\n" % fname) + "\n\n".join(
+        "第 %s 次钟声传来，她走过第 %s 道城门，把第 %s 封信收进怀里，"
+        "灯火映出第 %s 名守卫的身影，她停下脚步辨认对方。" % (j, j, j, j)
+        for j in range(1, 20))
     # 只写当前目录下的章稿文件（文件名已由正则限定为 chapter-NN.md）
     Path.cwd().joinpath(fname).write_bytes(body.encode("utf-8"))
     print("起草器崩溃（模拟超时/异常退出）", file=sys.stderr)

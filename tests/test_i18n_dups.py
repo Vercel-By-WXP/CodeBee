@@ -20,7 +20,8 @@ _I18N = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _en_block():
-    src = io.open(_I18N, encoding="utf-8").read()
+    with io.open(_I18N, encoding="utf-8") as fh:
+        src = fh.read()
     m = re.search(r"const\s+EN\s*=\s*\{", src)
     if not m:
         return ""

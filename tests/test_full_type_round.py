@@ -288,17 +288,12 @@ class ReviewEngineSkillInjectionTests(BaseTest):
         from app.core import pipeline
         src = inspect.getsource(pipeline)
         # 起草侧：块组装在 _draft_prompt_for 定义之前 + 空块守卫消费
-        self.assertIn(
-            'ctx_block = "\\n\\n".join(p for p in (sk_lessons, kb_block) if p)', src)
+        self.assertIn('ctx_block = capability_runtime.block_for(task, run_id)', src)
         self.assertIn('p += "\\n\\n" + ctx_block', src)
         self.assertIn("if ctx_block:", src)
-        # 评审侧：serial 逐章评审同款（「## 待评审稿件」锚点前插，sk+kb 两处）
-        self.assertEqual(src.count("crit_prompt = crit_prompt.replace("), 2,
-                         "评审侧经验/知识注入锚点数漂移")
-        self.assertIn(
-            '"## 待评审稿件", "%s\\n\\n## 待评审稿件" % sk, 1)', src)
-        self.assertIn(
-            '"## 待评审稿件", "%s\\n\\n## 待评审稿件" % kb, 1)', src)
+        # 经验与知识已统一经 capability_runtime 注入，避免重复追加。
+        self.assertIn('cap = capability_runtime.block_for(task, run_id)', src)
+        self.assertIn('"## 待评审稿件", "%s\\n\\n## 待评审稿件" % cap, 1)', src)
 
 
 if __name__ == "__main__":

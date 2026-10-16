@@ -333,6 +333,8 @@ def create_task(payload):
             except Exception:
                 s = None
             if s:
+                if isinstance(serial.get("opening_gate"), bool):
+                    s["opening_gate"] = serial["opening_gate"]
                 # 续写：从 start_chapter 章接着写（章节文件/步骤/评分都用全书章号）；
                 # continues 指向上一批任务，生成大纲时回溯前情保证剧情衔接
                 try:

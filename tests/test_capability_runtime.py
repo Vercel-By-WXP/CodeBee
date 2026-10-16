@@ -9,6 +9,23 @@ from base import BaseTest
 
 
 class CapabilityRuntimeTests(BaseTest):
+    def test_retry_excerpt_is_not_expanded_by_final_injector(self):
+        from app.core import capability_runtime, pipeline
+
+        block = "stable capability evidence\n" * 600
+        reduced, _ = pipeline._serial_shrunk_block(block, "", "")
+        prompt = "Write this chapter.\n\n" + reduced
+        with mock.patch.object(capability_runtime, "prepare", return_value={"block": block}):
+            actual, meta = capability_runtime.inject_prompt(prompt, task={"type": "novel"})
+            unrelated, unrelated_meta = capability_runtime.inject_prompt(
+                "（经验库已因上下文容量限制精简）", task={"type": "novel"})
+        self.assertEqual(actual, prompt)
+        self.assertLess(len(actual), len(block))
+        self.assertFalse(meta["injected"])
+        self.assertTrue(meta["capabilities_present"])
+        self.assertTrue(unrelated_meta["injected"])
+        self.assertIn(block, unrelated)
+
     def test_direct_cli_prompt_receives_capabilities_and_run_evidence(self):
         """The external CLI path must receive the same block as builtin direct."""
         from app.core import knowledge, pipeline, skills, store
