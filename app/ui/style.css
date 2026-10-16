@@ -6551,6 +6551,181 @@ button.request-busy > * { opacity: .18; }
    15-30s）会让线一直滑，观感差；操作反馈由「操作状态」中心承担，不丢信息 */
 #request-progress { display: none !important; }
 
+/* DeepSeek-inspired chat pass (2026-10-17): quiet white canvas, compact
+   transcript rhythm, and process details that stay secondary to the answer.
+   Keep theme variables so the same treatment works in dark/custom skins. */
+#run-detail.chat-mode {
+  --chat-canvas: color-mix(in srgb, var(--panel) 96%, var(--bg));
+  --chat-soft: color-mix(in srgb, var(--text) 4%, transparent);
+  --chat-soft-strong: color-mix(in srgb, var(--text) 7%, transparent);
+}
+#run-detail.chat-mode .rd-main,
+#run-detail.chat-mode .rd-pane[data-pane="chat"],
+#run-detail.chat-mode .rd-chat { background: var(--chat-canvas); }
+#run-detail.chat-mode .rd-chat-flow {
+  max-width: min(980px, 100%);
+  gap: 18px;
+  padding: 26px 18px 18px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+#run-detail.chat-mode .chat-row { gap: 10px; }
+#run-detail.chat-mode .chat-avatar {
+  width: 24px; height: 24px; margin-top: 4px;
+  background: transparent; border: 0; opacity: .72;
+}
+#run-detail.chat-mode .chat-avatar .ico { width: 14px; height: 14px; }
+#run-detail.chat-mode .chat-bubble.agent {
+  padding-top: 0;
+  font-size: 14px;
+  line-height: 1.72;
+}
+#run-detail.chat-mode .chat-bubble.me {
+  max-width: min(680px, 78%);
+  border: 0;
+  border-radius: 12px;
+  background: var(--chat-soft-strong);
+  padding: 9px 13px;
+  font-size: 14px;
+}
+#run-detail.chat-mode .chat-step-meta {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+#run-detail.chat-mode .chat-meta {
+  margin-top: 7px;
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-size: 10.5px;
+}
+
+/* Thinking is a quiet expandable surface, with the live state clearly marked
+   but without a heavy dashed container competing with the answer. */
+#run-detail.chat-mode .chat-think {
+  max-width: 760px;
+  margin: 8px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--chat-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+#run-detail.chat-mode .chat-think.live {
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+}
+#run-detail.chat-mode .chat-think .ct-head,
+#run-detail.chat-mode details.chat-think > summary {
+  min-height: 30px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
+#run-detail.chat-mode details.chat-think > summary { color: var(--text); }
+#run-detail.chat-mode .chat-think .ct-body {
+  max-height: 220px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+  line-height: 1.6;
+  opacity: .76;
+}
+#run-detail.chat-mode .chat-think .ct-acts {
+  padding: 7px 10px 9px;
+  border-top: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 11px;
+}
+#run-detail.chat-mode .chat-think .ct-dot { width: 6px; height: 6px; }
+#run-detail.chat-mode .chat-think .ct-live {
+  border: 0;
+  color: var(--accent);
+  font-size: 10px;
+}
+#run-detail.chat-mode .chat-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+}
+#run-detail.chat-mode .chat-activity-row .ico { width: 12px; height: 12px; opacity: .7; }
+
+/* Tool/CLI details read as a timeline instead of nested cards. */
+#run-detail.chat-mode .chat-tool-group,
+#run-detail.chat-mode .chat-cli-log {
+  margin-top: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+#run-detail.chat-mode .chat-tool-group > summary,
+#run-detail.chat-mode .chat-cli-log > summary {
+  min-height: 26px;
+  box-sizing: border-box;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+#run-detail.chat-mode .chat-tool-list {
+  margin-left: 7px;
+  padding-left: 13px;
+  border-left: 1px solid var(--border);
+}
+#run-detail.chat-mode .chat-tool-row { border-bottom: 0; }
+#run-detail.chat-mode .chat-tool-row > summary { padding: 4px 0; }
+#run-detail.chat-mode .chat-tool-detail { padding: 5px 0 7px; }
+#run-detail.chat-mode .chat-cli-log-text {
+  border-top: 1px solid var(--border);
+  padding: 8px 0;
+  background: transparent;
+}
+
+/* Final receipt: clear status and metadata, no oversized dashboard card. */
+#run-detail.chat-mode .chat-result {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: transparent;
+}
+#run-detail.chat-mode .chat-result .cr-head { font-size: 13px; }
+#run-detail.chat-mode .chat-result .cr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+#run-detail.chat-mode .chat-result .cr-files {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+#run-detail.chat-mode .chat-result .cr-files-title {
+  margin-bottom: 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+#run-detail.chat-mode .rd-chat-run-status {
+  width: min(980px, calc(100% - 36px));
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 0;
+}
+#run-detail.chat-mode .rd-chat-bar {
+  width: min(980px, calc(100% - 36px));
+  border-radius: 12px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--text) 6%, transparent);
+}
+@media (max-width: 720px) {
+  #run-detail.chat-mode .rd-chat-flow { gap: 15px; padding: 16px 8px 10px; }
+  #run-detail.chat-mode .chat-bubble.me { max-width: 88%; }
+  #run-detail.chat-mode .rd-chat-run-status,
+  #run-detail.chat-mode .rd-chat-bar { width: calc(100% - 16px); }
+}
+
 /* 钩子管理卡片（设置 → 钩子，2026-09-22）：名称/事件/开关一行，命令整行，
  * 底部超时+测试。mono 字体命令输入便于读路径 */
 .hook-card { display: flex; flex-direction: column; gap: 10px; }
