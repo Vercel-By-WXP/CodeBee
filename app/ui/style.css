@@ -4085,6 +4085,13 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
 .rd-checkpoint-steps { margin: 8px 0 12px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .rd-checkpoint-step { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed var(--border); font-size: 12px; }
 .rd-checkpoint-step > :first-child { overflow-wrap: anywhere; }
+.rd-acp-event { margin: 0 0 7px; padding: 5px 0; color: var(--muted); }
+.rd-acp-event + .rd-acp-event { border-top: 1px dashed var(--border); padding-top: 7px; }
+.rd-acp-event-head { color: var(--text); font-size: 11px; }
+.rd-acp-event-head code { color: var(--accent); font-family: var(--mono, monospace); }
+.rd-acp-event-title { margin-top: 3px; color: var(--text); font-weight: 600; }
+.rd-acp-event-detail, .rd-acp-summary { margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rd-acp-summary { max-height: 180px; overflow: auto; padding: 6px 8px; border-left: 2px solid var(--border-strong); }
 .rd-acp-plan-entry { padding-left: 14px; color: var(--muted); }
 .rd-checkpoint-row > strong { margin-right: 8px; overflow-wrap: anywhere; }
 .rd-checkpoint-row pre, .rd-memory-row pre {

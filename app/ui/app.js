@@ -11229,14 +11229,32 @@ function chatThinkHTML(it) {
 function chatAcpEventsHTML(it) {
   const events = Array.isArray(it.acp_events) ? it.acp_events.slice(-8) : [];
   if (!events.length) return "";
+  const typeLabels = {
+    compaction_update: t("上下文压缩"),
+    compaction_summary_chunk: t("压缩摘要"),
+    notice: t("通知"),
+  };
   return '<details class="chat-think chat-acp-events"><summary>' + esc(t("ACP 活动")) +
     '<span class="ct-len">' + events.length + ' ' + esc(t("条")) + '</span></summary>' +
     '<div class="ct-acts">' + events.map((event) => {
       const type = String(event.sessionUpdate || "event");
-      const label = event.title || event.status || event.modeId || "";
+      const title = type === "notice" ? event.title : "";
+      const meta = [event.compactionId, event.status || event.severity]
+        .filter((value) => value !== undefined && value !== null && String(value))
+        .map((value) => esc(value)).join(" · ");
+      const detail = type === "notice" ? event.description : event.error;
+      const content = typeof event.content === "string" ? event.content : "";
+      const summary = Array.isArray(event.summary) ? event.summary.map((block) =>
+        block && block.type === "text" && block.text
+          ? '<div class="rd-acp-summary">' + esc(block.text) + '</div>' : "").join("") : "";
       const entries = Array.isArray(event.entries) ? event.entries.map((entry) =>
         '<div class="rd-acp-plan-entry">' + esc(entry.status || "") + ' · ' + esc(entry.content || "") + '</div>').join("") : "";
-      return '<div><code>' + esc(type) + '</code>' + (label ? ' · ' + esc(label) : "") + entries + '</div>';
+      return '<div class="rd-acp-event"><div class="rd-acp-event-head"><code>' +
+        esc(typeLabels[type] || type) + '</code>' + (meta ? ' · ' + meta : "") + '</div>' +
+        (title ? '<div class="rd-acp-event-title">' + esc(title) + '</div>' : "") +
+        (detail ? '<div class="rd-acp-event-detail">' + esc(detail) + '</div>' : "") +
+        (content ? '<div class="rd-acp-summary">' + esc(content) + '</div>' : "") +
+        summary + entries + '</div>';
     }).join("") + '</div></details>';
 }
 
