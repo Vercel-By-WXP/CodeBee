@@ -23,19 +23,26 @@ const esc = (value) => String(value ?? "")
 const chatAcpEventsHTML = Function("t", "esc", `${source.slice(start, end)}; return chatAcpEventsHTML;`)(t, esc);
 
 const html = chatAcpEventsHTML({ acp_events: [
-  { sessionUpdate: "compaction_update", compactionId: "cmp-1", status: "completed",
+  { sessionUpdate: "compaction_update", compactionId: "cmp-1", status: "in_progress",
     summary: [{ type: "text", text: "Retained context\n<safe>" }] },
   { sessionUpdate: "compaction_summary_chunk", compactionId: "cmp-1",
     content: "A streamed summary" },
+  { sessionUpdate: "compaction_summary_chunk", compactionId: "cmp-1",
+    content: "A second chunk" },
+  { sessionUpdate: "compaction_update", compactionId: "cmp-1", status: "completed",
+    summary: [{ type: "text", text: "Retained context\n<safe>" }] },
   { sessionUpdate: "notice", severity: "warning", title: "Fallback <provider>",
     description: "Continuing & safely." },
   { sessionUpdate: "plan", entries: [{ status: "in_progress", content: "Keep plan" }] },
 ] });
 
 assert.match(html, /Context compaction/);
+assert.match(html, /3 events/);
 assert.match(html, /cmp-1/);
+assert.match(html, /completed/);
 assert.match(html, /Retained context/);
 assert.match(html, /Compaction summary/);
+assert.match(html, /A streamed summary\nA second chunk/);
 assert.match(html, /Notice/);
 assert.match(html, /Fallback &lt;provider&gt;/);
 assert.match(html, /Continuing &amp; safely\./);

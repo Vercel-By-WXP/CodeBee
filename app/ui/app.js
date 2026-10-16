@@ -11227,8 +11227,41 @@ function chatThinkHTML(it) {
 }
 
 function chatAcpEventsHTML(it) {
-  const events = Array.isArray(it.acp_events) ? it.acp_events.slice(-8) : [];
-  if (!events.length) return "";
+  const rawEvents = Array.isArray(it.acp_events) ? it.acp_events.slice(-8) : [];
+  if (!rawEvents.length) return "";
+  // ACP can stream several updates for one compaction. Collapse those rows
+  // so the latest eight visible items represent activities, not split chunks.
+  const events = [];
+  const compactions = new Map();
+  for (const event of rawEvents) {
+    const type = String(event?.sessionUpdate || "event");
+    const compactionId = event?.compactionId;
+    const mergeable = compactionId &&
+      (type === "compaction_update" || type === "compaction_summary_chunk");
+    if (!mergeable) {
+      events.push(event);
+      continue;
+    }
+    const key = String(compactionId);
+    let merged = compactions.get(key);
+    if (!merged) {
+      merged = { ...event };
+      compactions.set(key, merged);
+      events.push(merged);
+      continue;
+    }
+    if (type === "compaction_summary_chunk") {
+      const part = typeof event.content === "string" ? event.content : "";
+      if (part) {
+        merged.content = [merged.content, part].filter(Boolean).join("\n").slice(0, 2400);
+        merged._compactionHasChunks = true;
+      }
+    } else {
+      const streamed = merged.content;
+      Object.assign(merged, event);
+      if (streamed && !merged.content) merged.content = streamed;
+    }
+  }
   const typeLabels = {
     compaction_update: t("上下文压缩"),
     compaction_summary_chunk: t("压缩摘要"),
@@ -11249,8 +11282,11 @@ function chatAcpEventsHTML(it) {
           ? '<div class="rd-acp-summary">' + esc(block.text) + '</div>' : "").join("") : "";
       const entries = Array.isArray(event.entries) ? event.entries.map((entry) =>
         '<div class="rd-acp-plan-entry">' + esc(entry.status || "") + ' · ' + esc(entry.content || "") + '</div>').join("") : "";
+      const label = typeLabels[type] || type;
+      const chunkLabel = event._compactionHasChunks && type !== "compaction_summary_chunk"
+        ? ' · ' + esc(t("压缩摘要")) : "";
       return '<div class="rd-acp-event"><div class="rd-acp-event-head"><code>' +
-        esc(typeLabels[type] || type) + '</code>' + (meta ? ' · ' + meta : "") + '</div>' +
+        esc(label) + chunkLabel + '</code>' + (meta ? ' · ' + meta : "") + '</div>' +
         (title ? '<div class="rd-acp-event-title">' + esc(title) + '</div>' : "") +
         (detail ? '<div class="rd-acp-event-detail">' + esc(detail) + '</div>' : "") +
         (content ? '<div class="rd-acp-summary">' + esc(content) + '</div>' : "") +
