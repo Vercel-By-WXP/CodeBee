@@ -311,7 +311,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
   #run-detail.chat-mode #rd-rail > .detail-head,
   #run-detail.chat-mode #rd-rail > #rd-chat-nav { flex: none; }
 }
-#rd-rail > .rd-context { flex: 1 1 auto; min-width: 0; min-height: 0; max-height: min(57vh, 580px); overflow-y: auto; scrollbar-width: thin; }
+#rd-rail > .rd-context { flex: 1 1 auto; min-width: 0; min-height: 0; max-height: min(57vh, 580px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 .rd-context-section { padding: 11px 2px; border-top: 1px solid var(--border); }
 .rd-context-section:first-child { border-top: 0; padding-top: 2px; }
 .rd-context-heading, .rd-context-subhead { display: flex; align-items: center; gap: 8px; min-height: 23px; color: var(--muted); font-size: 12px; }
@@ -333,8 +333,11 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-context-muted { color: var(--muted); font-size: 11px; }
 .rd-context-empty { display: block; padding: 6px 5px; }
 .rd-context-steps { margin-top: 4px; }
-.rd-context-step { align-items: flex-start; min-height: 30px; padding: 5px 4px; line-height: 1.5; }
+.rd-context-step { align-items: flex-start; min-height: 30px; padding: 5px 4px; line-height: 1.5; white-space: normal; }
 .rd-context-step > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+/* 步骤是 <button>，全局 button nowrap 会继承进 span 压过 overflow-wrap，长摘要
+   一行撑宽任务动态盒冒出横向滚动条：盒上 overflow-x 兜底禁滚，文本一律换行 */
+.rd-context-row > span { min-width: 0; overflow-wrap: anywhere; }
 .rd-context-dot { flex: none; width: 10px; height: 10px; margin-top: 4px; border: 1px solid var(--muted); border-radius: 50%; }
 .rd-context-step.done .rd-context-dot { border-color: var(--ok); background: var(--ok); box-shadow: inset 0 0 0 2px var(--panel); }
 .rd-context-step.running .rd-context-dot { border-color: var(--accent); background: var(--accent); }
