@@ -225,6 +225,91 @@ def status():
             "state": _load_state(), "plan": plan()}
 
 
+def rotate_logs(root=None, *, max_bytes=LOG_MAX_BYTES, backup_count=3):
+    """Rotate oversized ``*.log`` files and retain the newest backups.
+
+    Rotation is deliberately limited to the supplied directory; task/run
+    artifacts are managed by :func:`run_cleanup` and are never renamed here.
+    A fresh empty source file is left in place so an active service can keep
+    writing without reopening its file descriptor.
+    """
+    root = Path(root or paths.DATA_DIR)
+    try:
+        limit = max(1, int(max_bytes))
+    except (TypeError, ValueError):
+        limit = LOG_MAX_BYTES
+    try:
+        keep = max(0, int(backup_count))
+    except (TypeError, ValueError):
+        keep = 3
+    result = {"root": str(root), "rotated": 0, "files": [], "errors": []}
+    if not root.is_dir():
+        return result
+    try:
+        sources = sorted(p for p in root.glob("*.log") if p.is_file())
+    except OSError:
+        return result
+    for source in sources:
+        try:
+            if source.stat().st_size <= limit:
+                continue
+            if keep:
+                # Shift oldest first; remove the destination explicitly for
+                # Windows where replace() cannot target an existing file.
+                for index in range(keep - 1, 0, -1):
+                    old = source.with_name(source.name + ".%d" % index)
+                    new = source.with_name(source.name + ".%d" % (index + 1))
+                    if old.exists():
+                        if new.exists():
+                            new.unlink()
+                        os.replace(str(old), str(new))
+                first = source.with_name(source.name + ".1")
+                if first.exists():
+                    first.unlink()
+                os.replace(str(source), str(first))
+                source.touch()
+            else:
+                # Keep the active path when retention is explicitly disabled.
+                source.write_bytes(b"")
+            result["rotated"] += 1
+            result["files"].append(str(source))
+        except OSError as exc:
+            result["errors"].append("%s: %s" % (source, exc))
+    return result
+
+
+def disk_status(root=None, *, quota_bytes=None):
+    """Return recursive storage usage and whether an optional quota is hit."""
+    root = Path(root or paths.DATA_DIR)
+    total = 0
+    file_count = 0
+    if root.exists():
+        try:
+            for path in root.rglob("*"):
+                if path.is_file():
+                    try:
+                        total += path.stat().st_size
+                        file_count += 1
+                    except OSError:
+                        continue
+        except OSError:
+            pass
+    try:
+        quota = None if quota_bytes is None else max(0, int(quota_bytes))
+    except (TypeError, ValueError):
+        quota = None
+    try:
+        import shutil
+        usage = shutil.disk_usage(str(root if root.exists() else root.parent))
+        free_bytes = int(usage.free)
+        capacity_bytes = int(usage.total)
+    except OSError:
+        free_bytes = capacity_bytes = None
+    return {"root": str(root), "total_bytes": total, "file_count": file_count,
+            "quota_bytes": quota, "over_quota": bool(quota is not None and total > quota),
+            "free_bytes": free_bytes, "capacity_bytes": capacity_bytes}
+
+
 # ---------------------------------------------------------------- 执行
 
 def _delete_path(p: Path, op):

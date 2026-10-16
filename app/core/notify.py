@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import logging
+import datetime as _datetime
+import time as _time
 
 log = logging.getLogger(__name__)
 
@@ -114,6 +116,58 @@ def _split_title(text):
     title = (lines[0].strip() if lines else "CodeBee")[:40]
     body = "\n".join(ln.strip() for ln in lines[1:]).strip() or title
     return title, body
+
+
+def _run_timestamp(value):
+    """Parse store timestamps without adding a date/time dependency."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = _datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            return parsed.timestamp()
+        return _time.mktime(parsed.timetuple()) + parsed.microsecond / 1e6
+    except (TypeError, ValueError, OverflowError):
+        pass
+    for fmt, width in (("%Y-%m-%d %H:%M:%S", 19),
+                       ("%Y-%m-%d %H:%M:%S.%f", 26)):
+        try:
+            parsed = _datetime.datetime.strptime(text[:width], fmt)
+            return _time.mktime(parsed.timetuple()) + parsed.microsecond / 1e6
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return None
+
+
+def run_payload(run, *, base_url=""):
+    """Build the stable JSON payload used by browser and webhook notifications."""
+    run = run if isinstance(run, dict) else {}
+    run_id = str(run.get("id") or run.get("run_id") or "")
+    base = str(base_url or "").strip().rstrip("/")
+    if not base:
+        try:
+            from .settings import load as _settings_load
+            base = str(_settings_load().get("notify_base_url") or "").strip().rstrip("/")
+        except Exception:
+            base = ""
+    from urllib.parse import quote
+    report_path = "/api/runs/%s/share" % quote(run_id, safe="")
+    started = _run_timestamp(run.get("started_at"))
+    ended = _run_timestamp(run.get("ended_at"))
+    duration = run.get("duration_s")
+    try:
+        duration = float(duration)
+    except (TypeError, ValueError):
+        duration = ((ended - started) if started is not None and ended is not None else 0.0)
+    duration = max(0.0, duration)
+    return {"run_id": run_id, "status": str(run.get("status") or "unknown"),
+            "title": str(run.get("title") or ""),
+            "error": str(run.get("error") or ""),
+            "duration_s": duration,
+            "report_url": base + report_path if base else report_path}
 
 
 def push_text_ex(text):

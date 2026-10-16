@@ -23,6 +23,8 @@ from .redact import scrub_text
 _DIR = paths.DATA_DIR / "checkpoints"
 _LOCK = threading.RLock()
 _TERMINAL = {"done", "failed", "cancelled", "timeout", "unknown"}
+_RUN_TERMINAL = {"done", "completed", "cancelled", "abandoned"}
+_CONTROL_NAME = "run-controls.jsonl"
 _SNAPSHOT_MAX_BYTES = 1024 * 1024      # ≤此值内嵌快照 JSON；超限进 git 对象库
 _SNAPSHOT_TOTAL_MAX_BYTES = 16 * 1024 * 1024
 _SUPPORTS_DIR_FD_RENAME = os.rename in getattr(os, "supports_dir_fd", set())
@@ -30,6 +32,15 @@ _SUPPORTS_DIR_FD_RENAME = os.rename in getattr(os, "supports_dir_fd", set())
 
 def _file():
     return _DIR / ("checkpoints-%s.jsonl" % time.strftime("%Y%m"))
+
+
+def _control_file():
+    """Return the run lifecycle log below the current checkpoint directory.
+
+    Keeping this derived from ``_DIR`` is intentional: tests and multi-instance
+    deployments can redirect checkpoint storage without touching module globals.
+    """
+    return _DIR / _CONTROL_NAME
 
 
 def _hash(value):
@@ -60,6 +71,90 @@ def _append(row):
     with _file().open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
         handle.flush()
+
+
+def _append_control(row):
+    _DIR.mkdir(parents=True, exist_ok=True)
+    with _control_file().open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+        handle.flush()
+
+
+def _controls():
+    """Read the latest lifecycle marker for each run, ignoring bad lines."""
+    latest = {}
+    try:
+        lines = _control_file().read_text(encoding="utf-8").splitlines()[-5000:]
+    except (OSError, UnicodeDecodeError):
+        return latest
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(row, dict) and row.get("run_id"):
+            latest[str(row["run_id"])] = row
+    return latest
+
+
+def scan_incomplete_runs(runs=None):
+    """Find supplied runs that can still be resumed from their checkpoints.
+
+    ``runs`` is normally the store's run list.  The function deliberately does
+    not mutate it; each returned item is a copy enriched with a checkpoint
+    preview.  Failed/interrupted runs remain candidates when they have any
+    checkpoint history, while successful/cancelled/explicitly abandoned runs
+    are excluded.  Lifecycle markers make a manual abandon durable across
+    service restarts.
+    """
+    if runs is None:
+        runs = []
+    if isinstance(runs, dict):
+        runs = list(runs.values())
+    controls = _controls()
+    found = []
+    for source in runs:
+        if not isinstance(source, dict):
+            continue
+        run_id = str(source.get("id") or source.get("run_id") or "").strip()
+        if not run_id or controls.get(run_id, {}).get("status") == "abandoned":
+            continue
+        status = str(source.get("status") or "").strip().lower()
+        if status in _RUN_TERMINAL:
+            continue
+        preview = replay_preview(run_id)
+        # A failed run with no checkpoint cannot be resumed safely.  Active
+        # states are reported so callers can decide whether to resume or wait.
+        if not preview.get("steps") and status not in {"running", "queued", "paused"}:
+            continue
+        row = dict(source)
+        row["run_id"] = run_id
+        row["checkpoint"] = preview
+        found.append(row)
+    return found
+
+
+def abandon(run_id, actor="user"):
+    """Persist a user's decision to stop recovery for ``run_id``.
+
+    The marker is append-only and idempotent, so startup scans cannot surface
+    the run again even when the original run record still says ``failed``.
+    """
+    run_id = str(run_id or "").strip()[:120]
+    if not run_id:
+        return False
+    with _LOCK:
+        current = _controls().get(run_id)
+        if current and current.get("status") == "abandoned":
+            return True
+        try:
+            _append_control({"event": "abandon", "run_id": run_id,
+                             "status": "abandoned",
+                             "actor": str(actor or "user")[:120],
+                             "created_at": time.time()})
+        except OSError:
+            return False
+    return True
 
 
 def start(run_id, step, role, prompt="", *, input_data=None, attempt=1,
