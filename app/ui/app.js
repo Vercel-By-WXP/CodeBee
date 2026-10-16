@@ -2137,7 +2137,13 @@ function renderCliDiscovery() {
 async function loadCliDiscovery(force) {
   const box = $("cli-discovery-list");
   if (box && force) box.innerHTML = '<p class="hint">' + esc(t("正在探测…")) + '</p>';
-  try { const result = await api("/api/cli-discovery", { timeout: 15000 }); UI_FEATURES.cliDiscovery = result.clis || []; renderCliDiscovery(); }
+  try {
+    const result = force
+      ? await api("/api/cli-discovery", { method: "POST", timeout: 20000, body: JSON.stringify({}) })
+      : await api("/api/cli-discovery", { timeout: 15000 });
+    UI_FEATURES.cliDiscovery = result.clis || [];
+    renderCliDiscovery();
+  }
   catch (error) { if (box) box.innerHTML = '<p class="hint bad">' + esc(t("CLI 能力加载失败：") + error.message) + '</p>'; }
 }
 

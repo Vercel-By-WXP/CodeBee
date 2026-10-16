@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -428,6 +428,48 @@ def _wait_gate(run_id, ev):
             return
         # ev.wait 睡等：取消置位即刻醒来，不必耗满 1s 轮询间隔
         (ev.wait(1.0) if ev is not None else time.sleep(1.0))
+
+
+def _human_intervention_gate(run_id, task, point, ev):
+    """Pause an explicitly configured run at a durable human approval point.
+
+    Existing tasks remain unchanged unless they opt in with ``hitl`` or
+    ``human_intervention``.  The worker keeps its run thread alive while the
+    durable intervention record is resolved, so approval resumes the same
+    pipeline without replaying completed steps.
+    """
+    config = task.get("human_intervention") or task.get("hitl") or {}
+    if not isinstance(config, dict):
+        return True
+    points = config.get("points") or config.get("at") or []
+    if isinstance(points, str):
+        points = [points]
+    enabled = bool(config.get(point) is True or point in points)
+    if not enabled:
+        return True
+    timeout_s = config.get("timeout_s", config.get("timeout", 0))
+    timeout_action = config.get("timeout_action", "continue")
+    row = intervention.request(
+        run_id, point, payload={"summary": "运行在%s节点等待人工确认" % point,
+                                "task_id": task.get("id")},
+        timeout_s=timeout_s, timeout_action=timeout_action)
+    store.update_run(run_id, hitl={"id": row["id"], "point": point,
+                                   "status": "waiting", "created_at": row.get("created_at")})
+    try:
+        store.set_paused(run_id, True)
+        decision = intervention.wait_for_decision(row["id"])
+    finally:
+        store.set_paused(run_id, False)
+    approved = decision in ("approved", "approve", "continue")
+    store.update_run(run_id, hitl={"id": row["id"], "point": point,
+                                   "status": decision, "resolved_at": time.time()})
+    if approved:
+        return True
+    store.update_run(run_id, expected_status="running", status="failed",
+                     ended_at=_now(), error="人工介入在%s节点拒绝或超时中止" % point)
+    if ev is not None:
+        ev.set()
+    return False
 
 
 def _binding_dead_msg(agent):
@@ -1843,6 +1885,8 @@ def _run_code(run, task, agents, ev, stats, mode):
         task, difficulty, plan=plan, mode=mode, planned=planned)
     store.update_run(run_id, plan=plan, difficulty=difficulty, workflow=workflow)
     subtasks = plan["steps"]
+    if not _human_intervention_gate(run_id, task, "decompose", ev):
+        return
     # 计划落盘（planning-with-files）：磁盘上的计划与 spec/evidence 同居任务档案
     _write_task_plan(task, workdir, plan)
 
@@ -1899,7 +1943,22 @@ def _run_code(run, task, agents, ev, stats, mode):
                             role="implement")
                 except Exception:
                     pass
-            for i, sub in enumerate(subtasks):
+            try:
+                execution_steps = task_graph.topological_order(subtasks)
+            except task_graph.DependencyError as exc:
+                store.update_run(run_id, expected_status="running", status="failed",
+                                 error="任务依赖无效：%s" % exc, ended_at=_now())
+                return False, {"ok": False, "error": "任务依赖无效：%s" % exc}
+            original_indexes = {
+                str(item.get("id") or item.get("title") or ""): n
+                for n, item in enumerate(subtasks)
+            }
+            # A shared workspace must remain serial, but dependency-aware order
+            # is still enforced here. Independent steps can be parallelized by
+            # future isolated-worktree executors without changing this contract.
+            for i, sub in enumerate(execution_steps):
+                original_index = original_indexes.get(
+                    str(sub.get("id") or sub.get("title") or ""), i)
                 # 子任务进度注入（planning-with-files 的每轮注入计划头）：多子任务时
                 # 让实现者知道全局位置与已完成项，防止长链目标漂移；单子任务零噪音
                 prog = ""
@@ -1916,7 +1975,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                           .replace("__CONTEXT__", task.get("context") or "（无）")
                           .replace("__VERIFY_HINT__", _verify_hint(task))) + prog
                 role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
-                mark_task_plan(workdir, i + 1, "run")   # 活计划：起跑即标进行中
+                mark_task_plan(workdir, original_index + 1, "run")   # 活计划：起跑即标进行中
                 res = _run_step(run_id, role, agt_b, prompt, step_wd,
                                 readonly=False, ev=ev,
                                 note=prefix_note if i == 0 else "",
@@ -1945,9 +2004,9 @@ def _run_code(run, task, agents, ev, stats, mode):
                     except Exception:
                         pass
                 if not res["ok"]:
-                    mark_task_plan(workdir, i + 1, "fail")
+                    mark_task_plan(workdir, original_index + 1, "fail")
                     return False, res
-                mark_task_plan(workdir, i + 1, "done")
+                mark_task_plan(workdir, original_index + 1, "done")
             return True, res
 
         ok, res = _run_one(impl_agent)
@@ -2109,6 +2168,8 @@ def _run_code(run, task, agents, ev, stats, mode):
             if not implement_all(impl, "换将后全量重实现"):
                 return
         else:
+            if not _human_intervention_gate(run_id, task, "repair", ev):
+                return
             issues_txt = _format_issues(review_json, verify_pass, task.get("verify_command"))
             prompt = (CODE_FIX_PROMPT
                       .replace("__GOAL__", task["goal"])
@@ -2140,6 +2201,8 @@ def _run_code(run, task, agents, ev, stats, mode):
             if impl.get("mode") == "mock" and res["ok"]:
                 pass  # mock 不产生真实变更
         review_json, verify_pass, verify_ran = review_and_score()
+        if not _human_intervention_gate(run_id, task, "review", ev):
+            return
         if review_json.get("reviewer_error"):
             # 评审器故障（Key 失效/崩溃）：没有可修的质量问题，修复轮与换将
             # 都无意义（换将也走同一个失效网关）——以明确错误收口，原因可见。

@@ -359,6 +359,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 from core import health
                 return self._json(200, health.snapshot())
+            if path == "/api/cli-discovery":
+                from core import cli_discovery
+                return self._json(200, {"clis": cli_discovery.load(cli_discovery.cache_path(paths.DATA_DIR))})
+            if path == "/api/recovery":
+                from core import checkpoints
+                return self._json(200, {"runs": checkpoints.scan_incomplete_runs(store.list_runs(None))})
             if path == "/api/board":
                 # 任务驾驶舱大屏的轻量聚合（KB 级；别让它去拉 /api/state 全量）
                 return self._json(200, board.payload())
@@ -1431,6 +1437,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": ok, "output": out})
         if path == "/api/tasks/clarify":
             return self._api_task_clarify()
+        if path == "/api/cli-discovery":
+            from core import cli_discovery
+            body = self._body() or {}
+            try:
+                timeout = max(1, min(15, int(body.get("timeout", 3))))
+            except (TypeError, ValueError):
+                timeout = 3
+            try:
+                rows = cli_discovery.refresh(
+                    cli_discovery.cache_path(paths.DATA_DIR),
+                    specs=body.get("specs"), timeout=timeout)
+                return self._json(200, {"ok": True, "clis": rows})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/recovery/([^/]+)/abandon$", path)
+        if m:
+            from core import checkpoints
+            try:
+                return self._json(200, {"ok": checkpoints.abandon(unquote(m.group(1)), self._client_name())})
+            except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
         if path == "/api/reviews":
             from core import review_requests
             body = self._body() or {}
@@ -1462,7 +1489,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body() or {}
             try:
                 row = intervention.request(body.get("run_id"), body.get("point"),
-                                           payload=body.get("payload"), timeout_s=body.get("timeout_s", 0))
+                                           payload=body.get("payload"), timeout_s=body.get("timeout_s", 0),
+                                           timeout_action=body.get("timeout_action", "continue"))
                 return self._json(200, {"ok": True, "request": row})
             except (TypeError, ValueError, OSError) as exc:
                 return self._json(400, {"error": str(exc)})
@@ -4479,6 +4507,15 @@ def main():
               flush=True)
     _step("正在启动健康探针…")
     health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
+    # CLI discovery is diagnostic only.  Run it in the background so a slow or
+    # interactive third-party CLI cannot delay the local Web UI startup.
+    def _discover_clis():
+        try:
+            from core import cli_discovery
+            cli_discovery.refresh(cli_discovery.cache_path(paths.DATA_DIR), timeout=3)
+        except Exception:
+            log.exception("CLI capability discovery failed")
+    threading.Thread(target=_discover_clis, name="cli-discovery", daemon=True).start()
     from core import bench as _bench_health
     _bench_health.init()  # CLI 账号死错台账：恢复落盘状态 + 定时探活
     from core import modelhub

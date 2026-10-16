@@ -16,6 +16,10 @@ DEFAULT_CLIS = (
 )
 
 
+def cache_path(data_dir):
+    return Path(data_dir) / "cli_capabilities.json"
+
+
 def probe(spec, *, timeout=3, environ=None):
     spec = dict(spec or {})
     executable = spec.get("executable") or spec.get("name")
@@ -46,6 +50,17 @@ def probe(spec, *, timeout=3, environ=None):
 def discover(specs=None, *, timeout=3, environ=None):
     return [probe(spec, timeout=timeout, environ=environ)
             for spec in (specs or DEFAULT_CLIS)]
+
+
+def refresh(path, specs=None, *, timeout=3, environ=None):
+    """Probe configured CLIs and atomically write the cache."""
+    rows = discover(specs=specs, timeout=timeout, environ=environ)
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps({"clis": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(target)
+    return rows
 
 
 def save(results, path):
