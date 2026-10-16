@@ -2,100 +2,8 @@
   "version": 1,
   "violations": [
     {
-      "kind": "cycle",
-      "text": "cycle: branching -> store -> errorlog -> selfupdate -> jobs -> pipeline -> branching"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: capability -> dispatch -> usage -> modelhub -> capability"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: contracts -> store -> contracts"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> notify -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> history -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> knowledge -> skills -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> knowledge -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> planner -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> pipeline -> zentao -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> jobs -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: errorlog -> selfupdate -> store -> errorlog"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: health -> modelhub -> health"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: jobs -> pipeline -> jobs"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: jobs -> pipeline -> zentao -> jobs"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: jobs -> selfupdate -> jobs"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: manager -> modelhub -> manager"
-    },
-    {
-      "kind": "cycle",
-      "text": "cycle: manager -> runner -> manager"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: assets(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: audit(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: automation(L2) -> flows(L0) 反向依赖"
-    },
-    {
       "kind": "layer",
       "text": "layer: automation(L2) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: automation(L2) -> settings(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -111,75 +19,11 @@
     },
     {
       "kind": "layer",
-      "text": "layer: backup(L2) -> store(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> bookmeta_catalog(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> catalog(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> knowledge(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> modelhub(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> planner(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> registry(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> router(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> skills(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: bookmeta(L2) -> store(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: branching(L99) -> modelhub(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: branching(L99) -> runner(L2) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: branching(L99) -> store(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: branching(L99) -> token_meter(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: builtin_agent(L1) -> tlsctx(L0) 反向依赖"
     },
     {
       "kind": "layer",
       "text": "layer: catalog(L1) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: checkpoints(L99) -> gitmod(L2) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: checkpoints(L99) -> paths(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -191,43 +35,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: cleanup(L2) -> store(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: contracts(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: contracts(L99) -> store(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: covergen(L1) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: covergen(L1) -> tlsctx(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: dispatch_log(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: errorlog(L2) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: evaluation(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: failure_notify(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: flow_graph(L99) -> flows(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -235,59 +43,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: goal_service(L1) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: goal_service(L1) -> settings_schema(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: health(L1) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: hooks(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> catalog(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> notify(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> registry(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> router(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> settings(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> store(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: jobs(L2) -> usage(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: knowledge(L1) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: knowledge_pipeline(L99) -> paths(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -295,19 +51,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: manager(L2) -> modelhub(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: manager(L2) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: manager(L2) -> registry(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: manager(L2) -> settings(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -319,14 +63,6 @@
     },
     {
       "kind": "layer",
-      "text": "layer: modelhub(L1) -> capability(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: modelhub(L1) -> dispatch(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: modelhub(L1) -> error_codes(L0) 反向依赖"
     },
     {
@@ -335,19 +71,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: modelhub(L1) -> settings_schema(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: modelhub(L1) -> tlsctx(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: notify(L1) -> settings(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: operations(L99) -> paths(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -363,10 +87,6 @@
     },
     {
       "kind": "layer",
-      "text": "layer: pipeline(L3) -> capability(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: pipeline(L3) -> catalog(L1) 反向依赖"
     },
     {
@@ -379,19 +99,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: pipeline(L3) -> errorlog(L2) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: pipeline(L3) -> flows(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: pipeline(L3) -> gitmod(L2) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: pipeline(L3) -> health(L1) 反向依赖"
     },
     {
       "kind": "layer",
@@ -447,10 +155,6 @@
     },
     {
       "kind": "layer",
-      "text": "layer: pipeline(L3) -> settings_schema(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: pipeline(L3) -> skills(L1) 反向依赖"
     },
     {
@@ -467,47 +171,11 @@
     },
     {
       "kind": "layer",
-      "text": "layer: pipeline(L3) -> token_meter(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: pipeline(L3) -> usage(L0) 反向依赖"
     },
     {
       "kind": "layer",
-      "text": "layer: pipeline(L3) -> zentao(L2) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: planner(L1) -> settings_schema(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: planner(L1) -> usage(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: plugins(L99) -> market(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: plugins(L99) -> mcp_client(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: plugins(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: plugins(L99) -> skills(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: portguard(L99) -> runner(L2) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: presence(L99) -> paths(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -519,15 +187,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: publish.auto(L2) -> ledger(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: publish.browser(L2) -> ws(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: publish.fanqie(L99) -> flow(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -555,19 +215,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: publish.qimao(L99) -> flow(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: retrieval(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: router(L1) -> dispatch(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: router(L1) -> usage(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -579,19 +227,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: runner(L2) -> modelhub(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: selfupdate(L2) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: selfupdate(L2) -> remote(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: selfupdate(L2) -> store(L1) 反向依赖"
     },
     {
       "kind": "layer",
@@ -607,31 +243,7 @@
     },
     {
       "kind": "layer",
-      "text": "layer: step_runner(L1) -> settings_schema(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: step_runner(L1) -> token_meter(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: store(L1) -> attachments(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: store(L1) -> error_codes(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: store(L1) -> flows(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: store(L1) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: store(L1) -> settings(L0) 反向依赖"
     },
     {
       "kind": "layer",
@@ -655,35 +267,11 @@
     },
     {
       "kind": "layer",
-      "text": "layer: telemetry(L2) -> usage(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: tool_outputs(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: webhooks(L99) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: wxdigest(L2) -> builtin_agent(L1) 反向依赖"
     },
     {
       "kind": "layer",
-      "text": "layer: wxdigest(L2) -> knowledge(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
       "text": "layer: wxdigest(L2) -> paths(L0) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: zentao(L2) -> modelhub(L1) 反向依赖"
-    },
-    {
-      "kind": "layer",
-      "text": "layer: zentao(L2) -> notify(L1) 反向依赖"
     },
     {
       "kind": "layer",
@@ -703,39 +291,57 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/builtin_agent.py 2053 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/builtin_agent.py 2215 行（上限 1200，历史最高 0）",
       "file": "app/core/builtin_agent.py",
-      "lines": 2053
+      "lines": 2215
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/manager.py 2385 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/jobs.py 1227 行（上限 1200，历史最高 0）",
+      "file": "app/core/jobs.py",
+      "lines": 1227
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/manager.py 2597 行（上限 1200，历史最高 0）",
       "file": "app/core/manager.py",
-      "lines": 2385
+      "lines": 2597
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/modelhub.py 3860 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/modelhub.py 4507 行（上限 1200，历史最高 0）",
       "file": "app/core/modelhub.py",
-      "lines": 3860
+      "lines": 4507
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/pipeline.py 5994 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/pipeline.py 6771 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 5994
+      "lines": 6771
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/runner.py 2248 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/publish/flow.py 1444 行（上限 1200，历史最高 0）",
+      "file": "app/core/publish/flow.py",
+      "lines": 1444
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/publish/manager.py 1497 行（上限 1200，历史最高 0）",
+      "file": "app/core/publish/manager.py",
+      "lines": 1497
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/core/runner.py 2682 行（上限 1200，历史最高 0）",
       "file": "app/core/runner.py",
-      "lines": 2248
+      "lines": 2682
     },
     {
       "kind": "lines",
-      "text": "lines: app/core/store.py 2347 行（上限 1200，历史最高 0）",
+      "text": "lines: app/core/store.py 2834 行（上限 1200，历史最高 0）",
       "file": "app/core/store.py",
-      "lines": 2347
+      "lines": 2834
     },
     {
       "kind": "lines",
@@ -745,15 +351,21 @@
     },
     {
       "kind": "lines",
-      "text": "lines: app/main.py 3754 行（上限 1200，历史最高 0）",
+      "text": "lines: app/main.py 4682 行（上限 1200，历史最高 0）",
       "file": "app/main.py",
-      "lines": 3754
+      "lines": 4682
     },
     {
       "kind": "lines",
       "text": "lines: app/pet.py 1663 行（上限 1200，历史最高 0）",
       "file": "app/pet.py",
       "lines": 1663
+    },
+    {
+      "kind": "lines",
+      "text": "lines: app/tests/test_competitive_features.py 1307 行（上限 1200，历史最高 0）",
+      "file": "app/tests/test_competitive_features.py",
+      "lines": 1307
     }
   ]
 }
