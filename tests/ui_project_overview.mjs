@@ -73,7 +73,19 @@ try {
     const image = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(output, name + '.png'), Buffer.from(image.result.data, 'base64'));
   };
-  const choose = path => ev(`(() => { const select=$('ov-project-select'); select.value=${JSON.stringify(path.replace(/\\/g, '/').toLowerCase())}; select.dispatchEvent(new Event('change')); return select.value; })()`);
+  // 项目 id 自 80a63e8 起是路径哈希（/api/projects 加载后选项 value 即哈希），
+  // 按小写路径设 select.value 会静默清空选择回落「全部项目」——改为按 label 里的
+  // 原始路径选，回退按归一化 value 选（兼容远端项目空间不可用的路径键形态）。
+  const choose = path => ev(`(() => {
+    const want = ${JSON.stringify(path)};
+    const select = $('ov-project-select');
+    const opt = [...select.options].find(o => o.value && o.textContent.includes(want))
+      || [...select.options].find(o => o.value === want.replace(/\\\\/g, '/').toLowerCase());
+    if (!opt) return 'no-option';
+    select.value = opt.value;
+    select.dispatchEvent(new Event('change'));
+    return opt.value;
+  })()`);
   await ev(`welcomeClose(); exitSettings(); $('f-goal').value='保留的草稿'; pickWorkspaceMode('develop')`);
   for (const [width, height] of [[1920, 1000], [1440, 900], [1043, 300]]) {
     await resize(width, height); await sleep(250);
