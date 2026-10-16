@@ -294,7 +294,9 @@ async function installDesktopUpdate(preloadedRelease = null) {
     }
     const choice = await dialog.showMessageBox(window, { type: 'question',
       message: `下载并安装桌面版 v${release.version}？`,
-      detail: '应用会下载对应平台安装包，退出当前 CodeBee 后启动安装器覆盖安装。任务、配置和数据目录会保留。',
+      detail: process.platform === 'linux'
+        ? '应用会下载适合当前 Linux 安装方式的新版。AppImage 会在退出后替换当前文件并重启；DEB/RPM 会打开系统软件安装器，请按提示完成更新。任务、配置和数据目录会保留。'
+        : '应用会下载对应平台安装包，退出当前 CodeBee 后启动安装器覆盖安装。任务、配置和数据目录会保留。',
       buttons: ['下载并安装', '稍后'], defaultId: 0, cancelId: 1 });
     if (choice.response !== 0) return;
     if (window && !window.isDestroyed()) window.setTitle('CodeBee · 准备更新…');

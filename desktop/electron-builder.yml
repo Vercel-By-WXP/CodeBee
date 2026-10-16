@@ -34,6 +34,7 @@ extraResources:
   - from: runtime/manifest.json
     to: python-runtime.json
 beforePack: scripts/before-pack.cjs
+artifactBuildStarted: scripts/artifact-build-started.cjs
 afterPack: scripts/after-pack.cjs
 artifactName: 'CodeBee-${version}-${os}-${arch}.${ext}'
 win:
@@ -42,6 +43,7 @@ win:
     - target: nsis
       arch: [x64]
 nsis:
+  warningsAsErrors: true
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
@@ -65,4 +67,15 @@ mac:
       arch: [arm64, x64]
 dmg:
   title: 'CodeBee ${version}'
+linux:
+  category: Development
+  icon: assets/icon-512.png
+  maintainer: 'CodeBee <codebee@users.noreply.github.com>'
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: rpm
+      arch: [x64]
 publish: null

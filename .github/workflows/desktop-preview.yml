@@ -35,6 +35,10 @@ jobs:
             platform: darwin
             arch: x64
             dist: dist:mac:x64
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            dist: dist:linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     defaults:
@@ -53,6 +57,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 patchelf rpm
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - name: Run sidecar lifecycle and data lock tests
@@ -63,12 +70,14 @@ jobs:
         run: |
           if [ "${{ matrix.platform }}" = win32 ]; then
             npm run prepare:runtime:win
+          elif [ "${{ matrix.platform }}" = linux ]; then
+            npm run prepare:runtime:linux
           else
             npm run prepare:runtime -- ${{ matrix.platform }} ${{ matrix.arch }}
           fi
       - name: Desktop smoke with bundled Python
         run: npm run smoke
-      - name: Build preview installer (no publishing)
+      - name: Build preview installer with strict NSIS warnings (no publishing)
         run: npm run ${{ matrix.dist }}
       - name: Test the packaged application
         shell: bash
@@ -79,6 +88,8 @@ jobs:
             './dist/win-unpacked/CodeBee.exe' --smoke-test
           elif [ "${{ matrix.arch }}" = arm64 ]; then
             './dist/mac-arm64/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
+          elif [ "${{ matrix.platform }}" = linux ]; then
+            './dist/linux-unpacked/CodeBee' --smoke-test
           else
             './dist/mac/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
           fi
@@ -91,6 +102,9 @@ jobs:
             desktop/dist/*.exe
             desktop/dist/*.dmg
             desktop/dist/*.zip
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist/*.rpm
             desktop/dist/smoke/
             desktop/dist/packaged-smoke/
           if-no-files-found: warn
@@ -108,18 +122,20 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Collect installers
+      - name: Collect installers, checksums, and build manifest
+        run: node scripts/collect_desktop_release.mjs --input artifacts --output release --tag "${{ github.ref_name }}"
+      - name: Verify release contract
         run: |
-          mkdir -p release
-          find artifacts -name '*.exe' -exec mv {} release/ \;
-          find artifacts \( -name '*.dmg' -o -name '*.zip' \) -exec mv {} release/ \;
-          ls -la release/
-      - name: Create GitHub Release with installers
+          test -s release/SHA512SUMS.txt
+          test -s release/desktop-builds.json
+          test -s release/build-record.json
+          sha512sum -c release/SHA512SUMS.txt
+      - name: Create GitHub Release with installers and records
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
             --title "CodeBee ${GITHUB_REF_NAME#v}" \
-            --notes "桌面预览版兼容安装包（Windows 7/8.1/10/11 x64、macOS Intel/Apple Silicon）。Python 已随包内置；桌面端可从应用内下载并重新安装。更新内容见仓库 CHANGELOG.md。" \
+            --notes "桌面预览版安装包（Windows 7/8.1/10/11 x64、macOS Intel/Apple Silicon、Linux x64 AppImage/DEB/RPM）。Python 已随包内置；桌面端可从应用内下载并重新安装。SHA512SUMS、desktop-builds.json 和 build-record.json 同步发布。更新内容见仓库 CHANGELOG.md。" \
             --prerelease \
             release/*

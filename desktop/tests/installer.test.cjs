@@ -27,7 +27,20 @@ test('desktop updater selects an installer for each supported desktop architectu
   assert.equal(assetForPlatform(release, 'win32', 'x64'), 'CodeBee-1.2.3-win-x64.exe');
   assert.equal(assetForPlatform(release, 'darwin', 'arm64'), 'CodeBee-1.2.3-mac-arm64.zip');
   assert.equal(assetForPlatform(release, 'darwin', 'x64'), 'CodeBee-1.2.3-mac-universal.dmg');
-  assert.equal(assetForPlatform(release, 'linux', 'x64'), '');
+  assert.equal(assetForPlatform({ assets: [
+    { name: 'CodeBee-1.2.3-linux-x64.deb' },
+    { name: 'CodeBee-1.2.3-linux-x64.AppImage' },
+    { name: 'CodeBee-1.2.3-linux-x64.rpm' },
+  ] }, 'linux', 'x64', { APPIMAGE: '/opt/CodeBee.AppImage' }), 'CodeBee-1.2.3-linux-x64.AppImage');
+  assert.equal(assetForPlatform({ assets: [
+    { name: 'CodeBee-1.2.3-linux-x64.deb' },
+    { name: 'CodeBee-1.2.3-linux-x64.rpm' },
+  ] }, 'linux', 'x64', {}, 'fedora'), 'CodeBee-1.2.3-linux-x64.rpm');
+  assert.equal(assetForPlatform({ assets: [
+    { name: 'CodeBee-1.2.3-linux-x64.deb' },
+    { name: 'CodeBee-1.2.3-linux-x64.rpm' },
+  ] }, 'linux', 'x64', {}, 'ubuntu'), 'CodeBee-1.2.3-linux-x64.deb');
+  assert.equal(assetForPlatform(release, 'linux', 'arm64'), '');
 });
 
 test('desktop updater requires a release-provided SHA-256 digest before downloading', async () => {

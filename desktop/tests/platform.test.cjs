@@ -60,6 +60,14 @@ test('Windows and macOS installers use the shared CodeBee atom icon family', () 
   assert.equal(icns.readUInt32BE(4), icns.length);
   assert.equal(builder.win.icon, 'assets/icon.ico');
   assert.equal(builder.mac.icon, 'assets/icon.icns');
+  assert.deepEqual(builder.linux.target.map(target => target.target), ['AppImage', 'deb', 'rpm']);
+  assert.deepEqual(builder.linux.target.map(target => target.arch), [['x64'], ['x64'], ['x64']]);
+  assert.equal(builder.linux.icon, 'assets/icon-512.png');
+  assert.equal(builder.linux.maintainer, 'CodeBee <codebee@users.noreply.github.com>');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'))).homepage,
+    'https://github.com/Vercel-By-WXP/CodeBee');
+  const runtimeManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'python-runtime.json'), 'utf8'));
+  assert.equal(runtimeManifest.assets['linux-x64'].executable, 'python/bin/python3');
   assert.equal(win7.extends, 'electron-builder.win-compatible.yml');
   assert.equal(compatible.electronVersion, '22.3.27');
   assert.deepEqual(compatible.win.target[0].arch, ['x64']);

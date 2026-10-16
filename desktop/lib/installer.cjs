@@ -73,7 +73,14 @@ function request(url, { maxBytes, timeout = 30000, headers = {}, allowedHosts = 
   });
 }
 
-function assetForPlatform(release, platform = process.platform, arch = process.arch) {
+function linuxDistro() {
+  try {
+    const release = fs.readFileSync('/etc/os-release', 'utf8');
+    return release.match(/^ID=(.*)$/m)?.[1]?.replace(/^['"]|['"]$/g, '').toLowerCase() || '';
+  } catch { return ''; }
+}
+
+function assetForPlatform(release, platform = process.platform, arch = process.arch, env = process.env, distro = linuxDistro()) {
   const assets = Array.isArray(release?.assets) ? release.assets : [];
   const names = assets.map(asset => String(asset?.name || ''));
   if (platform === 'win32' && arch === 'x64') {
@@ -84,6 +91,16 @@ function assetForPlatform(release, platform = process.platform, arch = process.a
       names.find(name => new RegExp(`^CodeBee-\\d+\\.\\d+\\.\\d+-mac-${arch}\\.zip$`, 'i').test(name)) ||
       names.find(name => /^CodeBee-\d+\.\d+\.\d+-mac-universal\.dmg$/i.test(name)) ||
       names.find(name => new RegExp(`^CodeBee-\\d+\\.\\d+\\.\\d+-mac-${arch}\\.dmg$`, 'i').test(name)) || '';
+  }
+  if (platform === 'linux' && arch === 'x64') {
+    const installedAppImage = Boolean(env.APPIMAGE);
+    const rpmDistro = /^(fedora|rhel|centos|rocky|almalinux|opensuse|sles|suse)$/i.test(distro);
+    const formats = installedAppImage ? ['AppImage'] : rpmDistro ? ['rpm', 'deb'] : ['deb', 'rpm'];
+    for (const format of formats) {
+      const asset = names.find(name => new RegExp(`^CodeBee-\\d+\\.\\d+\\.\\d+-linux-x64\\.${format}$`, 'i').test(name));
+      if (asset) return asset;
+    }
+    return '';
   }
   return '';
 }
@@ -268,6 +285,44 @@ function launchInstaller(installerPath, parentPid = process.pid, platform = proc
     child.unref();
     return true;
   }
+  if (platform === 'linux') {
+    const extension = path.extname(installerPath).toLowerCase();
+    const quote = value => `'${String(value).replace(/'/g, "'\\''")}'`;
+    try { fs.chmodSync(installerPath, 0o755); } catch (error) {
+      throw new Error(`无法准备 Linux 安装包：${error.message}`);
+    }
+    const target = process.env.APPIMAGE && extension === '.appimage' ? path.resolve(process.env.APPIMAGE) : '';
+    if (target) {
+      try { fs.accessSync(path.dirname(target), fs.constants.W_OK); } catch {
+        throw new Error('当前 AppImage 安装目录不可写，请从发布页下载新版并手动替换当前文件');
+      }
+    }
+    const script = [
+      '#!/bin/sh',
+      'set -eu',
+      `parent=${Number(parentPid)}`,
+      `installer=${quote(installerPath)}`,
+      'while kill -0 "$parent" 2>/dev/null; do sleep 1; done',
+      ...(target ? [
+        `target=${quote(target)}`,
+        'replacement="${target}.codebee-new"',
+        'cp "$installer" "$replacement"',
+        'chmod 755 "$replacement"',
+        'mv -f "$replacement" "$target"',
+        'rm -rf ' + quote(path.dirname(installerPath)),
+        'exec "$target"',
+      ] : [
+        `installer=${quote(installerPath)}`,
+        extension === '.appimage' ? '"$installer"' : 'xdg-open "$installer"',
+      ]),
+      '',
+    ].join('\n');
+    const scriptPath = path.join(os.tmpdir(), `codebee-install-${Date.now()}-${process.pid}.sh`);
+    fs.writeFileSync(scriptPath, script, { encoding: 'utf8', mode: 0o700 });
+    const child = spawn('/bin/sh', [scriptPath], { detached: true, stdio: 'ignore' });
+    child.unref();
+    return true;
+  }
   throw new Error('当前平台没有桌面安装器');
 }
 
@@ -277,6 +332,7 @@ module.exports = {
   compareVersions,
   versionTuple,
   assetForPlatform,
+  linuxDistro,
   latestRelease,
   downloadInstaller,
   launchInstaller,

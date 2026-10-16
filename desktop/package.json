@@ -2,8 +2,9 @@
   "name": "codebee-desktop",
   "version": "0.1.116",
   "private": true,
-  "description": "CodeBee desktop preview for Windows and macOS",
+  "description": "CodeBee desktop preview for Windows, macOS, and Linux",
   "author": "CodeBee",
+  "homepage": "https://github.com/Vercel-By-WXP/CodeBee",
   "license": "MIT",
   "main": "main.cjs",
   "engines": {
@@ -22,7 +23,9 @@
     "dist:mac:arm64": "electron-builder --mac dmg zip --arm64 --publish never",
     "dist:mac:x64": "electron-builder --mac dmg zip --x64 --publish never",
     "prepare:runtime:mac:universal": "node scripts/prepare-runtime.cjs universal-darwin",
-    "dist:mac:universal": "npm run prepare:runtime:mac:universal && electron-builder --mac dmg zip --universal --publish never"
+    "dist:mac:universal": "npm run prepare:runtime:mac:universal && electron-builder --mac dmg zip --universal --publish never",
+    "prepare:runtime:linux": "node scripts/prepare-runtime.cjs linux x64 modern",
+    "dist:linux": "npm run prepare:runtime:linux && electron-builder --linux AppImage deb rpm --x64 --publish never"
   },
   "devDependencies": {
     "electron": "44.7.0",

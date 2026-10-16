@@ -77,6 +77,10 @@ async function prepare(platform = process.platform, arch = process.arch, profile
       if (fs.existsSync(partial)) fs.unlinkSync(partial);
     }
   }
+  if (platform !== process.platform) {
+    console.log(`SHA256 verified. ${platform}-${arch} runtime cached; extraction is deferred to a native ${platform} runner.`);
+    return;
+  }
   console.log('SHA256 verified. Extracting Python runtime…');
   // Windows: use the bundled-in-Windows bsdtar (System32) — Git Bash's GNU tar
   // both treats "D:\..." as a remote host and cannot read zip archives.

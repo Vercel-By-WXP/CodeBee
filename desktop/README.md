@@ -1,6 +1,6 @@
 # CodeBee 桌面预览版
 
-复用现有 Web 界面和 Python 引擎，提供 **Windows x64 兼容安装包**（Windows 7/8.1/10/11，Electron 22）和 **macOS 13+ 安装包**（Intel/Apple Silicon）。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
+复用现有 Web 界面和 Python 引擎，提供 **Windows x64 兼容安装包**（Windows 7/8.1/10/11，Electron 22）、**macOS 13+ 安装包**（Intel/Apple Silicon）和 **Linux x64 安装包**（AppImage、DEB、RPM）。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
 
 关闭窗口会隐藏到托盘/菜单栏，任务继续执行。托盘菜单可重新打开；macOS 另有应用菜单。明确退出时，有正在执行的任务会询问是否停止。系统休眠、关机或退出应用后不保证持续执行；重新启动沿用引擎已有的任务恢复规则。
 
@@ -40,15 +40,18 @@ npm run dist:win
 # macOS Universal（Intel + Apple Silicon）
 npm run prepare:runtime:mac:universal
 npm run dist:mac:universal
+
+# Linux x64（便携、Debian/Ubuntu、Fedora/RHEL）
+npm run dist:linux
 ```
 
-生成 `dist/CodeBee-<版本>-win-x64.exe` 与 `CodeBee-<版本>-mac-{arm64,x64}.dmg/zip`。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
+生成 `dist/CodeBee-<版本>-win-x64.exe`、`CodeBee-<版本>-mac-{arm64,x64}.dmg/zip` 和 `CodeBee-<版本>-linux-x64.{AppImage,deb,rpm}`。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
 
-GitHub Actions 的 `Desktop preview` 工作流提供 Windows 兼容版和 macOS Intel/Apple Silicon 两个原生构建任务，先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用，只上传预览 artifacts。Windows 兼容版使用 Electron 22.3.27（最后支持 Win7/8.1 的线）+ Python 3.8.10 embeddable 运行时；macOS 每个架构包携带对应的 Python 运行时。Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
+GitHub Actions 的 `Desktop preview` 工作流提供 Windows、macOS Intel/Apple Silicon 和 Linux x64 原生构建任务，先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用。标签构建会在三平台全部通过后生成 `SHA512SUMS.txt`、`desktop-builds.json` 和 `build-record.json`，再创建 GitHub Release。Windows 兼容版使用 Electron 22.3.27（最后支持 Win7/8.1 的线）+ Python 3.8.10 embeddable 运行时；macOS 和 Linux 包携带对应的 Python 运行时。Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
 
 ## 更新与正式发布
 
-桌面端的应用菜单/托盘提供“下载并安装桌面新版”。它会从 GitHub Releases 找到当前平台的安装包，校验发布接口提供的 SHA-256 摘要后下载到临时目录；确认后退出当前应用并启动 NSIS 安装器覆盖安装。macOS 优先下载 ZIP，退出后由后台助手替换 `.app` 并重新打开；只有旧发布包没有 ZIP 或应用目录不可写时才打开 DMG/ZIP 作为手动兜底。数据目录、任务、配置和日志都在用户目录，重装不会删除。更新失败时旧版本仍保持可启动，菜单也保留发布页作为手动下载兜底。
+桌面端的应用菜单/托盘提供“下载并安装桌面新版”。它会从 GitHub Releases 找到当前平台的安装包，校验发布接口提供的 SHA-256 摘要后下载到临时目录；确认后退出当前应用并启动对应安装器。Windows 启动 NSIS 安装器覆盖安装；macOS 优先下载 ZIP，由后台助手替换 `.app`；Linux 的 AppImage 会在退出后原位替换当前文件并重启，DEB/RPM 则交给 `xdg-open` 打开系统安装器。数据目录、任务、配置和日志都在用户目录，重装不会删除。更新失败时旧版本仍保持可启动，菜单也保留发布页作为手动下载兜底。
 
 引擎小版本仍可在运行中热更新；桌面壳版本升级走完整安装器，避免替换正在运行的 Electron 文件。GitHub Actions 的 `Desktop preview` 在 `v*` 标签上同时构建并把安装包挂到公开 Releases，用户不需要登录 Actions 或手工找 artifact。
 
