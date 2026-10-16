@@ -1031,8 +1031,20 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .report p { margin: 8px 0; }
 .report ul { margin: 8px 0; padding-left: 22px; }
 .report li { margin: 3px 0; }
-.report table { border-collapse: collapse; margin: 10px 0; width: 100%; }
-.report th, .report td { border: 1px solid var(--border); padding: 6px 12px; font-size: 13px; text-align: left; vertical-align: top; }
+.report p, .report li, .report code { overflow-wrap: anywhere; }
+/* Markdown tables can have more columns than the detail pane can show. Keep
+   the report itself inside the pane and let the table scroll on its own;
+   otherwise a long score table widens the page and the rightmost columns are
+   clipped by the run-detail shell. */
+.report table:not(.code-block) {
+  display: block; border-collapse: collapse; margin: 10px 0;
+  width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden;
+  min-width: 0;
+}
+.report table:not(.code-block) > thead,
+.report table:not(.code-block) > tbody { width: max-content; min-width: 100%; }
+.report th, .report td { border: 1px solid var(--border); padding: 6px 12px; font-size: 13px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.report table:not(.code-block) th { white-space: nowrap; }
 .report th { background: var(--panel2); font-weight: 600; }
 .report code { background: var(--log-bg); color: var(--log-text); }
 .report pre { background: var(--log-bg); color: var(--log-text); font-family: var(--mono); padding: 12px 14px; border-radius: var(--r-sm); overflow: auto; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
@@ -4414,7 +4426,7 @@ main .panel.wide {
    starts and ends on the same vertical guides. */
 #run-detail .rd-arts .files-head {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: max-content max-content minmax(0, 1fr);
   align-items: center;
   gap: 14px;
 }
@@ -4422,6 +4434,12 @@ main .panel.wide {
   max-width: none;
   min-width: 0;
 }
+#run-detail .rd-arts .files-head .ver-badge {
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
+}
+#run-detail .rd-arts .files-head .ver-badge + .wd { grid-column: 3; }
 #run-detail .rd-arts .file-chips {
   width: min(100%, 760px);
   gap: 4px;
@@ -4486,6 +4504,7 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   #run-detail { padding-inline: 0; }
   #run-detail .detail-head { padding-top: 12px; }
   #run-detail .rd-pane .files-head { grid-template-columns: 1fr; gap: 4px; }
+  #run-detail .rd-arts .files-head .ver-badge + .wd { grid-column: auto; }
   #run-detail .rd-arts .fc-row { grid-template-columns: minmax(0, 1fr) 68px; }
   #run-detail .rd-arts .fc-row .file-chip.prev { width: 68px; }
   #rd-hive-cells .lane-meter { width: 52px; }
