@@ -12022,6 +12022,7 @@ function capabilityEvidenceHtml(capabilities) {
   const plugins = list(cap.plugins);
   const external = list(cap.external_skills);
   const mcp = cap.mcp && typeof cap.mcp === "object" ? cap.mcp : {};
+  const runtime = cap.runtime && typeof cap.runtime === "object" ? cap.runtime : {};
   const discovered = Number(mcp.discovered || 0);
   const called = list(mcp.called);
   const pills = [];
@@ -12034,6 +12035,14 @@ function capabilityEvidenceHtml(capabilities) {
       ? t("已调用") + " " + called.length + " · " + called.join(", ")
       : t("已发现") + " " + discovered;
     pills.push('<span class="rd-capability-pill"><b>MCP</b> ' + esc(mcpText) + '</span>');
+  }
+  const promptCalls = Number(runtime.prompt_calls || 0);
+  const capabilityPrompts = Number(runtime.capability_prompts || 0);
+  const promptAgents = list(runtime.agents);
+  if (promptCalls || capabilityPrompts) {
+    const promptText = t("CLI提示词") + " " + capabilityPrompts + "/" + promptCalls +
+      (promptAgents.length ? " · " + promptAgents.join(", ") : "");
+    pills.push('<span class="rd-capability-pill"><b>' + esc(t("运行时注入")) + '</b> ' + esc(promptText) + '</span>');
   }
   if (!pills.length) return '<div class="rd-capability-evidence"><b>' + esc(t("运行时能力证据")) + '</b><span class="hint">' + esc(t("本次运行未注入匹配的经验、Skill 或 MCP 工具")) + '</span></div>';
   return '<div class="rd-capability-evidence"><b>' + esc(t("运行时能力证据")) + '</b><div class="rd-capability-pills">' + pills.join("") + '</div></div>';

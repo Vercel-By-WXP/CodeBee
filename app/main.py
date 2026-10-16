@@ -4632,4 +4632,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BrokenPipeError:
+        # Read-only JSON modes are commonly piped through ``head``/``Select``.
+        # A downstream early close is a normal consumer decision, not a CLI
+        # failure; detach stdout before interpreter shutdown to avoid a second
+        # flush traceback on Windows and POSIX alike.
+        try:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        except Exception:
+            pass

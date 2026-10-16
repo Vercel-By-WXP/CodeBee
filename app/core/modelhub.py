@@ -4090,6 +4090,9 @@ def migrate_stale_provider_only_bindings():
     """
     with _LOCK:
         data = _load()
+        migrations = data.setdefault("_binding_migrations", {})
+        if migrations.get("stale_provider_only_v1"):
+            return 0
         plist = {p.get("id"): p for p in data.get("providers") or []}
         changed = []
         for aid, binding in (data.get("bindings") or {}).items():
@@ -4106,15 +4109,26 @@ def migrate_stale_provider_only_bindings():
             allowed = bindable_protocols(aid)
             # _entry_endpoint 只判断协议/端点适配；启用状态和密钥也必须
             # 一并检查，否则停用或冷却到无密钥的历史绑定仍会卡住调度。
-            usable = bool(prov and prov.get("enabled", True)
-                          and (prov.get("api_key") or _chain_keys(prov))
-                          and (allowed and _entry_endpoint(prov, allowed)))
+            native_cli = bool(prov and _native_cli_provider(prov, aid))
+            if native_cli:
+                # Native OAuth/session providers intentionally have no API key
+                # and some CLIs (Gemini, Pi, etc.) expose no injectable wire at
+                # all.  Their validity is scoped by _native_cli_provider,
+                # while ordinary providers still require a usable key and
+                # endpoint for this CLI.
+                usable = bool(prov.get("enabled", True))
+            else:
+                if isinstance(prov, dict) and isinstance(prov.get("keys"), list):
+                    has_key = bool(_provider_keys(prov, available_only=True))
+                else:
+                    has_key = bool(prov and prov.get("api_key"))
+                usable = bool(prov and prov.get("enabled", True)
+                              and has_key and (allowed and _entry_endpoint(prov, allowed)))
             if usable:
                 continue
             binding["provider_id"] = ""
             changed.append(aid)
-        if not changed:
-            return 0
+        migrations["stale_provider_only_v1"] = True
         _backup_file(_FILE)
         _save(data)
         return len(changed)

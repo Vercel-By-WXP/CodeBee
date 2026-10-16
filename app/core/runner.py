@@ -1907,6 +1907,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         prompt, _capability_meta = capability_runtime.inject_prompt(
             prompt, task=command_context.get("task"),
             run_id=command_context.get("run_id") or checkpoint_run_id)
+        capability_runtime.note_prompt(
+            command_context.get("run_id") or checkpoint_run_id,
+            agent=agent.get("id") or agent.get("kind") or "",
+            capabilities_present=bool(_capability_meta.get("capabilities_present")),
+        )
     except Exception:
         # Optional catalogs must never turn a valid CLI invocation into a hard
         # failure.

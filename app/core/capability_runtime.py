@@ -145,6 +145,12 @@ def prepare(task, run_id=""):
         "plugins": sorted(plugin_ids),
         "external_skills": sorted(external_ids),
         "mcp": {"discovered": 0, "called": []},
+        # ``prompt_calls`` counts runner invocations that reached the bridge;
+        # ``capability_prompts`` counts calls whose final prompt contained the
+        # resolved capability block.  This is the runtime proof that a CLI
+        # received the selected skills/knowledge, rather than merely having
+        # them listed in the catalog.
+        "runtime": {"prompt_calls": 0, "capability_prompts": 0, "agents": []},
         "block": "\n\n".join(sections),
     }
     if key:
@@ -188,22 +194,96 @@ def inject_prompt(prompt, task=None, run_id=""):
     if not task and run_id:
         task = task_for_run(run_id)
     if not task:
-        return text, {"injected": False, "run_id": str(run_id or "")}
-    block = block_for(task, run_id)
+        return text, {"injected": False, "capabilities_present": False,
+                      "run_id": str(run_id or "")}
+    snapshot = prepare(task, run_id)
+    block = snapshot.get("block") or ""
     if not block or block in text:
-        return text, {"injected": False, "run_id": str(run_id or "")}
+        return text, {"injected": False, "capabilities_present": bool(block and block in text),
+                      "run_id": str(run_id or "")}
     return ("## 本次运行可用能力（统一桥接，按证据参考）\n" + block
             + "\n\n---\n\n" + text), {
                 "injected": True, "run_id": str(run_id or ""),
-                "skills": list(prepare(task, run_id).get("skills") or []),
-                "knowledge": bool(prepare(task, run_id).get("knowledge")),
+                "capabilities_present": True,
+                "skills": list(snapshot.get("skills") or []),
+                "knowledge": bool(snapshot.get("knowledge")),
             }
 
 
 def evidence(task, run_id=""):
-    """Return JSON-safe evidence without the prompt body."""
-    item = prepare(task, run_id)
-    return {k: item[k] for k in ("scope", "skills", "knowledge", "plugins", "external_skills", "mcp")}
+    """Return JSON-safe evidence without the prompt body.
+
+    A completed run is an historical claim: after a restart, the current skill
+    directory may have changed. Prefer the immutable snapshot persisted on the
+    run record; the in-memory snapshot still wins while a run is active so MCP
+    discovery/call updates remain visible immediately. Older runs created
+    before capability snapshots existed fall back to the best available
+    reconstruction for backwards compatibility.
+    """
+    key = str(run_id or "")
+    with _LOCK:
+        item = _RUNS.get(key) if key else None
+    if item is not None:
+        return _evidence_shape(item)
+    if key:
+        try:
+            from . import store
+            run = store.get_run(key) or {}
+            persisted = run.get("capabilities")
+            if isinstance(persisted, dict) and any(
+                    field in persisted for field in ("scope", "skills", "knowledge", "plugins",
+                                                      "external_skills", "mcp")):
+                return _evidence_shape(persisted)
+        except Exception:
+            pass
+    return _evidence_shape(prepare(task, run_id))
+
+
+def _evidence_shape(item):
+    """Project a capability snapshot to the stable, body-free public shape."""
+    item = item if isinstance(item, dict) else {}
+    out = {key: item.get(key) for key in
+           ("scope", "skills", "knowledge", "plugins", "external_skills", "mcp")}
+    # Do not manufacture a new field for legacy historical snapshots.  New
+    # runs carry it from prepare(), while old records remain byte-compatible.
+    if "runtime" in item:
+        runtime = item.get("runtime") or {}
+        out["runtime"] = {
+            "prompt_calls": int(runtime.get("prompt_calls") or 0),
+            "capability_prompts": int(runtime.get("capability_prompts") or 0),
+            "agents": sorted({str(x) for x in (runtime.get("agents") or []) if x}),
+        }
+    return out
+
+
+def note_prompt(run_id, *, agent="", capabilities_present=False):
+    """Record that a runner call received the resolved capability block.
+
+    The write is deliberately best-effort: telemetry must never block a model
+    call.  Persisting here also covers direct external-CLI callers that do not
+    pass through a specialised pipeline step.
+    """
+    key = str(run_id or "")
+    if not key:
+        return
+    with _LOCK:
+        item = _RUNS.get(key)
+        if not item:
+            return
+        runtime = item.setdefault("runtime", {})
+        runtime["prompt_calls"] = int(runtime.get("prompt_calls") or 0) + 1
+        if capabilities_present:
+            runtime["capability_prompts"] = int(runtime.get("capability_prompts") or 0) + 1
+        aid = str(agent or "").strip()
+        if aid:
+            runtime["agents"] = sorted(set(runtime.get("agents") or ()) | {aid})
+        snapshot = _evidence_shape(item)
+    try:
+        from . import store
+        if store.get_run(key):
+            store.update_run(key, capabilities=snapshot)
+    except Exception:
+        pass
 
 
 def note_mcp(run_id, *, discovered=None, called=None):

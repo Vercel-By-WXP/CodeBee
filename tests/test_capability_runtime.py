@@ -168,3 +168,32 @@ class CapabilityRuntimeTests(BaseTest):
         self.assertEqual(first, second)
         self.assertIn("桥接经验", first)
         self.assertIn("桥接知识", first)
+
+    def test_prompt_evidence_records_final_cli_capability_input(self):
+        from app.core import capability_runtime, store
+
+        task = store.create_task({"type": "direct", "title": "注入审计",
+                                  "goal": "验证 CLI 收到能力", "workdir": str(self.workdir)})
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        prompt, meta = capability_runtime.inject_prompt("请执行", task, run["id"])
+        self.assertTrue(meta["capabilities_present"])
+        self.assertIn("本次运行可用能力", prompt)
+        capability_runtime.note_prompt(run["id"], agent="claude-code",
+                                       capabilities_present=meta["capabilities_present"])
+        evidence = capability_runtime.evidence(task, run["id"])
+        self.assertEqual(evidence["runtime"], {
+            "prompt_calls": 1, "capability_prompts": 1, "agents": ["claude-code"]})
+        self.assertEqual(store.get_run(run["id"])["capabilities"]["runtime"], evidence["runtime"])
+
+    def test_evidence_prefers_persisted_historical_snapshot_after_restart(self):
+        from app.core import capability_runtime, store
+
+        historical = {
+            "scope": "direct", "skills": ["old-skill"], "knowledge": True,
+            "plugins": ["old-plugin"], "external_skills": [],
+            "mcp": {"discovered": 2, "called": ["mcp__old__read"]},
+        }
+        with mock.patch.object(store, "get_run", return_value={"capabilities": historical}), \
+                mock.patch.object(capability_runtime, "prepare",
+                                  side_effect=AssertionError("must not rebuild history")):
+            self.assertEqual(capability_runtime.evidence({}, "restarted-run"), historical)

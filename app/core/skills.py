@@ -969,6 +969,25 @@ def _fallback_lessons(task, run):
     return out[:5]
 
 
+def _run_learning_ready(run):
+    """Whether a run has a trustworthy, fully settled execution snapshot.
+
+    Normal runs are marked ``done``.  A few legacy/replay callers persist the
+    verdict and terminal steps before updating the run status; accept that
+    narrow queued/running window, while keeping failed/cancelled/timeout runs
+    out of quality learning even when they happen to contain a stale verdict.
+    """
+    status = run.get("status") or ""
+    if status == "done":
+        return True
+    if status not in ("queued", "running"):
+        return False
+    steps = run.get("steps") or []
+    return bool(steps) and all(
+        (s.get("status") or "") not in ("queued", "running") for s in steps
+    )
+
+
 def _run_outcome(run):
     """把评审结论折成三态结局：True 过审 / False 未过审 / None 无从判定。
 
@@ -978,7 +997,9 @@ def _run_outcome(run):
     失败（换路耗尽、超时、取消）不是质量信号，这点统一执行标准里也写了：取消不得
     进入任何惩罚。判不出来就返回 None，宁可这次不归因。
     """
-    if (run.get("status") or "") != "done":
+    # 直接调用方/历史回放可能先写完全部步骤与 verdict，再补 run 终态；
+    # _run_learning_ready 只放行这种已收口的 queued/running 快照。
+    if not _run_learning_ready(run):
         return None
     v = run.get("verdict") or {}
     if not v:
@@ -1016,7 +1037,7 @@ def learn_from_run(run_id, use_orchestrator=True):
             return 0
         # 只有正常完成的运行才可沉淀；failed/cancelled/timeout 即便残留 verdict，
         # 也可能是半成品或基础设施故障，不能当作内容质量证据。
-        if (run.get("status") or "") != "done":
+        if not _run_learning_ready(run):
             return 0
         # mock 运行不沉淀（没有真实评审信号）
         steps = run.get("steps") or []
@@ -1055,8 +1076,8 @@ def learn_from_run(run_id, use_orchestrator=True):
                         if isinstance(raw, list):
                             model_returned_lessons = True
                             for x in raw[:5]:
-                                if (isinstance(x, dict) and x.get("title") and x.get("content")
-                                        and str(x["title"]).strip().startswith(("本次观察：", "候选做法："))):
+                                if (isinstance(x, dict) and str(x.get("title") or "").strip()
+                                        and str(x.get("content") or "").strip()):
                                     lessons.append({"title": str(x["title"]), "content": str(x["content"]),
                                                     "category": x.get("category")})
                                     for lid in (x.get("violates") or [])[:MAX_LESSONS_INJECT]:
