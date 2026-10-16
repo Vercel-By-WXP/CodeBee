@@ -1907,7 +1907,7 @@ def _run_code(run, task, agents, ev, stats, mode):
                     done_titles = "、".join(
                         (s.get("title") or "")[:40] for s in subtasks[:i]) or "（无）"
                     prog = ("\n\n## 计划进度（第 %d/%d 项）\n已完成：%s。当前接着做下面这一项，"
-                            "不要重做已完成的。" % (i + 1, len(execution_steps), done_titles))
+                            "不要重做已完成的。" % (i + 1, len(subtasks), done_titles))
                 prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
                           .replace("__SUBTASK__",
@@ -1915,8 +1915,8 @@ def _run_code(run, task, agents, ev, stats, mode):
                           .replace("__FILES__", _files_hint(sub))
                           .replace("__CONTEXT__", task.get("context") or "（无）")
                           .replace("__VERIFY_HINT__", _verify_hint(task))) + prog
-                role = "implement" if len(execution_steps) == 1 else "implement-%d/%d" % (i + 1, len(execution_steps))
-                mark_task_plan(workdir, original_index + 1, "run")   # 活计划：起跑即标进行中
+                role = "implement" if len(subtasks) == 1 else "implement-%d/%d" % (i + 1, len(subtasks))
+                mark_task_plan(workdir, i + 1, "run")   # 活计划：起跑即标进行中
                 res = _run_step(run_id, role, agt_b, prompt, step_wd,
                                 readonly=False, ev=ev,
                                 note=prefix_note if i == 0 else "",
@@ -1945,9 +1945,9 @@ def _run_code(run, task, agents, ev, stats, mode):
                     except Exception:
                         pass
                 if not res["ok"]:
-                    mark_task_plan(workdir, original_index + 1, "fail")
+                    mark_task_plan(workdir, i + 1, "fail")
                     return False, res
-                mark_task_plan(workdir, original_index + 1, "done")
+                mark_task_plan(workdir, i + 1, "done")
             return True, res
 
         ok, res = _run_one(impl_agent)
@@ -6727,6 +6727,7 @@ def execute_run(run_id):
         except Exception:
             pass
     finally:
+        _clear_task_budget(run_id)
         # 所有引擎共用完成后的候选记忆沉淀；失败、取消和 partial 不产生成功记录。
         try:
             from . import project_memory

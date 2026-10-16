@@ -53,6 +53,16 @@ def request(run_id, point, *, payload=None, timeout_s=0, now=None):
 def list_pending(run_id=""):
     with _LOCK:
         rows = list(_rows().values())
+        now = time.time()
+        expired = []
+        for row in rows:
+            if row.get("status") == "waiting" and row.get("expires_at", 0) and row["expires_at"] <= now:
+                updated = dict(row, status="expired", updated_at=now, note="介入超时")
+                _append(updated)
+                expired.append(updated)
+        if expired:
+            expired_map = {x["id"]: x for x in expired}
+            rows = [expired_map.get(x.get("id"), x) for x in rows]
     return [x for x in rows if x.get("status") == "waiting" and (not run_id or x.get("run_id") == run_id)]
 
 
@@ -65,6 +75,10 @@ def decide(request_id, action, *, actor="user", note=""):
         row = _rows().get(str(request_id))
         if not row:
             raise KeyError("介入请求不存在")
+        if row.get("status") == "waiting" and row.get("expires_at", 0) and row["expires_at"] <= time.time():
+            updated = dict(row, status="expired", updated_at=time.time(), note="介入超时")
+            _append(updated)
+            return updated
         if row.get("status") != "waiting":
             return row
         updated = dict(row, status=target, actor=str(actor or "user")[:120],

@@ -333,7 +333,10 @@ def is_down(provider: str) -> bool:
             return False
         until = float(st.get("circuit_open_until") or 0)
         if until and until <= _now():
-            # Half-open permits one probe; callers should report the outcome.
+            # Reserve exactly one probe while half-open. Other callers keep
+            # seeing the circuit as down until that probe reports recovery.
+            if st.get("half_open"):
+                return True
             st["half_open"] = True
             return False
         return True
