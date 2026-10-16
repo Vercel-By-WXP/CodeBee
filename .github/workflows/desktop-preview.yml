@@ -125,6 +125,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Collect installers, checksums, and build manifest
         run: node scripts/collect_desktop_release.mjs --input artifacts --output release --tag "${{ github.ref_name }}"
       - name: Generate release notes from CHANGELOG
