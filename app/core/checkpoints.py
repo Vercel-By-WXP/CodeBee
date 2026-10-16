@@ -418,8 +418,15 @@ def _git_changed_paths(workdir, gitmod):
                 old_rel = os.fsdecode(fields[index])
                 paths.append(("D", old_rel))
             index += 1
+    # -uall 下普通未跟踪目录会展开成逐文件条目，仍以目录形态（尾斜杠）出现的
+    # 只剩嵌套 Git 仓库/worktree（如 claude 的 .claude/worktrees/agent-*）和空
+    # 目录：前者内容归另一份 checkout 管，后者 git 本身不跟踪，文件级快照都
+    # 覆盖不了，按 _attachments 同款豁免（2026-10-16 实案：目录条目被当文件
+    # read_bytes 炸成 OSError，「已有改动无法完整快照」拒起全部外部 CLI）。
+    # 注意 paths 里的状态还是原始两字符 porcelain 码，未跟踪是 "??"。
     return [(gitmod._status_code(status), rel) for status, rel in paths
-            if not (status == "?" and gitmod._attach_path(rel))
+            if not (status == "??" and (rel.endswith("/")
+                                        or gitmod._attach_path(rel)))
             and rel != ".codebee" and not rel.startswith(".codebee/")]
 
 
@@ -480,6 +487,8 @@ def begin_git_step(run_id, workdir):
         rel = str(row.get("path") or "")
         if not rel:
             continue
+        if (root / rel).is_dir():
+            continue  # 目录没有字节前态可留底，兜底跳过（正常已被上方过滤）
         saved = capture_file(run_id, root, root / rel)
         if not saved.get("ok"):
             return {"ok": False, "error": "已有改动无法完整快照（%s），未启动外部 CLI" % rel}
@@ -538,7 +547,7 @@ def finish_git_step(run_id, workdir, head, before_paths=()):
             captured += 1
         if not mark_file_after(run_id, root, root / rel):
             failed.append(rel)
-    warning = "仅覆盖 Git 可见文件改动；忽略文件、shell/MCP 与外部服务副作用不保证可回滚。"
+    warning = "仅覆盖 Git 可见文件改动；忽略文件、嵌套 Git 目录（如 .claude/worktrees）、shell/MCP 与外部服务副作用不保证可回滚。"
     if failed:
         warning += "以下路径未能完整快照，不能保证恢复：%s。" % "、".join(failed[:20])
         if len(failed) > 20:
