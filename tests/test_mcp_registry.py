@@ -85,3 +85,41 @@ class McpRegistryTests(BaseTest):
         data = json.loads(out["config"])
         self.assertEqual(data["mcp"]["docs"]["type"], "local")
         self.assertEqual(data["mcp"]["docs"]["command"], ["node", "server.js"])
+
+
+class McpCatalogTests(BaseTest):
+    def test_catalog_install_is_preview_by_default_and_requires_options(self):
+        from app.core import mcp_catalog
+        with self.assertRaises(ValueError):
+            mcp_catalog.install("filesystem")
+        preview = mcp_catalog.install(
+            "filesystem", options={"workdir": str(self.workdir)})
+        self.assertFalse(preview["commit"])
+        self.assertTrue(preview["package_install_required"])
+        self.assertEqual(preview["server"]["name"], "cb_filesystem")
+        self.assertNotEqual(mcp_catalog._configured(), [preview["server"]])
+
+    def test_catalog_commit_replaces_managed_entry_and_redacts_env(self):
+        from app.core import mcp_catalog, settings
+        first = mcp_catalog.install("github", commit=True)
+        self.assertTrue(first["changed"])
+        second = mcp_catalog.install(
+            "github", options={"env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "secret"}},
+            commit=True)
+        self.assertTrue(second["changed"])
+        configured = mcp_catalog._configured()
+        self.assertEqual(len(configured), 1)
+        self.assertEqual(configured[0]["name"], "cb_github")
+        self.assertEqual(second["server"]["env"]["GITHUB_PERSONAL_ACCESS_TOKEN"], "<redacted>")
+        self.assertIn("secret", settings.load()["mcp_servers"])
+
+    def test_catalog_remove_is_explicit_and_state_is_audit_safe(self):
+        from app.core import mcp_catalog
+        mcp_catalog.install("time", commit=True)
+        preview = mcp_catalog.remove("cb_time")
+        self.assertFalse(preview["commit"])
+        self.assertEqual(len(mcp_catalog._configured()), 1)
+        done = mcp_catalog.remove("cb_time", commit=True)
+        self.assertTrue(done["changed"])
+        self.assertEqual(mcp_catalog._configured(), [])
+        self.assertTrue(all("secret" not in json.dumps(x) for x in mcp_catalog.state()["configured"]))

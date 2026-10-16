@@ -487,6 +487,12 @@ class Handler(BaseHTTPRequestHandler):
                                            "configured": mcp_registry.export("claude", redact=True)["servers"]})
                 except (TypeError, ValueError) as exc:
                     return self._json(400, {"error": str(exc)})
+            if path == "/api/mcp/catalog":
+                from core import mcp_catalog
+                try:
+                    return self._json(200, mcp_catalog.state())
+                except (TypeError, ValueError) as exc:
+                    return self._json(400, {"error": str(exc)})
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -1203,6 +1209,31 @@ class Handler(BaseHTTPRequestHandler):
             deny = self._deny_control()
             if deny:
                 return deny
+        if path == "/api/memory":
+            body = self._body() or {}
+            if str(body.get("action") or "").lower() != "approve_all":
+                return self._json(400, {"error": "不支持的记忆操作"})
+            from core import project_memory
+            totals = {"approved_count": 0, "skipped_count": 0, "invalid_count": 0}
+            seen = set()
+            for task in store.list_tasks(archived=False) + store.list_tasks(archived=True):
+                workdir = str(task.get("workdir") or "").strip()
+                if not workdir:
+                    continue
+                try:
+                    key = str(project_memory._file(workdir).parent.resolve())
+                except (OSError, ValueError):
+                    continue
+                if key in seen:
+                    continue
+                seen.add(key)
+                try:
+                    result = project_memory.approve_pending(workdir)
+                except (OSError, ValueError):
+                    continue
+                for name in totals:
+                    totals[name] += int(result.get(name) or 0)
+            return self._json(200, totals)
         if path == "/api/tasks":
             return self._api_create_task()
         m = re.match(r"^/api/tasks/([^/]+)/selection/serial$", path)
@@ -1303,6 +1334,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, result)
             except (TypeError, ValueError, OSError) as exc:
                 return self._json(400, {"error": str(exc)})
+        if path == "/api/mcp/install":
+            from core import mcp_catalog
+            body = self._body() or {}
+            try:
+                return self._json(200, mcp_catalog.install(
+                    body.get("id"), options=body.get("options"),
+                    name=body.get("name"), commit=bool(body.get("commit"))))
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/mcp/remove":
+            from core import mcp_catalog
+            body = self._body() or {}
+            try:
+                return self._json(200, mcp_catalog.remove(
+                    body.get("name"), commit=bool(body.get("commit"))))
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
         m = re.match(r"^/api/backend-profiles/([^/]+)/delete$", path)
         if m:
             from core import backend_profiles
@@ -1398,6 +1446,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body() or {}
             from core import project_memory
             try:
+                if str(body.get("action") or "").lower() == "approve_all":
+                    return self._json(200, project_memory.approve_pending(task.get("workdir")))
                 if str(body.get("action") or "").lower() == "feedback":
                     row = project_memory.feedback(
                         task.get("workdir"), body.get("id"), useful=body.get("useful"),
@@ -4147,6 +4197,14 @@ def main():
                         help="确认执行 --mcp-register 的写盘动作")
     parser.add_argument("--mcp-path", default="",
                         help="MCP 注册目标路径（显式指定后仅在 --commit-mcp 时写入）")
+    parser.add_argument("--mcp-catalog", action="store_true",
+                        help="以 JSON 输出可安装 MCP 目录和当前配置后退出")
+    parser.add_argument("--mcp-install", default="",
+                        help="预览或安装白名单 MCP 配置；配合 --commit-mcp 写入设置")
+    parser.add_argument("--mcp-options", default="",
+                        help="MCP 安装参数 JSON（例如 {\"workdir\":\"C:/repo\"}）")
+    parser.add_argument("--mcp-remove", default="",
+                        help="预览或移除已配置 MCP 名称；配合 --commit-mcp 写入设置")
     args = parser.parse_args()
 
     # The service normally inherits the desktop console, but read/export CLI
@@ -4155,7 +4213,8 @@ def main():
     # this guard a valid ``codebee --capabilities`` command can fail before it
     # emits any result.
     if (args.capabilities or args.run_capabilities or args.plugin_install or
-            args.plugin_enable or args.mcp_export or args.mcp_register):
+            args.plugin_enable or args.mcp_export or args.mcp_register or
+            args.mcp_catalog or args.mcp_install or args.mcp_remove):
         for stream in (sys.stdout, sys.stderr):
             try:
                 stream.reconfigure(encoding="utf-8", errors="replace")
@@ -4166,7 +4225,8 @@ def main():
     # backends. These read/export operations intentionally happen before the
     # service lock and browser startup, making them safe for shell automation.
     if (args.capabilities or args.run_capabilities or args.plugin_install or
-            args.plugin_enable or args.mcp_export or args.mcp_register):
+            args.plugin_enable or args.mcp_export or args.mcp_register or
+            args.mcp_catalog or args.mcp_install or args.mcp_remove):
         if args.capabilities:
             print(json.dumps(plugins.capabilities_view(), ensure_ascii=False, indent=2))
         if args.run_capabilities:
@@ -4194,6 +4254,23 @@ def main():
             print(json.dumps(mcp_registry.register(
                 args.mcp_register, path_override=args.mcp_path or None,
                 dry_run=not args.commit_mcp), ensure_ascii=False, indent=2))
+        if args.mcp_catalog:
+            from core import mcp_catalog
+            print(json.dumps(mcp_catalog.state(), ensure_ascii=False, indent=2))
+        if args.mcp_install:
+            from core import mcp_catalog
+            try:
+                mcp_options = json.loads(args.mcp_options) if args.mcp_options else None
+            except ValueError as exc:
+                raise SystemExit("--mcp-options 必须是合法 JSON：%s" % exc)
+            print(json.dumps(mcp_catalog.install(
+                args.mcp_install, options=mcp_options, commit=args.commit_mcp),
+                ensure_ascii=False, indent=2))
+        if args.mcp_remove:
+            from core import mcp_catalog
+            print(json.dumps(mcp_catalog.remove(
+                args.mcp_remove, commit=args.commit_mcp),
+                ensure_ascii=False, indent=2))
         return
 
     # CLI and desktop must never recover/run the same task store concurrently.

@@ -17927,7 +17927,7 @@ function usageRecentTable(rows) {
 
 function renderUsage() {
   const u = S.usage;
-  if (!u) return;
+  if (!u) { toast("请先生成配对码并等待地址出现", true); return; }
   const tot = u.totals || {};
   const activeDays = tot.days_active || 0;
   // 回填记录只有总量、没有输入/输出细分：细分全为 0 时说明当前范围只有历史数据，
@@ -18400,14 +18400,14 @@ async function openPhoneConnect() {
     (relay ? '<div class="relay-connect"><strong>Codebee · 连接自己的电脑</strong>' +
       '<p class="hint">手机打开 ' + esc(relay.entry) + '，扫描下方配对二维码。配对码 5 分钟内有效，仅能使用一次。</p>' +
       '<p id="relay-connect-status" role="status"></p>' +
-      '<div class="conn-chips"><button class="primary small" onclick="phoneRelayAction(\'pair\')">生成配对码</button>' +
-      '<button class="ghost small" onclick="phoneRelayAction(\'revoke\')">撤销全部手机</button>' +
-      '<button class="ghost small" onclick="phoneRelayAction(\'disable\')">关闭远程连接</button></div>' +
+      '<div class="conn-chips"><button class="primary small" onclick="window.phoneRelayAction(\'pair\')">生成配对码</button>' +
+      '<button class="ghost small" onclick="window.phoneRelayAction(\'revoke\')">撤销全部手机</button>' +
+      '<button class="ghost small" onclick="window.phoneRelayAction(\'disable\')">关闭远程连接</button></div>' +
       '<p class="hint" id="relay-pair-code"></p></div>' : "") +
     '<div class="qr-box" id="qr-box"></div>' +
     '<div class="conn-chips"' + (urls.length > 1 ? "" : " hidden") + '>' + chips + "</div>" +
     '<div class="conn-url-row"><code id="conn-url"></code>' +
-    '<button class="ghost small" onclick="copyConnUrl()">' + t("复制地址") + '</button></div>' +
+    '<button id="conn-copy" class="ghost small" onclick="copyConnUrl()" disabled>' + t("复制地址") + '</button></div>' +
     '<p class="hint">' + (relay ? "统一入口仅连接已配对的电脑；电脑需保持开机联网。已配对手机可使用 30 天，也可在电脑上随时撤销。<br>" : "") +
     t("手机连接地址只使用 app.codebeeagent.com，请只分享给自己的设备。") +
     t("手机控制时另一端自动变为只读，可在顶栏接管。") + '<br>' +
@@ -18424,8 +18424,10 @@ function renderPhoneRelay(relay) {
   const status = $("relay-connect-status");
   if (!status) return;
   status.textContent = !relay.enabled ? "尚未启用，点击生成配对码连接手机。" :
-    !relay.connected ? (relay.error || "正在连接，请稍候…") :
-      relay.pair_url ? "已连接，请用手机扫码配对。" : "电脑已连接，可生成新配对码或撤销手机连接。";
+    !relay.connected ? (relay.pair_url ? "连接正在恢复，配对码暂时保留，恢复后即可扫码。" :
+      (relay.error || "正在连接，请稍候…")) :
+      relay.pair_url ? (relay.pair_ready === false ? "正在同步配对码，请稍候…" : "已连接，请用手机扫码配对。") :
+        "电脑已连接，可生成新配对码或撤销手机连接。";
   const code = $("relay-pair-code");
   if (code) code.textContent = relay.pair_code ? "连接码：" + relay.pair_code : "";
   const old = S.connUrls.findIndex(u => u.label === "Codebee · 手机配对");
@@ -18463,7 +18465,9 @@ function renderConnQR() {
   const u = S.connUrls[S.connIdx];
   const box = $("qr-box");
   if (!box) return;
-  if (!u) { box.textContent = "生成配对码后，二维码会显示在这里。"; $("conn-url").textContent = ""; return; }
+  const copy = $("conn-copy");
+  if (copy) copy.disabled = !u;
+  if (!u) { box.textContent = "点击“生成配对码”后，二维码会显示在这里。"; $("conn-url").textContent = ""; return; }
   if (typeof qrcode !== "function") { box.textContent = u.url; return; }  // 兜底：库没加载也能用
   const qr = qrcode(0, "M");
   qr.addData(u.url);
@@ -18910,6 +18914,7 @@ window.checkUpdate = checkUpdate;
 window.ctrlClick = ctrlClick;
 window.submitToken = submitToken;
 window.openPhoneConnect = openPhoneConnect;
+window.phoneRelayAction = phoneRelayAction;
 window.pickConnUrl = pickConnUrl;
 window.copyConnUrl = copyConnUrl;
 window.openFlowsManager = openFlowsManager;

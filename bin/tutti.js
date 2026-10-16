@@ -105,7 +105,9 @@ for (const a of process.argv.slice(2)) {
 // another process, without a startup banner mixed into the document.
 const isReadCli = userArgs.includes('--capabilities') || userArgs.includes('--run-capabilities') ||
   userArgs.includes('--plugin-install') || userArgs.includes('--plugin-enable') ||
-  userArgs.includes('--mcp-export') || userArgs.includes('--mcp-register');
+  userArgs.includes('--mcp-export') || userArgs.includes('--mcp-register') ||
+  userArgs.includes('--mcp-catalog') || userArgs.includes('--mcp-install') ||
+  userArgs.includes('--mcp-remove');
 
 // CLI 转发契约：codebee 之后的用户参数（已过白名单）原样作为 main.py 的 argv。
 // 控制台日志即见：GBK 控制台下强制 UTF-8 输出（否则中文 print 触发 UnicodeEncodeError 静默卡死）。
