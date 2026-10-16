@@ -996,6 +996,78 @@ def test_fanqie_verify_uses_semantic_title_and_pagination():
     expect(pg._calls == 3, "应翻到第二页后命中目标章：%s" % pg._calls)
 
 
+class _FqBannerRacePage:
+    """fanqie_publish 步骤状态桩：复现「建议定时发布」横幅晚渲染竞态。
+
+    2026-10-16 实案：弹窗刚打开时横幅还没渲染 → 误判不定时 → 直接确认发布
+    → 平台不收、横幅这时才出现 → 旧代码立刻判硬失败，同一章反复卡设置页。
+    本桩第一次确认发布后才点亮横幅，第二次（定时路径）才收下提交。"""
+
+    def __init__(self):
+        self.banner = False
+        self.schedule_on = False
+        self.closed = False
+        self.confirm_clicks = 0
+
+    def url(self):
+        return "https://fanqienovel.com/main/writer/777/publish/888"
+
+    def send(self, method, params=None, timeout=8):
+        self.schedule_on = True          # 可信鼠标点击生效
+        return {}
+
+    def call(self, js, *a, **kw):
+        if "dialogs:ds.map" in js:       # fq_state
+            if self.closed:
+                return {"dialogs": [], "feedback": [],
+                        "body": "章节管理", "url": "…/chapter-manage/777"}
+            d = ("发布设置\n分卷\n第三卷\n章节\n第161章 母亲的年表补完了\n"
+                 "是否使用AI\n是\n否\n定时发布\n关闭定时发布后，章节在通过审核后"
+                 "会立即发布\n取消确认发布")
+            if self.banner:
+                d = ("发布设置\n作品有定时待发布章节「第74章 服务部的执照」，"
+                     "建议本章定时发布，否则在前面定时章节发布前本章不进审。\n"
+                     + d[len("发布设置\n"):])
+            if self.schedule_on:
+                d += "\n2026-11-11\n00:00"
+            return {"dialogs": [d], "feedback": [], "body": "编辑器",
+                    "url": self.url()}
+        if "Math.round(r.x+r.width/2)" in js:      # fq_schedule_switch_point
+            return {"x": 100, "y": 200, "checked": self.schedule_on}
+        if "aria-checked" in js:                   # fq_schedule_enabled
+            return self.schedule_on
+        if "===label" in js:                       # fq_click(mark,label)
+            label = str(a[1] if len(a) > 1 else "")
+            if label == "确认发布":
+                self.confirm_clicks += 1
+                if self.confirm_clicks == 1:
+                    self.banner = True             # 平台不收，横幅此刻才渲染
+                else:
+                    self.closed = True             # 定时路径收下
+            return {"ok": True}
+        if "请选择日期" in js:                     # fq_read_slot（平台预填档期）
+            if self.schedule_on:
+                return {"date": "2026-11-11", "time": "00:00"}
+            return {}
+        raise AssertionError("未知 JS 分派：%s" % js[:80])
+
+
+def test_fanqie_publish_banner_race_reenters_schedule():
+    """横幅晚渲染竞态：首轮误判不定时且平台不收时，必须带着横幅重进定时
+    分支改排期，而不是判「仍停留在设置页」硬失败。"""
+    from core.publish import flow as _flow
+    pg = _FqBannerRacePage()
+    values = {"chapter_no": "161"}       # 非空：run_flow 对 falsy values 会另起新对象
+    _flow.run_flow(pg, [{"do": "fanqie_publish", "timeout": 40}], values=values)
+    expect(pg.confirm_clicks == 2,
+           "第一次确认被弹回后应走定时路径再确认：%d" % pg.confirm_clicks)
+    expect(values.get("_scheduled_by_platform") is True,
+           "平台收下的是定时提交，台账不得记成即时发布：%s" % values)
+    expect(values.get("scheduled_date") == "2026-11-11"
+           and values.get("scheduled_time") == "00:00",
+           "优先采用平台预填档期（定时队列前序章的下一格）：%s" % values)
+
+
 def test_fanqie_rejects_short_book_id():
     from core import store
     task = store.create_task({"type": "serial_novel", "goal": "番茄 ID 校验"})

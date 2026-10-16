@@ -126,7 +126,12 @@ def published_chapters(task_id, platform):
 
 
 def scheduled_chapters(task_id, platform):
-    """Chapter numbers accepted by the platform's scheduled-publish queue."""
+    """Chapter numbers accepted by the platform's scheduled-publish queue.
+
+    并入校准所得的平台实况定时章号（remote_scheduled_nos）：用户手工提交
+    的定时章、更早排进平台定时队列的整批章，本地台账都没有记录（实案：
+    平台 74-162 共 89 章排期到 11-10，台账只记得自己排的几章）——不并入的
+    话「发布全部待发」会把定时队列里已有的章再提交一遍。"""
     from .. import store
     try:
         ids = set(store.serial_chain_ids(task_id))
@@ -139,6 +144,14 @@ def scheduled_chapters(task_id, platform):
             n = r.get("chapter_no") or 0
             if n > 0:
                 out.add(int(n))
+    try:
+        ent = book_for(task_id, platform) or {}
+        for n in (ent.get("remote_scheduled_nos") or []):
+            n = int(n)
+            if n > 0:
+                out.add(n)
+    except (TypeError, ValueError):
+        pass
     return out
 
 

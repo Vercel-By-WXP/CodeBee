@@ -1046,6 +1046,27 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if got != hhmm:
                         raise FlowError("番茄定时时间选择失败：期望 %s，实际 %s" % (hhmm, got))
 
+                def fq_read_slot():
+                    """读发布设置里定时日期/时间输入框的当前值（含平台预填）。"""
+                    got = page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "if(!d)return{};"
+                        "const di=d.querySelector('input[placeholder=\"请选择日期\"]');"
+                        "const ti=d.querySelector('input[placeholder=\"请选择时间\"]');"
+                        "return{date:di?(di.value||'').trim():'',"
+                        "time:ti?(ti.value||'').trim():''};}", timeout=10) or {}
+                    out = {}
+                    m = re.search(r"(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})",
+                                  str(got.get("date") or ""))
+                    if m:
+                        out["date"] = "%s-%02d-%02d" % (
+                            m.group(1), int(m.group(2)), int(m.group(3)))
+                    mt = re.search(r"(\d{1,2}):(\d{2})", str(got.get("time") or ""))
+                    if mt:
+                        out["time"] = "%02d:%s" % (int(mt.group(1)), mt.group(2))
+                    return out
+
                 raw_date = str(values.get(st.get("date_key") or "publish_date") or "").strip()
                 if raw_date:
                     try:
@@ -1086,6 +1107,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     if "发布设置" in dialog_text:
                         if not fq_click("发布设置", "否").get("ok"):
                             raise FlowError("番茄发布设置无法选择“未使用 AI”")
+                        # 「建议本章定时发布」横幅是弹窗打开后异步渲染的，
+                        # 首次读文本可能还没有它——点完「否」重读一次再判定，
+                        # 别拿旧文本定终身（2026-10-16 实案：误判不定时→
+                        # 直接确认发布→平台不收→同一章反复失败卡设置页）。
+                        time.sleep(0.5)
+                        dialog_text = str(fq_state().get("dialog") or "") \
+                            or dialog_text
                         queued_hint = ("建议本章定时发布" in dialog_text or
                                        "有定时待发布章节" in dialog_text)
                         use_schedule = force_schedule or queued_hint
@@ -1099,16 +1127,27 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             if tried_dates >= max_days:
                                 raise FlowError("番茄连续 %d 个日期均触发每日字数上限" % max_days)
                             fq_enable_schedule()
-                            fq_pick_date(trial_day)
-                            fq_pick_time(trial_time)
-                            # Save the actual accepted candidate back to the
-                            # caller so the publish ledger can continue this
-                            # queue's cadence for the next chapter.
-                            values["scheduled_date"] = trial_day.strftime("%Y-%m-%d")
-                            values["scheduled_time"] = trial_time.strftime("%H:%M")
-                            note(i, "尝试定时发布 %s %s" %
-                                 (trial_day.strftime("%Y-%m-%d"),
-                                  trial_time.strftime("%H:%M")))
+                            # 平台预填档期优先：定时队列里有前序章时，平台会把
+                            # 下一个可用档期直接填进日期/时间框——照抄它，别硬
+                            # 选自己的日期撞队列顺序（被拒即「指定的定时发布
+                            # 时间不符合要求」）。
+                            prefill = fq_read_slot()
+                            if prefill.get("date") and prefill.get("time"):
+                                values["scheduled_date"] = prefill["date"]
+                                values["scheduled_time"] = prefill["time"]
+                                note(i, "按平台预填档期定时发布 %s %s" %
+                                     (prefill["date"], prefill["time"]))
+                            else:
+                                fq_pick_date(trial_day)
+                                fq_pick_time(trial_time)
+                                # Save the actual accepted candidate back to
+                                # the caller so the publish ledger can continue
+                                # this queue's cadence for the next chapter.
+                                values["scheduled_date"] = trial_day.strftime("%Y-%m-%d")
+                                values["scheduled_time"] = trial_time.strftime("%H:%M")
+                                note(i, "尝试定时发布 %s %s" %
+                                     (trial_day.strftime("%Y-%m-%d"),
+                                      trial_time.strftime("%H:%M")))
                             tried_dates += 1
                         before_submit = fq_state()
                         if not fq_click("发布设置", "确认发布").get("ok"):
@@ -1154,6 +1193,14 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         if "发布设置" not in after_dialog:
                             note(i, "番茄提交已被平台接受")
                             break
+                        if (not use_schedule and
+                                ("建议本章定时发布" in after_dialog or
+                                 "有定时待发布章节" in after_dialog)):
+                            # 首轮判定时横幅还没渲染、误走了立即发布；平台
+                            # 没收。带着横幅重进下一轮，走定时分支，别把
+                            # 可恢复的判定竞态当成硬失败。
+                            note(i, "平台提示需定时发布，改走定时分支重试")
+                            continue
                         raise FlowError("番茄确认发布后仍停留在设置页：%s" % after_dialog[:160])
                     if ("chapter-manage" in str(state.get("url") or "") or
                             "已提交" in body_text):

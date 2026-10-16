@@ -384,6 +384,8 @@ def status(task_id):
                       "review_passed_count": sum(p["review_passed"] for p in pend),
                       "drafted_nos": sorted(drafted),
                       "scheduled_nos": sorted(scheduled),
+                      "last_publish_at": info.get("remote_last_publish_at") or "",
+                      "last_schedule_at": info.get("remote_last_schedule_at") or "",
                       "guard_ok": ok, "guard_reason": why,
                       "draft_ok": hard_ok, "draft_reason": hard_why,
                       "quality_blockers": blockers,

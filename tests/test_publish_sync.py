@@ -201,6 +201,94 @@ def test_sync_pagination_stops_on_dead_pager():
     expect(pg.calls <= 20, "调用次数有界：%d" % pg.calls)
 
 
+def test_bucket_rows_scheduled_and_times():
+    """「待发布」(平台定时队列) 必须单独成桶并带出时间口径（2026-10-16 实案：
+    平台 74-162 共 89 章定时排期，旧分桶不认识「待发布」，161/162 被当成
+    未发反复重发卡死发布弹窗）。行文本为真机原样。"""
+    rows = [
+        "第162章 F段复测 3521 0 待发布 2026-11-10 00:00",
+        "第161章 母亲的年表补完了 3498 0 待发布 2026-11-10 00:00",
+        "第74章 服务部的执照 3000 0 待发布 2026-10-17 00:00",
+        "第73章 山神回庙 2880 0 已发布 2026-10-15 00:00",
+        "第72章 守一夜 2902 0 已发布 2026-10-14 21:10",
+        "第9章 草稿 800 0 未通过 2026-09-27 00:00",
+    ]
+    st = manager.bucket_chapter_rows(rows)
+    expect(st["total"] == 6 and st["published"] == 2 and st["scheduled"] == 3
+           and st["rejected"] == 1 and st["review"] == 0,
+           "分桶计数（已发布≠待发布）：%s" % st)
+    expect(st["scheduled_nos"] == [74, 161, 162],
+           "定时章号集：%s" % st["scheduled_nos"])
+    expect(st["published_nos"] == [72, 73], "已发章号集：%s" % st["published_nos"])
+    expect(st["last_publish_at"] == "2026-10-15 00:00",
+           "最后发布时间取已发布行最大值：%s" % st["last_publish_at"])
+    expect(st["last_schedule_at"] == "2026-11-10 00:00",
+           "定时最后发布时间取待发布行最大值：%s" % st["last_schedule_at"])
+
+
+class FlakyPickPage(VolumePagerPage):
+    """第一次选卷落空（弹层没切过去），同卷第二次才成功——校准必须卷内
+    重试而不是静默漏卷（2026-10-16 实案：第三卷点选落空，恰好漏掉待发章
+    所在卷，104/162 行喂给待发清单酿成重发）。"""
+
+    def __init__(self, volumes, fail_first=1):
+        super().__init__(volumes)
+        self._fail_left = fail_first
+
+    def call(self, js, *a):
+        if "(t)=" in js and self._fail_left > 0:
+            self._fail_left -= 1
+            return {"ok": False}
+        return super().call(js, *a)
+
+
+def test_sync_volume_pick_retry():
+    from types import SimpleNamespace
+    from core.publish.chaprows import collect_all_volumes
+
+    def rows_page(nos):
+        return ["第%d章 题%d %d 0 已发布 2026-10-16 00:00" % (n, n, 900 + n)
+                for n in nos]
+
+    vol1 = ("第一卷：山门换锁", [rows_page([3, 2, 1])])
+    vol2 = ("第二卷：县里有旧账", [rows_page([5, 4])])
+    pg = FlakyPickPage([vol1, vol2], fail_first=1)
+    rows, vols = collect_all_volumes(
+        pg, SimpleNamespace(CONFIG=manager.PLATFORMS["fanqie"].CONFIG))
+    expect(len(rows) == 5, "首卷点选落空后重试收齐两卷：%d" % len(rows))
+    expect(pg.picked[0] == "第一卷：山门换锁",
+           "失败的那卷被重试而不是跳过：%s" % pg.picked)
+
+
+def test_sync_empty_volume_tolerated():
+    """真空卷（新卷无章）不算失败，不拖死其他卷的收集。"""
+    from types import SimpleNamespace
+    from core.publish.chaprows import collect_all_volumes
+
+    def rows_page(nos):
+        return ["第%d章 题%d %d 0 已发布 2026-10-16 00:00" % (n, n, 900 + n)
+                for n in nos]
+
+    vol1 = ("第一卷：山门换锁", [rows_page([2, 1])])
+    vol2 = ("第二卷：刚建的空卷", [[]])
+    pg = VolumePagerPage([vol1, vol2])
+    rows, _vols = collect_all_volumes(
+        pg, SimpleNamespace(CONFIG=manager.PLATFORMS["fanqie"].CONFIG))
+    expect(len(rows) == 2, "空卷不产出也不报错：%d" % len(rows))
+
+
+def test_scheduled_chapters_merge_remote():
+    """平台实况定时章号并入幂等集：手工提交的定时章/更早排期的整批章
+    不再进「发布全部待发」（2026-10-16 实案）。"""
+    ledger.save_book("t-sched", "fanqie", {"book_id": "889", "title": "定时书"})
+    ledger.update_book("t-sched", "fanqie", remote_scheduled_nos=[74, 161, 162])
+    sch = ledger.scheduled_chapters("t-sched", "fanqie")
+    expect({74, 161, 162} <= sch, "并入平台实况定时章号：%s" % sorted(sch))
+    ledger.update_book("t-sched", "fanqie", remote_scheduled_nos=None)
+    sch = ledger.scheduled_chapters("t-sched", "fanqie")
+    expect(not (sch & {74, 161, 162}), "换绑作废后不再并入：%s" % sorted(sch))
+
+
 def test_update_book_merge():
     ledger.save_book("t-sync", "fanqie", {"book_id": "b1", "title": "书S"})
     ledger.update_book("t-sync", "fanqie", remote_total=8, remote_published=8,
@@ -495,5 +583,9 @@ if __name__ == "__main__":
     check("sync_pagination_and_volumes", test_sync_pagination_and_volumes)
     check("sync_pagination_stops_on_dead_pager",
           test_sync_pagination_stops_on_dead_pager)
+    check("bucket_rows_scheduled_and_times", test_bucket_rows_scheduled_and_times)
+    check("sync_volume_pick_retry", test_sync_volume_pick_retry)
+    check("sync_empty_volume_tolerated", test_sync_empty_volume_tolerated)
+    check("scheduled_chapters_merge_remote", test_scheduled_chapters_merge_remote)
     print("== %d fail" % len(FAILS))
     sys.exit(1 if FAILS else 0)

@@ -7508,6 +7508,14 @@ function pbBlock(task, platform, selectionOnly = false) {
     if (book.remote_published != null && book.remote_published !== remoteN)
       parts.push(t("其中已发布 ") + book.remote_published +
         (book.remote_review ? t("，审核中 ") + book.remote_review : ""));
+    // 平台定时队列（2026-10-16）：手工提交的定时章只在平台实况里，
+    // 不展示的话「已发73章」和发布台待发清单会对不上账
+    if (book.remote_scheduled)
+      parts.push(t("定时排期 ") + book.remote_scheduled + t(" 章") +
+        (book.remote_last_schedule_at
+          ? t("，排至 ") + book.remote_last_schedule_at : ""));
+    if (book.remote_last_publish_at)
+      parts.push(t("最后发布 ") + book.remote_last_publish_at);
     if (book.remote_synced_at) parts.push(t("校准于 ") + book.remote_synced_at);
     chTitle = parts.join(t("；"));
   } else {
@@ -7638,7 +7646,8 @@ function pbBlock(task, platform, selectionOnly = false) {
         "</div>" +
         '<div class="pb-pend-progress">' +
         (au.published_latest ? '<strong>' + esc(t("已发布至第 {0} 章", au.published_latest)) + '</strong>' : '') +
-        (au.scheduled ? '<span>' + esc(t("定时队列 {0} 章（尚未计入已发布）", au.scheduled)) + '</span>' : '') +
+        (au.scheduled ? '<span>' + esc(t("定时队列 {0} 章（尚未计入已发布）", au.scheduled) +
+          (au.last_schedule_at ? t("，排至 {0}", au.last_schedule_at) : "")) + '</span>' : '') +
         (au.next_chapter ? '<span>' + esc(t("下一章：第 {0} 章", au.next_chapter)) + '</span>' : '') +
         '<span>' + esc(t("可直发 {0} 章 · 单章过审 {1} 章", au.ready_count || 0, au.review_passed_count || 0)) + '</span></div>' +
         '<div class="pb-pend-chips">' + chips + "</div>" +

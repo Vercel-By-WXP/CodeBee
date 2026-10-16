@@ -832,9 +832,11 @@ def register_book(task_id, plat, title, book_id=""):
     if old and (old.get("book_id") != str(book_id or "").strip()
                 or old.get("title") != title[:120]):
         ledger.update_book(task_id, plat, remote_total=None, remote_published=None,
-                           remote_review=None, remote_rejected=None,
+                           remote_scheduled=None, remote_review=None,
+                           remote_rejected=None,
                            remote_synced_at=None, remote_error=None,
-                           remote_published_nos=None,
+                           remote_published_nos=None, remote_scheduled_nos=None,
+                           remote_last_publish_at=None, remote_last_schedule_at=None,
                            confirmed_published_through=None,
                            confirmed_published_at=None)
     ledger.save_book(task_id, plat, {"book_id": book_id,
@@ -1428,9 +1430,13 @@ def sync_published(task_id, plat, manual=False):
         ledger.update_book(task_id, plat,
                            remote_total=st["total"],
                            remote_published=st["published"],
+                           remote_scheduled=st["scheduled"],
                            remote_review=st["review"],
                            remote_rejected=st["rejected"],
                            remote_published_nos=st["published_nos"],
+                           remote_scheduled_nos=st["scheduled_nos"],
+                           remote_last_publish_at=st["last_publish_at"],
+                           remote_last_schedule_at=st["last_schedule_at"],
                            remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                            **extra)
         return True, ""
