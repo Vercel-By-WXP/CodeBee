@@ -106,7 +106,12 @@ async function prepare(platform = process.platform, arch = process.arch, profile
         if (entry !== 'python') fs.renameSync(path.join(staging, entry), path.join(payload, entry));
       }
     }
-    if (platform === process.platform && arch === process.arch) checkInterpreter(executablePath(universal ? path.join(staging, 'python') : staging, asset, platform), platform, arch, manifest);
+    // Single-arch staging keeps the python/ prefix (asset.executable is
+    // relative to it); universal staging strips it (files live at the root).
+    const stageExecutable = universal
+      ? executablePath(path.join(staging, 'python'), asset, platform)
+      : path.join(staging, asset.executable);
+    if (platform === process.platform && arch === process.arch) checkInterpreter(stageExecutable, platform, arch, manifest);
     const payloadRoot = universal ? path.join(staging, 'python') : staging;
     fs.writeFileSync(path.join(payloadRoot, 'manifest.json'), JSON.stringify({
       profile, platform, arch, version: manifest.version, release: manifest.release || null, sha256: asset.sha256,
