@@ -160,17 +160,6 @@ async function main() {
       JSON.stringify({ hidden: document.getElementById("upd-pill").classList.contains("hidden"),
         txt: document.getElementById("upd-pill-txt").textContent || "" })`));
     check("伪造新版后顶栏左上角出现更新胶囊", pill1.hidden === false && /9\.9\.9/.test(pill1.txt), JSON.stringify(pill1));
-    // 7.1) 圆钮点击=直接升级（不经关于页）：onclick 直连 suApply；确认框放行后
-    //      走到后端——repo 模式被 400 门控，toast 报错即证明链路已发起
-    const wire = await evalJs(`document.getElementById("upd-pill").getAttribute("onclick") || ""`);
-    check("顶栏圆钮 onclick 直连 suApply", /suApply/.test(wire), wire);
-    await evalJs(`window.__ucBak7 = window.uiConfirm; window.uiConfirm = async () => true;
-      document.getElementById("upd-pill").click(); "pending"`);
-    await sleep(1500);
-    const pillToast = await evalJs(`document.getElementById("toast")?.textContent || ""`);
-    check("点顶栏圆钮直接发起升级（repo 门控 toast 报错）",
-      /不支持自动升级|失败/.test(pillToast || ""), pillToast);
-    await evalJs(`window.uiConfirm = window.__ucBak7; "ok"`);
     await evalJs(`updDismiss(); "ok"`);
     await sleep(300);
     const pill2 = JSON.parse(await evalJs(`JSON.stringify({

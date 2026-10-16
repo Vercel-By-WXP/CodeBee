@@ -108,6 +108,7 @@ def _fallback_probe_cli(name):
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
     program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
     program_files_x86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
+    system_root = os.environ.get("SystemRoot") or r"C:\Windows"
     flat_dirs = (
         os.path.join(local, "Microsoft", "WinGet", "Links"),
         os.path.join(home, ".local", "bin"),
@@ -116,6 +117,13 @@ def _fallback_probe_cli(name):
         # 可能启动于安装前，PATH 快照没有刷新，但磁盘上的命令仍可直接使用。
         os.path.join(program_files, "nodejs"),
         os.path.join(program_files_x86, "nodejs"),
+        # Windows PowerShell 系统必在，但独占一条 PATH 目录；流水线/GUI 启动
+        # 的服务快照缺这条时，裸名 powershell 起跑即「不是内部或外部命令」
+        # （2026-10-16 minimax-code 安装实案）。
+        os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0"),
+        # MiniMax Code 官方安装器落这里并写注册表用户 PATH，已在跑的进程
+        # 不继承；固定落点探到即用，装完当场可检出、可编排。
+        os.path.join(home, ".minimax-code"),
     )
     for d in flat_dirs:
         for ext in _CLI_EXTS:

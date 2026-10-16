@@ -347,6 +347,89 @@ class TestPosixProbe(BaseTest):
                 self.assertEqual(manager._which_cli("trae-cli"), str(exe))
 
 
+class TestWindowsProbe(BaseTest):
+    """Windows 固定落点探测（2026-10-16 minimax-code 安装实案）：
+
+    服务 PATH 快照缺 %SystemRoot%\\System32\\WindowsPowerShell\\v1.0 时，
+    catalog 的 Windows 安装命令裸名 powershell 起跑即 cmd「不是内部或外部
+    命令」，AI 修复给的绝对路径方案又被白名单拒——安装链该自己解决环境，
+    不是把问题抛给用户。PowerShell 系统目录与 MiniMax 安装落点
+    (~/.minimax-code，安装器写注册表用户 PATH 而已跑进程不继承) 入探测表。
+    """
+
+    def _patch_env(self, td):
+        """系统目录环境变量整体钉到临时目录，磁盘落点全可控。"""
+        return mock.patch.dict(os.environ, {
+            "SystemRoot": td,
+            "LOCALAPPDATA": str(Path(td) / "lc"),
+            "APPDATA": str(Path(td) / "roam"),
+            "ProgramW6432": str(Path(td) / "pf"),
+            "ProgramFiles(x86)": str(Path(td) / "pf86"),
+        })
+
+    def test_powershell_system_dir_hit(self):
+        from app.core import runner
+        with tempfile.TemporaryDirectory() as td:
+            exe = (Path(td) / "System32" / "WindowsPowerShell" / "v1.0"
+                   / "powershell.exe")
+            exe.parent.mkdir(parents=True)
+            exe.write_bytes(b"stub")
+            with mock.patch("os.name", "nt"), \
+                 mock.patch("os.path.expanduser", lambda p: td), \
+                 self._patch_env(td):
+                self.assertEqual(runner._fallback_probe_cli("powershell"),
+                                 str(exe))
+
+    def test_windows_miss_returns_none(self):
+        from app.core import runner
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch("os.name", "nt"), \
+                 mock.patch("os.path.expanduser", lambda p: td), \
+                 self._patch_env(td):
+                self.assertIsNone(runner._fallback_probe_cli("powershell"))
+
+    def test_minimax_install_dir_hit(self):
+        from app.core import runner
+        with tempfile.TemporaryDirectory() as td:
+            exe = Path(td) / ".minimax-code" / "mcode.cmd"
+            exe.parent.mkdir(parents=True)
+            exe.write_bytes(b"stub")
+            with mock.patch("os.name", "nt"), \
+                 mock.patch("os.path.expanduser", lambda p: td), \
+                 self._patch_env(td):
+                self.assertEqual(runner._fallback_probe_cli("mcode"), str(exe))
+
+    def test_resolve_mgmt_tool_rewrites_powershell(self):
+        """安装命令首 token 裸名 powershell 被原地换成绝对路径。"""
+        from app.core import manager
+        with tempfile.TemporaryDirectory() as td:
+            exe = (Path(td) / "System32" / "WindowsPowerShell" / "v1.0"
+                   / "powershell.exe")
+            exe.parent.mkdir(parents=True)
+            exe.write_bytes(b"stub")
+            with mock.patch("os.name", "nt"), \
+                 mock.patch("os.path.expanduser", lambda p: td), \
+                 mock.patch("app.core.manager.shutil.which", lambda c: None), \
+                 self._patch_env(td):
+                cmd, missing = manager._resolve_mgmt_tool(
+                    'powershell -NoProfile -Command "irm x | iex"', "install")
+        self.assertFalse(missing)
+        self.assertTrue(cmd.startswith(str(exe)), cmd)
+
+    def test_which_cli_windows_probe_fallback(self):
+        """检测链 which 落空后 Windows 也走探测表（对齐 POSIX 分支）。"""
+        from app.core import manager
+        with tempfile.TemporaryDirectory() as td:
+            exe = Path(td) / ".minimax-code" / "mcode.cmd"
+            exe.parent.mkdir(parents=True)
+            exe.write_bytes(b"stub")
+            with mock.patch("os.name", "nt"), \
+                 mock.patch("os.path.expanduser", lambda p: td), \
+                 mock.patch("app.core.manager.shutil.which", lambda c: None), \
+                 self._patch_env(td):
+                self.assertEqual(manager._which_cli("mcode"), str(exe))
+
+
 class TestWingetHeadRelaxed(BaseTest):
     """首 token 被换成绝对路径后 _winget_already_ok 仍按 basename 认 winget。"""
 

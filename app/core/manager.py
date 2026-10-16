@@ -99,7 +99,9 @@ def _which_cli(cli):
     shutil.which 落空 → 卡片「未安装」假象，点安装又被 winget「已装无可升级」
     非零退出拒掉（2026-09-30 实案）。Links 是便携包符号链接标准目录，Packages
     按 <cli>.exe 通配兜另一形态。POSIX 兜 runner 同款三落点（~/.local/bin 与
-    brew bin，Mac 服务吃不到 shell rc 里的 PATH 时同样假「未安装」）。
+    brew bin，Mac 服务吃不到 shell rc 里的 PATH 时同样假「未安装」）；Windows
+    末位也兜 runner 探测表（PowerShell 系统目录、vendor 固定落点同款，装完
+    当场可检出，2026-10-16 minimax-code 实案）。
     两条都只兜 which 落空的场景，零额外开销。"""
     path = shutil.which(cli)
     if path:
@@ -108,14 +110,14 @@ def _which_cli(cli):
         return runner._fallback_probe_cli(cli)
     local = os.environ.get("LOCALAPPDATA")
     if not local:
-        return None
+        return runner._fallback_probe_cli(cli)
     links = os.path.join(local, "Microsoft", "WinGet", "Links", cli + ".exe")
     if os.path.isfile(links):
         return links
     for hit in sorted(glob.glob(os.path.join(
             local, "Microsoft", "WinGet", "Packages", "*", cli + ".exe"))):
         return hit
-    return None
+    return runner._fallback_probe_cli(cli)
 
 
 def detect_entry(entry):
