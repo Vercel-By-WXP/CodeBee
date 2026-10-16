@@ -16996,14 +16996,18 @@ function renderRelnotes(txt) {
   return html || ("<pre class=\"su-notes\">" + esc(txt) + "</pre>");
 }
 
-/* 顶栏左上角常驻更新胶囊：有新版才出现（同版本被忽略后不再出现），
- * 点击直达「关于与更新」，× 忽略本版本（与 su.seen 记账键同一套语义） */
+/* 顶栏更新圆钮：有新版才出现（同版本被忽略后不再出现）——accent 实心圆+下载箭头，
+ * 点击直接弹确认升级（复用 suApply 的确认与升级链路），× 忽略本版本（与 su.seen
+ * 记账键同一套语义）。版本号进 tooltip 与视觉隐藏文本（读屏/测试可读） */
 function renderUpdPill() {
   const pill = $("upd-pill");
   if (!pill) return;
   const show = !!(SU && SU.has_update && localStorage.getItem("su.seen") !== SU.latest);
   pill.classList.toggle("hidden", !show);
-  if (show) $("upd-pill-txt").textContent = t("新版本 v") + SU.latest;
+  if (show) {
+    $("upd-pill-txt").textContent = t("新版本 v") + SU.latest;
+    pill.title = t("发现新版本 v") + SU.latest + t("，点击直接升级");
+  }
 }
 
 function updDismiss() {
@@ -17303,7 +17307,7 @@ async function suStartupCheck() {
   const s = await loadSelfupdate(false);
   if (s && s.has_update && localStorage.getItem("su.seen") !== s.latest) {
     localStorage.setItem("su.seen", s.latest);
-    toast(t("发现新版本 v") + s.latest + t("，可在「关于与更新」一键升级"));
+    toast(t("发现新版本 v") + s.latest + t("，点顶栏下载按钮即可直接升级"));
   }
 }
 

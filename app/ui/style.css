@@ -2851,15 +2851,48 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .mkr-sentinel { height: 1px; }
 
 
-/* 顶栏左上角更新胶囊（追加于文件尾，防并行重排）：有新版才出现，点击进「关于与更新」 */
-.upd-pill { background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border-color: var(--accent); color: var(--text); gap: 5px; padding: 5px 10px; }
-.upd-pill:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-.upd-pill .upd-x { display: inline-flex; align-items: center; opacity: .65;
-  border-radius: 50%; padding: 1px; }
-.upd-pill .upd-x:hover { opacity: 1; background: color-mix(in srgb, var(--text) 15%, transparent); }
-.upd-pill .upd-x .ico { width: 11px; height: 11px; }
-.upd-pill.hidden { display: none; }
+/* 视觉隐藏（读屏与测试仍可读）：顶栏圆钮里的版本号文本等 */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 顶栏更新圆钮（追加于文件尾，防并行重排）：有新版才出现——accent 实心圆+下载箭头，
+ * 点击直接弹确认升级（suApply 自带确认框），悬停露出右上角小 × 忽略本版本；
+ * 呼吸光圈引人注意（prefers-reduced-motion 由全局禁动画规则接管）。
+ * 全块用 ID 选择器：desktop-workbench 等皮肤的 .topbar .pill / .top-actions .pill
+ * 复合规则会把胶囊压成灰色方钮，ID 稳赢，蓝圆形象跨皮肤不变形 */
+#upd-pill { position: relative; width: 32px; height: 32px; padding: 0; gap: 0;
+  flex: none; justify-content: center; border: none; border-radius: 50%;
+  background: var(--accent); color: #fff; max-width: none; overflow: visible;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: upd-pulse 2.4s ease-in-out infinite; }
+#upd-pill:hover { background: var(--accent); color: #fff;
+  filter: brightness(1.12); transform: scale(1.06); }
+#upd-pill .ico { width: 16px; height: 16px; }
+#upd-pill .upd-x { position: absolute; top: -5px; right: -5px; width: 15px; height: 15px;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  border-radius: 50%; background: var(--panel2); color: var(--text);
+  opacity: 0; transition: opacity .15s; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+#upd-pill:hover .upd-x { opacity: 1; }
+#upd-pill .upd-x:hover { background: var(--text); color: var(--bg); }
+#upd-pill .upd-x .ico { width: 9px; height: 9px; }
+#upd-pill.hidden { display: none; }
+@keyframes upd-pulse {
+  0%, 100% { box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent); }
+  50% { box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
+/* MCP 目录运行时审计：只展示本机 PATH 状态与手动安装提示，不会触发包管理器。 */
+.mcp-runtime-list { margin-top: 10px; display: grid; gap: 7px; }
+.mcp-runtime-title { font-size: 12px; font-weight: 650; color: var(--text); }
+.mcp-runtime-row { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: color-mix(in srgb, var(--panel2) 72%, transparent); }
+.mcp-runtime-main, .mcp-runtime-meta, .mcp-runtime-hint { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.mcp-runtime-meta, .mcp-runtime-hint { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.mcp-runtime-row code { font-family: var(--mono, monospace); font-size: 11px; overflow-wrap: anywhere; }
+.mcp-runtime-row .tag.ok { color: var(--ok, #27824b); border-color: color-mix(in srgb, var(--ok, #27824b) 42%, transparent); }
+.mcp-runtime-row .tag.warn { color: var(--warn, #a66a00); border-color: color-mix(in srgb, var(--warn, #a66a00) 42%, transparent); }
+.mcp-runtime-config-warn { color: var(--warn, #a66a00); font-size: 11px; }
 
 /* ============ Composer 化新建任务（2026-09-16）：胶囊行 + 大输入框 + 快捷 chips ============ */
 /* 胶囊行：类型（复用 .type-pick 外观，宽度收成 auto）+ 目录（图标 + 无边框输入 + 选择…）。
@@ -8485,7 +8518,7 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   .top-actions { flex: none; margin-left: auto; gap: 4px; }
   .top-actions .conn { display: flex; padding: 0; background: transparent; font-size: 11px; }
   .top-actions .pill:not(.ctrl) { display: none; }
-  #upd-pill, #health-banner { max-width: 90px; overflow: hidden; }
+  #health-banner { max-width: 90px; overflow: hidden; }
   main, html[data-skin="ocean"][data-theme="light"] main {
     min-height: 0; padding: 20px max(12px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }

@@ -6,6 +6,7 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 ## v0.1.115（2026-10-16）
 
+- **更新提示圆钮化**：顶栏「新版本」提示改为蓝色实心圆下载钮（呼吸光圈引人注意），点击直接弹确认升级、不再绕行「关于与更新」页；悬停右上角 × 可忽略本版本，版本号进悬停提示。
 - **主流 CLI 与跨平台补齐**：新增 Cline CLI（macOS/Windows/Linux 无头 `cline --yolo`）编排；补齐 Goose Windows PowerShell 安装/升级/卸载；新增 GitHub Copilot CLI 的 macOS/Windows/Linux 检测、安装与打开管理，因官方当前仍以交互入口为主暂不自动派发。
 - **CLI 覆盖补充**：新增 Mistral Vibe（`vibe --prompt`）无头编排，安装走官方 `uv tool install mistral-vibe`；沿用 Vibe 本机登录与模型配置，不注入不兼容的外部供应商凭据。
 - **CLI 覆盖补充**：新增 MiniMax Code（`mcode exec`）无头编排，按平台使用官方安装器并沿用 CLI 自身凭据；新增 Goose 检测、版本、安装与打开管理，待无头协议完成验证后再开放自动派工。
