@@ -371,7 +371,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, detail)
             if path == "/api/analytics":
                 from core import analytics
-                return self._json(200, analytics.summary(store))
+                query = parse_qs(urlparse(self.path).query)
+                raw_since = (query.get("since") or [""])[0]
+                try:
+                    since = float(raw_since) if raw_since else None
+                except (TypeError, ValueError):
+                    return self._json(400, {"error": "since 必须是 UNIX 时间戳"})
+                return self._json(200, analytics.summary(store, since=since))
+            if path == "/api/review-policy":
+                from core import review_config
+                return self._json(200, review_config.load())
+            if path == "/api/task-templates":
+                from core import task_templates
+                return self._json(200, {"templates": task_templates.list_templates()})
+            if path == "/api/interventions":
+                from core import intervention
+                query = parse_qs(urlparse(self.path).query)
+                return self._json(200, {"requests": intervention.list_pending((query.get("run_id") or [""])[0])})
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
                 from core import phone_relay
@@ -1424,6 +1440,54 @@ class Handler(BaseHTTPRequestHandler):
                     paths=body.get("paths"), channel=body.get("channel"))
                 return self._json(200, {"review": row})
             except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/review-policy":
+            from core import review_config
+            try:
+                return self._json(200, {"ok": True, "policy": review_config.save(self._body() or {})})
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/task-templates":
+            from core import task_templates
+            try:
+                return self._json(200, {"ok": True, "template": task_templates.save(self._body() or {})})
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/task-templates/([^/]+)/delete$", path)
+        if m:
+            from core import task_templates
+            return self._json(200, {"ok": task_templates.remove(unquote(m.group(1)))})
+        if path == "/api/interventions":
+            from core import intervention
+            body = self._body() or {}
+            try:
+                row = intervention.request(body.get("run_id"), body.get("point"),
+                                           payload=body.get("payload"), timeout_s=body.get("timeout_s", 0))
+                return self._json(200, {"ok": True, "request": row})
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        m = re.match(r"^/api/interventions/([^/]+)/decide$", path)
+        if m:
+            from core import intervention
+            body = self._body() or {}
+            try:
+                row = intervention.decide(unquote(m.group(1)), body.get("action"),
+                                          actor=body.get("actor", self._client_name()), note=body.get("note", ""))
+                return self._json(200, {"ok": True, "request": row})
+            except KeyError as exc:
+                return self._json(404, {"error": str(exc)})
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/scaffold-adapter":
+            from core import adapter_scaffold
+            body = self._body() or {}
+            try:
+                result = adapter_scaffold.generate(os.getcwd(), name=body.get("name"),
+                                                   executable=body.get("executable"),
+                                                   invocation=body.get("invocation", "argv"),
+                                                   output_format=body.get("output_format", "text"))
+                return self._json(200, {"ok": True, **result})
+            except (TypeError, ValueError, OSError) as exc:
                 return self._json(400, {"error": str(exc)})
         m = re.match(r"^/api/reviews/([^/]+)/transition$", path)
         if m:
@@ -4209,8 +4273,14 @@ def _start_pet_keeper(port):
 
 def main():
     parser = argparse.ArgumentParser(description="CodeBee 多智能体编排台")
-    parser.add_argument("--host", default="0.0.0.0",
-                        help="监听地址；0.0.0.0 允许手机/局域网访问（默认），127.0.0.1 仅本机")
+    parser.add_argument("command", nargs="?", choices=("scaffold-adapter",),
+                        help="开发辅助命令")
+    parser.add_argument("--name", default="", help="适配器名称（scaffold-adapter）")
+    parser.add_argument("--executable", default="", help="CLI 可执行文件（scaffold-adapter）")
+    parser.add_argument("--invocation", default="argv", help="调用方式描述（scaffold-adapter）")
+    parser.add_argument("--output-format", default="text", help="输出格式描述（scaffold-adapter）")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="监听地址；默认 127.0.0.1 仅本机；显式传 0.0.0.0 才允许局域网访问")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--trusted-proxy", action="store_true",
@@ -4254,6 +4324,29 @@ def main():
     parser.add_argument("--mcp-remove", default="",
                         help="预览或移除已配置 MCP 名称；配合 --commit-mcp 写入设置")
     args = parser.parse_args()
+
+    if args.command == "scaffold-adapter":
+        from core import adapter_scaffold
+        if not args.name and sys.stdin.isatty():
+            args.name = input("CLI 名称: ").strip()
+        if not args.executable and sys.stdin.isatty():
+            args.executable = input("可执行文件: ").strip()
+        if args.invocation == "argv" and sys.stdin.isatty():
+            value = input("调用方式 [argv]: ").strip()
+            if value:
+                args.invocation = value
+        if args.output_format == "text" and sys.stdin.isatty():
+            value = input("输出格式 [text]: ").strip()
+            if value:
+                args.output_format = value
+        if not args.name or not args.executable:
+            parser.error("scaffold-adapter 需要 --name 和 --executable")
+        result = adapter_scaffold.generate(os.getcwd(), name=args.name,
+                                           executable=args.executable,
+                                           invocation=args.invocation,
+                                           output_format=args.output_format)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
 
     # The service normally inherits the desktop console, but read/export CLI
     # modes must be pipe-safe on Windows where the process code page is often

@@ -5449,6 +5449,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         "signing_checkpoint": signing_checkpoint,
         "quality_status": quality_status,
     }
+    review_policy = review_config.load()
+    review_policy["min_score"] = threshold
+    review_policy["dimensions"] = [{"id": str(d), "name": str(d), "weight": 1.0}
+                                    for d in (task.get("rubric") or DEFAULT_RUBRIC)]
+    verdict = review_config.assess(verdict, review_policy)
     if vol_plan:
         verdict["volumes"] = vol_plan
     scope_txt = ("续写第 %d–%d 章，衔接前文 %d 章" % (start, end, start - 1)) if start > 1 \
@@ -5942,6 +5947,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         "scores": final_means, "history": history_rounds, "route": route,
         "workflow": workflow,
     }
+    review_policy = review_config.load()
+    review_policy["min_score"] = threshold
+    review_policy["dimensions"] = [{"id": str(d), "name": str(d), "weight": 1.0}
+                                    for d in (task.get("rubric") or DEFAULT_RUBRIC)]
+    verdict = review_config.assess(verdict, review_policy)
 
     if is_selection:
         verdict.update(selection.finalize(run_id, task, manuscript, publishable, store.run_dir(run_id)))
