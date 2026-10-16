@@ -472,21 +472,19 @@ def _decode_line(blob):
 
 
 def decode_output(data):
-    """子进程输出解码：UTF-8 严格解码失败时回退 GBK（中文 Windows 控制台）。
+    """子进程输出解码：UTF-8 严格解码失败时**逐行** UTF-8→GBK 兜底。
 
-    整块 UTF-8 与整块 GBK 都失败时逐行兜底——日志文件是混合编码（我方 UTF-8
-    审计头 + CLI 自家 GBK 输出），整块回退会把能读的部分一起牺牲：要么头部中文
-    变乱码，要么整篇落进 replace 分支铺成 U+FFFD 墙（2026-09-20 aider 日志实证，
-    详情页卡片显示成一片 ◆）。逐行解码两边都保住（GBK/UTF-8 的多字节序列都不
-    含 0x0A，按行切不会切坏字符）。"""
+    整块 GBK 回退已废（2026-10-16 pwsh 命令输出实案）：块里只要混进一个非
+    UTF-8 字节（rg/Get-Content 吐的杂字），整块 UTF-8 就失败，GBK 又几乎
+    来者不拒——于是纯 UTF-8 中文被整块误读成「鏍煎紡妫€」双重乱码写进日志
+    与步骤摘要（16:29 连载 run 的评审维度名全灭即此案）。GBK/UTF-8 的多字
+    节序列都不含 0x0A，按行切不会切坏字符：行级 UTF-8 优先、GBK 兜底、
+    replace 收尾，混合编码日志两边都保住（2026-09-20 aider 日志实证的
+    场景不变）。"""
     if not data:
         return ""
     try:
         return data.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    try:
-        return data.decode("gbk")
     except UnicodeDecodeError:
         pass
     return "\n".join(_decode_line(ln) for ln in data.split(b"\n"))

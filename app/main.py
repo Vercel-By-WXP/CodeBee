@@ -3630,6 +3630,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 saved = []
         saved_paths = existing.get("attachments", []) if existing else [a.get("path") for a in saved if a.get("path")]
+        missing_atts = (len(att_ids) - len(saved_paths)
+                        if (not existing and att_ids) else 0)
+        if missing_atts > 0:
+            # 附件假成功防线（2026-10-16 大纲实案）：commit 失败曾被静默吞掉，
+            # 消息照发、模型没收到、UI 也没附件可显示——三方都蒙在鼓里。少带
+            # 附件就在消息文本里明示，让用户和模型都看得见。
+            text = (text.rstrip() + "\n\n（⚠ 有 %d 个附件未能带入本次消息，模型没有收到；"
+                    "请重新发送附件或把内容直接粘贴进文本）" % missing_atts)
         if not text.strip() and not saved_paths:
             return self._json(400, {"error": "消息为空"})
         if active:

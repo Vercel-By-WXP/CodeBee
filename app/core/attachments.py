@@ -391,8 +391,13 @@ def commit_to_workdir(workdir, ids):
         try:
             target = adir / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            f.replace(target)  # 同盘 move；跨盘回落 copy+delete
-            if not target.is_file():
+            try:
+                f.replace(target)  # 同盘 move
+            except OSError:
+                # 跨盘（pending 在 %APPDATA%=C:，工作目录常在 E: 等）os.replace
+                # 抛 WinError 17——回落必须在此处就地收口。2026-10-16 实案：回落
+                # 原本写在 replace 之后，跨盘时 replace 先抛、回落永远执行不到，
+                # 目录建了文件没落，异常再被调用方吞掉，消息不带附件照发。
                 target.write_bytes(f.read_bytes())
                 f.unlink(missing_ok=True)
         except OSError:

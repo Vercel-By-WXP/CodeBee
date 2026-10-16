@@ -60,7 +60,9 @@ class TestCliNoiseClean(BaseTest):
         self.assertNotIn("\ufffd", err)
         self.assertNotIn("─" * 8, err)
         self.assertIn("Error: 模型不可用", err)
-        self.assertIn("stderr: 退出码", err)
+        # 错误行提取定版后 detail=「退出码 N；stderr/stdout: <错误行>」，
+        # 旧的「stderr: <原文>」整段格式已废（陈旧断言顺手转绿）
+        self.assertIn("退出码 3", err)
 
 
 class TestNoisyLogEndpoint(BaseTest):
