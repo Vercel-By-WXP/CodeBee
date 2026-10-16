@@ -62,6 +62,12 @@ class BaseTest(unittest.TestCase):
         with _health._LOCK:
             _health._FILE = self.data_dir / "provider_health.json"
             _health._PROVIDERS.clear()
+        # CLI account health is persistent in production; isolate its in-memory
+        # ledger per test as well so one dead-account fixture cannot quarantine
+        # an agent in a later test.
+        from app.core import bench as _bench
+        _bench.init(data_dir=self.data_dir, start_probe=False)
+        self._bench = _bench
         import app.core.failure_notify as _failure_notify
         _failure_notify.reset_for_tests()
         from app.core import skills as _sk2
@@ -93,6 +99,11 @@ class BaseTest(unittest.TestCase):
             with health._LOCK:
                 health._PROVIDERS.clear()
                 health._FILE = None
+        bench = getattr(self, "_bench", None)
+        if bench is not None:
+            with bench._LOCK:
+                bench._ACCOUNTS.clear()
+                bench._FILE = None
         os_env = __import__("os").environ
         if self._old_tutti_data is None:
             os_env.pop("TUTTI_DATA", None)

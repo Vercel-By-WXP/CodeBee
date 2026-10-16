@@ -4355,6 +4355,8 @@ def main():
               flush=True)
     _step("正在启动健康探针…")
     health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
+    from core import bench as _bench_health
+    _bench_health.init()  # CLI 账号死错台账：恢复落盘状态 + 定时探活
     from core import modelhub
     _step("正在迁移模型绑定…")
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）

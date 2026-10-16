@@ -2755,6 +2755,8 @@
     "定时扫描禅道的激活 Bug，自动创建代码修复任务（实现→验证→评审→修复）；跑完自动合并代码、resolve Bug 并把报告评论回禅道，群机器人同步通知。": "Periodically scans active ZenTao bugs and creates code fix tasks (implement → verify → review → fix); on success it merges the code, resolves the bug, posts a report comment back to ZenTao, and notifies the group bot.",
     "禅道地址": "ZenTao URL",
     "账号": "Account",
+    "账号失效，正在定时探活": "Account unavailable; periodic health checks are running",
+    "恢复后会自动重新进入调度": "It will automatically rejoin scheduling after recovery",
     "密码": "Password",
     "产品 ID": "Product IDs",
     "只认领指派给": "Only claim bugs assigned to",

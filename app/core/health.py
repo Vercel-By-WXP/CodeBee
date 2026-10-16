@@ -296,11 +296,25 @@ def snapshot():
         # 稳定排序：告警中 > 故障中 > 恢复 > 正常
         rank = {"down": 0, "failing": 1, "recovered": 2, "ok": 3}
         out.sort(key=lambda x: (rank.get(x["status"], 9), x["provider"]))
-        return {
+        result = {
             "providers": out,
             "alerts": [p for p in out if p["alerting"]],
             "any_alerting": any(p["alerting"] for p in out),
         }
+        # CLI account health is maintained by bench to keep provider/API
+        # telemetry independent.  Expose it through the same health endpoint
+        # so the UI and external monitors see recovery without a second poll.
+        try:
+            from . import bench
+            account_health = bench.snapshot()
+            result["accounts"] = account_health.get("accounts", [])
+            result["account_alerts"] = account_health.get("alerts", [])
+            result["any_alerting"] = bool(result["any_alerting"] or
+                                           account_health.get("any_alerting"))
+        except Exception:
+            result["accounts"] = []
+            result["account_alerts"] = []
+        return result
 
 
 def is_down(provider: str) -> bool:

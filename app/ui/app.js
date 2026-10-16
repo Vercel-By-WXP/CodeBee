@@ -2261,10 +2261,19 @@ function renderHealthBanner(health) {
   const el = $("health-banner");
   if (!el) return;
   const alerts = (health && health.alerts) || [];
-  if (!alerts.length) {
+  const accountAlerts = (health && health.account_alerts) || [];
+  const allAlerts = alerts.concat(accountAlerts.map((a) => ({
+    account: true, provider: a.agent_id || "账号", provider_id: "",
+    last_error: a.last_error || a.summary || a.code || ""
+  })));
+  if (!allAlerts.length) {
     const rec = (health.providers || []).find((p) => p.status === "recovered");
-    if (rec && Date.now() - S._healthRecoveredAt < 60000) {
-      el.textContent = "✓ " + rec.provider + " " + t("已恢复");
+    const accountRec = (health.accounts || []).find((a) => a.status === "recovered" && a.recovered_at);
+    const recoveredAt = Math.max(
+      rec ? (Date.parse(rec.recovered_at || "") || 0) : 0,
+      accountRec ? Number(accountRec.recovered_at || 0) * 1000 : 0);
+    if ((rec || accountRec) && recoveredAt && Date.now() - recoveredAt < 60000) {
+      el.textContent = "✓ " + (rec ? rec.provider : accountRec.agent_id) + " " + t("已恢复");
       el.className = "health-banner recovered";
     } else {
       el.className = "health-banner hidden";
@@ -2275,25 +2284,30 @@ function renderHealthBanner(health) {
   }
   el.textContent = healthBannerText(health);
   el.className = "health-banner alerting";
-  el.title = alerts.map((p) =>
-    p.provider + (p.model ? " · " + p.model : "") +
-    (p.static
-      ? t("：") + (p.last_error || t("未知错误"))
-      : t("：连续失败 ") + p.consecutive_failures + t(" 次（") + (p.last_error || t("未知错误")) + t("）"))
+  el.title = allAlerts.map((p) => p.account
+    ? p.provider + t("：") + (p.last_error || t("账号失效，正在定时探活"))
+    : p.provider + (p.model ? " · " + p.model : "") +
+      (p.static
+        ? t("：") + (p.last_error || t("未知错误"))
+        : t("：连续失败 ") + p.consecutive_failures + t(" 次（") + (p.last_error || t("未知错误")) + t("）"))
   ).join("\n");
   if (!_healthBeeped) { _healthBeeped = true; beepAttention(); }
 }
 
 function healthBannerText(health) {
-  return ((health && health.alerts) || []).map((p) => {
+  const providers = (health && health.alerts) || [];
+  const accounts = (health && health.account_alerts) || [];
+  return providers.map((p) => {
     const m = p.model ? " · " + p.model : "";
     return "⚠ " + p.provider + m + " " + (p.static ? t("绑定链失效") : t("连接异常"));
-  }).join(t("　"));
+  }).concat(accounts.map((a) => "⚠ " + (a.agent_id || t("账号")) + " " +
+    t("账号失效，正在定时探活"))).join(t("　"));
 }
 
 function healthBannerClick() {
   const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
-  if (!alerts.length) return;
+  const accountAlerts = (S.state && S.state.health && S.state.health.account_alerts) || [];
+  if (!alerts.length && !accountAlerts.length) return;
   const rows = alerts.map((p) => {
     const model = p.model ? " · " + p.model : "";
     const statLine = p.static ? "" :
@@ -2305,14 +2319,19 @@ function healthBannerClick() {
       statLine +
       "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
       esc(p.last_error || "") + "</div></div>";
-  }).join("");
-  const pid0 = alerts[0].provider_id || "";
-  const model0 = alerts[0].model || "";
+  }).concat(accountAlerts.map((a) =>
+    "<div style='margin-bottom:10px'><b>" + esc(a.agent_id || t("账号")) + "</b>" +
+    "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
+    esc(a.last_error || a.summary || a.code || t("账号失效，正在定时探活")) +
+    "</div><div style='opacity:.75;font-size:12px;margin-top:2px'>" +
+    esc(t("恢复后会自动重新进入调度")) + "</div></div>" )).join("");
+  const pid0 = alerts.length ? (alerts[0].provider_id || "") : "";
+  const model0 = alerts.length ? (alerts[0].model || "") : "";
   const foot =
     (pid0 && model0 ? "<button class='btn ghost' onclick=\"healthDisableModel('" + esc(pid0) + "','" + esc(model0) + "')\">" + t("禁用该模型") + "</button>" : "") +
     (pid0 ? "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" : "") +
-    "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
-    "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" +
+    (alerts.length ? "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
+      "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" : "") +
     "<button class='primary' onclick='closeModal()'>" + t("关闭") + "</button>";
   openModal(t("供应商健康告警"), rows, foot);
 }

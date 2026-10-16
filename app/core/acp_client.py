@@ -27,7 +27,7 @@ _ACP_EVENT_TYPES = {
 
 def _record_session_update(events, update):
     """Keep bounded, redacted ACP event metadata without tool payloads."""
-    if not isinstance(update, dict) or len(events) >= _MAX_ACP_EVENTS:
+    if not isinstance(update, dict):
         return
     kind = str(update.get("sessionUpdate") or "")[:60]
     if kind not in _ACP_EVENT_TYPES:
@@ -66,6 +66,23 @@ def _record_session_update(events, update):
             # and a plain string for summary chunks; normalize both to the
             # persisted display shape.
             item["content"] = scrub_text(content, limit=600)
+    compaction_id = item.get("compactionId")
+    mergeable = compaction_id and kind in (
+        "compaction_update", "compaction_summary_chunk")
+    if mergeable:
+        # A full activity window may still receive later chunks for a
+        # compaction already represented in it. Update that existing row in
+        # place; only a new compaction is rejected by the global bound.
+        for index, existing in enumerate(events):
+            if (isinstance(existing, dict)
+                    and str(existing.get("compactionId") or "") == str(compaction_id)
+                    and str(existing.get("sessionUpdate") or "") in (
+                        "compaction_update", "compaction_summary_chunk")):
+                merged = _coalesce_compaction_events([existing, item])[0]
+                events[index] = merged
+                return
+    if len(events) >= _MAX_ACP_EVENTS:
+        return
     events.append(item)
 
 
@@ -438,6 +455,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
     started = time.monotonic()
     process = None
     connection = None
+    acp_events = []
     command_context = dict(command_context or {})
     try:
         profile = _profile_runtime(agent)
@@ -460,7 +478,6 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
         if absolute_deadline is None:
             absolute_deadline = started + max(1.0, float(timeout or 1200))
         text_parts = []
-        acp_events = []
         terminals = {}
         session_id = str(resume or "")
 
@@ -537,19 +554,22 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                 "tokens": 0, "usage": None, "error": str(exc),
                 "raw": {"exit_code": None, "cancelled": True,
-                        "duration": time.monotonic() - started},
+                        "duration": time.monotonic() - started,
+                        "acp_events": _coalesce_compaction_events(acp_events)},
                 "kind": "acp", "model": None, "attempts": []}
     except TimeoutError as exc:
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                 "tokens": 0, "usage": None, "error": str(exc),
                 "raw": {"exit_code": None, "timed_out": True,
                         "deadline_exceeded": deadline is not None,
-                        "duration": time.monotonic() - started},
+                        "duration": time.monotonic() - started,
+                        "acp_events": _coalesce_compaction_events(acp_events)},
                 "kind": "acp", "model": None, "attempts": []}
     except Exception as exc:
         return {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
                 "tokens": 0, "usage": None, "error": str(exc)[:1000],
-                "raw": {"exit_code": None, "duration": time.monotonic() - started},
+                "raw": {"exit_code": None, "duration": time.monotonic() - started,
+                        "acp_events": _coalesce_compaction_events(acp_events)},
                 "kind": "acp", "model": None, "attempts": []}
     finally:
         if connection is not None:

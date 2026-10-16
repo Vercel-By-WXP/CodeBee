@@ -237,6 +237,29 @@ class FakeACPProcess:
         self.returncode = -15
 
 
+class FailingACPProcess(FakeACPProcess):
+    """Handshake succeeds, then returns a protocol error after ACP activity."""
+
+    def write(self, raw):
+        request = json.loads(raw)
+        if request["method"] != "session/prompt":
+            return super().write(raw)
+        self.requests.append(request)
+        for update in (
+                {"sessionUpdate": "compaction_update", "compactionId": "cmp-fail",
+                 "status": "in_progress"},
+                {"sessionUpdate": "compaction_summary_chunk", "compactionId": "cmp-fail",
+                 "content": "summary before failure"},
+                {"sessionUpdate": "notice", "severity": "error",
+                 "title": "Provider stopped"}):
+            self.lines.put(json.dumps({"jsonrpc": "2.0", "method": "session/update",
+                                       "params": {"sessionId": "session-1",
+                                                   "update": update}}) + "\n")
+        self.lines.put(json.dumps({"jsonrpc": "2.0", "id": request["id"],
+                                   "error": {"code": -32001,
+                                              "message": "provider stopped"}}) + "\n")
+
+
 class ACPClientTests(unittest.TestCase):
     def test_acp_v1_handshake_session_and_streamed_text(self):
         from core import acp_client
@@ -278,6 +301,22 @@ class ACPClientTests(unittest.TestCase):
         for _ in range(acp_client._MAX_ACP_EVENTS + 10):
             acp_client._record_session_update(events, {"sessionUpdate": "agent_thought_chunk", "content": "x" * 10000})
         self.assertLessEqual(len(events), acp_client._MAX_ACP_EVENTS)
+
+    def test_existing_compaction_continues_when_activity_window_is_full(self):
+        from core import acp_client
+        events = [{"sessionUpdate": "agent_thought_chunk", "content": "x"}
+                  for _ in range(acp_client._MAX_ACP_EVENTS - 1)]
+        acp_client._record_session_update(events, {
+            "sessionUpdate": "compaction_update", "compactionId": "cmp-full",
+            "status": "in_progress"})
+        acp_client._record_session_update(events, {
+            "sessionUpdate": "compaction_summary_chunk", "compactionId": "cmp-full",
+            "content": "first"})
+        acp_client._record_session_update(events, {
+            "sessionUpdate": "compaction_summary_chunk", "compactionId": "cmp-full",
+            "content": "second"})
+        self.assertEqual(len(events), acp_client._MAX_ACP_EVENTS)
+        self.assertEqual(events[-1]["content"], "first\nsecond")
 
     def test_acp_compaction_summary_is_text_only_and_bounded(self):
         from core import acp_client
@@ -327,6 +366,22 @@ class ACPClientTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertLessEqual(len(merged[0]["content"]), 2400)
         self.assertTrue(merged[0]["content"].endswith("…"))
+
+    def test_acp_failure_keeps_sanitized_activity_for_replay(self):
+        from core import acp_client
+        process = FailingACPProcess()
+        agent = {"id": "backend-failing", "command": "acp-agent", "args": [],
+                 "env": {}, "workspace_path": ""}
+        with patch.object(acp_client.subprocess, "Popen", return_value=process):
+            result = acp_client.run_agent(agent, "Inspect this workspace",
+                                          workdir=tempfile.gettempdir(), timeout=2)
+
+        self.assertFalse(result["ok"])
+        events = result["raw"]["acp_events"]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["sessionUpdate"], "compaction_update")
+        self.assertEqual(events[0]["content"], "summary before failure")
+        self.assertEqual(events[1]["sessionUpdate"], "notice")
 
 
 if __name__ == "__main__":

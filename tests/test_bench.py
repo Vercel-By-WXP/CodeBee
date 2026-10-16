@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from base import BaseTest
 
@@ -102,6 +103,87 @@ class TestBenchRegistry(BaseTest):
         self.assertEqual(self.bench.reason("r-test", "nobody"), "")
         self.assertEqual(self.bench.benched_agents("r-test"), {})
         self.assertFalse(self.bench.bench("", "qwen", "QUOTA"))
+
+
+class TestPersistentAccountHealth(BaseTest):
+    """死账号跨 run 熔断，并由探针成功后自动重新纳入调度。"""
+
+    def setUp(self):
+        super().setUp()
+        from app.core import bench
+        self.bench = bench
+        bench.init(data_dir=self.data_dir, start_probe=False)
+
+    def test_dead_account_is_shared_across_runs_and_persisted(self):
+        self.assertTrue(self.bench.record_failure(
+            "qwencode", "QUOTA", "403 预扣费额度失败"))
+        self.assertTrue(self.bench.is_benched("run-a", "qwencode"))
+        self.assertTrue(self.bench.is_benched("run-b", "qwencode"))
+        self.assertIn("qwencode", self.bench.benched_ids("run-b"))
+        self.assertEqual(self.bench.snapshot()["alerts"][0]["code"], "QUOTA")
+
+        # A service restart must retain the quarantine state.
+        self.bench.init(data_dir=self.data_dir, start_probe=False)
+        self.assertTrue(self.bench.is_benched("run-c", "qwencode"))
+
+    def test_probe_success_releases_account_for_all_runs(self):
+        self.bench.record_failure("qwencode", "QUOTA", "余额不足")
+        self.bench.bench("run-a", "qwencode", "QUOTA")
+        with self.bench._LOCK:
+            state = self.bench._ACCOUNTS["qwencode"]
+        self.bench._record_probe_result("qwencode", state, True)
+        self.assertFalse(self.bench.is_benched("run-a", "qwencode"))
+        self.assertNotIn("qwencode", self.bench.benched_ids("run-b"))
+        row = self.bench.snapshot()["accounts"][0]
+        self.assertEqual(row["status"], "recovered")
+        self.assertFalse(row["alerting"])
+
+    def test_runtime_success_recovers_account_across_active_runs(self):
+        self.bench.record_failure("qwencode", "AUTH", "token=must-not-be-persisted")
+        self.bench.bench("run-a", "qwencode", "AUTH")
+        self.assertTrue(self.bench.record_success("qwencode"))
+        self.assertFalse(self.bench.is_benched("run-a", "qwencode"))
+        self.assertFalse(self.bench.is_benched("run-b", "qwencode"))
+        text = (self.data_dir / "account_health.json").read_text(encoding="utf-8")
+        self.assertNotIn("must-not-be-persisted", text)
+        self.assertNotIn("token=", text)
+
+    def test_probe_failure_keeps_quarantine_and_backoffs(self):
+        self.bench.record_failure("qwencode", "AUTH", "登录失效")
+        with self.bench._LOCK:
+            state = self.bench._ACCOUNTS["qwencode"]
+            before = state["probe_failures"]
+        self.bench._record_probe_result("qwencode", state, False)
+        self.assertTrue(self.bench.is_benched("run-a", "qwencode"))
+        with self.bench._LOCK:
+            self.assertEqual(self.bench._ACCOUNTS["qwencode"]["probe_failures"], before + 1)
+            self.assertGreater(self.bench._ACCOUNTS["qwencode"]["next_probe_at"], 0)
+
+    def test_due_sweep_probes_only_accounts_whose_retry_time_arrived(self):
+        self.bench.record_failure("qwencode", "QUOTA", "余额不足")
+        self.bench.record_failure("claude-code", "AUTH", "登录失效")
+        with self.bench._LOCK:
+            self.bench._ACCOUNTS["qwencode"]["next_probe_at"] = 100
+            self.bench._ACCOUNTS["claude-code"]["next_probe_at"] = 200
+        with patch.object(self.bench, "_probe_account", return_value=True) as probe:
+            self.bench._probe_due_accounts(now=150)
+        probe.assert_called_once()
+        self.assertEqual(probe.call_args.args[0], "qwencode")
+        self.assertEqual(self.bench._ACCOUNTS["qwencode"]["status"], "recovered")
+        self.assertEqual(self.bench._ACCOUNTS["claude-code"]["status"], "down")
+
+    def test_malformed_persisted_rows_do_not_disable_probe_loop(self):
+        path = self.data_dir / "account_health.json"
+        path.write_text('{"accounts": {"broken": {"status": "down", '
+                         '"next_probe_at": "not-a-time", "probe_failures": "x"}}}',
+                        encoding="utf-8")
+        self.bench.init(data_dir=self.data_dir, start_probe=False)
+        with self.bench._LOCK:
+            state = self.bench._ACCOUNTS["broken"]
+            self.assertEqual(state["status"], "down")
+            self.assertGreater(state["next_probe_at"], 0)
+            self.assertEqual(state["probe_failures"], 0)
+        self.assertTrue(self.bench.is_benched("run-a", "broken"))
 
 
 class TestPipelineBenchWiring(BaseTest):

@@ -1060,6 +1060,17 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None)
             from . import bench as _bench
             if agent.get("id") and agent.get("mode") == "real":
                 _bench.bench(run_id, agent["id"], res.get("error_code"))
+                _bench.record_failure(agent["id"], res.get("error_code"),
+                                      res.get("error") or "")
+        except Exception:
+            pass
+    # A real successful call is stronger evidence than a stale persisted dead
+    # mark: re-enable the account immediately, without waiting for the probe.
+    elif res.get("ok"):
+        try:
+            from . import bench as _bench
+            if agent.get("id") and agent.get("mode") == "real":
+                _bench.record_success(agent["id"])
         except Exception:
             pass
     # A failed step with an entirely failed candidate history is a routing

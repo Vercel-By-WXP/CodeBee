@@ -274,6 +274,14 @@ class TestSnapshotShape(HealthBase):
                   "alerting", "silenced", "first_fail_at"):
             self.assertIn(k, p)
 
+    def test_snapshot_includes_account_health_and_combines_alert_flag(self):
+        from app.core import bench, health
+        bench.record_failure("qwencode", "QUOTA", "余额不足")
+        snap = health.snapshot()
+        self.assertEqual(snap["accounts"][0]["agent_id"], "qwencode")
+        self.assertEqual(snap["account_alerts"][0]["code"], "QUOTA")
+        self.assertTrue(snap["any_alerting"])
+
 
 class TestGhostCleanup(HealthBase):
     """供应商被删除后，健康记录要跟着清掉。
