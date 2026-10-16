@@ -294,7 +294,6 @@ class TestProjectMemoryKeepsAttachmentContext(BaseTest):
         task = store.create_task({"type": "code", "title": "长附件", "goal": "实现需求",
                                   "workdir": str(self.workdir), "attachments": [meta["id"]]})
         memory = project_memory.propose(self.workdir, title="架构", facts=["历史架构事实" * 80])
-        project_memory.decide(self.workdir, memory["id"], "approve")
         task = dict(task, difficulty="default", _compiled_spec=task_compile.compile_task(task))
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
         store.update_run(run["id"], status="running")

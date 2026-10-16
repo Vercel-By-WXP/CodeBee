@@ -7,9 +7,7 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
-      - 'app/desktop_host.py'
-      - 'app/core/runtime_lock.py'
-      - 'app/main.py'
+      - 'app/**'
       - '.github/workflows/desktop-preview.yml'
 
 permissions:
@@ -114,7 +112,7 @@ jobs:
         run: |
           mkdir -p release
           find artifacts -name '*.exe' -exec mv {} release/ \;
-          find artifacts -name '*.dmg' -exec mv {} release/ \;
+          find artifacts \( -name '*.dmg' -o -name '*.zip' \) -exec mv {} release/ \;
           ls -la release/
       - name: Create GitHub Release with installers
         env:
@@ -122,6 +120,6 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" \
             --title "CodeBee ${GITHUB_REF_NAME#v}" \
-            --notes "桌面预览版兼容安装包（Windows 7/8.1/10/11 x64、macOS Universal Intel/Apple Silicon）。Python 已随包内置。更新内容见仓库 CHANGELOG.md。" \
+            --notes "桌面预览版兼容安装包（Windows 7/8.1/10/11 x64、macOS Intel/Apple Silicon）。Python 已随包内置；桌面端可从应用内下载并重新安装。更新内容见仓库 CHANGELOG.md。" \
             --prerelease \
             release/*

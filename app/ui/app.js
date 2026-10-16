@@ -5806,10 +5806,16 @@ window.loadProjectMemory = async function (taskId) {
       const canApprove = entry.status === "pending" && !entry.expired && entry.verified;
       const canRestore = entry.status === "archived" && !entry.expired && entry.verified;
       const feedback = entry.status === "approved" ? '<button type="button" class="ghost small" onclick="feedbackProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',true,' + Number(entry.version) + ')">' + esc(t("有用")) + '</button><button type="button" class="ghost small" onclick="feedbackProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',false,' + Number(entry.version) + ')">' + esc(t("无用")) + '</button>' : "";
+      const feedbackCount = Number(entry.feedback_count || 0);
+      const feedbackScore = Number(entry.feedback_score || 0);
+      const feedbackSummary = feedbackCount > 0
+        ? '<span class="hint rd-memory-feedback">' + esc(t("反馈")) + '：' +
+          esc(feedbackScore > 0 ? t("有用") : (feedbackScore < 0 ? t("无用") : t("中性"))) +
+          ' · ' + feedbackCount + esc(t("次")) + '</span>' : "";
       const actions = feedback + (canApprove ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'approve\',' + Number(entry.version) + ')">' + esc(t("批准")) + "</button><button type=\"button\" class=\"ghost small\" onclick=\"decideProjectMemory('" + jsq(taskId) + "','" + jsq(entry.id) + "','reject'," + Number(entry.version) + ')">' + esc(t("拒绝")) + "</button>" : "") +
         (entry.status === "approved" ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'archive\',' + Number(entry.version) + ')">' + esc(t("归档")) + "</button>" : "") +
         (canRestore ? '<button type="button" class="ghost small" onclick="decideProjectMemory(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'restore\',' + Number(entry.version) + ')">' + esc(t("恢复")) + "</button>" : "");
-      return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(entry.status || "") + (entry.expired ? " · " + esc(t("已过期")) : "") + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + actions + "</div></article>";
+      return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(entry.status || "") + (entry.expired ? " · " + esc(t("已过期")) : "") + '</span>' + feedbackSummary + '</div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + actions + "</div></article>";
     }).join("");
   } catch (error) {
     if (requestSeq !== S._projectMemorySeq || (S.detailTaskKey && S.detailTaskKey !== taskId)) return;
@@ -5841,7 +5847,11 @@ window.decideProjectMemory = async function (taskId, id, action, version) {
       body: JSON.stringify({ id, action, expected_version: version }),
     });
     await loadProjectMemory(taskId);
-  } catch (error) { toast(t("项目记忆操作失败：") + error.message, true); }
+    const labels = { approve: "批准", reject: "拒绝", archive: "归档", restore: "恢复" };
+    toast(t("项目记忆已更新") + (labels[action] ? "：" + t(labels[action]) : ""));
+  } catch (error) {
+    toast(error && error.status === 423 ? error.message : t("项目记忆操作失败：") + error.message, true);
+  }
 };
 
 window.feedbackProjectMemory = async function (taskId, id, useful, version) {
@@ -5851,7 +5861,10 @@ window.feedbackProjectMemory = async function (taskId, id, useful, version) {
       body: JSON.stringify({ id, action: "feedback", useful, expected_version: version }),
     });
     await loadProjectMemory(taskId);
-  } catch (error) { toast(t("项目记忆反馈失败：") + error.message, true); }
+    toast(t("项目记忆反馈已记录") + "：" + t(useful ? "有用" : "无用"));
+  } catch (error) {
+    toast(error && error.status === 423 ? error.message : t("项目记忆反馈失败：") + error.message, true);
+  }
 };
 
 window.loadRunCheckpoints = async function (requestedRunId) {
@@ -11991,10 +12004,39 @@ function renderDetailOverview(run, runs, task, aggregate) {
       (duration != null ? '<span>' + esc(t("耗时")) + ' <b>' + esc(chatDurTxt(duration < 1 ? Number(duration.toFixed(1)) : Math.round(duration))) + '</b></span>' : "") +
       (etaText ? '<span class="rd-eta">' + esc(etaText) + '</span>' : "") +
     '</div>' +
+    capabilityEvidenceHtml(run.capabilities) +
     (lastText ? '<div class="rd-overview-last"><b>' + esc(t("最近一步")) + '</b><span>' + esc(lastText) + '</span></div>' : "") +
     (contract ? contractOverviewHtml(contract) : "") +
     (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
   box.classList.remove("hidden");
+}
+
+/* 运行时能力证据：run.capabilities 由 capability_runtime 在任务开始和
+ * 内置智能体收尾时写入。这里明确区分“已纳入本次提示词/工具循环”和
+ * “MCP 实际发现/调用”，避免把安装目录误显示成已使用能力。 */
+function capabilityEvidenceHtml(capabilities) {
+  const cap = capabilities && typeof capabilities === "object" ? capabilities : null;
+  if (!cap) return "";
+  const list = (value) => Array.isArray(value) ? value.filter(Boolean).map((x) => String(x)) : [];
+  const skills = list(cap.skills);
+  const plugins = list(cap.plugins);
+  const external = list(cap.external_skills);
+  const mcp = cap.mcp && typeof cap.mcp === "object" ? cap.mcp : {};
+  const discovered = Number(mcp.discovered || 0);
+  const called = list(mcp.called);
+  const pills = [];
+  if (skills.length) pills.push('<span class="rd-capability-pill"><b>' + esc(t("经验/内置 Skill")) + '</b> ' + esc(skills.join(", ")) + '</span>');
+  if (plugins.length) pills.push('<span class="rd-capability-pill"><b>' + esc(t("插件提示")) + '</b> ' + esc(plugins.join(", ")) + '</span>');
+  if (external.length) pills.push('<span class="rd-capability-pill"><b>' + esc(t("外部 Skill")) + '</b> ' + esc(external.join(", ")) + '</span>');
+  if (cap.knowledge) pills.push('<span class="rd-capability-pill"><b>' + esc(t("知识库")) + '</b> ' + esc(t("已注入")) + '</span>');
+  if (discovered || called.length) {
+    const mcpText = called.length
+      ? t("已调用") + " " + called.length + " · " + called.join(", ")
+      : t("已发现") + " " + discovered;
+    pills.push('<span class="rd-capability-pill"><b>MCP</b> ' + esc(mcpText) + '</span>');
+  }
+  if (!pills.length) return '<div class="rd-capability-evidence"><b>' + esc(t("运行时能力证据")) + '</b><span class="hint">' + esc(t("本次运行未注入匹配的经验、Skill 或 MCP 工具")) + '</span></div>';
+  return '<div class="rd-capability-evidence"><b>' + esc(t("运行时能力证据")) + '</b><div class="rd-capability-pills">' + pills.join("") + '</div></div>';
 }
 
 function contractOverviewHtml(contract) {
@@ -16067,6 +16109,7 @@ async function loadSettings() {
       queueGitProbe();   // 目录在场即探测代码版本，点亮分支胶囊
     }
   } catch (e) { /* 忽略 */ }
+  loadMcpCatalog();
   loadSettingsV2();   // 引擎调参卡独立拉取（挂了不影响基础设置）
   loadBackendProfiles();
   loadCommandAuth();
@@ -16358,8 +16401,52 @@ async function saveMcpServers() {
   try {
     const r = await api("/api/settings", { method: "POST", body: JSON.stringify({ mcp_servers: el.value }) });
     S.settings = r.settings;
+    await loadMcpCatalog();
     toast(t("MCP 配置已保存，下次对话生效"));
   } catch (e) { toast(t("保存失败：") + e.message, true); }
+}
+
+function mcpRuntimeStatus(status) {
+  return ({
+    ready: t("可启动"),
+    missing_launcher: t("缺少启动器"),
+    missing_package_manager: t("缺少包管理器"),
+    missing_sandbox: t("缺少隔离后端"),
+  })[status] || t("待检查");
+}
+
+async function loadMcpCatalog() {
+  const box = $("mcp-catalog-runtime");
+  if (!box) return;
+  box.innerHTML = '<span class="hint">' + esc(t("正在检查 MCP 运行环境…")) + "</span>";
+  try {
+    const data = await api("/api/mcp/catalog", { timeout: 15000 });
+    const configuredRows = Array.isArray(data.configured_runtime) ? data.configured_runtime : [];
+    const configured = Object.fromEntries(configuredRows.map((row) => [row.name, row]));
+    const rows = Array.isArray(data.catalog) ? data.catalog : [];
+    box.innerHTML = '<div class="mcp-runtime-title">' + esc(t("MCP 目录运行时检查")) + "</div>" +
+      (rows.length ? rows.map((row) => {
+        const status = mcpRuntimeStatus(row.runtime_status);
+        const state = row.configured ? t("已配置") : t("未配置");
+        const cls = row.runtime_status === "ready" ? "ok" : "warn";
+        const launcher = (row.launcher_available ? "✓ " : "✗ ") + (row.launcher || "—");
+        const manager = (row.package_manager_available ? "✓ " : "✗ ") + (row.package_manager || "—");
+        const sandbox = row.sandbox_available ? "✓ " + t("OS 隔离") : "✗ " + t("OS 隔离");
+        const hint = row.install_hint
+          ? '<div class="mcp-runtime-hint"><span>' + esc(t("首次运行/手动安装提示：")) +
+            '</span><code>' + esc(row.install_hint) + "</code></div>" : "";
+        const configuredRow = configured[row.default_name];
+        const configuredNote = configuredRow && configuredRow.runtime_status !== "ready"
+          ? '<span class="mcp-runtime-config-warn">' + esc(t("已配置但当前无法启动")) + "</span>" : "";
+        return '<div class="mcp-runtime-row"><div class="mcp-runtime-main"><b>' + esc(row.name || row.id) +
+          '</b><span class="tag">' + esc(state) + '</span><span class="tag ' + cls + '">' + esc(status) +
+          '</span>' + configuredNote + '</div><div class="mcp-runtime-meta"><span>' + esc(t("启动器")) +
+          ': <code>' + esc(launcher) + '</code></span><span>' + esc(t("包管理器")) + ': <code>' + esc(manager) +
+          '</code></span><span>' + esc(sandbox) + '</span></div>' + hint + "</div>";
+      }).join("") : '<span class="hint">' + esc(t("暂无 MCP 目录项")) + "</span>");
+  } catch (error) {
+    box.innerHTML = '<span class="hint">' + esc(t("MCP 目录检查失败：")) + esc(error.message || error) + "</span>";
+  }
 }
 
 /* MCP 一键模板（2026 社区最常用五款，npx 免安装）：追加进现有清单，
@@ -16391,7 +16478,7 @@ function mcpTemplate(kind) {
   const i = arr.findIndex((x) => x && x.name === mk.name);
   const dupNote = i >= 0 ? t("（覆盖同名 ") + mk.name + "）" : "";
   if (i >= 0) arr[i] = { name: mk.name, command: mk.command, args: mk.args };
-  else if (arr.length >= 4) { toast(t("最多 4 个 MCP 服务器，请先删减再套模板"), true); return; }
+  else if (arr.length >= 16) { toast(t("最多 16 个 MCP 服务器，请先删减再套模板"), true); return; }
   else arr.push({ name: mk.name, command: mk.command, args: mk.args });
   el.value = JSON.stringify(arr, null, 2);
   toast(mk.note + dupNote + t("——记得点「保存 MCP 配置」"));
@@ -16996,14 +17083,18 @@ function renderRelnotes(txt) {
   return html || ("<pre class=\"su-notes\">" + esc(txt) + "</pre>");
 }
 
-/* 顶栏左上角常驻更新胶囊：有新版才出现（同版本被忽略后不再出现），
- * 点击直达「关于与更新」，× 忽略本版本（与 su.seen 记账键同一套语义） */
+/* 顶栏更新圆钮：有新版才出现（同版本被忽略后不再出现）——accent 实心圆+下载箭头，
+ * 点击直接弹确认升级（复用 suApply 的确认与升级链路），× 忽略本版本（与 su.seen
+ * 记账键同一套语义）。版本号进 tooltip 与视觉隐藏文本（读屏/测试可读） */
 function renderUpdPill() {
   const pill = $("upd-pill");
   if (!pill) return;
   const show = !!(SU && SU.has_update && localStorage.getItem("su.seen") !== SU.latest);
   pill.classList.toggle("hidden", !show);
-  if (show) $("upd-pill-txt").textContent = t("新版本 v") + SU.latest;
+  if (show) {
+    $("upd-pill-txt").textContent = t("新版本 v") + SU.latest;
+    pill.title = t("发现新版本 v") + SU.latest + t("，点击直接升级");
+  }
 }
 
 function updDismiss() {
@@ -17303,7 +17394,7 @@ async function suStartupCheck() {
   const s = await loadSelfupdate(false);
   if (s && s.has_update && localStorage.getItem("su.seen") !== s.latest) {
     localStorage.setItem("su.seen", s.latest);
-    toast(t("发现新版本 v") + s.latest + t("，可在「关于与更新」一键升级"));
+    toast(t("发现新版本 v") + s.latest + t("，点顶栏下载按钮即可直接升级"));
   }
 }
 
@@ -17938,7 +18029,7 @@ function usageRecentTable(rows) {
 
 function renderUsage() {
   const u = S.usage;
-  if (!u) { toast("请先生成配对码并等待地址出现", true); return; }
+  if (!u) return;
   const tot = u.totals || {};
   const activeDays = tot.days_active || 0;
   // 回填记录只有总量、没有输入/输出细分：细分全为 0 时说明当前范围只有历史数据，
@@ -18495,7 +18586,7 @@ function pickConnUrl(i) {
 
 function copyConnUrl() {
   const u = S.connUrls[S.connIdx];
-  if (!u) return;
+  if (!u) { toast("请先生成配对码并等待地址出现", true); return; }
   const done = () => toast(t("已复制，手机浏览器粘贴打开即可"));
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(u.url).then(done, () => fallbackCopy(u.url, done));

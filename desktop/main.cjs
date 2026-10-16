@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const { Backend, requestJSON } = require('./lib/backend.cjs');
 const { RELEASES_URL, dataDirectory, runtimePaths, isInternal, externalURL, cliEnvironment } = require('./lib/platform.cjs');
+const { latestRelease, downloadInstaller, launchInstaller } = require('./lib/installer.cjs');
 
 const smoke = process.argv.includes('--smoke-test');
 const smokeSecond = process.argv.includes('--smoke-second');
@@ -39,7 +40,11 @@ let quitRequested = false;
 let exitPending = false;
 let pollTimer;
 let updateTimer;
+let desktopUpdateTimer;
+let desktopUpdateInitialTimer;
+let desktopUpdateInFlight = false;
 let notificationPrimed = false;
+let desktopNotificationVersion = '';
 const seen = new Map();
 
 function showWindow() {
@@ -110,7 +115,7 @@ async function launch() {
   tray.on('click', showWindow);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开 CodeBee', click: showWindow },
-    { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
+    { label: '下载并安装桌面新版', click: () => void installDesktopUpdate() },
     { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
     { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
     { type: 'separator' }, { label: '退出 CodeBee', click: () => void requestQuit() },
@@ -119,7 +124,7 @@ async function launch() {
     const template = [
       { label: 'CodeBee', submenu: [
       { role: 'about' }, { type: 'separator' },
-      { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
+      { label: '下载并安装桌面新版', click: () => void installDesktopUpdate() },
       { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
       { type: 'separator' }, { label: '退出 CodeBee', accelerator: 'Command+Q', click: () => void requestQuit() },
       ] },
@@ -129,7 +134,7 @@ async function launch() {
         click: () => window?.webContents.reload() }, { role: 'resetZoom' }, { role: 'zoomIn' },
         { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
       { label: '帮助', submenu: [
-        { label: '下载桌面新版', click: () => void shell.openExternal(RELEASES_URL) },
+        { label: '下载并安装桌面新版', click: () => void installDesktopUpdate() },
         { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
         { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
       ] },
@@ -195,6 +200,14 @@ async function startBackend() {
         updateTimer = setInterval(() => void pollEngineUpdate(), 30 * 60 * 1000);
       }
     }
+    if (!smoke) {
+      clearTimeout(desktopUpdateInitialTimer);
+      clearInterval(desktopUpdateTimer);
+      // The desktop shell can attach to an engine started by the CLI. The
+      // shell still owns its installer update path, so check in both modes.
+      desktopUpdateInitialTimer = setTimeout(() => void pollDesktopInstallerUpdate(), 45000);
+      desktopUpdateTimer = setInterval(() => void pollDesktopInstallerUpdate(), 60 * 60 * 1000);
+    }
   } finally {
     starting = false;
     if (quitRequested && !quitting) {
@@ -235,6 +248,97 @@ async function pollEngineUpdate() {
       note.show();
     }
   } catch { /* 查新失败静默：下个周期再查 */ }
+}
+
+async function pollDesktopInstallerUpdate() {
+  if (quitting || starting || !app.isPackaged || !backend?.origin) return;
+  try {
+    const release = await latestRelease({ currentVersion: app.getVersion() });
+    if (!release?.hasUpdate || release.version === desktopNotificationVersion) return;
+    desktopNotificationVersion = release.version;
+    if (Notification.isSupported()) {
+      const note = new Notification({ title: 'CodeBee · 桌面版可更新 v' + release.version,
+        body: '点击下载并重新安装，任务与配置会保留', icon: paths.icon });
+      note.on('click', () => { showWindow(); void installDesktopUpdate(release); });
+      note.show();
+    }
+  } catch { /* 更新检查失败静默，下个周期再查 */ }
+}
+
+function formatDownloadProgress(progress) {
+  const received = Number(progress?.received || 0);
+  const total = Number(progress?.total || 0);
+  if (!total) return `已下载 ${(received / 1048576).toFixed(1)} MB`;
+  return `正在下载桌面安装包 ${(received / total * 100).toFixed(0)}%`;
+}
+
+function removeDownloadedInstaller(installer) {
+  if (!installer) return;
+  try { fs.rmSync(path.dirname(installer), { recursive: true, force: true }); } catch { /* best effort */ }
+}
+
+async function installDesktopUpdate(preloadedRelease = null) {
+  if (quitting || starting || !app.isPackaged || desktopUpdateInFlight) return;
+  desktopUpdateInFlight = true;
+  let release = preloadedRelease;
+  let installer;
+  try {
+    release ||= await latestRelease({ currentVersion: app.getVersion() });
+    if (!release) throw new Error('暂时没有可用的桌面安装包');
+    if (!release.hasUpdate) {
+      const choice = await dialog.showMessageBox(window, { type: 'info', message: '当前已是最新桌面版',
+        detail: `当前版本 v${app.getVersion()}，可到发布页查看历史版本。`,
+        buttons: ['打开发布页', '知道了'], defaultId: 0, cancelId: 1 });
+      if (choice.response === 0) await shell.openExternal(RELEASES_URL);
+      return;
+    }
+    const choice = await dialog.showMessageBox(window, { type: 'question',
+      message: `下载并安装桌面版 v${release.version}？`,
+      detail: '应用会下载对应平台安装包，退出当前 CodeBee 后启动安装器覆盖安装。任务、配置和数据目录会保留。',
+      buttons: ['下载并安装', '稍后'], defaultId: 0, cancelId: 1 });
+    if (choice.response !== 0) return;
+    if (window && !window.isDestroyed()) window.setTitle('CodeBee · 准备更新…');
+    installer = await downloadInstaller(release, { onProgress: progress => {
+      if (window && !window.isDestroyed()) window.setTitle('CodeBee · ' + formatDownloadProgress(progress));
+    } });
+    if (backend?.origin && !backend.attached && backend.child?.exitCode === null) {
+      const status = await backend.status();
+      const active = Number(status.jobs?.alive || 0) + Number(status.jobs?.chat_alive || 0) +
+        Number(status.jobs?.queued || 0);
+      if (active) {
+        const stop = await dialog.showMessageBox(window, { type: 'question',
+          message: `还有 ${active} 个任务未结束`, detail: '安装需要退出应用。继续安装会停止这些任务，之后可按现有恢复规则继续。',
+          buttons: ['停止任务并安装', '取消'], defaultId: 1, cancelId: 1 });
+        if (stop.response !== 0) {
+          removeDownloadedInstaller(installer);
+          if (window && !window.isDestroyed()) window.setTitle('CodeBee');
+          return;
+        }
+        await backend.stop(true);
+      } else {
+        await backend.stop(false);
+      }
+    }
+    launchInstaller(installer, process.pid);
+    quitting = true;
+    clearInterval(pollTimer);
+    clearInterval(updateTimer);
+    clearTimeout(desktopUpdateInitialTimer);
+    clearInterval(desktopUpdateTimer);
+    tray?.destroy();
+    app.exit(0);
+  } catch (error) {
+    if (!quitting) {
+      removeDownloadedInstaller(installer);
+      if (window && !window.isDestroyed()) window.setTitle('CodeBee');
+      const choice = await dialog.showMessageBox(window, { type: 'warning', message: '桌面版更新没有完成',
+        detail: (error && error.message || String(error)) + '\n\n可以稍后重试，或打开发布页手动下载安装包。',
+        buttons: ['打开发布页', '知道了'], defaultId: 0, cancelId: 1 });
+      if (choice.response === 0) await shell.openExternal(RELEASES_URL);
+    }
+  } finally {
+    desktopUpdateInFlight = false;
+  }
 }
 
 async function offerEngineUpdate(message) {
@@ -311,6 +415,8 @@ function finishQuit() {
   quitting = true;
   clearInterval(pollTimer);
   clearInterval(updateTimer);
+  clearTimeout(desktopUpdateInitialTimer);
+  clearInterval(desktopUpdateTimer);
   tray?.destroy();
   app.quit();
 }

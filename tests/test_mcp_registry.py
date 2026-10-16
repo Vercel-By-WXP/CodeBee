@@ -88,6 +88,33 @@ class McpRegistryTests(BaseTest):
 
 
 class McpCatalogTests(BaseTest):
+    def test_catalog_exposes_runtime_readiness_without_installing_packages(self):
+        from app.core import mcp_catalog
+
+        def which(command):
+            return "C:/bin/%s" % command if command in {"npx", "npm"} else None
+
+        with mock.patch.object(mcp_catalog.shutil, "which", side_effect=which), \
+                mock.patch.object(mcp_catalog.mcp_client, "sandbox_backend_available", return_value=True):
+            rows = {row["id"]: row for row in mcp_catalog.catalog()}
+        self.assertTrue(rows["memory"]["launcher_available"])
+        self.assertTrue(rows["memory"]["package_manager_available"])
+        self.assertEqual(rows["memory"]["runtime_status"], "ready")
+        self.assertEqual(rows["memory"]["install_hint"],
+                         "npm exec --yes @modelcontextprotocol/server-memory")
+        self.assertFalse(rows["fetch"]["launcher_available"])
+        self.assertFalse(rows["fetch"]["package_manager_available"])
+        self.assertEqual(rows["fetch"]["runtime_status"], "missing_package_manager")
+
+    def test_catalog_requires_the_same_isolation_backend_as_runtime_dispatch(self):
+        from app.core import mcp_catalog, mcp_client
+        with mock.patch.object(mcp_catalog.shutil, "which", side_effect=lambda name: "x"), \
+                mock.patch.object(mcp_client, "sandbox_backend_available", return_value=False):
+            row = next(item for item in mcp_catalog.catalog() if item["id"] == "memory")
+        self.assertTrue(row["launcher_available"])
+        self.assertFalse(row["sandbox_available"])
+        self.assertEqual(row["runtime_status"], "missing_sandbox")
+
     def test_catalog_install_is_preview_by_default_and_requires_options(self):
         from app.core import mcp_catalog
         with self.assertRaises(ValueError):
@@ -123,3 +150,18 @@ class McpCatalogTests(BaseTest):
         self.assertTrue(done["changed"])
         self.assertEqual(mcp_catalog._configured(), [])
         self.assertTrue(all("secret" not in json.dumps(x) for x in mcp_catalog.state()["configured"]))
+
+    def test_catalog_commit_invalidates_tool_discovery_and_reports_configured_runtime(self):
+        from app.core import mcp_catalog, mcp_client
+        with mock.patch.object(mcp_client, "invalidate_tools_cache") as invalidate, \
+                mock.patch.object(mcp_catalog.shutil, "which", return_value=None), \
+                mock.patch.object(mcp_client, "sandbox_backend_available", return_value=False):
+            mcp_catalog.install("time", commit=True)
+            state = mcp_catalog.state()
+            mcp_catalog.remove("cb_time", commit=True)
+        self.assertGreaterEqual(invalidate.call_count, 2)
+        self.assertEqual(state["configured_runtime"], [{
+            "name": "cb_time", "command": "uvx",
+            "launcher_available": False, "sandbox_available": False,
+            "runtime_status": "missing_launcher",
+        }])

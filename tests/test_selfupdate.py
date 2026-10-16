@@ -228,7 +228,7 @@ class TestDesktopUpdateCheck(BaseTest):
             self.assertEqual(info["mode"], "desktop")
             self.assertIs(info["has_update"], expected)
             self.assertEqual(info["latest"], latest)
-            self.assertIn("/actions/workflows/desktop-preview.yml", info["download_url"])
+            self.assertEqual(info["download_url"], "https://github.com/Vercel-By-WXP/CodeBee/releases")
             if expected:
                 self.assertIn("下载页", info["note"])
             else:
@@ -246,6 +246,6 @@ class TestDesktopUpdateCheck(BaseTest):
             info = su.check()
         self.assertEqual(info["mode"], "desktop")
         self.assertFalse(info["has_update"])
-        self.assertIn("/actions/workflows/desktop-preview.yml", info["download_url"])
+        self.assertEqual(info["download_url"], "https://github.com/Vercel-By-WXP/CodeBee/releases")
         self.assertIn("查询新版本失败", info["note"])
 

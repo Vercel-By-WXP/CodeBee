@@ -53,6 +53,11 @@ def invalidate_tools_cache():
         _TOOLS_CONFIG_SHA = ""
 
 
+def sandbox_backend_available():
+    """Whether the OS backend required for MCP process isolation is present."""
+    return os.name == "posix" and sys.platform != "darwin" and bool(shutil.which("bwrap"))
+
+
 def parse_servers(text):
     """settings.mcp_servers 文本 → 校验后的服务器配置列表。返回 (servers, 错误)。"""
     raw = str(text or "").strip()
@@ -114,7 +119,7 @@ def _sandbox_launch(server, sandbox, workdir):
         # script paths. Until those are explicitly mapped into an image and
         # verified mounts, refuse instead of launching a misleading container.
         raise RuntimeError("MCP Docker 启动映射尚未配置；拒绝降级到宿主机")
-    if os.name != "posix" or sys.platform == "darwin" or not shutil.which("bwrap"):
+    if not sandbox_backend_available():
         raise RuntimeError("MCP 服务尚无可用的 OS 隔离后端，拒绝启动")
     roots = [Path(value).resolve(strict=True)
              for value in normalized.get("allowed_roots") or []]

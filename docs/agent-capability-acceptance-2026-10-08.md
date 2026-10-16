@@ -14,7 +14,7 @@
 | 可恢复文件检查点 | `app/core/checkpoints.py`、`pipeline.py`、`main.py` | 捕获文件原始内容，预览差异，恢复修改/新建/删除/重命名；拒绝覆盖人工修改；恢复前重查冲突；POSIX 目录句柄防止父目录被替换后越界写入。对应 `test_builtin_file_write_is_rewindable_end_to_end`、Git 检查点测试及父目录替换测试。 |
 | 真实沙箱执行边界 | `app/core/builtin_agent.py`、`mcp_client.py`、`pipeline.py` | 文件工具和枚举遵守允许目录；shell/MCP 使用 Linux bubblewrap；缺少可验证后端时拒绝启动；未验证隔离能力的外部 CLI 拒绝执行。真实运行测试见 `app/tests/test_sandbox_runtime.py`。 |
 | 子任务与长上下文 | `app/core/builtin_agent.py`、`tool_outputs.py`、`compaction.py` | 子任务仅接收显式背景；保留最近工具调用与结果配对，压缩早期轮次；大输出按 run/call 保存并可读取；重复压缩不丢引用；伪引用和复制其他调用的真实引用均不能绕过限制。对应 `test_builtin_task_tool.py` 与 direct-context/tool-output 系列回归。 |
-| 长期记忆治理 | `app/core/project_memory.py`、`pipeline.py`、`main.py` | 自动生成内容处于 pending；批准后才注入；内容哈希与版本校验；归档停止注入；正确版本可恢复；过期条目拒绝恢复并停止注入。新增 `test_project_memory_archive_restore_checks_version_and_expiry` 实际执行该完整生命周期。 |
+| 长期记忆治理 | `app/core/project_memory.py`、`pipeline.py`、`main.py` | 自动生成内容通过完整性校验后默认自动批准并注入；历史 pending 条目启动时自动转正；内容哈希与版本校验；归档停止注入；正确版本可恢复；过期条目拒绝恢复并停止注入。新增 `test_project_memory_archive_restore_checks_version_and_expiry` 实际执行该完整生命周期。 |
 | AGENTS.md 信任范围 | `app/core/agent_context.py` | Git 仓库之外的父目录不被信任；无 Git 时只读取选定工作目录；拒绝不属于工作目录祖先的显式边界；指令内容脱敏。对应 agent-context 系列回归。 |
 
 ## 本次检查

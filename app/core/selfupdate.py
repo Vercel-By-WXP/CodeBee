@@ -254,14 +254,12 @@ def check(force=False):
     out = {"mode": mode, "current": cur, "latest": "", "has_update": False,
            "note": "", "notes": "", "whatsnew": changelog_section(cur)}
     if mode == "desktop":
-        # Desktop packages are currently published as Actions artifacts by the
-        # preview workflow; the repository Releases page has no installers.
-        out["download_url"] = (
-            "https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/"
-            "desktop-preview.yml"
-        )
+        # Desktop installers are attached to GitHub Releases. The Electron
+        # shell can download the matching asset and hand it to the installer;
+        # the browser fallback opens the public release list.
+        out["download_url"] = "https://github.com/Vercel-By-WXP/CodeBee/releases"
         # 桌面壳不能自我替换引擎，但「查新」照常可用：安装包引擎版本与 npm 同源。
-        # 查到新版时前端渲染「打开下载页」（apply/restart 在桌面模式始终 400）。
+        # 查到新版时前端渲染「打开下载页」；完整桌面安装由壳负责。
         with _LOCK:
             if not force and _CHECK_CACHE["result"] and \
                     time.time() - _CHECK_CACHE["ts"] < _UPDATE_TTL:

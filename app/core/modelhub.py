@@ -4077,6 +4077,48 @@ def classify_difficulty(goal, verify_command):
 
 # ---------------------------------------------------------------- 跨厂商链迁移
 
+def migrate_stale_provider_only_bindings():
+    """清理历史版本留下的「空链 + provider_id」死绑定（幂等）。
+
+    旧版模型调度页会把一键推荐结果写成 ``chain=[]``、``models=[]``，
+    但仍保留 ``provider_id``。这类记录看起来像显式绑定，运行时却没有
+    模型可解析；当供应商协议与 CLI 不匹配（例如 codex 绑定 anthropic）
+    时，死链闸门会把本可自动调度的步骤判成失败。只有带空链/空模型字段
+    的旧形态才进入迁移；真实模型链以及当前 API 写出的 provider-only
+    绑定保持原语义。供应商不存在、停用、无密钥或协议不可注入时都解除
+    provider_id，让 bind_agent 回到自动推荐。返回清理条数。
+    """
+    with _LOCK:
+        data = _load()
+        plist = {p.get("id"): p for p in data.get("providers") or []}
+        changed = []
+        for aid, binding in (data.get("bindings") or {}).items():
+            if not isinstance(binding, dict) or not binding.get("provider_id"):
+                continue
+            # 仅处理旧 UI 明确写入的空字段。没有这些字段的 provider-only
+            # 绑定是当前接口的合法显式供应商锁定，不应被启动迁移改写。
+            if "chain" not in binding and "models" not in binding:
+                continue
+            if binding.get("chain") or binding.get("models") or binding.get("model"):
+                continue
+            pid = str(binding.get("provider_id") or "")
+            prov = plist.get(pid)
+            allowed = bindable_protocols(aid)
+            # _entry_endpoint 只判断协议/端点适配；启用状态和密钥也必须
+            # 一并检查，否则停用或冷却到无密钥的历史绑定仍会卡住调度。
+            usable = bool(prov and prov.get("enabled", True)
+                          and (prov.get("api_key") or _chain_keys(prov))
+                          and (allowed and _entry_endpoint(prov, allowed)))
+            if usable:
+                continue
+            binding["provider_id"] = ""
+            changed.append(aid)
+        if not changed:
+            return 0
+        _backup_file(_FILE)
+        _save(data)
+        return len(changed)
+
 def migrate_chains():
     """把旧 bindings {provider_id, models} 升级为跨厂商 chain（幂等）。
 

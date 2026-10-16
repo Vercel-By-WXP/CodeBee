@@ -252,10 +252,11 @@ python3 -m pip install --upgrade certifi   # CodeBee 自动采用，装完即生
 **方式二：桌面版安装包（预览，免装 Node/Python）**
 
 安装包自带 Python 运行环境，双击安装即用。到
-[桌面构建页](https://github.com/Vercel-By-WXP/CodeBee/actions/workflows/desktop-preview.yml)
-下载对应平台的预览安装包（需登录 GitHub）：**Windows 7/8.1/10/11 x64 兼容版、
-macOS Universal（Intel / Apple Silicon）**。装好后从开始菜单/启动台打开 CodeBee；关闭窗口缩进托盘
+[桌面 Releases](https://github.com/Vercel-By-WXP/CodeBee/releases)
+下载对应平台的安装包：**Windows 7/8.1/10/11 x64 兼容版、
+macOS Intel / Apple Silicon 包**。装好后从开始菜单/启动台打开 CodeBee；关闭窗口缩进托盘
 后台、任务继续跑；与 npm/CLI 版共用数据目录，一边已在跑时另一边直接接管显示同一实例。
+桌面端菜单和托盘里的“下载并安装桌面新版”会自动下载对应安装包、退出旧版本并启动安装器，任务与配置保留。
 （预览版未签名，首次安装会有系统安全提示。）
 
 **方式三：源码运行（开发者）**

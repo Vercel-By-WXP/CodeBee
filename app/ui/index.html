@@ -87,6 +87,7 @@
   <symbol id="i-calendar-days" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M8 15h.01"/><path d="M12 15h.01"/><path d="M16 15h.01"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
   <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
   <symbol id="i-baton" viewBox="0 0 24 24">
     <path d="M6.8 17.2 13.6 8.2" stroke-width="2.4"/>
     <circle cx="5.2" cy="18.8" r="2.6" fill="currentColor" stroke="none"/>
@@ -325,8 +326,8 @@
       <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏" data-i18n-aria="收起 / 展开侧栏" data-i18n-title="收起 / 展开侧栏">
         <svg class="ico ico-lg" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
-      <button id="upd-pill" class="pill upd-pill hidden" onclick="switchTab('about')" title="发现新版本，点击前往更新" aria-label="发现新版本" data-i18n-title="发现新版本，点击前往更新" data-i18n-aria="发现新版本">
-        <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span id="upd-pill-txt"></span>
+      <button id="upd-pill" class="pill upd-pill hidden" onclick="suApply()" title="发现新版本，点击升级" aria-label="发现新版本，点击升级" data-i18n-title="发现新版本，点击升级" data-i18n-aria="发现新版本，点击升级">
+        <svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg><span id="upd-pill-txt" class="sr-only"></span>
         <span class="upd-x" role="button" onclick="event.stopPropagation();updDismiss()" title="忽略此版本" aria-label="忽略此版本" data-i18n-title="忽略此版本" data-i18n-aria="忽略此版本"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></span>
       </button>
       <div class="page-title-wrap">
@@ -1274,7 +1275,7 @@
           <h3 data-i18n="工具与连接" class="sec-title">工具与连接</h3>
           <p class="hint" data-i18n="配置 MCP、ACP 与本机命令授权。这些工具会以你的本机权限运行，请只连接可信服务。">配置 MCP、ACP 与本机命令授权。这些工具会以你的本机权限运行，请只连接可信服务。</p>
           <h4 class="settings-subhead" data-i18n="MCP 工具（内置智能体）">MCP 工具（内置智能体）</h4>
-          <div class="field"><label data-i18n="MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）">MCP 服务器清单（JSON 数组，stdio 形态，最多 4 个）</label>
+          <div class="field"><label data-i18n="MCP 服务器清单（JSON 数组，stdio 形态，最多 16 个）">MCP 服务器清单（JSON 数组，stdio 形态，最多 16 个）</label>
             <textarea id="set-mcp-servers" rows="4" style="width:100%;font-family:var(--mono,monospace);font-size:12px" placeholder='[{"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-fs","C:/data"]}]'></textarea>
             <div class="input-row" style="margin-top:6px" id="mcp-templates">
               <span class="hint" data-i18n="一键模板：">一键模板：</span>
@@ -1287,6 +1288,7 @@
             <div class="input-row" style="margin-top:6px">
               <button class="ghost small" onclick="saveMcpServers()" data-i18n="保存 MCP 配置">保存 MCP 配置</button>
             </div>
+            <div id="mcp-catalog-runtime" class="mcp-runtime-list" aria-live="polite"></div>
             <p data-i18n="内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。" class="hint">内置智能体（直连对话/直接执行）会把服务器的工具并入工具循环（mcp__服务器__工具 名）。命令在你本机执行，与「执行命令」工具同一自主权级别；工具清单缓存 5 分钟。留空 = 不启用。</p>
           </div>
           <h4 class="settings-subhead">ACP Backend Profiles</h4>

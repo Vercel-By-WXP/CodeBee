@@ -4342,6 +4342,10 @@ def main():
     _step("正在迁移模型绑定…")
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
+    n_stale = modelhub.migrate_stale_provider_only_bindings()
+    if n_stale:
+        print("[CodeBee] 模型绑定：清理 %d 条历史空链供应商锁定，恢复自动调度" % n_stale,
+              flush=True)
     try:
         from core import settings_schema
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 
 from . import mcp_client, settings
 
@@ -98,6 +99,51 @@ def _redact(server):
     return out
 
 
+def _launcher_available(command):
+    """Return whether the configured launcher is already on PATH."""
+    return bool(shutil.which(str(command or "")))
+
+
+def _runtime_metadata(spec):
+    """Describe what must exist before a catalog entry can be started.
+
+    Catalog installation only writes a declaration.  Keeping these checks
+    side-effect free lets the CLI and API explain a missing runtime without
+    silently installing packages or starting an MCP process.
+    """
+    launcher = str(spec.get("command") or "").strip()
+    manager = str(spec.get("package_manager") or "").strip()
+    launcher_available = _launcher_available(launcher)
+    manager_available = _launcher_available(manager) if manager else False
+    sandbox_available = mcp_client.sandbox_backend_available()
+    if launcher_available and sandbox_available:
+        status = "ready"
+    elif launcher_available and not sandbox_available:
+        status = "missing_sandbox"
+    elif manager and not manager_available:
+        status = "missing_package_manager"
+    else:
+        status = "missing_launcher"
+    return {
+        "launcher": launcher,
+        "launcher_available": launcher_available,
+        "package_manager": manager,
+        "package_manager_available": manager_available,
+        "sandbox_available": sandbox_available,
+        "runtime_status": status,
+    }
+
+
+def _install_hint(spec):
+    manager = str(spec.get("package_manager") or "").strip()
+    package = str(spec.get("package") or "").strip()
+    if manager == "npm":
+        return "npm exec --yes %s" % package
+    if manager == "uv":
+        return "uvx %s" % package
+    return ""
+
+
 def _render(key, spec, options=None, name=None):
     options = dict(options or {})
     option_specs = spec.get("options") or {}
@@ -132,10 +178,12 @@ def catalog():
     configured = {x.get("name") for x in _configured()}
     rows = []
     for key, spec in _CATALOG.items():
+        runtime = _runtime_metadata(spec)
         rows.append({"id": key, "name": spec["name"],
                      "description": spec["description"],
                      "package": spec.get("package"),
-                     "package_manager": spec.get("package_manager"),
+                     **runtime,
+                     "install_hint": _install_hint(spec),
                      "options": spec.get("options") or {},
                      "default_name": "cb_" + key,
                      "configured": "cb_" + key in configured})
@@ -160,7 +208,8 @@ def install(server_id, *, options=None, name=None, commit=False):
     result = {"id": key, "name": server["name"], "commit": bool(commit),
               "changed": not replaced or merged != configured,
               "server": _redact(server), "package": spec.get("package"),
-              "package_manager": spec.get("package_manager"),
+              **_runtime_metadata(spec),
+              "install_hint": _install_hint(spec),
               "package_install_required": True}
     if not commit:
         return result
@@ -169,6 +218,10 @@ def install(server_id, *, options=None, name=None, commit=False):
     _, error = settings.save({"mcp_servers": json.dumps(merged, ensure_ascii=False)})
     if error:
         raise ValueError(error)
+    # Settings are deliberately dependency-light and do not import the MCP
+    # client.  Invalidate its discovery cache here so a committed catalog
+    # change is visible to the next run immediately instead of after the TTL.
+    mcp_client.invalidate_tools_cache()
     return result
 
 
@@ -184,8 +237,30 @@ def remove(name, *, commit=False):
     _, error = settings.save({"mcp_servers": json.dumps(remaining, ensure_ascii=False)})
     if error:
         raise ValueError(error)
+    mcp_client.invalidate_tools_cache()
     return result
 
 
+def _configured_runtime(servers):
+    """Return a redacted, side-effect-free readiness view of saved servers."""
+    rows = []
+    for server in servers:
+        command = str(server.get("command") or "").strip()
+        available = _launcher_available(command)
+        sandbox_available = mcp_client.sandbox_backend_available()
+        rows.append({
+            "name": server.get("name"),
+            "command": command,
+            "launcher_available": available,
+            "sandbox_available": sandbox_available,
+            "runtime_status": ("ready" if available and sandbox_available else
+                               "missing_sandbox" if available else "missing_launcher"),
+        })
+    return rows
+
+
 def state():
-    return {"catalog": catalog(), "configured": [_redact(x) for x in _configured()]}
+    configured = _configured()
+    return {"catalog": catalog(),
+            "configured": [_redact(x) for x in configured],
+            "configured_runtime": _configured_runtime(configured)}

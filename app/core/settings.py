@@ -177,7 +177,7 @@ def save(patch):
         if "bench_feedback_enabled" in patch:
             cur["bench_feedback_enabled"] = bool(patch.get("bench_feedback_enabled"))
         if "mcp_servers" in patch:
-            cur["mcp_servers"] = str(patch.get("mcp_servers") or "").strip()[:4000]
+            cur["mcp_servers"] = str(patch.get("mcp_servers") or "").strip()[:16000]
         if "backup_remote_enabled" in patch:
             cur["backup_remote_enabled"] = bool(patch.get("backup_remote_enabled"))
         for _rk, _rmax in (("backup_remote_url", 300), ("backup_remote_user", 128),
