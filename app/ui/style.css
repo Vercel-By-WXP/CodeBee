@@ -2164,10 +2164,12 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 }
 /* 弹窗动作按钮：a.ghost 没有继承 button.ghost 的样式，裸链接挤在一起像叠字——
  * 给齐 pill 观感（边框+底色 hover+不换行），与 复制/× 按钮视觉一致 */
-#file-pop .fp-acts a.ghost, #file-pop .fp-acts button {
-  display: inline-block; background: none; color: var(--text);
+#file-pop .fp-acts a.ghost, #file-pop .fp-acts button, #file-pop .fp-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; min-height: 34px;
+  background: none; color: var(--text); font-family: inherit;
   border: 1px solid var(--border-strong); border-radius: 9px;
-  padding: 3px 11px; cursor: pointer; font-size: 12px; line-height: 1.6;
+  padding: 3px 11px; cursor: pointer; font-size: 12px; line-height: 1.2;
   white-space: nowrap; text-decoration: none;
 }
 #file-pop .fp-acts a.ghost:hover, #file-pop .fp-acts button:hover { background: var(--panel2); }
