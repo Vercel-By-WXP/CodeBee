@@ -1112,6 +1112,75 @@ def _codex_work_events(stdout):
     return n
 
 
+_CODEX_NUDGE_PROMPT = (
+    "你上一轮执行了调查/工具命令，但没有输出最终结论就结束了。"
+    "请基于已获取的信息直接给出最终回答：先结论、后依据。"
+    "除非确有必要，不要再执行新命令；最终结论必须以文字形式完整给出。"
+)
+
+
+def _codex_silent_no_answer(stdout):
+    """检测 codex「轮次静默空答」，返回 (是否静默, 最后一条 agent_message 文本)。
+
+    形态=事件流里有工具动作（command_execution/file_change/mcp_tool_call），
+    但没有任何一条 agent_message 晚于最后一个工具动作——模型干完活没交结论
+    就 turn.completed。2026-10-16 神瞳实案：qa 轮吐完开场白、跑完 6 条读文件
+    命令后正常收尾（exit 0），开场白被当成最终答案展示。纯说话零动手的轮次
+    不算（那是正常短答）。"""
+    seq = 0
+    last_msg = -1
+    last_work = -1
+    msg_text = ""
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        if ev.get("type") != "item.completed":
+            continue
+        item = ev.get("item") or {}
+        t = item.get("type")
+        if t == "agent_message" and str(item.get("text") or "").strip():
+            seq += 1
+            last_msg = seq
+            msg_text = str(item.get("text"))
+        elif t in ("command_execution", "file_change", "mcp_tool_call"):
+            seq += 1
+            last_work = seq
+    return (last_work >= 0 and last_msg < last_work), msg_text
+
+
+def _codex_nudge_recover(eff_agent, sid, readonly, model, env, workdir,
+                         timeout, deadline, cancel_event, log_path,
+                         stall_t, activity_t):
+    """静默空答补答：带同一会话原地追问一次结论，返回 (是否取得, 回答, usage)。
+
+    只认「非静默且有正文」的追问结果——追问轮再犯静默空答视同未恢复，
+    由调用方落 partial，不无限追问。"""
+    argv, stdin_text, _p, tmp_files = _build_call(
+        eff_agent, "codex", sid, readonly, model,
+        _CODEX_NUDGE_PROMPT, workdir=workdir)
+    try:
+        res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
+                          timeout=timeout, deadline=deadline,
+                          cancel_event=cancel_event, log_path=log_path,
+                          stall_timeout=stall_t, activity_timeout=activity_t,
+                          audit_notes=["静默空答自动追问（同会话补答一次）"])
+    finally:
+        for tf in tmp_files:
+            try:
+                os.remove(tf)
+            except OSError:
+                pass
+    text, usage, _sid2 = _parse_codex_jsonl(res.get("stdout") or "")
+    ok = (bool(str(text or "").strip())
+          and not _codex_silent_no_answer(res.get("stdout") or "")[0])
+    return ok, str(text or "").strip(), usage
+
+
 def _codex_fail_msg(stdout):
     """从 JSONL 事件流提取终态失败消息；无失败返回 ""。
 
@@ -2312,6 +2381,43 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error_code"] = ErrorCode.VENDOR_REFUSAL
                 if not out["text"] and out["ok"]:
                     out["error_code"] = _classify_failure(res, kind="codex", empty_output=True)
+                if (out["ok"] and not require_tools
+                        and not res.get("cancelled") and not res.get("timed_out")):
+                    # 轮次静默空答闸（2026-10-16 神瞳实案）：qa/评审等以回答为交付物
+                    # 的步骤，模型吐完开场白、跑完工具就 turn.completed，exit 0 被
+                    # 当成功，开场白冒充最终答案展示。先带会话原地追问一次补答；
+                    # 仍不交卷则步骤标 partial，答案位明示「未给结论」，不再假装
+                    # 完成。实现步（require_tools）不适用——改完文件静默收尾是常态。
+                    silent, last_msg = _codex_silent_no_answer(res["stdout"])
+                    if silent:
+                        tried = False
+                        n_left = model_deadline - time.monotonic()
+                        if (out_sid and n_left > 2
+                                and not (cancel_event is not None
+                                         and cancel_event.is_set())):
+                            tried = True
+                            got, text2, usage2 = _codex_nudge_recover(
+                                eff_agent, out_sid, readonly, att["model"],
+                                env, workdir, min(timeout, n_left), deadline,
+                                cancel_event, log_path, stall_t, activity_t)
+                            for k in ("input", "output", "cached",
+                                      "reasoning", "total"):
+                                out["usage"][k] += int((usage2 or {}).get(k) or 0)
+                            out["tokens"] = out["usage"]["total"]
+                            if got:
+                                out["text"] = text2
+                                out["nudged"] = True
+                                _log_note(log_path, "静默空答：已自动带会话追问一次，取得最终结论")
+                                silent = False
+                        if silent:
+                            out["partial"] = True
+                            warn = ("⚠ 模型本轮未给出结论：工具动作已执行但最终回答缺失"
+                                    + ("（已自动追问一次仍未恢复）" if tried
+                                       else "（会话不可续或预算已尽，未追问）")
+                                    + "；可点「继续对话」让它接着作答。")
+                            out["text"] = (((last_msg or "").strip() + "\n\n")
+                                           if (last_msg or "").strip() else "") + warn
+                            _log_note(log_path, warn)
             elif kind == "claude":
                 parsed = _parse_claude_json(res["stdout"])
                 if parsed is None:
