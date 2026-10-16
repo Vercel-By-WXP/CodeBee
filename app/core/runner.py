@@ -1339,11 +1339,65 @@ _LOG_ERR_HINT = re.compile(
     re.I)
 
 
+def _json_envelope_message(ev, depth=0):
+    """从解析后的 JSON 错误信封里挖人话 message（opencode/codex/grok 形态各异）。"""
+    if depth > 4:
+        return ""
+    if isinstance(ev, str):
+        return ev.strip()
+    if isinstance(ev, dict):
+        for key in ("message", "error", "data", "detail", "result", "errors"):
+            if key in ev:
+                found = _json_envelope_message(ev[key], depth + 1)
+                if found:
+                    return found
+    if isinstance(ev, list) and ev:
+        return _json_envelope_message(ev[0], depth + 1)
+    return ""
+
+
+_ERROR_ENV_MAX_LINES = 40
+
+
+def _absorb_error_envelope(lines, idx, first):
+    """`Error: {` 多行 JSON 信封：opencode 把上游错误打成「Error: 」+ 缩进
+    JSON 体（2026-10-16 公司网关 403 实案：探针按行切只剩首行 `Error: {`，
+    健康告警与错误分类全瞎）。向后吞行直到花括号配平并解析，抽出 message
+    拼回 `Error: <name>: <message>`；配不平或解析不动 → 维持原首行不吞
+    （保守，别把模型正文误收进错误）。返回（替换后的行, 继续扫描的下标）。"""
+    buf = first
+    depth = buf.count("{") - buf.count("}")
+    j = idx
+    while depth > 0 and j < len(lines) and j - idx < _ERROR_ENV_MAX_LINES:
+        buf += "\n" + lines[j].strip()
+        depth = buf.count("{") - buf.count("}")
+        j += 1
+    if depth > 0:
+        return first, idx
+    brace = buf.find("{")
+    try:
+        ev = json.loads(buf[brace:])
+    except (ValueError, TypeError):
+        return first, idx
+    detail = _json_envelope_message(ev)
+    if not detail:
+        return " ".join(buf.split()), j
+    if isinstance(ev, dict):
+        name = str(ev.get("name") or "")
+        if name and name.lower() not in detail.lower():
+            detail = "%s: %s" % (name, detail)
+    prefix = buf[:brace].strip()
+    return ("%s %s" % (prefix, detail)).strip(), j
+
+
 def _cli_error_lines(text):
     """Extract error events without treating model prose/tool output as errors."""
     hits = []
-    for line in clean_cli_text(text or "").splitlines():
-        line = line.strip()
+    lines = clean_cli_text(text or "").splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
         if re.match(r"^\d+:\s", line) or line.startswith(("$ ", "【命令】")):
             continue  # grep/Read source line numbers and echoed commands.
         if line.startswith("{"):
@@ -1369,6 +1423,9 @@ def _cli_error_lines(text):
                 hits.append(line)
         elif (_LOG_ERR_HINT.search(line)
               or re.match(r"^(?:error|fatal|panic|\w*Error):", line, re.I)):
+            if line.endswith("{"):
+                # 彩色「Error: 」+ 缩进 JSON 体多行信封，见 _absorb_error_envelope
+                line, i = _absorb_error_envelope(lines, i, line)
             hits.append(line)
     return hits
 
