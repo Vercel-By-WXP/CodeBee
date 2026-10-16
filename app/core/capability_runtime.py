@@ -159,6 +159,47 @@ def block_for(task, run_id=""):
     return prepare(task, run_id).get("block") or ""
 
 
+def task_for_run(run_id):
+    """Resolve the task attached to a run without making the runner import store.
+
+    External CLI entry points only carry the durable run id.  Keeping this lookup
+    here lets every launcher share the same capability snapshot while avoiding a
+    second, subtly different prompt assembly path.
+    """
+    if not run_id:
+        return {}
+    try:
+        from . import store
+        row = store.get_run(str(run_id)) or {}
+        return store.get_task(row.get("task_id")) or {}
+    except Exception:
+        return {}
+
+
+def inject_prompt(prompt, task=None, run_id=""):
+    """Inject the stable capability block exactly once.
+
+    The pipeline already embeds the block in several specialised prompts.  A
+    substring check keeps those paths byte-for-byte stable while covering direct
+    runner callers (external CLIs, repair jobs and future CLI adapters).
+    """
+    text = str(prompt or "")
+    task = dict(task or {})
+    if not task and run_id:
+        task = task_for_run(run_id)
+    if not task:
+        return text, {"injected": False, "run_id": str(run_id or "")}
+    block = block_for(task, run_id)
+    if not block or block in text:
+        return text, {"injected": False, "run_id": str(run_id or "")}
+    return ("## 本次运行可用能力（统一桥接，按证据参考）\n" + block
+            + "\n\n---\n\n" + text), {
+                "injected": True, "run_id": str(run_id or ""),
+                "skills": list(prepare(task, run_id).get("skills") or []),
+                "knowledge": bool(prepare(task, run_id).get("knowledge")),
+            }
+
+
 def evidence(task, run_id=""):
     """Return JSON-safe evidence without the prompt body."""
     item = prepare(task, run_id)

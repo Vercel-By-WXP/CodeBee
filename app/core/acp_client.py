@@ -435,7 +435,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
             absolute_deadline, cancel_event, on_message)
         if int(initialized.get("protocolVersion") or 0) != 1:
             raise ACPError("ACP 版本不兼容：服务端未协商 protocolVersion 1")
-        mcp_servers = []
+        try:
+            from . import mcp_client
+            mcp_servers = mcp_client.configured_servers()
+        except Exception:
+            mcp_servers = []
         if session_id:
             capabilities = initialized.get("agentCapabilities") or {}
             if not capabilities.get("loadSession"):

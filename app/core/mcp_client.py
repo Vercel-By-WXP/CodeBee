@@ -5,7 +5,7 @@
 每次工具调用重新拉起服务器进程：没有长驻会话要管，冷启动成本对内置智能体
 的低频工具循环可接受；进程用完即关（finally 杀树），绝不留孤儿。
 
-配置（settings.mcp_servers，JSON 数组字符串，≤4 个服务器）：
+配置（settings.mcp_servers，JSON 数组字符串，≤16 个服务器）：
   [{"name": "fs", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-fs", "C:/x"],
     "env": {"KEY": "v"}}]
 name 用于工具名前缀（mcp__<name>__<tool>），必须 [a-z0-9_-]。
@@ -34,8 +34,8 @@ _TOOLS_CACHE = {}          # server_key → (ts, tools)
 _TOOLS_TTL = 300.0
 _TOOLS_CONFIG_SHA = ""
 
-MAX_SERVERS = 4
-MAX_MCP_TOOLS = 24         # 全部服务器合计注入内置智能体的工具数上限
+MAX_SERVERS = 16
+MAX_MCP_TOOLS = 64         # 全部服务器合计注入内置智能体的工具数上限
 _NAME_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
 _MODEL_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _INIT_TIMEOUT = 15.0
@@ -500,3 +500,14 @@ def _settings_text():
         return str(_SETTINGS_TEXT() or "") if _SETTINGS_TEXT else ""
     except Exception:
         return ""
+
+
+def configured_servers():
+    """Return the validated configured stdio servers for protocol adapters.
+
+    This is intentionally a read-only view.  It includes the same plugin
+    declarations merged by ``main.py`` as the built-in tool loop, so ACP and
+    future external transports cannot silently receive a different MCP set.
+    """
+    servers, error = parse_servers(_settings_text())
+    return [] if error or not servers else servers

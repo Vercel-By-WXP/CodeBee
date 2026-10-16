@@ -85,8 +85,9 @@ class TestParseServers(BaseTest):
             self.assertIsNone(srvs, bad)
             self.assertTrue(err, bad)
 
-    def test_cap_four_servers(self):
-        arr = [{"name": "s%d" % i, "command": "x"} for i in range(5)]
+    def test_cap_servers(self):
+        arr = [{"name": "s%d" % i, "command": "x"}
+               for i in range(mcp_client.MAX_SERVERS + 1)]
         _srvs, err = mcp_client.parse_servers(json.dumps(arr))
         self.assertIn("最多", err)
 

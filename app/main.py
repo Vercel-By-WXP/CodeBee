@@ -31,7 +31,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
     os.environ["USERPROFILE"] = _fake_home
     os.environ["HOME"] = _fake_home
 
-from core import activity, automation, board, catalog, cloud_readiness, experts, flows, jobs, manager, market, market_remote, preview, project_permissions, project_space, registry, remote, runner, settings, sharing, store
+from core import activity, automation, board, catalog, cloud_readiness, experts, flows, jobs, manager, market, market_remote, plugins, preview, project_permissions, project_space, registry, remote, runner, settings, sharing, store
 from core import paths
 from core import health
 from core import usage as usage_ledger
@@ -480,6 +480,13 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     payload["capabilities"] = []
                 return self._json(200, payload)
+            if path == "/api/mcp/registry":
+                from core import mcp_registry
+                try:
+                    return self._json(200, {"targets": mcp_registry.targets(),
+                                           "configured": mcp_registry.export("claude", redact=True)["servers"]})
+                except (TypeError, ValueError) as exc:
+                    return self._json(400, {"error": str(exc)})
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -1282,6 +1289,19 @@ class Handler(BaseHTTPRequestHandler):
             except KeyError as exc:
                 return self._json(404, {"error": str(exc)})
             except (OSError, TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/mcp/register":
+            from core import mcp_registry
+            body = self._body() or {}
+            try:
+                target = body.get("target")
+                # Registration is deliberately explicit.  UI/API callers must
+                # send commit=true; previews remain side-effect free.
+                result = mcp_registry.register(
+                    target, path_override=body.get("path"),
+                    dry_run=not bool(body.get("commit")))
+                return self._json(200, result)
+            except (TypeError, ValueError, OSError) as exc:
                 return self._json(400, {"error": str(exc)})
         m = re.match(r"^/api/backend-profiles/([^/]+)/delete$", path)
         if m:
@@ -4107,7 +4127,74 @@ def main():
                         help="本次启动不恢复已启用的统一手机连接；已配对手机不会因此被撤销")
     parser.add_argument("--wait-port", action="store_true",
                         help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
+    parser.add_argument("--capabilities", action="store_true",
+                        help="以 JSON 输出当前统一能力目录后退出")
+    parser.add_argument("--run-capabilities", default="",
+                        help="以 JSON 输出指定运行的能力证据后退出")
+    parser.add_argument("--plugin-install", default="",
+                        help="安装已发现的插件 ID 后退出（插件脚本不会被执行）")
+    parser.add_argument("--plugin-enable", default="",
+                        help="启用已安装插件 ID 后退出")
+    parser.add_argument("--mcp-export", choices=(
+        "claude", "claude-code", "codex", "codex-cli", "opencode", "mimo-code",
+        "qwen", "qwencode", "gemini", "gemini-cli"), default="",
+                        help="输出已配置 MCP 到目标 CLI 的安全预览后退出")
+    parser.add_argument("--mcp-register", choices=(
+        "claude", "claude-code", "codex", "codex-cli", "opencode", "mimo-code",
+        "qwen", "qwencode", "gemini", "gemini-cli"), default="",
+                        help="注册 MCP 到目标 CLI；默认只预览，配合 --commit-mcp 才写盘")
+    parser.add_argument("--commit-mcp", action="store_true",
+                        help="确认执行 --mcp-register 的写盘动作")
+    parser.add_argument("--mcp-path", default="",
+                        help="MCP 注册目标路径（显式指定后仅在 --commit-mcp 时写入）")
     args = parser.parse_args()
+
+    # The service normally inherits the desktop console, but read/export CLI
+    # modes must be pipe-safe on Windows where the process code page is often
+    # GBK.  JSON contains marketplace prompts and other Unicode text; without
+    # this guard a valid ``codebee --capabilities`` command can fail before it
+    # emits any result.
+    if (args.capabilities or args.run_capabilities or args.plugin_install or
+            args.plugin_enable or args.mcp_export or args.mcp_register):
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, ValueError):
+                pass
+
+    # CodeBee's own CLI uses the same capability/MCP bridge as external
+    # backends. These read/export operations intentionally happen before the
+    # service lock and browser startup, making them safe for shell automation.
+    if (args.capabilities or args.run_capabilities or args.plugin_install or
+            args.plugin_enable or args.mcp_export or args.mcp_register):
+        if args.capabilities:
+            print(json.dumps(plugins.capabilities_view(), ensure_ascii=False, indent=2))
+        if args.run_capabilities:
+            from core import capability_runtime
+            task = capability_runtime.task_for_run(args.run_capabilities)
+            print(json.dumps(capability_runtime.evidence(task, args.run_capabilities),
+                             ensure_ascii=False, indent=2))
+        if args.plugin_install:
+            result, error = plugins.install(args.plugin_install)
+            if error:
+                raise SystemExit(error)
+            print(json.dumps(result or {"ok": True}, ensure_ascii=False, indent=2))
+        if args.plugin_enable:
+            error = plugins.toggle(args.plugin_enable, True)
+            if error:
+                raise SystemExit(error)
+            print(json.dumps({"ok": True, "id": args.plugin_enable, "enabled": True},
+                             ensure_ascii=False, indent=2))
+        if args.mcp_export:
+            from core import mcp_registry
+            print(json.dumps(mcp_registry.export(args.mcp_export, redact=True),
+                             ensure_ascii=False, indent=2))
+        if args.mcp_register:
+            from core import mcp_registry
+            print(json.dumps(mcp_registry.register(
+                args.mcp_register, path_override=args.mcp_path or None,
+                dry_run=not args.commit_mcp), ensure_ascii=False, indent=2))
+        return
 
     # CLI and desktop must never recover/run the same task store concurrently.
     from core.runtime_lock import ServiceAlreadyRunning, acquire_service

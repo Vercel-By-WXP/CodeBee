@@ -1175,7 +1175,8 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     step, log_abs = store.add_step(run_id, "ai-repair", agent["id"], agent.get("label"),
                                    note="自动诊断修复", model=agent.get("model") or "")
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,
-                           cancel_event=ev, log_path=str(log_abs))
+                           cancel_event=ev, log_path=str(log_abs),
+                           command_context={"run_id": run_id})
     try:
         _usage.record(source="repair", run_id=run_id, step=step["n"], role="ai-repair",
                       agent=agent.get("id", ""), agent_label=agent.get("label", ""),

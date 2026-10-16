@@ -100,6 +100,13 @@ for (const a of process.argv.slice(2)) {
   }
 }
 
+// Read/export/register modes are non-service CLI commands.  Keep the shim
+// transparent for them: the JSON on stdout must be directly pipeable to jq or
+// another process, without a startup banner mixed into the document.
+const isReadCli = userArgs.includes('--capabilities') || userArgs.includes('--run-capabilities') ||
+  userArgs.includes('--plugin-install') || userArgs.includes('--plugin-enable') ||
+  userArgs.includes('--mcp-export') || userArgs.includes('--mcp-register');
+
 // CLI 转发契约：codebee 之后的用户参数（已过白名单）原样作为 main.py 的 argv。
 // 控制台日志即见：GBK 控制台下强制 UTF-8 输出（否则中文 print 触发 UnicodeEncodeError 静默卡死）。
 const childEnv = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' });
@@ -125,8 +132,10 @@ if (exe === 'py') {
 } else {
   child = spawn('python3', [MAIN, ...userArgs], { stdio: 'inherit', env: childEnv });
 }
-console.log('[CodeBee] 正在启动（Python: ' + exe + '）… 浏览器将自动打开 http://127.0.0.1:8765；'
-  + '本窗口保持开着就是服务，Ctrl+C 退出。');
+if (!isReadCli) {
+  console.log('[CodeBee] 正在启动（Python: ' + exe + '）… 浏览器将自动打开 http://127.0.0.1:8765；'
+    + '本窗口保持开着就是服务，Ctrl+C 退出。');
+}
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => { try { child.kill(sig); } catch (e) { /* 已退出 */ } });

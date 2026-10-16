@@ -1889,6 +1889,20 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     重试和限流宽限共用同一剩余预算。
     """
     # 5E：catalog orch.timeout_ms 优先
+    command_context = dict(command_context or {})
+    # Every CLI transport (including ACP) enters through this function. Resolve
+    # the durable run capability snapshot here so direct callers cannot bypass
+    # the experience/knowledge/Skill bridge. Existing pipeline prompts already
+    # contain the same block and are left unchanged.
+    try:
+        from . import capability_runtime
+        prompt, _capability_meta = capability_runtime.inject_prompt(
+            prompt, task=command_context.get("task"),
+            run_id=command_context.get("run_id") or checkpoint_run_id)
+    except Exception:
+        # Optional catalogs must never turn a valid CLI invocation into a hard
+        # failure.
+        pass
     orch_timeout_ms = (agent.get("orch") or {}).get("timeout_ms")
     if orch_timeout_ms:
         timeout = float(orch_timeout_ms) / 1000.0

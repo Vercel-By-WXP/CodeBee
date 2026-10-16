@@ -735,7 +735,8 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
                                    workdir=workdir or task.get("workdir"), readonly=True,
                                    timeout=_deadline_timeout(deadline, _outline_timeout()),
                                    deadline=deadline, cancel_event=ev,
-                                   log_path=log_path)
+                                   log_path=log_path,
+                                   command_context={"run_id": run_id or "", "task": task})
             _log_usage("outline", "outline", task, res, agent=author_agent)
         if not res["ok"]:
             _append_log(log_path, "作者 CLI 失败：%s" % (res.get("error") or "")[:300])
@@ -980,7 +981,8 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
                            timeout=_deadline_timeout(deadline, 300), deadline=deadline,
                            cancel_event=ev, resume=resume,
-                           log_path=log_path)
+                           log_path=log_path,
+                           command_context={"run_id": run_id or "", "task": task})
     _log_usage("plan", "plan", task, res, agent=planner_agent)
     data = runner.extract_json(res.get("text") or "")
     steps = _norm_subtasks(data)

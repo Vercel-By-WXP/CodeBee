@@ -154,3 +154,17 @@ class CapabilityRuntimeTests(BaseTest):
                 "type": "direct", "goal": "skill-0 skill-1 skill-2 skill-3"})
         self.assertTrue(ids)
         self.assertLessEqual(len(block), capability_runtime._EXTERNAL_SKILL_BUDGET)
+
+    def test_public_inject_prompt_is_idempotent_for_external_cli(self):
+        from app.core import capability_runtime, knowledge, skills
+
+        skills.upsert_lesson("direct", "桥接经验", "外部 CLI 也必须读取这条经验。")
+        knowledge.upsert_entry("direct", "桥接知识", "外部 CLI 的确认事实。", status="approved")
+        task = {"type": "direct", "title": "桥接", "goal": "读取桥接经验"}
+        first, meta = capability_runtime.inject_prompt("请处理任务", task, "bridge-run")
+        second, meta2 = capability_runtime.inject_prompt(first, task, "bridge-run")
+        self.assertTrue(meta["injected"])
+        self.assertFalse(meta2["injected"])
+        self.assertEqual(first, second)
+        self.assertIn("桥接经验", first)
+        self.assertIn("桥接知识", first)

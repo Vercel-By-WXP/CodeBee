@@ -765,7 +765,8 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
     if author_agent and author_agent.get("mode") == "real" and not template_only():
         res = runner.run_agent(modelhub.bind_agent(author_agent), prompt,
                                workdir=task.get("workdir"), readonly=True,
-                               timeout=BOOKMETA_TIMEOUT, log_path=log_path)
+                               timeout=BOOKMETA_TIMEOUT, log_path=log_path,
+                               command_context={"task": task})
         planner._log_usage("bookmeta", "bookmeta", task, res, agent=author_agent)
         if res["ok"]:
             meta = _norm(runner.extract_json(res.get("text") or ""), platform, goal)
