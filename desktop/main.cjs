@@ -11,6 +11,8 @@ const { Backend, requestJSON } = require('./lib/backend.cjs');
 const { RELEASES_URL, dataDirectory, runtimePaths, isInternal, externalURL, cliEnvironment } = require('./lib/platform.cjs');
 const { latestRelease, downloadInstaller, launchInstaller } = require('./lib/installer.cjs');
 
+const FEEDBACK_URL = 'https://github.com/Vercel-By-WXP/CodeBee/issues/new/choose';
+
 const smoke = process.argv.includes('--smoke-test');
 const smokeSecond = process.argv.includes('--smoke-second');
 let smokeRoot;
@@ -116,6 +118,7 @@ async function launch() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开 CodeBee', click: showWindow },
     { label: '下载并安装桌面新版', click: () => void installDesktopUpdate() },
+    { label: '反馈（桌面预览版）', click: () => void shell.openExternal(FEEDBACK_URL) },
     { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
     { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
     { type: 'separator' }, { label: '退出 CodeBee', click: () => void requestQuit() },
@@ -135,6 +138,7 @@ async function launch() {
         { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
       { label: '帮助', submenu: [
         { label: '下载并安装桌面新版', click: () => void installDesktopUpdate() },
+        { label: '反馈（桌面预览版）', click: () => void shell.openExternal(FEEDBACK_URL) },
         { label: '打开桌面日志', click: () => backend?.logPath && void shell.openPath(path.dirname(backend.logPath)) },
         { label: '打开数据目录', click: () => backend && void shell.openPath(backend.dataDir) },
       ] },

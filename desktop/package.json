@@ -5,6 +5,13 @@
   "description": "CodeBee desktop preview for Windows, macOS, and Linux",
   "author": "CodeBee",
   "homepage": "https://github.com/Vercel-By-WXP/CodeBee",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vercel-By-WXP/CodeBee.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Vercel-By-WXP/CodeBee/issues"
+  },
   "license": "MIT",
   "main": "main.cjs",
   "engines": {

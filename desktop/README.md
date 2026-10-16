@@ -1,5 +1,7 @@
 # CodeBee 桌面预览版
 
+> 当前安装包是 **预览版（pre-release）**。请通过 [GitHub Issues](https://github.com/Vercel-By-WXP/CodeBee/issues) 反馈问题，并在反馈中附上桌面版本、系统、复现步骤和日志位置。
+
 复用现有 Web 界面和 Python 引擎，提供 **Windows x64 兼容安装包**（Windows 7/8.1/10/11，Electron 22）、**macOS 13+ 安装包**（Intel/Apple Silicon）和 **Linux x64 安装包**（AppImage、DEB、RPM）。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
 
 关闭窗口会隐藏到托盘/菜单栏，任务继续执行。托盘菜单可重新打开；macOS 另有应用菜单。明确退出时，有正在执行的任务会询问是否停止。系统休眠、关机或退出应用后不保证持续执行；重新启动沿用引擎已有的任务恢复规则。
@@ -60,3 +62,5 @@ GitHub Actions 的 `Desktop preview` 工作流提供 Windows、macOS Intel/Apple
 Mac 正式发行需要 Apple Developer ID 证书与公证凭据；配置保留 hardened runtime，打包后自动将 Python 的所有 Mach-O 可执行文件和扩展库加入签名列表。使用 electron-builder 26 的 `mac.binaries` 字段。正式构建可配置 `CSC_LINK`/`CSC_KEY_PASSWORD` 和 `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`，或官方支持的 App Store Connect 凭据，并在发布流程启用公证。Windows 正式发行应使用代码签名证书。
 
 无签名、公证凭据的内部预览不能声称消除了 macOS Gatekeeper 或 Windows SmartScreen 提示，也不能代替正式安装验收。
+
+Windows 安装包在未配置代码签名证书时会触发 SmartScreen 提示；macOS 在未配置 Developer ID 与公证凭据时会触发 Gatekeeper 提示。下载页和 Release Notes 会保留“预览版/未签名”说明，签名状态需在每次正式发布前由发布人确认【需确认】。

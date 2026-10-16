@@ -49,6 +49,9 @@ jobs:
       TUTTI_SELFUPDATE_OFFLINE: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Verify single version source
+        working-directory: .
+        run: python scripts/sync_version.py
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -127,15 +130,17 @@ jobs:
       - name: Verify release contract
         run: |
           test -s release/SHA512SUMS.txt
+          test -s release/SHA256SUMS.txt
           test -s release/desktop-builds.json
           test -s release/build-record.json
           sha512sum -c release/SHA512SUMS.txt
+          sha256sum -c release/SHA256SUMS.txt
       - name: Create GitHub Release with installers and records
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
             --title "CodeBee ${GITHUB_REF_NAME#v}" \
-            --notes "桌面预览版安装包（Windows 7/8.1/10/11 x64、macOS Intel/Apple Silicon、Linux x64 AppImage/DEB/RPM）。Python 已随包内置；桌面端可从应用内下载并重新安装。SHA512SUMS、desktop-builds.json 和 build-record.json 同步发布。更新内容见仓库 CHANGELOG.md。" \
+            --notes "桌面预览版安装包（Windows 7/8.1/10/11 x64、macOS Intel/Apple Silicon、Linux x64 AppImage/DEB/RPM）。Python 已随包内置；桌面端可从应用内下载并重新安装。SHA256SUMS、SHA512SUMS、desktop-builds.json 和 build-record.json 同步发布。当前构建为预览版；签名/公证状态需按发布环境确认。更新内容见仓库 CHANGELOG.md。" \
             --prerelease \
             release/*

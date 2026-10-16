@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="CodeBee 快速开始、CLI 配置和常见问题。">
+  <link rel="canonical" href="https://app.codebeeagent.com/docs/">
+  <meta property="og:title" content="CodeBee 文档"><meta property="og:description" content="安装、配置和运行第一个 CodeBee 任务。">
+  <title>CodeBee 文档 · 快速开始与 CLI 配置</title>
+  <style>body{font:16px system-ui,sans-serif;max-width:760px;margin:48px auto;padding:0 20px;line-height:1.7;color:#1d2925}a{color:#176b52}code{background:#eef2ef;padding:2px 5px;border-radius:3px}</style>
+</head>
+<body>
+  <p><a href="/">CodeBee</a></p>
+  <h1>CodeBee 文档</h1>
+  <h2>快速开始</h2>
+  <ol><li>安装 Python 3.8+ 与至少一个受支持的 AI CLI。</li><li>在仓库根目录运行 <code>python app/main.py --port 8765</code>，默认仅监听 <code>127.0.0.1</code>。</li><li>打开 <code>http://127.0.0.1:8765</code>，在设置中检测并绑定 CLI。</li><li>输入目标，启动编排并在报告页查看步骤、评审与产物。</li></ol>
+  <h2>CLI 配置</h2>
+  <p>CodeBee 不安装、替换或改写第三方 CLI 的全局凭据。请先按供应商文档完成登录，再在 CodeBee 的 CLI 能力页确认可执行文件、版本和模型族。</p>
+  <h2>常见问题</h2>
+  <h3>CLI 没有检测到</h3><p>在终端运行 <code>where code</code>（Windows）或 <code>command -v code</code>（macOS/Linux），确认 PATH 对启动 CodeBee 的进程可见，然后重启服务。</p>
+  <h3>任务卡住</h3><p>先查看任务步骤和日志；检查 CLI 是否仍在等待登录、额度或人工确认。可安全停止任务，恢复规则会保留已完成步骤。</p>
+  <p><a href="https://github.com/Vercel-By-WXP/CodeBee/blob/main/QUICKSTART.md">阅读仓库完整 QUICKSTART</a> · <a href="/compare/">查看能力对比</a> · <a href="/feedback/">提交反馈</a></p>
+</body></html>

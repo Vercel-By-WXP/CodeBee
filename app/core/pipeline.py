@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, router, runner, skills, store, task_compile, task_graph, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -1509,9 +1509,11 @@ def _code_bestof(run, task, impl, difficulty, ev):
                 int(item.get("step")) for item in cp_preview.get("steps", [])
                 if item.get("status") == "done"
             }
+            original_indexes = {str(item.get("id") or item.get("title") or ""): n
+                                for n, item in enumerate(subtasks)}
             for i, sub in enumerate(execution_steps):
-                original_index = next((n for n, item in enumerate(subtasks)
-                                       if item is sub), i)
+                original_index = original_indexes.get(
+                    str(sub.get("id") or sub.get("title") or ""), i)
                 if (original_index + 1) in completed_steps:
                     mark_task_plan(workdir, original_index + 1, "done")
                     continue
@@ -2813,6 +2815,7 @@ def author_review_rubric_block(dims, signing_dims):
     lines = [
         "## 评审口径（本书会按以下标准审稿，写作时对照自查）",
         "- 评分维度：" + " / ".join(dims) + "。",
+        "- 维度权重与证据要求：" + review_config.build_prompt(dims).replace("\n", "；"),
         "- 逐项硬清单：" + "；".join(REVIEW_CHECKLIST_ITEMS) + "。",
         "- 全书级关注：" + GLOBAL_REVIEW_FOCUS + "。",
         "- 签约专项维度：" + "、".join(signing_dims) + "。",

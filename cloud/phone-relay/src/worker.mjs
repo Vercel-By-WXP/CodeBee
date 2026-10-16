@@ -26,6 +26,30 @@ async function portal(env, request) {
   return new Response(asset.body, { status: asset.status, headers });
 }
 
+async function publicPage(env, request) {
+  if (!['GET', 'HEAD'].includes(request.method)) return null;
+  const url = new URL(request.url);
+  const pathname = url.pathname.replace(/\/+$/, '') || '/';
+  const pages = {
+    '/docs': '/docs/index.html',
+    '/compare': '/compare/index.html',
+    '/feedback': '/feedback/index.html',
+    '/robots.txt': '/robots.txt',
+    '/sitemap.xml': '/sitemap.xml',
+  };
+  const target = pages[pathname];
+  if (!target) return null;
+  const assetURL = new URL(url);
+  assetURL.pathname = target;
+  assetURL.search = '';
+  const asset = await env.ASSETS.fetch(new Request(assetURL, { method: request.method }));
+  const headers = securityHeaders();
+  headers.set('content-type', asset.headers.get('content-type') ||
+    (target.endsWith('.xml') ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8'));
+  headers.set('cache-control', 'public, max-age=300');
+  return new Response(request.method === 'HEAD' ? null : asset.body, { status: asset.status, headers });
+}
+
 // Static workbench assets live at the same paths the desktop serves; see
 // assetTarget in policy.mjs for the shape rules and sync-ui.mjs for the copy.
 async function workbenchAsset(env, request, url) {
@@ -54,6 +78,8 @@ export default {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
+      const page = await publicPage(env, request);
+      if (page) return page;
       if (path === "/relay/health" && request.method === "GET") return json({ ok: true, service: "codebee-phone-relay" });
       if (path === "/relay/portal" && request.method === "GET") return portal(env, request);
       if (["/relay/portal.js", "/relay/portal.css", "/relay/codebee-logo.png"].includes(path) && request.method === "GET") {

@@ -28,6 +28,12 @@ async function sha512(filePath) {
   return hash.digest('hex');
 }
 
+async function sha256(filePath) {
+  const hash = createHash('sha256');
+  hash.update(await readFile(filePath));
+  return hash.digest('hex');
+}
+
 function versionOf(value) {
   const match = String(value || '').replace(/^v/i, '').match(/^(\d+\.\d+\.\d+)$/);
   return match?.[1] || '';
@@ -95,6 +101,7 @@ export async function collectRelease({
       target: asset.target,
       format: asset.format,
       size: info.size,
+      sha256: await sha256(destination),
       sha512: await sha512(destination),
     });
   }
@@ -119,6 +126,7 @@ export async function collectRelease({
     requiredTargets: REQUIRED_ASSETS,
   };
   await writeFile(path.join(outputDir, 'SHA512SUMS.txt'), records.map(asset => `${asset.sha512}  ${asset.name}`).join('\n') + '\n', 'utf8');
+  await writeFile(path.join(outputDir, 'SHA256SUMS.txt'), records.map(asset => `${asset.sha256}  ${asset.name}`).join('\n') + '\n', 'utf8');
   await writeFile(path.join(outputDir, 'desktop-builds.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   await writeFile(path.join(outputDir, 'build-record.json'), `${JSON.stringify(buildRecord, null, 2)}\n`, 'utf8');
   return { version, tag, assets: records, manifest, buildRecord };
