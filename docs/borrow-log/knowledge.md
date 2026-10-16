@@ -8,6 +8,12 @@
 
 ## token 节约机制专项（每轮必查维度）
 
+### 2026-10-16 23 时班批 2 增量
+
+- B2 记忆/自我改进轮 stars+updated **24/24**、120 条结果；mem0、Memori、Graphiti、MemRL、Yuxi、memsearch 及技能库同族均已在库或缺少低风险接口兼容差量，本轮不新增借鉴项、不扩关键词。
+- 六源插件市场逐源只读 **6/6 HTTP 200**；18 类流程与 A–G 专项基线无变化，未安装未探测 CLI。
+- 全量测试实跑 2841 项，1 项失败（`test_i18n_dups`：`模型`、`供应商` 重复键）、4 项跳过；重复键属于其他会话 UI 改动范围，本轮不越界修复，保留阻塞证据。
+
 目标：帮 CodeBee 用户省 token。已有机制（对照基准）：
 - 三段上下文压缩（compaction.py：工具结果剪枝→LLM 摘要→surface replace）
 - token_meter 压力表 + 换将超窗预检（step_runner 0.9 事前门）
