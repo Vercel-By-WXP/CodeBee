@@ -69,13 +69,16 @@ _AUTH = (
 )
 _FORBIDDEN = ("forbidden", "request not allowed", "permission denied", "access denied")
 # 额度耗尽的强信号：部分网关把计费拒绝包成 403 下发（qwen 实案：
-# "[API Error: 403 预扣费额度失败, 用户剩余额度: ¥0.006, 需要预扣费额度: ¥0.010]"）。
+# "[API Error: 403 预扣费额度失败, 用户剩余额度: ¥0.006, 需要预扣费额度: ¥0.010]"；
+# 2026-10-16 公司网关实案 "[API Error: 403 用户额度不足, 剩余额度: ¥0.000000]"——
+# 不带「剩余」二字的裸「额度不足」变体也必须先于 403 正则，否则判成
+# FORBIDDEN（权限封禁）而不是 QUOTA）。
 # 裸 403 正则会先把它判成 FORBIDDEN（权限封禁）——但两者的处置完全不同：
 # QUOTA 是账号级死错（本场该停用该 CLI），FORBIDDEN 只封具体上游。
 # 强信号词零歧义（不会出现在权限文案里），先于 401/403 正则判定。
-_QUOTA_STRONG = ("预扣费", "剩余额度", "insufficient balance", "insufficient quota",
-                "insufficient credit", "quota exhausted", "余额不足", "欠费停",
-                "payment required", "billing address")
+_QUOTA_STRONG = ("预扣费", "剩余额度", "额度不足", "insufficient balance",
+                "insufficient quota", "insufficient credit", "quota exhausted",
+                "余额不足", "欠费停", "payment required", "billing address")
 # 「request rejected」是智谱网关 429 的固定措辞（Request rejected (429)）：
 # 裸 (429) 不带 http/status-code 前缀，正则分支匹配不到，只能靠词面
 # （2026-09-27 七天上限案：分类不出 → 换将闸门当终态收工，备用 KEY 永不上场）
