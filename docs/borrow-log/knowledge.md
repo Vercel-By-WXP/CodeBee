@@ -14,6 +14,12 @@
 - 六源插件市场逐源只读 **6/6 HTTP 200**；18 类流程与 A–G 专项基线无变化，未安装未探测 CLI。
 - 全量测试实跑 2841 项，1 项失败（`test_i18n_dups`：`模型`、`供应商` 重复键）、4 项跳过；重复键属于其他会话 UI 改动范围，本轮不越界修复，保留阻塞证据。
 
+### 2026-10-16 21 时班批 7 增量
+
+- 批 7 stars+updated **20/20**、90 条结果；主体为已录的 LangBot/Yuxi/Magicrew/agency-agents-zh/agency-orchestrator/本地模型与办公自动化族。新近活跃的 `wangmiaozero/pi-harness`（1,014★，v2.0.0）与 `future-agi/future-agi`（2,156★，v1.51.0）分别重合现有治理/恢复/评测能力或超出当前运行时边界，记为参考，不接入。
+- 六源插件市场只读检查 **6/6 HTTP 200**；18 类流程与 A-G 专项基线无变化，未安装 `goose/minimax`。
+- 本轮无低风险兼容改进，不扩关键词；显式 `tests/` 套件实跑 2845 项，11 失败、1 错误、3 跳过（i18n/README/CLI 探测既有门禁与 `test_portscan` 导入错误），主 checkout 暂有其他会话未提交改动且本地领先远端 2 个提交。
+
 目标：帮 CodeBee 用户省 token。已有机制（对照基准）：
 - 三段上下文压缩（compaction.py：工具结果剪枝→LLM 摘要→surface replace）
 - token_meter 压力表 + 换将超窗预检（step_runner 0.9 事前门）
