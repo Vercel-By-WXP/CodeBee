@@ -9244,3 +9244,239 @@ html[data-theme="dark"] .panel {
   }
   #sub-tasks .cmp-estimate { text-align: left; margin: 8px 2px 0; font-size: 12px; }
 }
+
+/* DeepSeek reference alignment (2026-10-17): direct chat is a single calm
+   reading surface. The task rail becomes a compact header; its details remain
+   reachable through the existing more/context controls. Other run modes keep
+   the normal rail and two-column layout. */
+main.chat-fill #run-detail.chat-mode {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: none;
+  grid-template-areas: none;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+#run-detail.chat-mode {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: none;
+  grid-template-areas: none;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+main.chat-fill #run-detail.chat-mode > #rd-railcol {
+  display: block;
+  position: static;
+  flex: none;
+  width: 100%;
+  max-height: none;
+  margin: 0;
+  z-index: auto;
+}
+#run-detail.chat-mode > #rd-railcol {
+  display: block;
+  position: static;
+  flex: none;
+  width: 100%;
+  max-height: none;
+  margin: 0;
+  z-index: auto;
+}
+#run-detail.chat-mode #rd-rail {
+  display: block !important;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg);
+  box-shadow: none;
+}
+#run-detail.chat-mode > #rd-railcol > #rd-rail {
+  display: block;
+}
+#run-detail.chat-mode #rd-rail > .detail-head {
+  min-height: 46px;
+  min-height: 46px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  border-bottom: 1px solid var(--border);
+}
+#run-detail.chat-mode #rd-rail > .detail-head > #btn-back {
+  min-height: 30px;
+  padding: 5px 7px 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+#run-detail.chat-mode #rd-rail > .detail-head > #btn-back:hover {
+  color: var(--accent);
+  background: transparent;
+}
+#run-detail.chat-mode #rd-rail > .detail-head > #rd-title {
+  max-width: min(520px, 48vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 550;
+}
+#run-detail.chat-mode #rd-rail > .detail-head > #rd-status { font-size: 10px; }
+#run-detail.chat-mode #rd-rail > .detail-head > .rd-actions { gap: 4px; }
+#run-detail.chat-mode #rd-rail > .detail-head > .rd-actions > button { display: none; }
+#run-detail.chat-mode #rd-rail > .detail-head > .rd-actions > #rd-more-toggle,
+#run-detail.chat-mode #rd-rail > .detail-head > .rd-actions > #rd-context-toggle {
+  display: inline-flex;
+}
+#run-detail.chat-mode #rd-rail > #rd-tabs { display: none; }
+#run-detail.chat-mode #rd-rail > #rd-context {
+  display: block;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  max-height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+#run-detail.chat-mode #rd-rail.context-open > #rd-context:not(.hidden) {
+  position: fixed;
+  top: 58px;
+  right: 18px;
+  width: min(300px, calc(100vw - 36px));
+  height: auto;
+  max-height: min(68vh, 560px);
+  padding: 12px 14px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 15%, transparent);
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 80;
+}
+main.chat-fill #run-detail.chat-mode > .rd-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+#run-detail.chat-mode > .rd-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+#run-detail.chat-mode .rd-pane[data-pane="chat"] {
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  background: var(--bg);
+}
+#run-detail.chat-mode .rd-chat-flow,
+#run-detail.chat-mode .rd-chat-bar,
+#run-detail.chat-mode .rd-chat-run-status {
+  max-width: min(760px, calc(100% - 32px));
+}
+#run-detail.chat-mode .rd-chat-flow {
+  padding: 26px 16px 18px;
+  gap: 26px;
+}
+#run-detail.chat-mode .chat-bubble.agent {
+  font-size: 14px;
+  line-height: 1.78;
+}
+#run-detail.chat-mode .chat-bubble.me {
+  border: 0;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  padding: 9px 14px;
+}
+#run-detail.chat-mode .chat-bubble.me .chat-meta {
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+
+/* Thinking/tool rows use the same left guide as DeepSeek's search trace. */
+#run-detail.chat-mode .chat-think {
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  margin: 8px 0 12px;
+}
+#run-detail.chat-mode .chat-think.live {
+  border-left: 0;
+  border-radius: 0;
+}
+#run-detail.chat-mode .chat-think .ct-head,
+#run-detail.chat-mode details.chat-think > summary {
+  min-height: 28px;
+  padding: 4px 0;
+  color: var(--accent);
+  font-weight: 500;
+}
+#run-detail.chat-mode .chat-think .ct-body,
+#run-detail.chat-mode .chat-think .ct-acts {
+  margin-left: 5px;
+  border-top: 0;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  padding: 3px 0 5px 13px;
+}
+#run-detail.chat-mode .chat-think .ct-body {
+  max-height: 220px;
+  line-height: 1.62;
+}
+#run-detail.chat-mode .chat-think .ct-acts { padding-bottom: 7px; }
+#run-detail.chat-mode .chat-activity-row { min-height: 24px; }
+#run-detail.chat-mode .chat-tool-group,
+#run-detail.chat-mode .chat-cli-log { margin: 8px 0 10px; }
+#run-detail.chat-mode .chat-tool-list {
+  margin-left: 5px;
+  padding-left: 13px;
+  border-left: 1px solid var(--border);
+}
+
+/* Result is a receipt at the end of the answer, not a dashboard card. */
+#run-detail.chat-mode .chat-result {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding: 14px 0 4px;
+  background: transparent;
+}
+#run-detail.chat-mode .chat-result .cr-files { border-top-color: var(--border); }
+#run-detail.chat-mode .rd-chat-run-status {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 0;
+}
+#run-detail.chat-mode .rd-chat-bar {
+  margin-top: 8px;
+  margin-bottom: 10px;
+  border-radius: 34px;
+  background: var(--panel);
+  box-shadow: 0 3px 16px color-mix(in srgb, var(--text) 8%, transparent);
+}
+@media (max-width: 720px) {
+  main.chat-fill #run-detail.chat-mode > #rd-railcol { display: block; }
+  #run-detail.chat-mode #rd-rail > .detail-head { padding-inline: 12px; }
+  #run-detail.chat-mode #rd-rail > .detail-head > #rd-title { max-width: 42vw; }
+  #run-detail.chat-mode .rd-chat-flow,
+  #run-detail.chat-mode .rd-chat-bar,
+  #run-detail.chat-mode .rd-chat-run-status { max-width: calc(100% - 16px); }
+  #run-detail.chat-mode .rd-chat-flow { padding: 16px 8px 10px; gap: 19px; }
+}
