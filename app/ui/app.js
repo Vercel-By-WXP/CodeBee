@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, experts: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, experts: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, templateBudget: null, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
 // 第二批运营能力的轻量 UI 缓存；后端接口不存在时各面板仍保持可用。
 const UI_FEATURES = { reviewPolicy: null, templates: null, analytics: null, analyticsDays: 1, interventions: [], cliDiscovery: null };
@@ -3945,6 +3945,7 @@ async function loadTaskTemplates() {
 
 function applyTaskTemplate(template, start) {
   if (!template) return;
+  S.templateBudget = template.max_calls ? { max_calls: Number(template.max_calls) || 0 } : null;
   if ($("f-goal")) $("f-goal").value = template.goal || "";
   if ($("f-title") && !$("f-title").value) $("f-title").value = template.name || "";
   if ($("f-rubric") && Array.isArray(template.rubric)) $("f-rubric").value = template.rubric.join(", ");
@@ -4000,6 +4001,9 @@ async function createTask() {
     workdir: $("f-workdir").value.trim(),
     thinking: $("f-thinking").value,
   };
+  if (S.templateBudget && S.templateBudget.max_calls > 0) {
+    payload.max_calls = S.templateBudget.max_calls;
+  }
   const expertId = (($('f-expert') || {}).value || "").trim();
   if (expertId) payload.expert_id = expertId;
   if (cmpPlanMode) payload.plan_mode = true;
