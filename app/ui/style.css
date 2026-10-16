@@ -9051,3 +9051,21 @@ html[data-theme="dark"] .panel {
   #rd-rail > #rd-tabs { gap: 4px; }
   #rd-rail > #rd-tabs .rd-tab { min-height: 40px; padding: 9px 10px; font-size: 13px; }
 }
+
+@media (max-width: 900px) {
+  /* 手机端 composer 收尾校准（1016 手机实拍反馈）：
+     1) hero 副标题跟随标题左对齐——桌面版式是标题居中+副标 margin:auto，
+        手机上标题已改左对齐，副标不跟着改就悬出一段怪缩进；
+     2) 类型/专家胶囊同行互不挤压：原生专家 select 按内容撑宽会顶掉
+        类型名（只剩「直…」），钳宽+省略号+44px 触达对齐；
+     3) 成本预估两行居中像贴错位置的告示，改左对齐贴正文；
+     4) 快捷类型从两列网格改自然 pill 流式，单枚不再横占半屏。 */
+  #sub-tasks .hero-sub { max-width: 640px; margin: 0 0 18px; text-align: left; }
+  #sub-tasks .cmp-mode { gap: 6px; }
+  #sub-tasks .cmp-mode .type-pick { flex: 0 1 auto; }
+  #sub-tasks .cmp-mode .expert-pick {
+    flex: 0 1 auto; width: auto; min-width: 96px; max-width: 112px;
+    min-height: 44px; padding-right: 24px; font-size: 13px; text-overflow: ellipsis;
+  }
+  #sub-tasks .cmp-estimate { text-align: left; margin: 8px 2px 0; font-size: 12px; }
+}

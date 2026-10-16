@@ -90,3 +90,10 @@
   #run-detail .chat-send-menu kbd { display: none; }
   #run-detail :is(button, select, textarea):focus-visible { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
 }
+
+/* 快捷类型回归自然 pill 流式（1016 手机实拍反馈）：workspace-mode 的两列
+   网格在只有一枚类型时横占半屏，视觉像块残留告示；保留 44px 触达高度。 */
+@media (max-width: 900px) {
+  #sub-tasks .cmp-quick { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  #sub-tasks .cmp-quick > button { flex: 0 1 auto; width: auto; justify-content: center; }
+}
