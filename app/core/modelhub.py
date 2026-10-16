@@ -2679,6 +2679,14 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
     # provider_id 即使没有显式模型链也代表用户锁定了供应商；空 bindings
     # 才是“完全交给系统推荐”的默认模式。
     configured = bool(_binding_chain(b) or b.get("provider_id"))
+    # 本地凭据 CLI（trae/pi/gemini-cli 等）没有可注入协议：resolve_binding 对
+    # 它们无条件早退，遗留的 provider_id 条目永远解析不出链。若算「配过链」，
+    # 死链闸会把本可回落本机登录态照跑的 CLI 永久判死（2026-10-16 起草全灭
+    # 案：trae/pi 因模型调度页的历史误配被整场排除，报错让用户「勿配链」，
+    # 但写入侧根本没拦）。有 native_cli 供应商桥时例外——那种形态有真链可解析。
+    if (rid in _LOCAL_CRED_ONLY_TARGETS
+            and not _has_native_provider(rid)):
+        configured = False
     r = resolve_binding(rid, difficulty) or resolve_binding(agent.get("kind"), difficulty)
     binding_mode = "explicit" if configured else "auto"
     if not r and not configured:
@@ -3100,6 +3108,9 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     # 无显式链：难度映射 / 供应商默认 / 启用模型优先级（原语义）
     pid = b.get("provider_id")
     if not pid:
+        # 配置形态不可能走到这里（bind_agent 的 configured 要求 chain 或
+        # provider_id 二者其一），直接调用方才可能；同样记死因防文案开天窗
+        _note_dead_reasons(agent_kind_or_id, ["绑定未指定供应商"])
         return None
     prov = provs.get(pid)
     single_reasons = []
@@ -3145,6 +3156,12 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     if not model and names:
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
     if not native_cli and not _evaluation_is_usable(pid, model):
+        # 2026-10-16 起草全灭案：这里是 legacy 分支最后一个静默 None——供应商
+        # 本体全绿、只挂在这颗模型的评测结论（健康事件作废/探针失败）上时，
+        # 文案只剩泛泛的「绑定链全部失效」而没有死因段，用户无从对账
+        _dead(single_reasons, "%s：模型 %s 评测结论不可用（健康事件作废或探针失败）"
+              % (label, model or "默认"))
+        _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None
     if native_cli:
         model = _usable_default_model(prov, model or prov.get("model"))

@@ -154,13 +154,33 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     本地 CLI 启动失败（找不到可执行文件等）与供应商无关，记进来会把健康
     供应商的评测结论作废、链被解析层过滤成死链——2026-09-30 claude 垫片被
     清案：Bigmodel 全程健康却被连续启动失败拖进 down。只打日志提醒修本地
-    环境，不进健康台账。"""
+    环境，不进健康台账。
+
+    同理，CLI 进程捕获型失败（runner 的「…；stderr/stdout: <尾部>」包装）若
+    全文分类不出任何供应商侧信号，也不进台账（2026-10-16 起草全灭案）：
+    opencode 横幅秒退的已知瞬时签名「退出码 1；stderr/stdout: > build · …」
+    （0930 实案：数分钟后同进程自愈）、死链闸与沙箱闸的起跑前拒绝，责任都
+    不在上游——健康的 Bigmodel 被这种崩溃文本连续作废评测，所有绑定它的
+    CLI 连锁死链。不带该包装的无分类错误（新措辞的限额文案等）保持照记：
+    误报的代价只是白跑几次注定失败的尝试，漏报的代价是健康供应商被雪崩
+    误杀，后者远重——拿不准时宁可不记。"""
     if not provider:
         return
     if _LAUNCH_FAILURE_PREFIX in str(error or "")[:80]:
         log.warning("[health] 本地 CLI 启动失败（与供应商 %s 无关，不记健康故障）：%s",
                     provider, str(error or "")[:160])
         return
+    text = str(error or "")
+    if "stderr/stdout:" in text[:160]:
+        try:
+            from .error_codes import classify_error_text
+            unclassified = classify_error_text(text) is None
+        except Exception:
+            unclassified = False
+        if unclassified:
+            log.warning("[health] CLI 崩溃无供应商侧信号（与供应商 %s 无关，"
+                        "不记健康故障）：%s", provider, text[:160])
+            return
 
     # A failed live call invalidates capability evidence for this upstream.
     # Keep this hook lazy and best-effort: health telemetry must never make a
