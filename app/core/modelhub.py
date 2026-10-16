@@ -4090,9 +4090,12 @@ def migrate_stale_provider_only_bindings():
     """
     with _LOCK:
         data = _load()
+        # Keep the marker as audit metadata, but do not use it as a global
+        # short-circuit: older UI builds can recreate a stale empty-chain
+        # binding after the first startup.  The shape checks below make this
+        # scan idempotent while still preserving legitimate provider-only
+        # bindings.
         migrations = data.setdefault("_binding_migrations", {})
-        if migrations.get("stale_provider_only_v1"):
-            return 0
         plist = {p.get("id"): p for p in data.get("providers") or []}
         changed = []
         for aid, binding in (data.get("bindings") or {}).items():
