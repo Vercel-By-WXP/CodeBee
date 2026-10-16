@@ -60,6 +60,17 @@ try {
   const output = resolve(root, "output/playwright/phone-relay");
   mkdirSync(output, { recursive: true });
   writeFileSync(join(output, "portal-mobile.png"), Buffer.from((await cdp("Page.captureScreenshot", { format: "png" })).data, "base64"));
+  // The worker negotiates the portal language from Accept-Language; English is
+  // the neutral default when the header is missing or names another language.
+  await cdp("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0", acceptLanguage: "en-US,en;q=0.9" });
+  await cdp("Page.navigate", { url: relay + "/relay/portal" });
+  await until(() => evaluate("document.documentElement.lang === 'en' && /Connect to your computer/.test(document.title)"));
+  await cdp("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0", acceptLanguage: "zh-CN,zh;q=0.9,en;q=0.8" });
+  await cdp("Page.navigate", { url: relay + "/relay/portal" });
+  await until(() => evaluate("document.documentElement.lang === 'zh-CN' && document.title.includes('连接我的电脑')"));
+  await cdp("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0", acceptLanguage: "fr-FR,fr;q=0.9" });
+  await cdp("Page.navigate", { url: relay + "/relay/portal" });
+  await until(() => evaluate("document.documentElement.lang === 'en'"));
   const paired = await fetch(local + "/api/connect/relay", { method: "POST", headers: { "content-type": "application/json", origin: local }, body: '{"action":"pair"}' });
   assert.equal(paired.status, 200);
   const code = await until(async () => (await (await fetch(local + "/api/connect")).json()).relay.pair_code);
