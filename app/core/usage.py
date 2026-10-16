@@ -51,7 +51,7 @@ DIMENSIONS = {
 FIELDS = ("ts", "day", "run_id", "step", "task_id", "task_type", "role", "agent", "agent_label",
           "tool", "model", "provider", "ok", "duration_s",
           "input", "output", "cached", "reasoning", "total", "cost_usd", "source",
-          "first_token_ms", "tokens_per_sec")
+          "first_token_ms", "tokens_per_sec", "model_family")
 
 
 def _month_file(day):
@@ -108,10 +108,16 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
             "tool": str(tool or "")[:24] or "unknown",
             "model": str(model or "")[:80] or "(默认)",
             "provider": str(provider or "")[:60],
+            "model_family": "unknown",
             "ok": _parse_bool(ok),
             "duration_s": round(_parse_float(duration_s), 1),
             "cost_usd": round(_parse_float(cost_usd), 4),
         }
+        try:
+            from .model_family import family
+            rec["model_family"] = family(rec["model"])
+        except Exception:
+            pass
         inp = max(0, _parse_int(u.get("input")))
         out = max(0, _parse_int(u.get("output")))
         cach = max(0, _parse_int(u.get("cached")))
