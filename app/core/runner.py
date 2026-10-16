@@ -125,6 +125,13 @@ def _fallback_probe_cli(name):
         # 不继承；固定落点探到即用，装完当场可检出、可编排。
         os.path.join(home, ".minimax-code"),
     )
+    # nvm-windows 的当前 node 目录（NVM_SYMLINK，如 D:\nvm4w\nodejs）：nvm
+    # 切版重链后启动的进程 PATH 快照常缺这条，装在里面的 npm 全局 CLI
+    # （opencode/mimo 等）全体假「未安装」（2026-10-16 opencode 免费池
+    # 服务侧探测落空实案）。
+    nvm_link = os.environ.get("NVM_SYMLINK")
+    if nvm_link:
+        flat_dirs += (nvm_link,)
     for d in flat_dirs:
         for ext in _CLI_EXTS:
             p = os.path.join(d, name + ext)

@@ -2,11 +2,21 @@
 """OpenCode first-party free models use the CLI's own auth/session."""
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from unittest import mock
 
 from base import BaseTest
+
+
+@contextlib.contextmanager
+def _stack(patches):
+    """同时进入一组 patch，退出时按反序还原。"""
+    with contextlib.ExitStack() as es:
+        for p in patches:
+            es.enter_context(p)
+        yield
 
 
 class TestOpenCodeNative(BaseTest):
@@ -412,3 +422,110 @@ class TestOpenCodeNative(BaseTest):
         data = json.loads(config.read_text(encoding="utf-8"))
         self.assertEqual(data["model"], "mimo/mimo-auto")
         self.assertNotIn("codebee", data.get("provider", {}))
+
+
+class TestNativeChannelAutoWire(BaseTest):
+    """原生 CLI 免费通道自动接线：探测可用即导入+绑空槽，不覆盖人工绑定。"""
+
+    def _stubs(self, modelhub, free_models=None):
+        """把两个通道的 CLI/配置探测指到临时目录，返回 patch 列表。"""
+        free_models = free_models if free_models is not None else [
+            "opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free"]
+        return [
+            mock.patch.object(modelhub, "OPENCODE_CONFIG", str(self.tmp / "no-oc.json")),
+            mock.patch.object(modelhub, "OPENCODE_AUTH", str(self.tmp / "no-auth.json")),
+            mock.patch.object(modelhub, "MIMO_CONFIG", str(self.tmp / "no-mimo.jsonc")),
+            mock.patch.object(modelhub.shutil, "which",
+                              side_effect=lambda n: n if n in ("opencode", "mimo") else None),
+            mock.patch.object(modelhub, "_opencode_native_models",
+                              return_value=list(free_models)),
+        ]
+
+    def test_fallback_probe_finds_cli_in_nvm_symlink_dir(self):
+        from app.core import runner
+        link = self.tmp / "nodejs"
+        link.mkdir()
+        exe = link / "opencode.cmd"
+        exe.write_text("@echo off", encoding="utf-8")
+        env = {"NVM_SYMLINK": str(link), "LOCALAPPDATA": str(self.tmp / "lal"),
+               "APPDATA": str(self.tmp / "ad")}
+        with mock.patch.dict("os.environ", env), \
+             mock.patch.object(runner.shutil, "which", return_value=None):
+            self.assertEqual(runner._fallback_probe_cli("opencode"), str(exe))
+            self.assertIsNone(runner._fallback_probe_cli("definitely-not-here"))
+
+    def test_native_models_probe_survives_missing_path_snapshot(self):
+        from app.core import modelhub, runner
+        fake = r"D:\nvm4w\nodejs\opencode.cmd"
+        with mock.patch.object(modelhub.shutil, "which", return_value=None), \
+             mock.patch.object(runner, "_fallback_probe_cli", return_value=fake), \
+             mock.patch.object(runner, "resolve_command",
+                               return_value=["cmd", "/c", fake]) as rc, \
+             mock.patch.object(modelhub.subprocess, "run",
+                               return_value=mock.Mock(stdout="opencode/glm-5.3-flash-free\n")) as sp:
+            got = modelhub._opencode_native_models()
+        self.assertEqual(got, ["opencode/glm-5.3-flash-free"])
+        self.assertEqual(sp.call_args[0][0][:3], ["cmd", "/c", fake])
+        rc.assert_called_once_with("opencode")
+
+    def test_native_models_returns_empty_without_resolvable_cli(self):
+        from app.core import modelhub, runner
+        with mock.patch.object(modelhub.shutil, "which", return_value=None), \
+             mock.patch.object(runner, "_fallback_probe_cli", return_value=None), \
+             mock.patch.object(modelhub.subprocess, "run") as sp:
+            self.assertEqual(modelhub._opencode_native_models(), [])
+        sp.assert_not_called()
+
+    def test_auto_wire_imports_and_binds_empty_slots(self):
+        from app.core import modelhub
+        patches = self._stubs(modelhub)
+        with _stack(patches):
+            out = modelhub.auto_wire_native_channels()
+        self.assertIn("导入并绑定", out["opencode"])
+        self.assertIn("导入并绑定", out["mimo-code"])
+        data = json.loads(modelhub._FILE.read_text(encoding="utf-8"))
+        oc = next(p for p in data["providers"] if p.get("source_id") == "opencode:native-free")
+        self.assertEqual([m["name"] for m in oc["models"]],
+                         ["opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free"])
+        b = data["bindings"]["opencode"]
+        self.assertEqual(b["provider_id"], oc["id"])
+        self.assertEqual(b["model"], "opencode/deepseek-v4.1-flash-free")
+        self.assertEqual(b["chain"][0]["model"], "opencode/deepseek-v4.1-flash-free")
+        mi = next(p for p in data["providers"] if p.get("source_id") == "mimo:native-auto")
+        self.assertEqual(data["bindings"]["mimo-code"]["model"], "mimo/mimo-auto")
+        self.assertEqual(data["bindings"]["mimo-code"]["provider_id"], mi["id"])
+
+    def test_auto_wire_preserves_manual_binding_and_is_idempotent(self):
+        from app.core import modelhub
+        data = {"providers": [{
+            "id": "prov-manual", "name": "人工网关", "protocol": "openai",
+            "base_url": "https://gw.example", "api_key": "k1",
+            "models": [{"name": "paid-x", "enabled": True, "priority": 1}],
+        }], "bindings": {"opencode": {"provider_id": "prov-manual", "model": "paid-x",
+                                       "chain": [{"provider_id": "prov-manual",
+                                                  "model": "paid-x"}],
+                                       "models": [], "difficulty_routing": True}}}
+        modelhub._FILE.write_text(json.dumps(data), encoding="utf-8")
+        patches = self._stubs(modelhub)
+        with _stack(patches):
+            out1 = modelhub.auto_wire_native_channels()
+            self.assertEqual(out1["opencode"], "已有人工绑定，保持不动")
+            out2 = modelhub.auto_wire_native_channels()
+        data2 = json.loads(modelhub._FILE.read_text(encoding="utf-8"))
+        b = data2["bindings"]["opencode"]
+        self.assertEqual((b["provider_id"], b["model"]), ("prov-manual", "paid-x"))
+        self.assertEqual(len([p for p in data2["providers"]
+                              if p.get("source_id") == "opencode:native-free"]), 1)
+        self.assertEqual(len([p for p in data2["providers"]
+                              if p.get("source_id") == "mimo:native-auto"]), 1)
+        self.assertIn("保持不动", out2["mimo-code"])
+
+    def test_auto_wire_skips_channels_without_cli(self):
+        from app.core import modelhub
+        with mock.patch.object(modelhub, "MIMO_CONFIG", str(self.tmp / "none.jsonc")), \
+             mock.patch.object(modelhub.shutil, "which", return_value=None), \
+             mock.patch.object(modelhub, "_opencode_native_models", return_value=[]):
+            out = modelhub.auto_wire_native_channels()
+        self.assertIn("跳过", out["opencode"])
+        self.assertIn("跳过", out["mimo-code"])
+        self.assertFalse(modelhub._FILE.exists())

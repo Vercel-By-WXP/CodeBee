@@ -4365,6 +4365,16 @@ def main():
     if n_stale:
         print("[CodeBee] 模型绑定：清理 %d 条历史空链供应商锁定，恢复自动调度" % n_stale,
               flush=True)
+    _step("正在探测原生免费通道…")
+    try:
+        _native_wire = modelhub.auto_wire_native_channels()
+        _wired = ["%s %s" % (slot, act) for slot, act in _native_wire.items()
+                  if "绑定" in str(act)]
+        if _wired:
+            print("[CodeBee] 原生通道自动接线：%s" % "；".join(_wired), flush=True)
+    except Exception as _nw_err:
+        print("[CodeBee] 原生通道自动接线跳过（不影响启动）：%s: %s"
+              % (type(_nw_err).__name__, _nw_err), flush=True)
     try:
         from core import settings_schema
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）

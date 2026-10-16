@@ -928,6 +928,11 @@ class TestMultiSourceImport(BaseTest):
         from app.core import modelhub
         modelhub._FILE = self.data_dir / "models.json"
         restore = self._fixtures(modelhub)
+        # opencode 原生免费池探测会真起本机 CLI（探到 .cmd 垫片就跑）：
+        # 计数型夹具必须桩掉，保持与真机装没装 opencode 无关
+        no_native = mock.patch.object(
+            modelhub, "_opencode_native_models", return_value=[])
+        no_native.start()
         try:
             # 1) 扫描：每个来源都能被发现并解析出数量
             rows = {r["id"]: r for r in modelhub.sources()}
@@ -993,6 +998,7 @@ class TestMultiSourceImport(BaseTest):
             self.assertEqual(res3["imported"], 2)                       # 只补 codex 的两个
             self.assertEqual(len(modelhub.providers()), sum(expect.values()))
         finally:
+            no_native.stop()
             restore()
 
 

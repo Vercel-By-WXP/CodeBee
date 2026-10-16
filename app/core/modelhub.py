@@ -2265,10 +2265,17 @@ def _opencode_native_models():
     releases.  Keep discovery best-effort: a missing/old CLI must not make the
     normal provider import fail or block the settings page.
     """
-    if not shutil.which("opencode"):
+    from . import runner as _runner
+    # 服务进程的 PATH 是启动快照：opencode 装在 nvm 符号链接目录时快照里常没
+    # 这条，which 落空但 CLI 明明在盘上（2026-10-16 实案，免费池因此整体
+    # 探测不到）——与 runner/manager 同款落点探测兜底；裸名 spawn 起不动
+    # .cmd 垫片（CreateProcess 只补 .exe），必须 resolve_command 给全路径。
+    exe = shutil.which("opencode") or _runner._fallback_probe_cli("opencode")
+    if not exe:
         return []
     try:
-        p = subprocess.run(["opencode", "models"], stdout=subprocess.PIPE,
+        p = subprocess.run(_runner.resolve_command("opencode") + ["models"],
+                           stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True, timeout=20,
                            check=False, creationflags=getattr(subprocess,
                            "CREATE_NO_WINDOW", 0))
@@ -2585,6 +2592,74 @@ def import_ccswitch():
     if s.get("error"):
         msg += "；" + s["error"]
     return r["imported"], msg
+
+
+# 原生 CLI 免费通道：来源 id → 绑定槽。凭据由 CLI 自管（credential_mode=cli），
+# 探测到可用就应自动进编排，不要求人工导入（2026-10-16 用户拍板）。
+_NATIVE_AUTO_CHANNELS = (
+    ("opencode", "opencode"),
+    ("mimo", "mimo-code"),
+)
+
+
+def _native_provider(data, sid):
+    """models.json 里某来源的原生通道供应商条目（无则 None）。"""
+    prefix = "%s:native" % sid
+    return next((p for p in data.get("providers") or []
+                 if p.get("source") == sid
+                 and str(p.get("source_id") or "").startswith(prefix)), None)
+
+
+def _native_channel_available(sid):
+    if sid == "opencode":
+        return bool(_opencode_native_models())
+    if sid == "mimo":
+        return os.path.isfile(MIMO_CONFIG) or bool(shutil.which("mimo"))
+    return False
+
+
+def auto_wire_native_channels():
+    """原生 CLI 免费通道自动接线：探测可用 → 幂等导入 → 绑上还空着的槽。
+
+    启动时调用。用户在设置页绑过的槽一律不动；通道 CLI 未检出、导入为空、
+    无启用模型都只记动作不报错，绝不阻塞启动。返回 {绑定槽: 动作描述}。
+    """
+    out = {}
+    for sid, slot in _NATIVE_AUTO_CHANNELS:
+        try:
+            if not _native_channel_available(sid):
+                out[slot] = "未检出可用 CLI，跳过"
+                continue
+            with _LOCK:
+                have = _native_provider(_load(), sid)
+            imported = False
+            if not have:
+                imported = bool(import_sources([sid]).get("imported"))
+                with _LOCK:
+                    have = _native_provider(_load(), sid)
+            if not have:
+                out[slot] = "探测可用但导入为空，跳过"
+                continue
+            models = [m for m in have.get("models") or []
+                      if m.get("enabled", True) and not m.get("hidden")]
+            if not models:
+                out[slot] = "原生供应商无启用模型，跳过"
+                continue
+            with _LOCK:
+                b = (( _load().get("bindings") or {}).get(slot) or {})
+                manual = bool((b.get("provider_id") or "").strip()
+                              or (b.get("model") or "").strip())
+            if manual:
+                out[slot] = "已有人工绑定，保持不动"
+                continue
+            # 走 set_binding 规范写入：chain 是唯一真源，冗余字段同步重建。
+            set_binding(slot, chain=[{"provider_id": have.get("id"),
+                                      "model": models[0].get("name")}])
+            out[slot] = "%s %s → %s" % ("导入并绑定" if imported else "自动绑定",
+                                        have.get("id"), models[0].get("name"))
+        except Exception as e:
+            out[slot] = "%s: %s" % (type(e).__name__, e)
+    return out
 
 
 # ---------------------------------------------------------------- 运行时解析
