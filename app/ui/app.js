@@ -12246,8 +12246,8 @@ function contractOverviewHtml(contract) {
     const tags = [
       t("覆盖") + "：" + (coverage.status || "unknown") + (coverage.scope ? " · " + coverage.scope : ""),
       provenance.source || e.source ? t("来源") + "：" + (provenance.source || e.source) : "",
-      provenance.run_id ? t("运行") + "：" + provenance.run_id : "",
-      provenance.step_id ? t("步骤") + "：" + provenance.step_id : "",
+      provenance.run_id ? t("运行 ID") + "：" + provenance.run_id : "",
+      provenance.step_id ? t("步骤 ID") + "：" + provenance.step_id : "",
       provenance.untrusted_content ? t("包含未验证内容") : "",
     ].filter(Boolean).map((value) => '<span class="rd-contract-evidence-tag">' + esc(value) + '</span>').join("");
     const lists = [
