@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Versioned, approval-gated project memory stored inside each workspace."""
+"""Versioned project memory stored inside each workspace.
+
+New candidates are approved automatically after integrity checks.  The journal
+still keeps explicit review transitions for legacy or manually held entries.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -87,11 +91,12 @@ def _candidate(*, source_run="", title="", facts=None, now=None):
            "title": str(title or "")[:200], "content": content,
            "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
            "created_at": stamp, "expires_at": stamp + DEFAULT_TTL_DAYS * 86400,
-           "status": "pending", "version": 1, "updated_at": stamp}
+           "status": "approved", "version": 1, "updated_at": stamp,
+           "reviewed_at": stamp, "approval_mode": "automatic"}
 
 
 def propose(workdir, *, source_run="", title="", facts=None, now=None):
-    """Persist a candidate, never active until a human explicitly approves it."""
+    """Persist a verified candidate and make it active by default."""
     row = _candidate(source_run=source_run, title=title, facts=facts, now=now)
     if row is None:
         return None
@@ -143,7 +148,7 @@ def _content_digest(content):
 
 
 def migrate_legacy(workdir):
-    """Import the old Markdown store as pending candidates, keeping the source."""
+    """Import the old Markdown store as automatically approved entries."""
     path = _file(workdir)
     legacy = path.with_name("project-memory.md")
     if legacy.is_symlink() or (hasattr(legacy, "is_junction") and legacy.is_junction()):
@@ -267,7 +272,12 @@ def _backfill(tasks, runs):
             key = str(_file(workdir))
             if key not in sources:
                 result["legacy"] += migrate_legacy(workdir)
-                latest = _read(_file(workdir))
+                # Older releases left valid candidates pending.  The current
+                # default is automatic approval, so migrate them on startup;
+                # expired or tampered entries remain blocked by the helper.
+                path = _file(workdir)
+                latest = _read(path)
+                _approve_pending_locked(path, latest)
                 sources[key] = {row["source_run"] for row in latest.values()
                                 if isinstance(row.get("source_run"), str)}
                 existing_ids[key] = set(latest)
@@ -347,6 +357,52 @@ def project_index(tasks, *, now=None):
 def decide(workdir, entry_id, action, *, expected_version=None, now=None):
     with _LOCK:
         return _decide(workdir, entry_id, action, expected_version=expected_version, now=now)
+
+
+def approve_pending(workdir, *, now=None):
+    """Approve every pending candidate that passes integrity and expiry checks.
+
+    Bulk approval is intentionally narrower than a blind status update: tampered
+    or expired candidates remain pending so they cannot be enabled accidentally.
+    The append-only journal and process lock keep the batch consistent with the
+    single-entry review path.
+    """
+    with _LOCK:
+        path = _file(workdir)
+        return _approve_pending_locked(path, _read(path), now=now)
+
+
+def _approve_pending_locked(path, latest, *, now=None):
+    stamp = float(now if now is not None else time.time())
+    approved_count = skipped_count = invalid_count = 0
+    for entry_id, row in latest.items():
+        if row.get("status") != "pending":
+            continue
+        raw = row.get("content")
+        digest = _content_digest(raw)
+        version = _number(row.get("version"), integer=True)
+        if (digest is None or digest != row.get("content_sha256")
+                or version < 1):
+            invalid_count += 1
+            continue
+        if _number(row.get("expires_at")) <= stamp:
+            skipped_count += 1
+            continue
+        updated = dict(
+            row,
+            status="approved",
+            version=version + 1,
+            updated_at=stamp,
+            reviewed_at=stamp,
+        )
+        _append(path, updated)
+        latest[entry_id] = updated
+        approved_count += 1
+    return {
+        "approved_count": approved_count,
+        "skipped_count": skipped_count,
+        "invalid_count": invalid_count,
+    }
 
 
 def _decide(workdir, entry_id, action, *, expected_version=None, now=None):

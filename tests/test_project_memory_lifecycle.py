@@ -14,14 +14,14 @@ class TestProjectMemoryLifecycle(BaseTest):
                "status": "done", "verdict": dict(engine=engine, **verdict)}
         return task, run
 
-    def test_completed_engines_create_pending_memory_with_truthful_quality(self):
+    def test_completed_engines_create_approved_memory_with_truthful_quality(self):
         from app.core import project_memory
 
         for engine in ("direct", "code", "review"):
             task, run = self.task_run(engine, publishable=False)
             run["id"] = "run-" + engine
             row = project_memory.capture_run(task, run)
-            self.assertEqual(row["status"], "pending")
+            self.assertEqual(row["status"], "approved")
             self.assertEqual(row["source_run"], run["id"])
             self.assertIn(task["goal"], row["content"])
             if engine == "direct":
@@ -29,7 +29,45 @@ class TestProjectMemoryLifecycle(BaseTest):
             else:
                 self.assertIn("发布门禁：未通过", row["content"])
         self.assertEqual(len(project_memory.list_entries(self.workdir)), 3)
-        self.assertEqual(project_memory.active_text(self.workdir), "")
+        self.assertIn("Keep project conventions", project_memory.active_text(self.workdir))
+
+    def test_approve_pending_approves_only_valid_unexpired_candidates(self):
+        from app.core import project_memory
+
+        valid = dict(project_memory.propose(self.workdir, facts=["VALID"], now=1000), status="pending")
+        expired = dict(project_memory.propose(self.workdir, facts=["EXPIRED"], now=1000), status="pending")
+        project_memory._append(project_memory._file(self.workdir), valid)
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(expired, expires_at=1000))
+        malformed = dict(valid, id="malformed", content="TAMPERED", version="bad")
+        project_memory._append(project_memory._file(self.workdir), malformed)
+
+        result = project_memory.approve_pending(self.workdir, now=1000 + 1)
+        self.assertEqual(result["approved_count"], 1)
+        self.assertEqual(result["skipped_count"], 1)
+        self.assertEqual(result["invalid_count"], 1)
+        statuses = {row["id"]: row["status"]
+                    for row in project_memory.list_entries(self.workdir)}
+        self.assertEqual(statuses[valid["id"]], "approved")
+        self.assertEqual(statuses[expired["id"]], "pending")
+        self.assertEqual(statuses["malformed"], "pending")
+
+    def test_backfill_promotes_existing_pending_candidates(self):
+        from app.core import project_memory
+
+        task, _ = self.task_run()
+        row = project_memory.propose(self.workdir, source_run="legacy-run",
+                                     facts=["PROMOTE-ON-STARTUP"])
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(row, status="pending"))
+
+        result = project_memory.backfill([task], [])
+
+        self.assertEqual(result["errors"], 0)
+        current = project_memory.list_entries(self.workdir)[0]
+        self.assertEqual(current["status"], "approved")
+        self.assertEqual(current["version"], 2)
+        self.assertIn("PROMOTE-ON-STARTUP", project_memory.active_text(self.workdir))
 
     def test_incomplete_or_management_runs_do_not_create_candidates(self):
         from app.core import project_memory
@@ -64,8 +102,12 @@ class TestProjectMemoryLifecycle(BaseTest):
         from app.core import project_memory
 
         first = project_memory.propose(self.workdir, facts=["MUST-NOT-RESURRECT"])
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(first, status="pending"))
         project_memory.decide(self.workdir, first["id"], "approve")
         valid = project_memory.propose(self.workdir, facts=["STILL-VALID"])
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(valid, status="pending"))
         project_memory.decide(self.workdir, valid["id"], "approve")
         bad = dict(first, status="approved", content=42, expires_at="bad", created_at=[],
                    feedback_count="bad", feedback_score="bad", version="bad")
@@ -120,6 +162,8 @@ class TestProjectMemoryLifecycle(BaseTest):
         from app.core import project_memory
 
         row = project_memory.propose(self.workdir, facts=["Fact"])
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(row, status="pending"))
         append = project_memory._append
 
         def delayed_append(*args):
@@ -145,6 +189,8 @@ class TestProjectMemoryLifecycle(BaseTest):
         from app.core import project_memory
 
         row = project_memory.propose(self.workdir, facts=["Fact"])
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(row, status="pending"))
         project_memory.decide(self.workdir, row["id"], "approve")
         append = project_memory._append
 
@@ -166,6 +212,8 @@ class TestProjectMemoryLifecycle(BaseTest):
         task, run = self.task_run()
         self.assertEqual(project_memory.backfill([task], [run])["runs"], 1)
         row = project_memory.list_entries(self.workdir)[0]
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(row, status="pending"))
         project_memory.decide(self.workdir, row["id"], "reject", expected_version=1)
         task["goal"] = "An edited goal must not replace an earlier rejection"
         self.assertEqual(project_memory.backfill([task], [run])["runs"], 0)
@@ -174,7 +222,7 @@ class TestProjectMemoryLifecycle(BaseTest):
         projects = project_memory.project_index([task])
         self.assertEqual(projects[0]["entries"][0]["status"], "rejected")
 
-    def test_legacy_markdown_migrates_once_without_automatic_approval(self):
+    def test_legacy_markdown_migrates_once_with_automatic_approval(self):
         from app.core import project_memory
 
         legacy = self.workdir / ".codebee" / "project-memory.md"
@@ -185,9 +233,9 @@ class TestProjectMemoryLifecycle(BaseTest):
         self.assertEqual(project_memory.migrate_legacy(self.workdir), 0)
         row = project_memory.list_entries(self.workdir)[0]
         self.assertEqual(row["title"], "Old task")
-        self.assertEqual(row["status"], "pending")
+        self.assertEqual(row["status"], "approved")
         self.assertIn("Uses SQLite", row["content"])
-        self.assertEqual(project_memory.active_text(self.workdir), "")
+        self.assertIn("Uses SQLite", project_memory.active_text(self.workdir))
         self.assertEqual(legacy.read_text(encoding="utf-8"), original)
 
     def test_backfill_preserves_decisions_older_than_5000_journal_lines(self):
@@ -196,6 +244,8 @@ class TestProjectMemoryLifecycle(BaseTest):
 
         task, run = self.task_run()
         row = project_memory.capture_run(task, run)
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(row, status="pending"))
         project_memory.decide(self.workdir, row["id"], "reject")
         path = project_memory._file(self.workdir)
         with path.open("a", encoding="utf-8") as handle:
@@ -216,6 +266,7 @@ class TestProjectMemoryLifecycle(BaseTest):
         project_memory.migrate_legacy(self.workdir)
         captured = project_memory.capture_run(task, run)
         for row in project_memory._read(path).values():
+            project_memory._append(path, dict(row, status="pending"))
             rejected = project_memory.decide(self.workdir, row["id"], "reject")
             project_memory._append(path, dict(rejected, source_run=[] if row["id"] == captured["id"] else {}))
         before = path.stat().st_size
@@ -343,14 +394,13 @@ class TestProjectMemoryLifecycle(BaseTest):
             entries = project_memory.list_entries(workdir)
             self.assertEqual(len(entries), 1, kind)
             self.assertEqual(entries[0]["source_run"], run["id"])
-            self.assertEqual(entries[0]["status"], "pending")
+            self.assertEqual(entries[0]["status"], "approved")
             self.assertEqual(store.get_run(run["id"])["project_memory_id"], entries[0]["id"])
 
     def test_noncode_memory_is_loaded_after_selected_git_checkout(self):
         from app.core import gitmod, pipeline, project_memory, store
 
         previous = project_memory.propose(self.workdir, facts=["OLD-BRANCH-FACT"])
-        project_memory.decide(self.workdir, previous["id"], "approve")
         task = store.create_task({"type": "direct", "title": "Branch task", "goal": "Use selected branch",
                                   "workdir": str(self.workdir), "implementer": "mock-a", "git_rev": "selected"})
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
@@ -359,7 +409,6 @@ class TestProjectMemoryLifecycle(BaseTest):
         def checkout(*args):
             project_memory.decide(self.workdir, previous["id"], "archive")
             selected = project_memory.propose(self.workdir, facts=["SELECTED-BRANCH-FACT"])
-            project_memory.decide(self.workdir, selected["id"], "approve")
             return True, "", None
 
         def direct(_run, current_task, *_args):
@@ -375,12 +424,13 @@ class TestProjectMemoryLifecycle(BaseTest):
         self.assertIn("SELECTED-BRANCH-FACT", seen["context"])
         self.assertNotIn("OLD-BRANCH-FACT", seen["context"])
 
-    def test_approved_memory_reaches_direct_prompt_and_pending_does_not(self):
+    def test_approved_memory_reaches_direct_prompt_and_held_does_not(self):
         from app.core import pipeline, project_memory, store
 
         row = project_memory.propose(self.workdir, facts=["APPROVED-CONVENTION"])
-        project_memory.decide(self.workdir, row["id"], "approve")
-        project_memory.propose(self.workdir, facts=["PENDING-CONVENTION"])
+        held = project_memory.propose(self.workdir, facts=["HELD-CONVENTION"])
+        project_memory._append(project_memory._file(self.workdir),
+                               dict(held, status="pending"))
         task = store.create_task({"type": "direct", "title": "Direct", "goal": "Apply convention",
                                   "workdir": str(self.workdir), "implementer": "mock-a"})
         run = store.create_run("orchestration", task["title"], task_id=task["id"])
@@ -397,7 +447,7 @@ class TestProjectMemoryLifecycle(BaseTest):
             pipeline.execute_run(run["id"])
         self.assertTrue(prompts)
         self.assertIn("APPROVED-CONVENTION", prompts[0])
-        self.assertNotIn("PENDING-CONVENTION", prompts[0])
+        self.assertNotIn("HELD-CONVENTION", prompts[0])
 
     def test_capture_failure_is_visible_without_failing_completed_run(self):
         from app.core import pipeline, project_memory, store

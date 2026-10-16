@@ -50,6 +50,8 @@ class AgentOperatingContractTests(unittest.TestCase):
         row = project_memory.propose(
             self.root, source_run="run-memory", title="Build rule",
             facts=["Keep changes small"], now=1000)
+        project_memory._append(project_memory._file(self.root),
+                               dict(row, status="pending"))
         project_memory.decide(self.root, row["id"], "approve", now=1001)
         preview = project_memory.injection_preview(self.root, query="changes", cap=2000, now=1002)
         self.assertIn("Keep changes small", preview["text"])

@@ -1155,8 +1155,8 @@
       <!-- 记忆中心：统一呈现全局经验/知识与项目记忆，操作复用各自已有治理链 -->
       <div id="sub-memory" class="subpage hidden">
         <div class="panel wide memory-center">
-          <div class="panel-head"><h2 data-i18n="记忆中心">记忆中心</h2><button class="ghost small" onclick="loadMemoryCenter()" data-i18n="刷新记忆">刷新记忆</button></div>
-          <p class="hint" data-i18n="统一管理会跨任务复用的全局经验与知识，以及按工作区隔离的项目记忆。项目记忆仍需批准后才会注入任务。">统一管理会跨任务复用的全局经验与知识，以及按工作区隔离的项目记忆。项目记忆仍需批准后才会注入任务。</p>
+          <div class="panel-head"><h2 data-i18n="记忆中心">记忆中心</h2><div class="memory-center-actions"><button class="ghost small" onclick="memoryCenterApproveAll()" data-i18n="一键全部批准">一键全部批准</button><button class="ghost small" onclick="loadMemoryCenter()" data-i18n="刷新记忆">刷新记忆</button></div></div>
+          <p class="hint" data-i18n="统一管理会跨任务复用的全局经验与知识，以及按工作区隔离的项目记忆。项目记忆默认自动批准并注入任务。">统一管理会跨任务复用的全局经验与知识，以及按工作区隔离的项目记忆。项目记忆默认自动批准并注入任务。</p>
           <div id="memory-global-cards" class="memory-summary-grid"></div>
           <div class="panel-head memory-section-head"><h3 data-i18n="项目记忆">项目记忆</h3><span id="memory-project-count" class="tag"></span></div>
           <div id="memory-projects" class="cards"></div>

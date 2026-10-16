@@ -14256,6 +14256,7 @@ function renderMemoryCenter() {
   box.innerHTML = projects.map((project) => {
     const taskId = (project.task_ids || [])[0] || "";
     const entries = project.entries || [];
+    const eligiblePending = entries.filter((entry) => entry.status === "pending" && !entry.expired && entry.verified).length;
     const rows = entries.map((entry) => {
       const ver = Number(entry.version || 1);
       const canApprove = entry.status === "pending" && !entry.expired && entry.verified;
@@ -14263,11 +14264,28 @@ function renderMemoryCenter() {
       const action = (name, label) => '<button type="button" class="ghost small" onclick="memoryCenterAction(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'' + name + '\',' + ver + ')">' + esc(t(label)) + '</button>';
       return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(memoryStatusLabel(entry.status)) + (entry.expired ? ' · ' + esc(t("已过期")) : '') + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + (canApprove ? action("approve", "批准") + action("reject", "拒绝") : "") + (entry.status === "approved" ? action("archive", "归档") : "") + (canRestore ? action("restore", "恢复") : "") + (entry.status === "approved" ? action("preview", "查看注入预览") : "") + '</div></article>';
     }).join("");
-    return '<section class="memory-project-card"><div class="memory-project-head"><div><h4>' + esc(project.name || t("项目记忆")) + '</h4><span class="hint">' + esc(t("{0} 条记忆", entries.length)) + '</span></div><span class="tag">' + esc(t("按工作区隔离")) + '</span></div>' + (rows || '<div class="empty">' + esc(t("暂无项目记忆")) + '</div>') + '</section>';
+    const bulk = eligiblePending ? '<button type="button" class="ghost small" onclick="memoryCenterAction(\'' + jsq(taskId) + '\',\'\',\'approve_all\',0)">' + esc(t("一键批准全部待批准 ({0})", eligiblePending)) + '</button>' : '';
+    return '<section class="memory-project-card"><div class="memory-project-head"><div><h4>' + esc(project.name || t("项目记忆")) + '</h4><span class="hint">' + esc(t("{0} 条记忆", entries.length)) + '</span></div><div class="memory-project-actions">' + bulk + '<span class="tag">' + esc(t("按工作区隔离")) + '</span></div></div>' + (rows || '<div class="empty">' + esc(t("暂无项目记忆")) + '</div>') + '</section>';
   }).join("");
 }
 
+window.memoryCenterApproveAll = async function () {
+  try {
+    const data = await api("/api/memory", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify({ action: "approve_all" }) });
+    toast(t("已批准 {0} 条项目记忆", Number(data.approved_count || 0)), false);
+    await loadMemoryCenter();
+  } catch (e) { toast(t("项目记忆操作失败：") + e.message, true); }
+};
+
 window.memoryCenterAction = async function (taskId, id, action, version) {
+  if (action === "approve_all") {
+    try {
+      const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify({ action: "approve_all" }) });
+      toast(t("已批准 {0} 条项目记忆", Number(data.approved_count || 0)), false);
+      await loadMemoryCenter();
+    } catch (e) { toast(t("项目记忆操作失败：") + e.message, true); }
+    return;
+  }
   if (action === "preview") {
     try {
       const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/memory/preview?cap=4000");

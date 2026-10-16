@@ -1014,15 +1014,11 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertEqual(response[0], 409)
         restore.assert_not_called()
 
-    def test_project_memory_requires_approval_and_expires(self):
+    def test_project_memory_auto_approves_and_expires(self):
         with patch.object(project_memory, "DEFAULT_TTL_DAYS", 1):
             row = project_memory.propose(self.root, source_run="run-1", title="Facts",
                                          facts=["uses Python"], now=1000)
-            self.assertEqual(row["status"], "pending")
-            self.assertEqual(project_memory.active_text(self.root, now=1001), "")
-            approved = project_memory.decide(self.root, row["id"], "approve",
-                                             expected_version=1, now=1002)
-            self.assertEqual(approved["status"], "approved")
+            self.assertEqual(row["status"], "approved")
             self.assertIn("uses Python", project_memory.active_text(self.root, now=1003))
             self.assertEqual(project_memory.active_text(self.root, now=1002 + 86400), "")
 
@@ -1030,7 +1026,6 @@ class CompetitiveFeatureTests(unittest.TestCase):
         workdir = self.root / "project-a"
         workdir.mkdir()
         first = project_memory.propose(workdir, title="Architecture", facts=["uses SQLite"], now=1000)
-        project_memory.decide(workdir, first["id"], "approve", expected_version=1, now=1001)
         project_memory.propose(workdir, title="Pending", facts=["needs review"], now=1002)
         empty = self.root / "empty-project"
         empty.mkdir()
@@ -1046,7 +1041,7 @@ class CompetitiveFeatureTests(unittest.TestCase):
         self.assertEqual(projects[0]["task_ids"], ["task-a", "task-a2"])
         self.assertEqual(projects[0]["name"], "Project A")
         self.assertEqual([row["status"] for row in projects[0]["entries"]],
-                         ["pending", "approved"])
+                         ["approved", "approved"])
         self.assertNotIn(str(workdir), json.dumps(projects, ensure_ascii=False))
 
     def test_memory_center_get_aggregates_global_and_project_scopes(self):
@@ -1066,32 +1061,33 @@ class CompetitiveFeatureTests(unittest.TestCase):
 
     def test_project_memory_uses_version_check_for_review(self):
         row = project_memory.propose(self.root, source_run="run-2", facts=["fact"], now=1000)
-        project_memory.decide(self.root, row["id"], "approve", expected_version=1, now=1001)
+        project_memory._append(project_memory._file(self.root),
+                                dict(row, status="pending"))
+        approved = project_memory.decide(self.root, row["id"], "approve", now=1001)
+        self.assertEqual(approved["version"], 2)
         with self.assertRaises(ValueError):
             project_memory.decide(self.root, row["id"], "archive", expected_version=1, now=1002)
 
     def test_project_memory_archive_restore_checks_version_and_expiry(self):
         with patch.object(project_memory, "DEFAULT_TTL_DAYS", 1):
             row = project_memory.propose(self.root, facts=["approved fact"], now=1000)
-            project_memory.decide(self.root, row["id"], "approve",
-                                  expected_version=1, now=1001)
             archived = project_memory.decide(self.root, row["id"], "archive",
-                                             expected_version=2, now=1002)
-            self.assertEqual(archived["version"], 3)
+                                             expected_version=1, now=1002)
+            self.assertEqual(archived["version"], 2)
             self.assertEqual(project_memory.active_text(self.root, now=1003), "")
             with self.assertRaisesRegex(ValueError, "版本已变化"):
                 project_memory.decide(self.root, row["id"], "restore",
-                                      expected_version=2, now=1003)
+                                      expected_version=1, now=1003)
             restored = project_memory.decide(self.root, row["id"], "restore",
-                                             expected_version=3, now=1004)
+                                             expected_version=2, now=1004)
             self.assertEqual(restored["status"], "approved")
-            self.assertEqual(restored["version"], 4)
+            self.assertEqual(restored["version"], 3)
             self.assertIn("approved fact", project_memory.active_text(self.root, now=1005))
             project_memory.decide(self.root, row["id"], "archive",
-                                  expected_version=4, now=1006)
+                                  expected_version=3, now=1006)
             with self.assertRaisesRegex(ValueError, "已过期"):
                 project_memory.decide(self.root, row["id"], "restore",
-                                      expected_version=5, now=1000 + 86400)
+                                      expected_version=4, now=1000 + 86400)
             self.assertEqual(project_memory.active_text(self.root, now=1000 + 86400), "")
 
     def test_project_memory_rejects_workspace_symlink_store(self):

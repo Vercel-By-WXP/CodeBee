@@ -22,8 +22,7 @@ class AgentGovernanceTests(unittest.TestCase):
 
     def _approved_memory(self, title, fact, now):
         row = project_memory.propose(self.root, title=title, facts=[fact], now=now)
-        return project_memory.decide(self.root, row["id"], "approve",
-                                     expected_version=1, now=now + 1)
+        return row
 
     def test_memory_budget_keeps_complete_newest_entries(self):
         self._approved_memory("new", "newest-fact", 4000)
