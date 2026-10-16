@@ -29,8 +29,7 @@ from typing import Iterable, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 NPM = "npm.cmd" if os.name == "nt" else "npm"
-TEST_COMMAND = (sys.executable, "-m", "unittest", "discover", "-s", "tests",
-                "-p", "test_*.py")
+TEST_COMMAND = (sys.executable, str(ROOT / "scripts" / "run_protected_suite.py"))
 
 
 class GateError(RuntimeError):
