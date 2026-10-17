@@ -51,12 +51,17 @@ class CoverGenFlowTests(BaseTest):
         self.assertIn("运行记录", err)
 
     def test_start_running_idempotent(self):
+        from unittest import mock
         from app.core import covergen, store
         task = store.create_task({"type": "direct", "title": "t", "goal": "g",
                                   "workdir": str(self.workdir)})
         run = store.create_run("orchestration", "t", task_id=task["id"])
-        self.assertTrue(covergen.start(task["id"], run["id"])[0])
-        ok, err = covergen.start(task["id"], run["id"])   # running 幂等
+        # Keep the worker pending while asserting the state transition.  The
+        # real worker can finish immediately with a provider-missing failure
+        # on CI, which made this idempotency assertion scheduler-dependent.
+        with mock.patch.object(covergen, "generate_async"):
+            self.assertTrue(covergen.start(task["id"], run["id"])[0])
+            ok, err = covergen.start(task["id"], run["id"])   # running 幂等
         self.assertTrue(ok)
         self.assertEqual((store.get_task(task["id"]).get("cover_gen") or {}).get("status"),
                          "running")

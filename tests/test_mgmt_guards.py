@@ -381,8 +381,10 @@ class TestWingetPathDetect(BaseTest):
             exe = self._make_pkg_exe(td, "Packages", "claude.exe")
             orig_which = manager.shutil.which
             orig_local = os.environ.get("LOCALAPPDATA")
+            orig_platform = os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM")
             manager.shutil.which = lambda c: None   # 服务进程 PATH 落空形态
             os.environ["LOCALAPPDATA"] = str(td)
+            os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = "win32"
             try:
                 self.assertEqual(manager._which_cli("claude"), str(exe))
                 self.assertTrue(manager.detect_entry(
@@ -393,6 +395,10 @@ class TestWingetPathDetect(BaseTest):
                     os.environ.pop("LOCALAPPDATA", None)
                 else:
                     os.environ["LOCALAPPDATA"] = orig_local
+                if orig_platform is None:
+                    os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
+                else:
+                    os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = orig_platform
 
     def test_links_dir_fallback(self):
         import os
@@ -406,8 +412,10 @@ class TestWingetPathDetect(BaseTest):
             exe.write_bytes(b"")
             orig_which = manager.shutil.which
             orig_local = os.environ.get("LOCALAPPDATA")
+            orig_platform = os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM")
             manager.shutil.which = lambda c: None
             os.environ["LOCALAPPDATA"] = str(td)
+            os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = "win32"
             try:
                 self.assertEqual(manager._which_cli("claude"), str(exe))
             finally:
@@ -416,6 +424,10 @@ class TestWingetPathDetect(BaseTest):
                     os.environ.pop("LOCALAPPDATA", None)
                 else:
                     os.environ["LOCALAPPDATA"] = orig_local
+                if orig_platform is None:
+                    os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
+                else:
+                    os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = orig_platform
 
     def test_which_hit_skips_fallback(self):
         """PATH 直接命中时不碰磁盘兜底（热路径零开销）。"""

@@ -35,8 +35,12 @@ class TestResolveMgmtTool(BaseTest):
     def test_which_hit_unchanged(self):
         """PATH 直接命中：命令原样，零改写。"""
         from app.core import manager
-        cmd, missing = manager._resolve_mgmt_tool(
-            "uv tool install --python 3.12 aider-chat", "install")
+        # The hosted runners do not guarantee that uv is installed.  Pin the
+        # PATH hit explicitly so this test exercises the unchanged-command
+        # branch instead of depending on the machine running the suite.
+        with mock.patch("app.core.manager.shutil.which", return_value="/usr/bin/uv"):
+            cmd, missing = manager._resolve_mgmt_tool(
+                "uv tool install --python 3.12 aider-chat", "install")
         self.assertFalse(missing)
         self.assertEqual(cmd, "uv tool install --python 3.12 aider-chat")
 

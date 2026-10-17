@@ -34,12 +34,18 @@ class TestDefaultDataDir(unittest.TestCase):
     def test_empty_repo_data_falls_back_to_user(self):
         # 仅有 ensure_dirs 建出的空 data/ 目录（无 sentinel）→ 视为全新安装
         r = self._repo(sentinel=None)
-        out = paths.default_data_dir(repo=r, environ={"APPDATA": "C:/App"})
+        out = paths.default_data_dir(
+            repo=r,
+            environ={"APPDATA": "C:/App", "CODEBEE_RELEASE_TEST_PLATFORM": "win32"},
+        )
         self.assertEqual(out, Path("C:/App") / "CodeBee")
 
     def test_no_repo_data_uses_user(self):
         r = self._repo(with_data=False)
-        out = paths.default_data_dir(repo=r, environ={"APPDATA": "C:/App"})
+        out = paths.default_data_dir(
+            repo=r,
+            environ={"APPDATA": "C:/App", "CODEBEE_RELEASE_TEST_PLATFORM": "win32"},
+        )
         self.assertEqual(out, Path("C:/App") / "CodeBee")
 
     def test_user_dir_per_platform(self):

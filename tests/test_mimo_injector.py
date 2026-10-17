@@ -21,8 +21,12 @@ class TestMimoInjector(BaseTest):
         import os
         from app.core import manager
         saved_td = os.environ.pop("TUTTI_DATA", None)   # 生产形态（假家在临时目录下）
+        saved_root = os.environ.get("CODEBEE_RELEASE_TEST_HOME_ROOT")
+        os.environ["CODEBEE_RELEASE_TEST_HOME_ROOT"] = str(self.tmp)
         self.addCleanup(lambda: os.environ.__setitem__("TUTTI_DATA", saved_td)
                         if saved_td is not None else None)
+        self.addCleanup(lambda: os.environ.__setitem__("CODEBEE_RELEASE_TEST_HOME_ROOT", saved_root)
+                        if saved_root is not None else os.environ.pop("CODEBEE_RELEASE_TEST_HOME_ROOT", None))
         home = (self.tmp / "home").resolve()
         entry, cfg = self._entry(home)
         cfg.parent.mkdir(parents=True, exist_ok=True)
@@ -54,8 +58,12 @@ class TestMimoInjector(BaseTest):
         import os
         from app.core import manager
         saved_td = os.environ.pop("TUTTI_DATA", None)
+        saved_root = os.environ.get("CODEBEE_RELEASE_TEST_HOME_ROOT")
+        os.environ["CODEBEE_RELEASE_TEST_HOME_ROOT"] = str(self.tmp)
         self.addCleanup(lambda: os.environ.__setitem__("TUTTI_DATA", saved_td)
                         if saved_td is not None else None)
+        self.addCleanup(lambda: os.environ.__setitem__("CODEBEE_RELEASE_TEST_HOME_ROOT", saved_root)
+                        if saved_root is not None else os.environ.pop("CODEBEE_RELEASE_TEST_HOME_ROOT", None))
         home = (self.tmp / "home2").resolve()
         entry, _cfg = self._entry(home)
         prov = {"id": "p2", "name": "Bigmodel", "protocol": "anthropic",
