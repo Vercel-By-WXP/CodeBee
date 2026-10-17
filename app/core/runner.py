@@ -1371,6 +1371,59 @@ def _attempt_credential(att):
 RATE_LIMIT_GRACE_S = 45      # 宽限等待时长：限流窗口通常按分钟计，等一个再试
 RATE_LIMIT_GRACE_N = 1       # 每步宽限次数：只兜一次，防限流长拖整轮时间
 
+# Cline 4.1.25 (2026-10-16) added bounded retries when a provider breaks a
+# response stream.  Replaying a write-capable coding turn can duplicate side
+# effects, so CodeBee only uses this budget for readonly/planning/review calls.
+STREAM_RETRY_N = 2
+STREAM_RETRY_DELAY_S = 1.0
+_STREAM_RETRY_MARKERS = (
+    "stream disconnected", "stream closed", "connection reset",
+    "connection aborted", "incomplete stream", "bodytimeouterror",
+    "body timeout",
+)
+
+
+def _stream_retryable_failure(res, error, *, kind, readonly):
+    """Whether a readonly stream failed in a way safe to replay in place."""
+    if not readonly or kind not in ("codex", "claude"):
+        return False
+    if not isinstance(res, dict) or res.get("ok"):
+        return False
+    if res.get("cancelled") or res.get("timed_out") or res.get("deadline_exceeded"):
+        return False
+    if res.get("abort_marker"):
+        return True
+    blob = " ".join(str(res.get(key) or "") for key in ("stderr", "stdout"))
+    blob = (str(error or "") + " " + blob).lower()
+    return any(marker in blob for marker in _STREAM_RETRY_MARKERS)
+
+
+def _stream_retry_wait(cancel_event, seconds):
+    """Wait briefly between readonly stream retries while honoring cancel."""
+    try:
+        seconds = max(0.0, float(seconds))
+    except (TypeError, ValueError):
+        seconds = STREAM_RETRY_DELAY_S
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
+        time.sleep(min(0.25, max(0.01, end - time.monotonic())))
+    return cancel_event is None or not cancel_event.is_set()
+
+
+def _stream_retry_cancelled(out, cancel_event):
+    """Propagate cancellation observed during retry backoff to routing gates."""
+    if cancel_event is None or not cancel_event.is_set():
+        return False
+    out["ok"] = False
+    out["error"] = "调用已取消"
+    out["error_code"] = ErrorCode.CANCELLED
+    raw = out.get("raw")
+    if isinstance(raw, dict):
+        raw["cancelled"] = True
+    return True
+
 
 def _refusal_error(err):
     return classify_error_text(err) == ErrorCode.VENDOR_REFUSAL
@@ -2278,7 +2331,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         elif att["from_chain"] and "codex_provider" in eff_agent:
             # 链内条目未注入供应商时不能沿用上一条（可能是另一家厂商）的 -c 覆盖
             del eff_agent["codex_provider"]
-        for attempt in range(2):  # claude 偶发空响应（0 token）自动重试一次
+        stream_retries = 0
+        base_attempts = 2 if kind in ("claude", "opencode") else 1
+        max_attempts = base_attempts + (STREAM_RETRY_N if readonly
+                                        and kind in ("codex", "claude") else 0)
+        for attempt in range(max_attempts):  # claude 空响应 + 只读流中断各自有界重试
             remaining = model_deadline - time.monotonic()
             if remaining <= 0:
                 res = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
@@ -2337,7 +2394,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                    "tokens": 0, "usage": None, "error": "", "error_code": "",
                    "sid": "", "raw": res, "kind": kind, "model": att["model"],
                    "provider_id": att.get("provider_id") or "",
-                   "provider": att.get("provider") or {}}
+                   "provider": att.get("provider") or {},
+                   "stream_retries": stream_retries}
             if not res["ok"]:
                 if (kind == "opencode" and attempt == 0
                         and _opencode_fast_banner_death(res)
@@ -2420,6 +2478,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       or _classify_failure(res, kind=kind))
                 out["error"] += _login_hint(kind, out["error_code"],
                                             out["error"])
+                if (stream_retries < STREAM_RETRY_N
+                        and _stream_retryable_failure(
+                            res, out["error"], kind=kind, readonly=readonly)
+                        and model_deadline - time.monotonic() > 1
+                        and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
+                    stream_retries += 1
+                    _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                    continue
                 break
             if kind == "codex":
                 out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
@@ -2492,6 +2558,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=None)
                     out["error"] += _login_hint("claude", out["error_code"], out["error"])
+                    if (stream_retries < STREAM_RETRY_N
+                            and _stream_retryable_failure(
+                                res, out["error"], kind=kind, readonly=readonly)
+                            and model_deadline - time.monotonic() > 1
+                            and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
+                        stream_retries += 1
+                        _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                        continue
                     break
                 out["text"] = parsed["text"]
                 out["cost_usd"] = parsed["cost_usd"]
@@ -2507,6 +2581,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     if drift:
                         out["error"] += "；" + drift
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=parsed)
+                    if (stream_retries < STREAM_RETRY_N
+                            and _stream_retryable_failure(
+                                res, out["error"], kind=kind, readonly=readonly)
+                            and model_deadline - time.monotonic() > 1
+                            and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
+                        stream_retries += 1
+                        _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                        continue
                     break
                 if not out["text"] and attempt == 0:
                     continue  # 空响应，同模型重试
@@ -2520,6 +2602,14 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["text"] = clean_cli_text(res["stdout"]).strip()
                 if not out["text"]:
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
+            if (not out.get("ok") and stream_retries < STREAM_RETRY_N
+                    and _stream_retryable_failure(
+                        res, out.get("error"), kind=kind, readonly=readonly)
+                    and model_deadline - time.monotonic() > 1
+                    and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
+                stream_retries += 1
+                _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                continue
             break
         _report_key(att, out)
         raw = out.get("raw") or {}
