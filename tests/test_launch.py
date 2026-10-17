@@ -22,6 +22,13 @@ import unittest.mock as mock
 from base import BaseTest
 
 
+def _mark_windows_contract(testcase):
+    """Run Windows console-contract assertions deterministically on POSIX CI."""
+    patcher = mock.patch.dict("os.environ", {"CODEBEE_RELEASE_TEST_PLATFORM": "win32"})
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+
+
 def _free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -82,6 +89,7 @@ class TestLaunchModelSync(BaseTest):
 
     def setUp(self):
         super().setUp()
+        _mark_windows_contract(self)
         self.home = self.tmp / "home"
         self.home.mkdir()
         # 动态空闲端口：不撞真机 dsh web 的 18790（否则走「已在运行」分支）
@@ -276,6 +284,10 @@ class TestCodexSync(BaseTest):
 
 
 class TestLaunch(BaseTest):
+
+    def setUp(self):
+        super().setUp()
+        _mark_windows_contract(self)
 
     def test_catalog_launch_patch_idempotent(self):
         """内置条目全部补上 launch；用户手写的 launch 不被覆盖。"""
@@ -555,6 +567,7 @@ class TestClaudeSync(BaseTest):
 
     def setUp(self):
         super().setUp()
+        _mark_windows_contract(self)
         self.home = self.tmp / "home"
         self.home.mkdir()
 
@@ -630,6 +643,7 @@ class TestOpencodeSync(BaseTest):
 
     def setUp(self):
         super().setUp()
+        _mark_windows_contract(self)
         self.home = self.tmp / "home"
         self.home.mkdir()
 
@@ -756,6 +770,7 @@ class TestQwenSync(BaseTest):
 
     def setUp(self):
         super().setUp()
+        _mark_windows_contract(self)
         self.home = self.tmp / "home"
         self.home.mkdir()
 

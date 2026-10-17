@@ -27,8 +27,8 @@ _DATA_SENTINELS = ("catalog.json", "models.json", "orchestration.json", "tasks",
 def _user_data_dir(platform=None, environ=None, home=None) -> Path:
     """全局安装场景的用户数据目录（不创建，仅计算）。home 供测试注入。
     新装落 CodeBee；老 Tutti 目录存在则沿用（改名零迁移）。"""
-    platform = platform or os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") or sys.platform
     env = os.environ if environ is None else environ
+    platform = platform or env.get("CODEBEE_RELEASE_TEST_PLATFORM") or sys.platform
     home = Path(home) if home else Path.home()
     if platform == "win32":
         appdata = env.get("APPDATA")
