@@ -277,7 +277,8 @@ class TestLiveFakeServer(BaseTest):
              "args": ["-c", "import time; time.sleep(30)"], "env": {}},
             "echo", {}, deadline=started + 0.2)
         self.assertFalse(result["ok"])
-        self.assertIn("总时限", result["error"])
+        # 0.1.117 加固：初始化阶段的时限拒绝文案改为「初始化未执行」
+        self.assertIn("初始化未执行", result["error"])
         self.assertLess(time.monotonic() - started, 3)
 
     def test_session_closes_process_and_pipes(self):
