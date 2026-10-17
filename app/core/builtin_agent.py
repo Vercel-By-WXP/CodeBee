@@ -863,7 +863,7 @@ def _tool_web_search(args, sandbox=None, deadline=None):
 
 
 def _tool_read_task_output(workdir, args, sandbox=None):
-    from . import policy, store
+    from . import store
     task_id = str((args or {}).get("task_id") or "").strip()
     task = store.get_task(task_id)
     if not task:
@@ -969,12 +969,10 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
         return "（goal 不能为空）"
     requested_workdir = str(args.get("workdir") or workdir or "").strip()
     if sandbox and requested_workdir:
-        from . import policy
         if not _sandbox_path_allowed(requested_workdir, sandbox):
             return "（沙箱拒绝：子任务工作目录超出允许范围，未创建）"
     child_sandbox = dict(sandbox) if isinstance(sandbox, dict) else None
     if child_sandbox and requested_workdir:
-        from . import policy
         parent_root = Path(workdir or ".").expanduser().resolve()
         child_root = Path(requested_workdir).expanduser().resolve()
         if child_root != parent_root:
