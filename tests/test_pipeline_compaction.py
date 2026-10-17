@@ -45,6 +45,26 @@ def _real_agent():
 
 class TestPipelineCompactionWiring(BaseTest):
 
+    def test_session_cache_rebinds_after_data_directory_changes(self):
+        """同 run_id 换临时数据目录时不得复用已失效的旧日志对象。"""
+        from app.core import pipeline, paths
+        first = pipeline._get_session("r-rebind")
+        first.append("user_message", {"content": "old"})
+        old_path = first.store_path
+        old_data = self.data_dir
+        new_data = self.tmp / "data-next"
+        new_runs = new_data / "runs"
+        new_runs.mkdir(parents=True)
+        paths.RUNS_DIR = new_runs
+        try:
+            second = pipeline._get_session("r-rebind")
+            self.assertIsNot(first, second)
+            self.assertNotEqual(old_path, second.store_path)
+            second.append("user_message", {"content": "new"})
+            self.assertTrue(Path(second.store_path).exists())
+        finally:
+            paths.RUNS_DIR = old_data / "runs"
+
     def setUp(self):
         super().setUp()
         from app.core.token_meter import token_meter

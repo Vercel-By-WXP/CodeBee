@@ -320,11 +320,17 @@ def _ensure_runtime_session(run_id, workdir, role, prompt, agent):
 def _get_session(run_id):
     """每 run 一个 surface 会话日志（data/runs/<id>/session.jsonl）。"""
     with _sessions_lock:
+        sdir = paths_mod.RUNS_DIR / run_id
+        store_path = str(sdir / "session.jsonl")
         s = _sessions_cache.get(run_id)
+        # Tests and embedded callers can rebind RUNS_DIR between isolated
+        # runs.  Never reuse a Session whose JSONL path belongs to a removed
+        # data directory (a reused run id would otherwise raise FileNotFoundError).
+        if s is not None and getattr(s, "store_path", None) != store_path:
+            s = None
         if s is None:
-            sdir = paths_mod.RUNS_DIR / run_id
             sdir.mkdir(parents=True, exist_ok=True)
-            s = session_log_mod.Session(run_id, store_path=str(sdir / "session.jsonl"))
+            s = session_log_mod.Session(run_id, store_path=store_path)
             _sessions_cache[run_id] = s
         return s
 
