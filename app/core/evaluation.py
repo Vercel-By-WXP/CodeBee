@@ -110,7 +110,11 @@ def record(kind: str, provider_id: str, model: str, result: dict,
              if isinstance(candidate, dict)),
             default=0.0,
         )
-        if latest_invalidated_at >= _safe_float(out.get("evaluated_at")):
+        # A strictly newer invalidation happened after this evaluation was
+        # timestamped; preserve that invalidation.  Only an exact timestamp
+        # tie is the coarse-clock ordering ambiguity we need to break.
+        if (latest_invalidated_at and
+                latest_invalidated_at == _safe_float(out.get("evaluated_at"))):
             evaluated_at = latest_invalidated_at + 1e-6
             out["evaluated_at"] = evaluated_at
             out["expires_at"] = evaluated_at + ttl_seconds()

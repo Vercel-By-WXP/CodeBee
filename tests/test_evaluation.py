@@ -76,6 +76,18 @@ class TestEvaluationExpiry(BaseTest):
             "model", "provider-a", "model-a",
             now=fresh["evaluated_at"] + 1)["fresh"])
 
+    def test_newer_invalidation_keeps_evaluation_stale(self):
+        """A failure timestamp newer than the evaluation must not be hidden."""
+        from app.core import evaluation
+
+        with mock.patch.object(evaluation.time, "time", side_effect=[1000.0, 1001.0]):
+            evaluation.record("model", "provider-a", "model-a",
+                              {"ok": True, "status": "passed"})
+            evaluation.invalidate_provider("provider-a", model="model-a")
+        stale = evaluation.get("model", "provider-a", "model-a", now=1001.0)
+        self.assertFalse(stale["fresh"])
+        self.assertEqual(stale["stale_reason"], "health_failure")
+
     def test_stale_evidence_is_not_usable_for_routing(self):
         from app.core import evaluation, modelhub
 
