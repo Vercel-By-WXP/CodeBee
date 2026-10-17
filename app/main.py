@@ -1767,7 +1767,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return self._json(404, {"error": "操作不存在或状态无效"})
             return self._json(200, {"ok": True, "operation": operations.get(m.group(1))})
-        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue|params)$", path)
+        m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue|early-finish|params)$", path)
         if m:
             if m.group(2) == "archive":
                 body = self._body()
@@ -1820,6 +1820,41 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(503, {"error": qerr, "run_id": run["id"]})
                 return self._json(200, {"ok": True, "task_id": new_task["id"],
                                         "run_id": run["id"]})
+            elif m.group(2) == "early-finish":
+                body = self._body() or {}
+                ok, err, new_task = store.early_finish_task(
+                    m.group(1), body.get("target_chapter"), body.get("reason"))
+                if not ok:
+                    return self._json(400, {"error": err})
+                run = None
+                try:
+                    run = store.create_run("orchestration", new_task["title"],
+                                           task_id=new_task["id"])
+                    store.update_task_status(new_task["id"], "queued")
+                except Exception:
+                    log.exception("提前完结运行初始化失败 task=%s run=%s",
+                                  new_task.get("id"), (run or {}).get("id"))
+                    if run:
+                        try:
+                            store.update_run(run["id"], status="failed",
+                                             error="运行记录创建失败，请稍后重试",
+                                             ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+                        except Exception:
+                            log.exception("提前完结运行失败收口失败 run=%s", run.get("id"))
+                    try:
+                        store.update_task_status(new_task["id"], "failed")
+                    except Exception:
+                        log.exception("提前完结任务失败收口失败 task=%s", new_task.get("id"))
+                    return self._json(503, {"error": "运行记录创建失败，请稍后重试"})
+                queued, qerr = self._enqueue_run(
+                    run["id"], new_task["id"],
+                    {"kind": "orchestration", "run_id": run["id"],
+                     "task_id": new_task["id"]})
+                if not queued:
+                    return self._json(503, {"error": qerr, "run_id": run["id"]})
+                return self._json(200, {"ok": True, "task_id": new_task["id"],
+                                        "run_id": run["id"],
+                                        "planned_end_chapter": (new_task.get("serial") or {}).get("early_finish", {}).get("target_chapter")})
             elif m.group(2) == "rename":
                 ok, err = store.rename_task(m.group(1), self._body().get("title"))
             elif m.group(2) == "params":

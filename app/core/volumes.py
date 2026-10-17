@@ -355,6 +355,33 @@ def merge_titles(plan, named):
     return out
 
 
+def cap_plan(plan, target):
+    """截断到指定最终章，避免提前完结继续暴露旧的长卷范围。"""
+    try:
+        target = int(target)
+    except (TypeError, ValueError):
+        return list(plan or [])
+    if target < 1:
+        return []
+    out = []
+    for ent in plan or []:
+        try:
+            first = int(ent.get("first") or 0)
+        except (TypeError, ValueError):
+            continue
+        if first < 1 or first > target:
+            continue
+        item = dict(ent)
+        last = item.get("last")
+        try:
+            last = int(last) if last is not None else None
+        except (TypeError, ValueError):
+            last = None
+        item["last"] = target if last is None or last > target else last
+        out.append(item)
+    return out
+
+
 def norm_volumes(raw, per, start, n, plan=None):
     """收大纲 JSON 里模型给的卷名/卷弧光，只留本批章号真正覆盖到的卷
     （模型可能多写、乱写卷号，一律按卷规划表过滤；卷边界不采信模型）。

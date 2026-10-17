@@ -71,6 +71,29 @@ def plan_for_task(task, upto=0):
     """
     task = task if isinstance(task, dict) else {}
     serial = task.get("serial") or {}
+    early_target = None
+    try:
+        early = serial.get("early_finish") if isinstance(serial, dict) else None
+        if isinstance(early, dict):
+            early_target = int(early.get("target_chapter") or 0) or None
+    except (TypeError, ValueError):
+        early_target = None
+
+    def cap(items):
+        if early_target is None:
+            return items
+        out = []
+        for item in items or []:
+            row = dict(item)
+            lo = int(row.get("from") or 0)
+            hi = int(row.get("to") or 0)
+            if lo and lo > early_target:
+                continue
+            if not hi or hi > early_target:
+                row["to"] = early_target
+            out.append(row)
+        return out
+
     if isinstance(serial, dict) and (serial.get("volumes") or serial.get("volume_chapters")):
         try:
             from .. import volumes as story_volumes
@@ -85,10 +108,10 @@ def plan_for_task(task, upto=0):
                     "to": int(v.get("last") or 0)}
                    for i, v in enumerate(plan or [], 1)]
             if out:
-                return out
+                return cap(out)
         except Exception:
             pass
-    return load_plan(task.get("workdir") or "")
+    return cap(load_plan(task.get("workdir") or ""))
 
 
 def _parse_outline(fp):

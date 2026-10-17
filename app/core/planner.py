@@ -282,6 +282,8 @@ __SKILLS__
 - 题材健康，无违规内容，符合平台签约调性。
 __VOLUMES__
 
+__EARLY_FINISH__
+
 ## 小说目标
 __GOAL__
 
@@ -321,6 +323,8 @@ __LOCKED_OUTLINE__
 
 ## 最新一章结尾（衔接锚点）
 __PREV_TAIL__
+
+__EARLY_FINISH__
 
 ## 小说目标
 __GOAL__
@@ -496,6 +500,14 @@ def book_volume_plan(task, outline, upto):
     plan = volumes.build_plan(serial.get("volumes"),
                               volumes.norm_per(serial.get("volume_chapters")),
                               upto=upto)
+    early = serial.get("early_finish") if isinstance(serial.get("early_finish"), dict) else None
+    if early:
+        try:
+            target = int(early.get("target_chapter") or 0)
+        except (TypeError, ValueError):
+            target = 0
+        if target > 0:
+            plan = volumes.cap_plan(plan, target)
     if not plan:
         return []
     named = dict(_chain_volume_names(task))
@@ -602,6 +614,26 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     n = int(serial.get("chapters") or 8)
     wpc = int(serial.get("words_per_chapter") or 2500)
     start = int(serial.get("start_chapter") or 1)
+    early_plan = serial.get("early_finish") if isinstance(serial.get("early_finish"), dict) else None
+    early_target = 0
+    if early_plan:
+        try:
+            early_target = int(early_plan.get("target_chapter") or 0)
+        except (TypeError, ValueError):
+            early_target = 0
+        if early_target > 0:
+            n = min(n, max(0, early_target - start + 1))
+    if n <= 0:
+        n = 1
+    if early_plan and early_plan.get("target_chapter"):
+        early_block = ("## 提前完结规划（必须执行）\n"
+                       "本书因连载表现调整为提前完结，最终章固定为第 %s 章。"
+                       "请把剩余章节重新组织成完整收束路线：优先回收主线、人物弧光、"
+                       "关键伏笔与读者承诺，不再扩展新的长期支线或卷；最终章必须有完本感。"
+                       "不得把提前完结写成突然中断，也不得改写已发布章节。\n"
+                       % early_plan["target_chapter"])
+    else:
+        early_block = ""
     # The orchestrator must see the same stable capability snapshot as the
     # drafting/review calls.  Previously this path only loaded the legacy
     # skills/knowledge pair, silently excluding authorized plugins and local
@@ -612,7 +644,9 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     # 卷边界由章号确定性推导，本批写不到的高章号也要铺出来（upto=start+n-1）。
     vol_per = volumes.norm_per(serial.get("volume_chapters"))
     vol_plan = volumes.build_plan(serial.get("volumes"), vol_per,
-                                  upto=start + n - 1)
+                                  upto=min(start + n - 1, early_target) if early_target else start + n - 1)
+    if early_target:
+        vol_plan = volumes.cap_plan(vol_plan, early_target)
     prev_volnames = {}
     if start > 1:
         prev_lines, done, prev_title, prev_tail, prev_volnames = _prev_serial_story(task)
@@ -645,6 +679,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
                   .replace("__PREV_OUTLINE__", prev_lines or "（无大纲记录，请依据下方最新一章结尾与小说目标衔接）")
                   .replace("__LOCKED_OUTLINE__", locked_block or "（无）")
                   .replace("__PREV_TAIL__", prev_tail or "（无）")
+                  .replace("__EARLY_FINISH__", early_block)
                   .replace("__GOAL__", task["goal"])
                   .replace("__CONTEXT__", task.get("context") or "（无）"))
     else:
@@ -652,6 +687,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
                   .replace("__N__", str(n)).replace("__W__", str(wpc))
                   .replace("__VOLUMES_KEY__", vol_key)
                   .replace("__VOLUMES__", vol_block)
+                  .replace("__EARLY_FINISH__", early_block)
                   .replace("__GOAL__", task["goal"])
                   .replace("__CONTEXT__", task.get("context") or "（无）"))
 

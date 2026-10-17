@@ -122,6 +122,29 @@ def _default_timeout_s(task):
     return DEFAULT_TASK_TIMEOUT_S
 
 
+def _norm_early_finish(value):
+    """Normalize the durable early-finish plan carried by a serial batch."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        target = max(1, min(500, int(value.get("target_chapter") or 0)))
+    except (TypeError, ValueError):
+        return None
+    if target < 2:
+        return None
+    out = {"target_chapter": target}
+    source = str(value.get("source_task") or "").strip()
+    if re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", source):
+        out["source_task"] = source
+    reason = str(value.get("reason") or "").strip()
+    if reason:
+        out["reason"] = reason[:240]
+    requested_at = str(value.get("requested_at") or "").strip()
+    if requested_at:
+        out["requested_at"] = requested_at[:32]
+    return out
+
+
 # ---------------------------------------------------------------- 任务
 
 def create_task(payload):
@@ -335,6 +358,9 @@ def create_task(payload):
             if s:
                 if isinstance(serial.get("opening_gate"), bool):
                     s["opening_gate"] = serial["opening_gate"]
+                early_finish = _norm_early_finish(serial.get("early_finish"))
+                if early_finish:
+                    s["early_finish"] = early_finish
                 # 续写：从 start_chapter 章接着写（章节文件/步骤/评分都用全书章号）；
                 # continues 指向上一批任务，生成大纲时回溯前情保证剧情衔接
                 try:
@@ -2104,6 +2130,19 @@ def serial_book_progress(task):
     return last
 
 
+def serial_early_finish_plan(task):
+    """Return the active shortened-ending plan for a serial chain, if any."""
+    cur, seen = task, set()
+    while cur and cur.get("id") not in seen and len(seen) < 50:
+        seen.add(cur.get("id"))
+        plan = _norm_early_finish((cur.get("serial") or {}).get("early_finish"))
+        if plan:
+            return plan
+        parent = str((cur.get("serial") or {}).get("continues") or "")
+        cur = get_task(parent) if parent else None
+    return None
+
+
 def continue_info(task_id):
     """「继续连载」弹框数据：能否续、已写到第几章、默认续几章。任务不存在返回 None。"""
     task = get_task(task_id)
@@ -2114,10 +2153,13 @@ def continue_info(task_id):
         default_ch = int(serial.get("chapters") or 8)
     except Exception:
         default_ch = 8
+    plan = serial_early_finish_plan(task)
     info = {"task_id": task_id, "serial": bool(serial),
             "last_chapter": 0, "default_chapters": default_ch,
             "words_per_chapter": int(serial.get("words_per_chapter") or 2500),
-            "can": False, "reason": ""}
+            "can": False, "reason": "",
+            "early_finish": plan or None,
+            "planned_end_chapter": (plan or {}).get("target_chapter") if plan else None}
     if not serial:
         info["reason"] = "只有连载任务支持继续连载"
         return info
@@ -2130,6 +2172,14 @@ def continue_info(task_id):
             return info
     last = serial_book_progress(task)
     info["last_chapter"] = last
+    if plan:
+        chain = serial_chain_ids(task_id)
+        if chain and chain[-1] != task_id:
+            info["reason"] = "请从最新连载批次继续，避免旧批次重复规划"
+            return info
+    if plan and last >= int(plan["target_chapter"]):
+        info["reason"] = "已达到提前完结规划的最终章"
+        return info
     if last < 1:
         info["reason"] = "还没写成任何一章（工作目录里没有 chapter-*.md），先跑完一次连载"
         return info
@@ -2148,10 +2198,18 @@ def continue_task(task_id, chapters=None):
     if not info.get("can"):
         return False, info.get("reason") or "当前不能继续连载", None
     serial = task["serial"]
+    plan = serial_early_finish_plan(task)
+    remaining = None
+    if plan:
+        remaining = max(0, int(plan["target_chapter"]) - info["last_chapter"])
+        if remaining <= 0:
+            return False, "已达到提前完结规划的最终章", None
     try:
         batch = max(1, min(20, int(chapters or serial.get("chapters") or 8)))
     except Exception:
-        batch = int(serial.get("chapters") or 8)
+        batch = max(1, min(20, int(serial.get("chapters") or 8)))
+    if remaining is not None:
+        batch = min(batch, remaining)
     # 标题：去掉历史「·续N」后缀取根名，按链条代数标 ·续 / ·续2 / ·续3…
     base_title = re.sub(r"·续\d*$", "", task.get("title") or "").strip() or task_id
     gen, cur, seen = 0, task, set()
@@ -2179,6 +2237,8 @@ def continue_task(task_id, chapters=None):
                    "start_chapter": info["last_chapter"] + 1,
                    "continues": task_id},
     }
+    if plan:
+        payload["serial"]["early_finish"] = plan
     if serial.get("variants"):   # 赛马配置随链条沿用
         payload["serial"]["variants"] = serial["variants"]
     # 多线推演（branches）同口径随链条沿用：漏带则续写批次恒回 1，
@@ -2197,6 +2257,98 @@ def continue_task(task_id, chapters=None):
         new = create_task(payload)
     except ValueError as e:
         return False, str(e), None
+    # A scheduled publishing policy belongs to the book chain, not one batch.
+    # Carry it to the new batch so chapters produced by the shortened ending
+    # continue through the same unattended publishing workflow.
+    if isinstance(task.get("auto_publish"), dict):
+        set_auto_publish(new["id"], dict(task["auto_publish"]))
+        new = get_task(new["id"]) or new
+    return True, "", new
+
+
+def early_finish_info(task_id):
+    """Return the current ending-plan state for the early-finish UI."""
+    info = continue_info(task_id)
+    if info is None:
+        return None
+    info["can"] = bool(info.get("can") and not info.get("early_finish"))
+    if info.get("early_finish"):
+        info["reason"] = "已有提前完结规划；后续批次会按最终章继续完成"
+    return info
+
+
+def early_finish_task(task_id, target_chapter, reason=""):
+    """Create the first shortened-ending continuation batch.
+
+    Existing chapter files remain the source of truth. The new batch carries a
+    durable target so later continuation cannot accidentally grow the book past
+    the replanned ending.
+    """
+    task = get_task(task_id)
+    if not task:
+        return False, "任务不存在", None
+    if not task.get("serial"):
+        return False, "只有连载任务支持提前完结", None
+    if serial_early_finish_plan(task):
+        return False, "该连载已经有提前完结规划", None
+    info = continue_info(task_id)
+    if not info or not info.get("can"):
+        return False, (info or {}).get("reason") or "当前不能提前完结", None
+    try:
+        target = int(target_chapter)
+    except (TypeError, ValueError):
+        return False, "最终章号必须是整数", None
+    target = max(1, min(500, target))
+    if target <= int(info.get("last_chapter") or 0):
+        return False, "最终章号必须大于当前已完成章节", None
+    plan = {"target_chapter": target, "source_task": task_id,
+            "requested_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    if str(reason or "").strip():
+        plan["reason"] = str(reason).strip()[:240]
+    batch = min(20, target - int(info["last_chapter"]))
+    # Pin the plan on the current task and chain root before creating the child
+    # batch. This closes the bypass where an older batch's entry could start an
+    # uncapped branch after early-finish was requested. Re-check under LOCK so
+    # two rapid clicks cannot create competing ending plans.
+    pinned_ids = []
+    previous = {}
+    with LOCK:
+        current = _TASKS.get(task_id) or get_task(task_id)
+        if not current:
+            return False, "任务不存在", None
+        if serial_early_finish_plan(current):
+            return False, "该连载已经有提前完结规划", None
+        root = current
+        seen = set()
+        while root and root.get("id") not in seen:
+            seen.add(root.get("id"))
+            parent_id = str((root.get("serial") or {}).get("continues") or "")
+            parent = get_task(parent_id) if parent_id else None
+            if not parent:
+                break
+            root = parent
+        for item in (root, current):
+            if not item or item.get("id") in pinned_ids:
+                continue
+            tid = item["id"]
+            pinned_ids.append(tid)
+            previous[tid] = dict((item.get("serial") or {}).get("early_finish") or {})
+            item["serial"] = dict(item.get("serial") or {})
+            item["serial"]["early_finish"] = plan
+            _save_json(paths.TASKS_DIR / (tid + ".json"), item)
+    ok, err, new = continue_task(task_id, chapters=batch)
+    if not ok:
+        with LOCK:
+            for tid in pinned_ids:
+                item = _TASKS.get(tid) or get_task(tid)
+                if not item:
+                    continue
+                if previous.get(tid):
+                    item["serial"]["early_finish"] = previous[tid]
+                else:
+                    item["serial"].pop("early_finish", None)
+                _save_json(paths.TASKS_DIR / (tid + ".json"), item)
+        return False, err, None
     return True, "", new
 
 

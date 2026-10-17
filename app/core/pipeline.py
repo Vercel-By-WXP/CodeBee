@@ -3736,6 +3736,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # 续写批次的全书起始章号（=1 为全新连载；>1 时章节文件/步骤/评分都用全书章号，
     # 与上一批任务在同一工作目录无缝衔接）
     start = int(serial.get("start_chapter") or 1)
+    early_target = 0
+    early_plan = serial.get("early_finish") if isinstance(serial.get("early_finish"), dict) else None
+    if early_plan:
+        try:
+            early_target = int(early_plan.get("target_chapter") or 0)
+        except (TypeError, ValueError):
+            early_target = 0
     # 故事圣经：工作目录里的 story-bible.md，整个 run 内字节稳定（前缀缓存友好）
     bible = _story_bible(workdir)
     # 剧情模块库：plot-modules.md（拆文沉淀的可复用素材模块）并入同一注入块，
@@ -3847,6 +3854,23 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                               outline.get("source", "?"),
                               outline.get("book_title") or task["title"], n),
                           duration_s=0.1 if impl.get("mode") == "mock" else None)
+    # The planner normally returns the requested batch size, but a retry may
+    # inherit an older outline created before an early-ending plan existed.
+    # Enforce the target at the pipeline boundary as well, before any chapter
+    # drafting loop can see an out-of-range outline.
+    outline_chapters = outline.get("chapters") if isinstance(outline, dict) else None
+    if isinstance(outline_chapters, list) and outline_chapters:
+        n = len(outline_chapters)
+    if early_target:
+        allowed = early_target - start + 1
+        if allowed < 1:
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="提前完结最终章早于本批起始章，已阻止越界写作",
+                             ended_at=_now())
+            return
+        if n > allowed:
+            outline["chapters"] = outline_chapters[:allowed]
+            n = allowed
     # 全书文风锚：续写批次模型没回锚点时回查前批大纲兜底，再渲染成注入块。
     # 起草/修订模板用占位版本（永远有内容），评审面只在真有锚时注入。
     if not outline.get("style_anchor") and start > 1:

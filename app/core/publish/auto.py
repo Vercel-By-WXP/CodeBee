@@ -264,6 +264,13 @@ def pending(task_id, platform):
         plan = _volumes.plan_for_task(task, upto=max_chapter)
     except Exception:
         plan = []
+    early_target = None
+    try:
+        early = store.serial_early_finish_plan(task)
+        if early:
+            early_target = int(early.get("target_chapter") or 0) or None
+    except (AttributeError, TypeError, ValueError):
+        early_target = None
     out, seen = [], set()
     for f in files:
         name = str(f.get("name") or "")
@@ -272,7 +279,7 @@ def pending(task_id, platform):
         if name.startswith(_DOC_DIR_MARKS):
             continue
         n = ledger.parse_chapter_no(name)
-        if n <= 0 or n in done or n in seen:
+        if n <= 0 or (early_target is not None and n > early_target) or n in done or n in seen:
             continue
         seen.add(n)
         vol = _volumes.volume_for(n, plan) if plan else None
@@ -856,6 +863,22 @@ def due_tasks(now=None):
         ap = task.get("auto_publish")
         if not isinstance(ap, dict) or not ap.get("enabled"):
             continue
+        # A continuation batch inherits the book-level schedule.  Only the
+        # newest chain member that still carries a schedule may own the timer;
+        # otherwise root and child batches can fire the same book concurrently.
+        try:
+            chain = store.serial_chain_ids(task["id"])
+            configured_latest = next(
+                (tid for tid in reversed(chain)
+                 if isinstance((store.get_task(tid) or {}).get("auto_publish"), dict)),
+                task["id"],
+            )
+            if configured_latest != task["id"]:
+                continue
+        except Exception:
+            # Scheduling must remain available for legacy/non-serial tasks if
+            # an old malformed chain cannot be traversed.
+            pass
         if ap.get("auto_submit"):
             from .. import contracts
             contract = contracts.get(task["id"])

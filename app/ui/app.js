@@ -4865,6 +4865,9 @@ function taskContextItems(det) {
     const sTask = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
     if (sTask && sTask.serial && st !== "running" && st !== "queued")
       items.push({ label: t("继续连载（新任务）"), fn: () => continueSerial(taskId) });
+    if (sTask && sTask.serial && !sTask.serial.early_finish
+      && st !== "running" && st !== "queued")
+      items.push({ label: t("提前完结"), fn: () => earlyFinishSerial(taskId) });
     // 连载完整跑完但未达标：给「重写未达标章」，与详情页按钮同源
     // （task_latest 全量下发最近一次 run，verdict 就在里面）
     const lrTask = ((S.state || {}).task_latest || {})[taskId];
@@ -5103,6 +5106,39 @@ async function continueSerial(id) {
   poll();
 }
 window.continueSerial = continueSerial;
+
+/* 提前完结：保留已完成章节，按用户给出的最终章号创建一批收束用续写任务。
+ * 后端把目标章固化到连载链，后续章节继续正常起草、评审和发布，直到目标章。
+ */
+async function earlyFinishSerial(id) {
+  let info;
+  try {
+    info = await api("/api/tasks/" + encodeURIComponent(id) + "/continue-info", { busy: true });
+  } catch (e) { toast(t("无法读取连载进度：") + e.message, true); return; }
+  if (!info || !info.can) {
+    toast(t("无法提前完结：") + ((info && info.reason) || t("当前状态不支持")), true);
+    return;
+  }
+  const last = Number(info.last_chapter || 0);
+  const suggested = last + Math.max(1, Number(info.default_chapters || 8));
+  const raw = await uiPrompt(
+    t("当前已完成第 {0} 章。请输入新的最终章号；系统会重新规划收束路线并继续写完、发布到该章。", last),
+    String(suggested));
+  const target = parseInt(raw, 10);
+  if (!target || target <= last) {
+    if (raw != null && String(raw).trim()) toast(t("最终章号必须大于当前已完成章节"), true);
+    return;
+  }
+  let result;
+  try {
+    result = await api("/api/tasks/" + encodeURIComponent(id) + "/early-finish",
+      { method: "POST", body: { target_chapter: target } });
+  } catch (e) { toast(t("创建提前完结规划失败：") + e.message, true); return; }
+  chatJumpLatest();
+  if (result && result.run_id) jumpToRun(result.run_id);
+  poll();
+}
+window.earlyFinishSerial = earlyFinishSerial;
 
 function setSelectionSerialButton(task) {
   const button = $("btn-selection-serial");
@@ -6016,6 +6052,10 @@ function renderTaskDetail() {
   const bc = $("btn-continue");
   if (bc) bc.classList.toggle("hidden",
     !(tk && tk.serial && tk.status !== "running" && tk.status !== "queued"));
+  const bef = $("btn-early-finish");
+  if (bef) bef.classList.toggle("hidden",
+    !(tk && tk.serial && !tk.serial.early_finish
+      && tk.status !== "running" && tk.status !== "queued"));
   const latestSummary = ((S.state || {}).task_latest || {})[key] || {};
   setRetryBtn(retrySnapshotForTask(key, tk, latestSummary), tk);
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
@@ -7221,6 +7261,9 @@ async function renderRunDetail() {
   setRetryBtn(run, rcTask);
   $("btn-continue").classList.toggle("hidden",
     !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));
+  $("btn-early-finish").classList.toggle("hidden",
+    !(rcTask && rcTask.serial && !rcTask.serial.early_finish
+      && run.status !== "running" && run.status !== "queued"));
   setEditRetry(run.task_id, run.status, !!rcTask);
   S.lastRun = run;
   renderRunOutcome(run);
@@ -19806,6 +19849,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-continue").addEventListener("click", () => {
     const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
     if (tid) continueSerial(tid);
+  });
+  $("btn-early-finish").addEventListener("click", () => {
+    const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
+    if (tid) earlyFinishSerial(tid);
   });
   $("btn-selection-serial").addEventListener("click", () => {
     const tid = S.detailTaskKey || (S.lastRun && S.lastRun.task_id) || "";
