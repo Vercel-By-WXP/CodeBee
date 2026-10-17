@@ -1030,6 +1030,11 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                           # so a slow runner is not killed after fresh output.
                           and elapsed < timeout + activity_timeout + 0.4)
                 if not active:
+                    # A slow hosted runner can wake the wait timeout after the
+                    # child has already exited.  Reap that race before killing
+                    # an otherwise successful process at the activity cap.
+                    if proc.poll() is not None:
+                        break
                     timed_out = True
                     tree_quiet = _kill_tree(proc.pid)
                     _drain_streams(proc, t_out, t_err, timeout=5)

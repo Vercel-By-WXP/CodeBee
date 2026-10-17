@@ -30,12 +30,16 @@ class _TimelineCase(BaseTest):
         self.assertEqual(task.get("engine"), "direct")   # 直连任务才走任务级合并
         runs = [store.create_run("orchestration", task["title"], task_id=task["id"])
                 for _ in make_runs]
-        # _new_id 尾缀随机：同秒创建的多个 run 按时间戳排序不可控——重排 _RUNS
-        # 键为递增 id，保证「旧→新」就是创建顺序（时间线按 id 倒序取 run）
+        # _new_id 尾缀随机：合成 run 必须显式固定 ID 与创建序列，避免测试
+        # 依赖平台墙钟精度或时间调整来决定 task_runs 的先后顺序。
         with store.LOCK:
             for i, run in enumerate(runs):
                 store._RUNS.pop(run["id"], None)
                 run["id"] = "r-20260924-210000-%04d" % (i + 1)
+                # task_runs sorts new records by the persisted creation stamp.
+                # Pin it alongside the synthetic IDs so a wall-clock adjustment
+                # (notably on Windows CI) cannot reverse this fixture's order.
+                run["created_at_ns"] = i + 1
                 store._RUNS[run["id"]] = run
         for fn, run in zip(make_runs, runs):
             fn(run)

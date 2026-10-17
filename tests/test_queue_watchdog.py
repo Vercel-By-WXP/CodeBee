@@ -179,6 +179,11 @@ class QueueWatchdogTest(BaseTest):
                                  "超时后必须收口，别留永久排队")
                 self.assertIn("排队等待超时", closed.get("error") or "")
                 self.assertEqual(store.get_task(t2["id"])["status"], "failed")
+                # The holder intentionally remains blocked while the queued run
+                # exhausts its retry budget. Release it before waiting for idle;
+                # otherwise a slow CI runner can spend the full five-second
+                # assertion window inside fake_execute and report a false fail.
+                release.set()
                 self.assertTrue(jobs.wait_for_idle(5))
         finally:
             release.set()
