@@ -1915,7 +1915,7 @@
     "（未找到该智能体的本地会话）": "(no local sessions for this agent)",
     "该会话属于 ": "This session belongs to ",
     "已创建，跳转运行页…": "Created — switching to the run page…",
-    "继续连载": "Resume serial",
+    "继续连载": "Resume serial",`n    "提前完结": "Plan early ending",
     " 暂无任务——在上面输入一句话目标开始。": " No tasks yet — enter a one-line goal above to start.",
     "勾选要导入的来源。导入只读取这些工具的配置，不会改动它们本身；\n已导入过的供应商会原地更新（保留你设置的模型与启停状态）。": "Tick the sources to import. Only reads their configs — does not modify them.\nAlready-imported providers are updated in place (preserving your model and enable/disable settings).",
     "：未找到配置": ": config not found",
