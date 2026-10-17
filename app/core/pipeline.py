@@ -733,7 +733,10 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
     except ValueError as exc:
         # Invalid or out-of-scope policy input is still a policy rejection;
         # callers need a stable reason instead of an uncaught task error.
-        return "沙箱拒绝：%s" % exc
+        detail = str(exc)
+        if "allowed_roots" in detail:
+            detail = "白名单无效：%s" % detail
+        return "沙箱拒绝：%s" % detail
     if normalized.get("backend") == "docker":
         return "沙箱拒绝：Docker 目前仅接入内置命令工具，外部 CLI 未验证容器启动，拒绝运行"
     if (agent or {}).get("kind") == "codex":
