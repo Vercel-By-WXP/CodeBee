@@ -19,38 +19,62 @@ MAX_FILE_CHARS = 8000
 MAX_PROMPT_CHARS = 24000
 
 
+def _lexical_path(value):
+    """Return an absolute path without resolving symlink aliases.
+
+    macOS exposes ``/var`` through ``/private/var``.  Security checks should
+    compare canonical paths, while evidence returned to callers should retain
+    the path spelling they supplied.
+    """
+    try:
+        return Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
+    except (TypeError, OSError, ValueError):
+        return None
+
+
 def _roots(workdir, boundary=None):
     try:
-        current = Path(workdir).expanduser().resolve()
+        lexical_current = _lexical_path(workdir)
+        if lexical_current is None:
+            return []
+        current = lexical_current.resolve()
     except (TypeError, OSError, ValueError):
         return []
-    if not current.is_dir():
+    if not lexical_current.is_dir():
         return []
     # Trust instructions only through the nearest repository root. Outside a
     # repository, the selected workdir itself is the boundary; never walk into
     # an unrelated parent directory (or drive root).
     try:
         if boundary:
-            stop = Path(boundary).expanduser().resolve()
+            lexical_stop = _lexical_path(boundary)
+            if lexical_stop is None:
+                return []
+            stop = lexical_stop.resolve()
         else:
+            lexical_stop = lexical_current
             stop = current
-            for candidate in (current, *current.parents):
+            for candidate in (lexical_current, *lexical_current.parents):
                 if (candidate / ".git").exists():
-                    stop = candidate
+                    lexical_stop = candidate
+                    stop = candidate.resolve()
                     break
     except (TypeError, OSError, ValueError):
+        lexical_stop = lexical_current
         stop = current
     if current != stop and stop not in current.parents:
+        lexical_stop = lexical_current
         stop = current
     roots = []
+    display = lexical_current
     while True:
-        roots.append(current)
-        if current == stop:
+        roots.append(display)
+        if display.resolve() == stop:
             break
-        parent = current.parent
-        if parent == current:
+        parent = display.parent
+        if parent == display:
             break
-        current = parent
+        display = parent
     return roots
 
 

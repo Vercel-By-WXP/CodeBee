@@ -131,16 +131,20 @@ def _fallback_probe_cli(name):
     # POSIX release-gate hosts do not make PATHEXT-style shims visible to
     # shutil.which.  When the caller has explicitly supplied Windows install
     # roots, inspect PATH for the same .cmd/.bat names before fixed roots.
-    for d in (os.environ.get("PATH") or "").split(os.pathsep):
-        if not d:
-            continue
-        for ext in (".cmd", ".bat", ".exe"):
-            p = os.path.join(d, name + ext)
-            try:
-                if os.path.isfile(p):
-                    return p
-            except OSError:
-                pass
+    # A release-gate test root must win over the hosted runner's inherited
+    # PATH (which normally contains the real C:\\Windows PowerShell path).
+    test_system_root = os.environ.get("CODEBEE_RELEASE_TEST_SYSTEM_ROOT")
+    if not test_system_root:
+        for d in (os.environ.get("PATH") or "").split(os.pathsep):
+            if not d:
+                continue
+            for ext in (".cmd", ".bat", ".exe"):
+                p = os.path.join(d, name + ext)
+                try:
+                    if os.path.isfile(p):
+                        return p
+                except OSError:
+                    pass
     local = os.environ.get("LOCALAPPDATA") or ""
     home = os.path.expanduser("~")
     if test_windows and os.environ.get("USERPROFILE"):

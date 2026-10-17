@@ -161,6 +161,33 @@ def _is_linklike(path):
     except OSError:
         return True
 
+
+def _sandbox_path_allowed(path, sandbox):
+    """Check a path against a policy while canonicalizing macOS /var aliases.
+
+    Some callers pass an inherited, already-shaped sandbox dictionary instead
+    of the normalized policy object.  On macOS ``/var`` is a symlink to
+    ``/private/var``; resolving both sides here keeps that alias from turning a
+    valid child workdir into a false sandbox rejection.
+    """
+    if not isinstance(sandbox, dict):
+        return False
+    roots = []
+    for value in sandbox.get("allowed_roots") or []:
+        try:
+            root = Path(value).expanduser().resolve()
+        except (TypeError, OSError, ValueError):
+            continue
+        if str(root) not in roots:
+            roots.append(str(root))
+    if not roots:
+        return False
+    from . import policy
+    checked = dict(sandbox)
+    checked["allowed_roots"] = roots
+    return policy.path_allowed(path, checked)
+
+
 def _tool_list_files(workdir, args):
     rel = str(args.get("path") or "").replace("\\", "/").strip("/")
     if ".." in Path(rel).parts or any(":" in seg for seg in Path(rel).parts):
@@ -437,7 +464,7 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     sandbox = sandbox or policy.normalize_sandbox({}, workdir)
     timeout = _command_timeout(args, sandbox)
     cwd = os.path.abspath(workdir or ".")
-    if not policy.path_allowed(cwd, sandbox):
+    if not _sandbox_path_allowed(cwd, sandbox):
         return "（沙箱拒绝：工作目录不在允许范围内，命令未执行）"
     # Enforce the declared boundary at the process boundary where an OS
     # backend exists (bubblewrap on Linux). Windows/macOS have no equivalent:
@@ -845,7 +872,7 @@ def _tool_read_task_output(workdir, args, sandbox=None):
     task_dir = Path(task.get("workdir") or ".").resolve()
     if task_dir != root and root not in task_dir.parents:
         return "（任务工作目录不在当前工作目录内，拒绝读取）"
-    if sandbox and not policy.path_allowed(task_dir, sandbox):
+    if sandbox and not _sandbox_path_allowed(task_dir, sandbox):
         return "（沙箱拒绝：任务工作目录超出允许范围）"
     runs = store.task_runs(task_id)
     if not runs:
@@ -943,7 +970,7 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
     requested_workdir = str(args.get("workdir") or workdir or "").strip()
     if sandbox and requested_workdir:
         from . import policy
-        if not policy.path_allowed(requested_workdir, sandbox):
+        if not _sandbox_path_allowed(requested_workdir, sandbox):
             return "（沙箱拒绝：子任务工作目录超出允许范围，未创建）"
     child_sandbox = dict(sandbox) if isinstance(sandbox, dict) else None
     if child_sandbox and requested_workdir:
@@ -1003,7 +1030,7 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
         # silently exposing names/content outside that root.
         if name in {"list_files", "search_content", "find_files"} \
                 and not (args or {}).get("path") \
-                and not policy.path_allowed(workdir or ".", sandbox):
+                and not _sandbox_path_allowed(workdir or ".", sandbox):
             return "（沙箱拒绝：此工具必须指定允许范围内的 path，未执行）"
         for key in keys:
             value = (args or {}).get(key)
@@ -1012,7 +1039,7 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
             candidate = Path(str(value)).expanduser()
             if not candidate.is_absolute():
                 candidate = Path(workdir or ".") / candidate
-            if not policy.path_allowed(candidate, sandbox):
+            if not _sandbox_path_allowed(candidate, sandbox):
                 return "（沙箱拒绝：%s 超出允许工作目录，未执行）" % key
     if name == "create_task":
         return _tool_create_task(workdir, args or {}, task_creator=task_creator,
