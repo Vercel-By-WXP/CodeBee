@@ -3576,6 +3576,34 @@ html[data-skin="apple"] .rd-chat-bar {
   border-radius: 22px;
 }
 
+/* A12) 项目树 Apple 式展开动画 */
+html[data-skin="apple"] .sdir .chev {
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+html[data-skin="apple"] .sdir > .dirbody {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+html[data-skin="apple"] .sdir[open] > .dirbody {
+  grid-template-rows: 1fr;
+}
+html[data-skin="apple"] .sdir > .dirbody > * {
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+html[data-skin="apple"] .sdir[open] > .dirbody > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(1) { transition-delay: 0.05s; }
+html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(2) { transition-delay: 0.1s; }
+html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(3) { transition-delay: 0.15s; }
+html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(4) { transition-delay: 0.2s; }
+html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(5) { transition-delay: 0.25s; }
+
 /* ================= 蜂巢工作台视觉 v8（归行·蜂航） =================
  * 用户拍板：横向流程图不如原始的行排——布局回归纵向泳道行（容器横向布局、
  * 交错、双列芯片全部撤掉，行内角色/执行者/尾巴/计时全量展示交还基座），

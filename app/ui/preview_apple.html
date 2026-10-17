@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="apple" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee Apple Skin Preview</title>
+<link rel="stylesheet" href="style.css">
+<style>
+/* 预览专用：模拟侧栏 + 主栏布局（不依赖 app.js） */
+body { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto 1fr; height: 100vh; margin: 0; }
+.topbar { grid-column: 1/-1; }
+#sidebar { grid-row: 2; }
+main { grid-row: 2; overflow-y: auto; }
+.page { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; padding: 8px 0; }
+
+/* 模拟项目树 */
+.sdir { margin-bottom: 4px; }
+.sdir summary { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; list-style: none; user-select: none; }
+.sdir summary::-webkit-details-marker { display: none; }
+.sdir summary:hover { background: var(--panel2); color: var(--text); }
+.sdir .chev { width: 11px; height: 11px; flex: none; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s ease; }
+.sdir[open] > summary .chev { transform: rotate(90deg); }
+.sdir .fico { width: 13px; height: 13px; flex: none; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.7; }
+.sdir summary .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sdir summary .cnt { flex: none; color: var(--muted); font-size: 10.5px; line-height: 16px; padding: 0 6px; background: var(--panel2); border-radius: 999px; }
+.sdir > .dirbody { margin: 1px 0 6px 12px; padding-left: 6px; border-left: 1px solid var(--border); }
+
+/* 模拟任务行 */
+.stask { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; margin-bottom: 2px; }
+.stask:hover { background: var(--panel2); }
+.stask.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.stask .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+.stask .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 预览提示 */
+.preview-notice {
+  position: fixed; bottom: 16px; right: 16px; z-index: 999;
+  background: var(--accent); color: #fff; padding: 8px 16px;
+  border-radius: 12px; font-size: 12px; font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<div class="topbar">
+  <span class="page-title">任务编排</span>
+  <div style="flex:1"></div>
+  <button class="pill">GPT-4o</button>
+  <button class="pill">苹果</button>
+</div>
+
+<!-- 侧栏 -->
+<div id="sidebar">
+  <div class="brand">
+    <div class="brand-name">CodeBee</div>
+  </div>
+
+  <details class="sdir" open>
+    <summary>
+      <svg class="chev" viewBox="0 0 12 12"><path d="m4 2 4 4-4 4"/></svg>
+      <svg class="fico" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+      <span class="t">边关一小卒，杀出个镇北王</span>
+      <span class="cnt">2</span>
+    </summary>
+    <div class="dirbody">
+      <div class="stask active"><span class="dot"></span><span class="name">第 18 章润色</span></div>
+      <div class="stask"><span class="dot"></span><span class="name">角色一致性检查</span></div>
+    </div>
+  </details>
+
+  <details class="sdir" open>
+    <summary>
+      <svg class="chev" viewBox="0 0 12 12"><path d="m4 2 4 4-4 4"/></svg>
+      <svg class="fico" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+      <span class="t">重生之我带AI回到了2000年</span>
+      <span class="cnt">1</span>
+    </summary>
+    <div class="dirbody">
+      <div class="stask"><span class="dot"></span><span class="name">第三章大纲生成</span></div>
+    </div>
+  </details>
+
+  <details class="sdir">
+    <summary>
+      <svg class="chev" viewBox="0 0 12 12"><path d="m4 2 4 4-4 4"/></svg>
+      <svg class="fico" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+      <span class="t">不周山守村人</span>
+      <span class="cnt">18</span>
+    </summary>
+    <div class="dirbody">
+      <div class="stask"><span class="dot"></span><span class="name">世界观设定整理</span></div>
+      <div class="stask"><span class="dot"></span><span class="name">人物关系图谱</span></div>
+    </div>
+  </details>
+
+  <details class="sdir">
+    <summary>
+      <svg class="chev" viewBox="0 0 12 12"><path d="m4 2 4 4-4 4"/></svg>
+      <svg class="fico" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+      <span class="t">workspace</span>
+      <span class="cnt">5</span>
+    </summary>
+    <div class="dirbody">
+      <div class="stask"><span class="dot"></span><span class="name">API 重构</span></div>
+    </div>
+  </details>
+</div>
+
+<!-- 主栏 -->
+<main>
+  <div class="page">
+    <div class="panel wide">
+      <div class="composer">
+        <h1 class="hero">新建任务</h1>
+        <p class="hero-sub" style="color:var(--muted);margin:0 0 14px;">描述你要完成的工作，CodeBee 会拆解并执行</p>
+        <div class="cmp-box">
+          <textarea placeholder="例如：重构用户认证模块，添加 OAuth2 支持..." style="border:none;background:transparent;resize:none;padding:10px 8px 4px;font-size:15px;line-height:1.6;min-height:56px;width:100%;font-family:inherit;color:var(--text);"></textarea>
+          <div style="display:flex;align-items:center;gap:8px;padding:4px;">
+            <button class="primary" style="background:var(--accent);color:#fff;border:none;border-radius:12px;padding:9px 22px;font-size:14px;font-weight:600;cursor:pointer;">创建任务</button>
+            <button class="ghost" style="background:none;color:var(--text);border:1px solid var(--border-strong);border-radius:10px;padding:7px 16px;font-size:13px;cursor:pointer;">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel wide">
+      <h2 style="font-size:15.5px;font-weight:600;margin:0 0 12px;">最近任务</h2>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="item" style="display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;">
+          <span style="flex:1;font-weight:500;font-size:14px;">重构用户认证模块</span>
+          <span style="font-size:12px;color:var(--muted);">2 小时前</span>
+        </div>
+        <div class="item" style="display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;">
+          <span style="flex:1;font-weight:500;font-size:14px;">添加 OAuth2 支持</span>
+          <span style="font-size:12px;color:var(--muted);">昨天</span>
+        </div>
+        <div class="item" style="display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;">
+          <span style="flex:1;font-weight:500;font-size:14px;">编写单元测试</span>
+          <span style="font-size:12px;color:var(--muted);">3 天前</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="preview-notice">Apple 皮肤预览 · 点击项目树箭头看展开动画</div>
+
+</body>
+</html>
