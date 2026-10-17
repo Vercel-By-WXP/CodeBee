@@ -7,6 +7,8 @@
     "**/.playwright-cli"
   ],
   "pythonVersion": "3.8",
+  "pythonPlatform": "Windows",
   "typeCheckingMode": "basic",
-  "reportMissingImports": "none"
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
 }
