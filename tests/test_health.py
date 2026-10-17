@@ -352,3 +352,96 @@ class TestGhostCleanup(HealthBase):
             modelhub.providers, modelhub.chat = orig_providers, orig_chat
         self.assertFalse(ok)
         self.assertFalse(gone)
+
+
+class TestNativeCliChannelRecovery(HealthBase):
+    """无密钥的 CLI 原生通道（mimo/opencode 免费档）与快照闸误记案。
+
+    2026-10-16/17 实案：嵌套 worktree 快照拒绝被记成供应商故障 → down →
+    HTTP 探针对无密钥通道永远探不活 → last_fail_at 永远刷成「刚刚」+ 候选链
+    永久踢出（report_success 永远等不到）。三道防线：拒绝不入账、探不了不刷
+    last_fail_at、冷却过后放行回候选让真实调用验证生死。"""
+
+    _REFUSAL = "已有改动无法完整快照（.claude/worktrees/agent-x/），未启动外部 CLI"
+
+    def test_snapshot_refusal_not_recorded(self):
+        """快照闸起跑前拒绝与供应商无关：不建档、不计数、不告警。"""
+        from app.core import health
+        for _ in range(4):
+            health.report_failure("MiMo Code 原生免费通道", self._REFUSAL,
+                                  model="mimo/mimo-auto", provider_id="prov-46")
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_init_sweeps_poisoned_records(self):
+        """历史误记（last_error=快照闸拒绝族）启动即解除。"""
+        import json
+        from app.core import health, modelhub
+        row = {"name": "MiMo Code 原生免费通道", "provider_id": "prov-46",
+               "model": "mimo/mimo-auto", "status": "down",
+               "consecutive_failures": 4, "first_fail_at": 1.0,
+               "last_fail_at": 2.0, "last_ok_at": 0,
+               "last_error": self._REFUSAL, "alerted": True,
+               "silenced": False, "silence_until": 0,
+               "probe_next_at": 0, "probe_backoff_idx": 0, "recovered_at": 0}
+        health._FILE.write_text(json.dumps({"providers": {"mimo": row}},
+                                           ensure_ascii=False), encoding="utf-8")
+        orig = modelhub.providers
+        modelhub.providers = lambda: [
+            {"id": "prov-46", "name": "MiMo Code 原生免费通道"}]
+        try:
+            health.init(data_dir=str(self.data_dir), start_probe=False)
+        finally:
+            modelhub.providers = orig
+        snap = health.snapshot()["providers"][0]
+        self.assertEqual(snap["status"], "recovered")
+        self.assertFalse(snap["alerting"])
+
+    def test_probe_unprobeable_never_stamps_fail_time(self):
+        """无密钥通道：不发起 HTTP 探活、不刷 last_fail_at。"""
+        from app.core import health, modelhub
+        name = "MiMo Code 原生免费通道"
+        for _ in range(4):
+            health.report_failure(name, "<HTTPError 500: 'x'>",
+                                  model="mimo/mimo-auto", provider_id="prov-46")
+        with health._LOCK:
+            st = health._PROVIDERS[name]
+            stamp = st["last_fail_at"]
+        orig_providers, orig_chat = modelhub.providers, modelhub.chat
+        modelhub.providers = lambda: [
+            {"id": "prov-46", "name": name, "api_key": "", "enabled": True}]
+
+        def _no_chat(*a, **k):
+            raise AssertionError("无密钥通道不应发起 HTTP 探活")
+
+        modelhub.chat = _no_chat
+        try:
+            ok, gone = health._probe_one(st)
+        finally:
+            modelhub.providers, modelhub.chat = orig_providers, orig_chat
+        self.assertFalse(ok)
+        self.assertFalse(gone)
+        self.assertTrue(st.get("unprobeable"))
+        self.assertEqual(st["last_fail_at"], stamp)
+        health._record_probe_result(name, st, ok=False, gone=False)
+        self.assertEqual(st["last_fail_at"], stamp,
+                         "探不了≠探挂了：记录分支同样不刷新最后失败时间")
+
+    def test_down_names_releases_unprobeable_after_cooldown(self):
+        """无密钥通道熔断冷却一过放行回候选；可探测通道维持剔除等探针。"""
+        from app.core import health
+        for _ in range(4):
+            health.report_failure("mimo", "<HTTPError 500: 'x'>",
+                                  model="mimo/mimo-auto", provider_id="prov-46")
+        for _ in range(4):
+            health.report_failure("cavoti", "503", provider_id="prov-32")
+        with health._LOCK:
+            health._PROVIDERS["mimo"]["unprobeable"] = True
+        self.assertIn("mimo", health.down_names())
+        self.assertIn("cavoti", health.down_names())
+        with health._LOCK:
+            health._PROVIDERS["mimo"]["circuit_open_until"] = time.time() - 1
+            health._PROVIDERS["cavoti"]["circuit_open_until"] = time.time() - 1
+        self.assertNotIn("mimo", health.down_names(),
+                         "冷却已过的无密钥通道放行，让真实调用验证生死")
+        self.assertIn("cavoti", health.down_names(),
+                      "可探测通道冷却过了也继续剔除，恢复由探针确认")

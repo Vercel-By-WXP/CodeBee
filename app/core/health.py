@@ -76,6 +76,20 @@ def init(data_dir=None, *, start_probe=True):
         # 发现（gone 标记）随手清——探针循环里不做全量扫描，避免和测试
         # 夹具/运行期建条目赛跑。
         _prune_missing()
+        # 快照闸误记案的数据修复（2026-10-17）：last_error 是「未启动外部
+        # CLI」族的条目，故障全部来自本地起跑闸而非供应商（mimo/opencode
+        # 被嵌套 worktree 快照拒绝连记 4 次假告警），启动即解除；report_failure
+        # 入口已拦同类错误，不会再新增。
+        poisoned = [k for k, st in _PROVIDERS.items()
+                    if "未启动外部 CLI" in str(st.get("last_error") or "")]
+        if poisoned:
+            for k in poisoned:
+                _PROVIDERS[k].update({"status": "recovered",
+                                      "consecutive_failures": 0,
+                                      "alerted": False, "probe_next_at": 0,
+                                      "recovered_at": _now()})
+            _persist()
+            log.info("[health] 清除快照闸误记的健康故障：%s", ", ".join(poisoned))
         if start_probe and not _STARTED:
             _STARTED = True
             _PROBE_THREAD = threading.Thread(
@@ -184,6 +198,15 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             log.warning("[health] CLI 崩溃无供应商侧信号（与供应商 %s 无关，"
                         "不记健康故障）：%s", provider, text[:160])
             return
+    # 快照闸起跑前拒绝（checkpoints.begin_git_step 的固定文案族）是本地闸门
+    # 决定，供应商侧零参与——记进去会把健康的 CLI 通道按连续失败推进 down
+    # 并踢出候选链（2026-10-16 实案：mimo/opencode 连记 4 次假告警）。与
+    # _LAUNCH_FAILURE_PREFIX 同款同源双写：health 在 L1 不能 import
+    # checkpoints，只认固定后缀；该后缀不出现在任何供应商侧报错里。
+    if "未启动外部 CLI" in text[:160]:
+        log.warning("[health] 快照闸起跑前拒绝（与供应商 %s 无关，不记健康故障）：%s",
+                    provider, text[:160])
+        return
 
     # A failed live call invalidates capability evidence for this upstream.
     # Keep this hook lazy and best-effort: health telemetry must never make a
@@ -355,8 +378,24 @@ def cli_status(cli: str):
 
 
 def down_names() -> set:
+    """链降级剔除名单。
+
+    无密钥的 CLI 原生通道（探针探不了）例外：它们的 down 没有探针复活路径，
+    唯一的恢复信号是真实调用——熔断冷却（circuit_open_until，每次真实失败
+    顺延 CLI_COOLDOWN_SECONDS）一过就放行回候选，成则 report_success 翻绿，
+    败则顺延冷却，有界重试而不是永久踢出（2026-10-17 mimo/opencode 死锁案：
+    down → 剔出候选 → 永远等不到 report_success → 永锁）。"""
     with _LOCK:
-        return {n for n, st in _PROVIDERS.items() if st.get("status") == "down"}
+        out = set()
+        for n, st in _PROVIDERS.items():
+            if st.get("status") != "down":
+                continue
+            if st.get("unprobeable"):
+                until = float(st.get("circuit_open_until") or 0)
+                if not until or until <= _now():
+                    continue
+            out.add(n)
+        return out
 
 
 # ---------------------------------------------------------------- 探针
@@ -375,6 +414,7 @@ def _probe_one(st):
         if not prov:
             return False, True   # 供应商已删除：探不了也不再是「没恢复」
         if not prov.get("api_key"):
+            st["unprobeable"] = True   # CLI 原生免费通道没有密钥，HTTP 探不了
             return False, False  # 供应商在但没密钥：无法探测，保持状态
         if not model:
             try:
@@ -383,7 +423,9 @@ def _probe_one(st):
             except Exception:
                 model = ""
         if not model:
+            st["unprobeable"] = True
             return False, False
+        st["unprobeable"] = False
         res = modelhub.chat(prov["id"], model, "1", max_tokens=8, timeout=20)
         return bool(res.get("ok")), False
     except Exception as e:
@@ -428,7 +470,12 @@ def _record_probe_result(name, st, ok, gone):
             report_success(name)
             log.info("[health] 探针确认 %s 已恢复", name)
         else:
-            st["last_fail_at"] = _now()
+            # 探不了（无密钥 CLI 通道）≠ 探挂了：不刷新 last_fail_at，否则
+            # 「最后失败」永远显示成刚刚，告警看着像持续复发（2026-10-17
+            # mimo/opencode 弹窗实案：probe_backoff 149 轮全是在刷这个字段）。
+            # 恢复信号交给真实调用（report_success / down_names 冷却放行）。
+            if not st.get("unprobeable"):
+                st["last_fail_at"] = _now()
             _persist()
 
 
