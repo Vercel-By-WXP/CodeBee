@@ -354,7 +354,7 @@ def create_task(payload):
                                                       int(serial.get("words_per_chapter") or 2500))),
                 }
             except Exception:
-                s = None
+                s = {}
             if s:
                 if isinstance(serial.get("opening_gate"), bool):
                     s["opening_gate"] = serial["opening_gate"]
