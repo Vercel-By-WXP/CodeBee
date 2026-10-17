@@ -116,8 +116,9 @@ def _step_timeout(run_id, requested, deadline=None):
     deadline = deadline if deadline is not None else _run_deadline(run_id)
     if deadline is not None:
         value = min(value, max(0.0, deadline - time.monotonic()))
-    elif value.is_integer():
-        value = int(value)
+    nearest = round(value)
+    if abs(value - nearest) < 1e-3:
+        value = int(nearest)
     return value, deadline
 
 

@@ -110,6 +110,19 @@ def _fallback_probe_cli(name):
             except OSError:
                 pass
         return None
+    # POSIX release-gate hosts do not make PATHEXT-style shims visible to
+    # shutil.which.  When the caller has explicitly supplied Windows install
+    # roots, inspect PATH for the same .cmd/.bat names before fixed roots.
+    for d in (os.environ.get("PATH") or "").split(os.pathsep):
+        if not d:
+            continue
+        for ext in (".cmd", ".bat", ".exe"):
+            p = os.path.join(d, name + ext)
+            try:
+                if os.path.isfile(p):
+                    return p
+            except OSError:
+                pass
     local = os.environ.get("LOCALAPPDATA") or ""
     home = (os.environ.get("USERPROFILE") or os.path.expanduser("~"))
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
@@ -170,7 +183,10 @@ def _stable_timeout(value):
         numeric = float(value)
     except (TypeError, ValueError):
         return value
-    return int(numeric) if numeric.is_integer() else numeric
+    nearest = round(numeric)
+    if abs(numeric - nearest) < 1e-3:
+        return int(nearest)
+    return numeric
 
 
 def redact_command(argv):
