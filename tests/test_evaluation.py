@@ -58,6 +58,24 @@ class TestEvaluationExpiry(BaseTest):
         self.assertTrue(evaluation.get("model", "provider-a", "model-a",
                                        now=fresh["evaluated_at"] + 1)["fresh"])
 
+    def test_immediate_fresh_evaluation_survives_clock_timestamp_tie(self):
+        """A coarse Windows clock must not stale a result recorded after failure."""
+        from app.core import evaluation, health
+
+        with mock.patch.object(evaluation.time, "time", return_value=1000.0):
+            evaluation.record("model", "provider-a", "model-a",
+                              {"ok": True, "status": "passed"})
+            health.report_failure("Provider A", "HTTP 503", model="model-a",
+                                  provider_id="provider-a")
+            fresh = evaluation.record(
+                "model", "provider-a", "model-a",
+                {"ok": True, "status": "passed"})
+
+        self.assertGreater(fresh["evaluated_at"], 1000.0)
+        self.assertTrue(evaluation.get(
+            "model", "provider-a", "model-a",
+            now=fresh["evaluated_at"] + 1)["fresh"])
+
     def test_stale_evidence_is_not_usable_for_routing(self):
         from app.core import evaluation, modelhub
 

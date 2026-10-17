@@ -94,6 +94,28 @@ def record(kind: str, provider_id: str, model: str, result: dict,
     }
     with _LOCK:
         data = _read()
+        # ``time.time()`` can have a coarse effective resolution on Windows.
+        # If a health failure and the follow-up evaluation land in the same
+        # clock tick, the invalidation timestamp would otherwise compare equal
+        # to ``evaluated_at`` and incorrectly stale the new result.  Preserve
+        # event ordering by nudging a tied evaluation just beyond the latest
+        # invalidation that can affect this key.
+        invalidations = data.get("invalidated") or {}
+        candidates = (
+            invalidations.get(str(provider_id or "")),
+            invalidations.get(key("model", provider_id, model)),
+        )
+        latest_invalidated_at = max(
+            (_safe_float(candidate.get("at")) for candidate in candidates
+             if isinstance(candidate, dict)),
+            default=0.0,
+        )
+        if latest_invalidated_at >= _safe_float(out.get("evaluated_at")):
+            evaluated_at = latest_invalidated_at + 1e-6
+            out["evaluated_at"] = evaluated_at
+            out["expires_at"] = evaluated_at + ttl_seconds()
+            entry["evaluated_at"] = evaluated_at
+            entry["expires_at"] = out["expires_at"]
         data.setdefault("entries", {})[key(
             kind, provider_id, model, protocol, key_id or result.get("key_id") or "")] = entry
         _write(data)
