@@ -16,6 +16,7 @@ TYPE_DIMENSIONS = {
     "serial_novel": "writing",
     "article": "writing",
     "video_script": "writing",
+    "short_drama": "writing",
     "doc": "writing",
     "translation": "writing",
     "rank_scan": "reasoning",

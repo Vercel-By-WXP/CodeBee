@@ -36,6 +36,8 @@ def _capabilities(task, dimension, engine):
         caps.extend(["filesystem", "verification"])
     if (task or {}).get("serial"):
         caps.extend(["long_context", "continuity"])
+    if str((task or {}).get("type") or "").lower() == "short_drama":
+        caps.extend(["long_context", "continuity"])
     if (task or {}).get("attachments"):
         caps.append("attachments")
     return list(dict.fromkeys(caps))
@@ -60,6 +62,7 @@ def compile_task(task):
     rubric = [str(x).strip() for x in rubric if str(x).strip()][:8]
     deliverable = str(raw.get("manuscript") or flow.get("manuscript") or "").strip()
     serial = raw.get("serial") if isinstance(raw.get("serial"), dict) else None
+    drama = raw.get("drama") if isinstance(raw.get("drama"), dict) else None
     return {
         "schema_version": SCHEMA_VERSION,
         "type": ttype,
@@ -76,6 +79,7 @@ def compile_task(task):
         "deliverable": deliverable,
         "quality_dimensions": rubric,
         "serial": serial,
+        "drama": drama,
         "explicit_agent": str(raw.get("implementer") or "").strip(),
         "has_verification": bool(raw.get("verify_command")),
     }
@@ -161,7 +165,7 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
     rec = (plan or {}).get("workflow") if isinstance(plan, Mapping) else None
     rec = rec if isinstance(rec, Mapping) else {}
     light_types = {"email", "weekly_report", "translation"}
-    deep_types = {"novel", "research", "tech_proposal"}
+    deep_types = {"novel", "research", "tech_proposal", "short_drama"}
 
     if ttype == "rank_scan":
         return {"outline": True, "reviewers": 2, "review_rounds": max(2, requested_rounds),
@@ -194,6 +198,13 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
                                        int(rec["review_rounds"])))
     except (TypeError, ValueError):
         pass
+    # A short-drama season is a continuity-heavy, multi-episode deliverable.
+    # In the normal auto lane, keep the outline and independent second reader
+    # even when the generic planner recommends a lighter content workflow.
+    if ttype == "short_drama":
+        outline = True
+        reviewers = max(2, reviewers)
+        review_rounds = max(min(2, requested_rounds), review_rounds)
     # 深度类型至少保留一轮评审，但允许规划器把双评审降成一名；高门槛强制双评审。
     if float(task.get("threshold") or 7.0) >= 8.5:
         reviewers = 2

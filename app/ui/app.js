@@ -841,6 +841,7 @@ function flowIconHtml(f) {
 
 function flowDesc(f) {
   if (f.id === "rank_scan") return t("四平台选材 → 评审打磨 → 标准输入 → 新开连载");
+  if (f.id === "short_drama") return t("项目圣经 → 分集大纲 → 逐场对白剧本 → 连续性与集尾钩子评审（Markdown，不生成视频）");
   if (f.engine === "direct") return t("单智能体直达（快）");
   if (f.engine === "code") return t("实现 → 验证 →（复杂任务进）评审");
   // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑
@@ -1189,6 +1190,8 @@ function onTypeChange() {
   const bibleCreate = $("bible-create-field");
   const isSerialReview = isReview && !!(flow && flow.serial);
   if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
+  const dramaFields = $("f-drama-only");
+  if (dramaFields) dramaFields.classList.toggle("hidden", !(isReview && flow && flow.id === "short_drama"));
   const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-branches", "f-bible",
     "f-vol-chapters", "f-vol-spec"].forEach((id) => {
     const el = $(id);
@@ -1280,6 +1283,7 @@ function recommendTaskType(goal) {
     ["translation", /(翻译|译成|translate|translation|中译英|英译中)/i],
     ["email", /(邮件|email|e-mail|回信|邀约信|商务函)/i],
     ["weekly_report", /(周报|月报|述职|工作汇报|工作总结)/i],
+    ["short_drama", /(短剧|微短剧|短剧本|分集剧本|网剧本)/i],
     ["video_script", /(短视频|口播|分镜|抖音|b站|视频号|视频脚本)/i],
     ["speech", /(演讲稿|发言稿|致辞|演讲)/i],
     ["tech_proposal", /(技术方案|架构方案|选型方案|实施方案)/i],
@@ -4106,6 +4110,14 @@ async function createTask() {
     payload.best_of = Math.max(1, Math.min(3, parseInt($("f-bestof").value, 10) || 1));
     const rubric = $("f-rubric").value.trim();
     if (rubric) payload.rubric = rubric.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+    if (payload.type === "short_drama") {
+      const episodes = parseInt($("f-drama-episodes").value, 10);
+      const seconds = parseInt($("f-drama-seconds").value, 10);
+      payload.drama = {};
+      if (episodes > 0) payload.drama.episodes = Math.max(1, Math.min(200, episodes));
+      if (seconds > 0) payload.drama.seconds_per_episode = Math.max(15, Math.min(600, seconds));
+      if (!Object.keys(payload.drama).length) delete payload.drama;
+    }
     const ch = parseInt($("f-chapters").value, 10);
     if (ch >= 2) {
       payload.serial = {
@@ -5334,6 +5346,8 @@ async function newFromTaskAsync(id) {
     $("f-threshold").value = (tk.threshold != null ? tk.threshold : 7.0);
     $("f-bestof").value = tk.best_of || 1;
     $("f-rubric").value = (tk.rubric || []).join(", ");
+    $("f-drama-episodes").value = tk.drama ? tk.drama.episodes || "" : "";
+    $("f-drama-seconds").value = tk.drama ? tk.drama.seconds_per_episode || "" : "";
     // 连载参数只带批次设置：不带 start_chapter/continues（那是「继续连载」的衔接语义）
     $("f-chapters").value = tk.serial ? tk.serial.chapters : "";
     $("f-words-per-ch").value = tk.serial ? tk.serial.words_per_chapter : "";

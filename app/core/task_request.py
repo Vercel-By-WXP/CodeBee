@@ -33,9 +33,11 @@ _AFTER_LOCATIONS = tuple(re.compile(
 _TYPES = {"连载小说": "serial_novel", "连载写作": "serial_novel", "连载": "serial_novel",
           "小说": "novel", "代码开发": "code", "代码": "code", "开发": "code",
           "代码修复": "code", "文档": "doc", "说明书": "doc", "文章": "article", "调研": "research",
-          "研究": "research", "PPT": "presentation", "翻译": "translation"}
+          "研究": "research", "PPT": "presentation", "翻译": "translation",
+          "短剧": "short_drama", "短剧剧本": "short_drama", "微短剧": "short_drama"}
 _GOALS = {"serial_novel": "连载写作", "novel": "小说写作", "code": "代码开发",
-          "doc": "文档写作", "article": "文章写作", "direct": "独立执行用户目标"}
+          "doc": "文档写作", "article": "文章写作", "short_drama": "短剧剧本创作",
+          "direct": "独立执行用户目标"}
 _WORK_LEAD = re.compile(r"^(?:(?:来|用来|用于|目标是|任务是|帮我|请|开始|先|做|完成)\s*)*")
 _PRIMARY = (
     ("code", r"^(?:写代码|代码|开发|修复|重构|编程|实现.*?(?:接口|功能))"),
@@ -43,6 +45,7 @@ _PRIMARY = (
     (None, r"^(?:写|撰写|创作|起草)[^，,。；;\r\n]*?(连载小说|连载|小说|文章|公众号|头条|文档|说明书)"),
 )
 _INFER = (
+    ("short_drama", r"短剧|微短剧|短剧本|分集剧本|网剧本"),
     ("serial_novel", r"连载|逐章写|(?:前|先写|首批)\s*[0-9一二两三四五六七八九十百]+\s*章"),
     ("translation", r"翻译|译成"),
     ("presentation", r"PPT|演示文稿|幻灯片"),
@@ -64,6 +67,8 @@ _CANCEL_TARGET = re.compile(
 _NUMBER = r"[0-9零〇一二两三四五六七八九十百千]+"
 _CHAPTERS = re.compile(r"(?:前|(?:先|开始)?写\s*前?|首批\s*|共\s*)(" + _NUMBER + r")\s*章")
 _WORDS = re.compile(r"每章\s*(?:目标|大约|约)?\s*(" + _NUMBER + r")\s*字")
+_EPISODES = re.compile(r"(?:共|做|写|制作|生成)?\s*(" + _NUMBER + r")\s*集")
+_EPISODE_SECONDS = re.compile(r"每集\s*(?:约|大约|目标)?\s*(" + _NUMBER + r")\s*(?:秒|s)(?!\w)", re.I)
 
 
 def _number(text):
@@ -164,4 +169,15 @@ def parse(text, *, workdir=""):
                 if count:
                     serial[key] = count
         payload["serial"] = serial
+    elif payload["type"] == "short_drama":
+        drama = {}
+        for key, pattern in (("episodes", _EPISODES),
+                             ("seconds_per_episode", _EPISODE_SECONDS)):
+            number = pattern.search(rest)
+            if number:
+                count = _number(number[1])
+                if count:
+                    drama[key] = count
+        if drama:
+            payload["drama"] = drama
     return payload

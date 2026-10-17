@@ -2721,6 +2721,15 @@ CONTENT_DELIVERY_CONTRACTS = {
         "按镜头或时间段写清画面、口播、字幕/音效与预计时长，前 3 秒给出钩子。",
         "每个画面都应可实际拍摄或制作，结尾给出自然的互动或转化动作。",
     ]),
+    "short_drama": ("短剧编剧与剧本统筹", [
+        "先给出项目圣经：一句话卖点、目标受众、基调、世界规则、结局方向，以及可复用的角色表和场景表。",
+        "按集输出分集大纲：每集写清目标、核心冲突、局面转折、情绪兑现和集尾钩子；集数与单集时长服从用户要求。",
+        "单集目标时长以任务规格为准；大纲和场次时长相加应能支撑目标时长，避免只有情节摘要或无效凑时长。",
+        "按 E01-S01 这样的稳定编号输出逐场剧本；每场包含时间/地点、可拍动作、镜头或画面备注、对白、音效/字幕和预计秒数。",
+        "角色外观、称谓、关系、道具和场景规则前后一致；不为追求反转擅自改写已经锁定的设定。",
+        "对白要短、可说、带动作和潜台词；每一集都必须在结尾留下明确悬念或下一集驱动力。",
+        "交付为可编辑的 Markdown 剧本文档，不生成视频、配音或图片；素材缺口请列入制作备注，不要假装已有。",
+    ]),
     "doc": ("技术文档编辑", [
         "先明确读者、目的和前置条件，再按可执行步骤组织正文。",
         "命令、参数、示例与限制必须一致；无法确认的内容明确标注。",
@@ -2798,6 +2807,15 @@ def _content_contract(task):
     if not spec:
         return ""
     block = "\n\n## 本类型交付约束\n" + "\n".join("- " + item for item in spec[1])
+    if task.get("type") == "short_drama" and isinstance(task.get("drama"), dict):
+        drama = task["drama"]
+        constraints = []
+        if drama.get("episodes"):
+            constraints.append("共 %d 集" % int(drama["episodes"]))
+        if drama.get("seconds_per_episode"):
+            constraints.append("每集约 %d 秒" % int(drama["seconds_per_episode"]))
+        if constraints:
+            block += "\n- 本任务规格：" + "，".join(constraints) + "；必须按此规格交付。"
     if task.get("type") == "rank_scan":
         from . import selection
         block += "\n" + selection.CONTRACT

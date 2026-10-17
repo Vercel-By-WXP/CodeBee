@@ -102,6 +102,23 @@ def _task_timeout_s(value=None):
     return max(MIN_TASK_TIMEOUT_S, min(MAX_TASK_TIMEOUT_S, seconds))
 
 
+def _norm_drama(value):
+    """Normalize optional short-drama season constraints from task creation."""
+    if not isinstance(value, dict):
+        return None
+    out = {}
+    for key, low, high in (("episodes", 1, 200),
+                           ("seconds_per_episode", 15, 600)):
+        raw = value.get(key)
+        if raw in (None, ""):
+            continue
+        try:
+            out[key] = max(low, min(high, int(raw)))
+        except (TypeError, ValueError):
+            continue
+    return out or None
+
+
 def _default_timeout_s(task):
     """Choose a bounded default from the amount of work, not one hour for all."""
     env_value = os.environ.get("TUTTI_TASK_TIMEOUT_S")
@@ -226,6 +243,10 @@ def create_task(payload):
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "created",
     }
+    if flow["id"] == "short_drama":
+        drama = _norm_drama(payload.get("drama"))
+        if drama:
+            task["drama"] = drama
     if expert:
         from . import experts as experts_mod
         task["expert_id"] = expert["id"]

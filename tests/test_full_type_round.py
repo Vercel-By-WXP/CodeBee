@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """全类型回归（2026-10-04 全类型竞品调研轮，第 3/4 步落地核验）：
 
-  1. 正常：全部预置任务类型（BUILTIN_FLOWS 实数 18，2026-10-05 加演示文稿）
+  1. 正常：全部预置任务类型（BUILTIN_FLOWS 实数 19，2026-10-17 加短剧剧本）
       注册可用——list/get 解析、
      三展示字段齐、引擎合法、review 引擎四默认参数在位；
-  2. 回归：用户 14 场景 → 注册表 id 映射零缺失（任务类型矩阵口径锁定），
+  2. 回归：用户 15 场景 → 注册表 id 映射零缺失（任务类型矩阵口径锁定），
       注册表额外 doc/resume/bid_doc/presentation 四类型如实记录；
   3. 边界：本轮落地件（serial_novel 签约门禁 note / rank_scan A-E 证据分级
       note）与 i18n EN 键严格相等、键恰好一次、旧版文案残留为零；
@@ -21,7 +21,7 @@
      两侧接线守卫。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_round.py" -v
-17×3 字段 EN 键全量守卫在 test_i18n_dups.test_builtin_flow_fields_have_en_keys，
+19×3 字段 EN 键全量守卫在 test_i18n_dups.test_builtin_flow_fields_have_en_keys，
 本文件不重复该断言，只对选中两键做跨端一致性与残留核查。
 """
 from __future__ import annotations
@@ -36,19 +36,20 @@ from test_i18n_dups import _en_block
 _I18N = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                      "app", "ui", "i18n.js")
 
-# 任务类型矩阵（2026-10-05 落地班实读 flows.py）：18 = 用户 14 场景 + 额外 4。
+# 任务类型矩阵（2026-10-17 实读 flows.py）：19 = 用户 15 场景 + 额外 4。
 EXPECTED_IDS = frozenset((
-    "direct", "code", "novel", "serial_novel", "article", "video_script",
+    "direct", "code", "novel", "serial_novel", "article", "video_script", "short_drama",
     "doc", "translation", "rank_scan", "defect_retro", "research", "speech",
     "weekly_report", "email", "tech_proposal", "resume", "bid_doc",
     "presentation",
 ))
 
-# 用户 14 场景（列举口径）→ 注册表 id；改名/删类型时此处当 consciously 更新
+# 用户 15 场景（列举口径）→ 注册表 id；改名/删类型时此处当 consciously 更新
 USER_SCENARIOS = (
     ("直接执行", "direct"), ("代码", "code"), ("小说", "novel"),
     ("连载", "serial_novel"), ("自媒体文章", "article"), ("调研报告", "research"),
     ("短视频脚本", "video_script"), ("技术方案", "tech_proposal"),
+    ("短剧剧本", "short_drama"),
     ("翻译", "translation"), ("演讲稿", "speech"), ("工作汇报", "weekly_report"),
     ("商务邮件", "email"), ("扫榜选材", "rank_scan"), ("禅道工单", "defect_retro"),
 )
@@ -71,7 +72,7 @@ def _pairs_of(block, key):
 class FullTypeRoundTests(BaseTest):
 
     def test_all_builtin_types_register_and_resolve(self):
-        """正常路径：17 预置类型逐一注册、解析、默认参数齐备。"""
+        """正常路径：19 预置类型逐一注册、解析、默认参数齐备。"""
         from app.core import flows
         ids = [f["id"] for f in flows.BUILTIN_FLOWS]
         self.assertEqual(set(ids), set(EXPECTED_IDS),
@@ -94,7 +95,7 @@ class FullTypeRoundTests(BaseTest):
                 self.assertTrue(flow.get("rounds"), "%s 缺 rounds 默认" % fid)
 
     def test_user_scenario_matrix_zero_missing(self):
-        """回归：用户 14 场景映射零缺失 + 注册表额外类型在位。"""
+        """回归：用户 15 场景映射零缺失 + 注册表额外类型在位。"""
         from app.core import flows
         by_id = {f["id"] for f in flows.BUILTIN_FLOWS}
         missing = [(label, fid) for label, fid in USER_SCENARIOS

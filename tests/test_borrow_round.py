@@ -8,7 +8,7 @@
 缺口）。本文件锁定补齐后的契约：index.html 输入框、app.js 两处 payload 接线
 （与 variants 同口径 1-3 钳位）、i18n EN 键，以及 create_task 的 branches 钳位。
 
-2026-10-06 第 3/4 步落地班追加：18 型注册表跨类型回归（见
+2026-10-06 第 3/4 步落地班追加：19 型注册表跨类型回归（见
 AllTypesRegistryContractTests——本轮选定零代码件，把 C/G 专项核验结论机械化）。
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ _UI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    "app", "ui")
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 过时类型数/市场模式文案（G 专项口径：以源码实数 18 为准，这些说法都曾翻车）。
+# 过时类型数/市场模式文案（G 专项：此处只守卫旧文案，不表示注册表类型总数）。
 _STALE_COPY = ("13 种", "14 种", "15 种", "17 种", "11 个预置", "单源模式")
 _STALE_SCAN_FILES = (
     os.path.join(_UI, "index.html"),
@@ -111,7 +111,7 @@ class CreateTaskBranchesTests(BaseTest):
 
 
 class AllTypesRegistryContractTests(BaseTest):
-    """18 型注册表跨类型回归（2026-10-06 第 3/4 步落地班锚定件）。
+    """19 型注册表跨类型回归（短剧加入后更新类型总数）。
 
     本轮第 2/4 步巡检选定零代码件（代码级积压清账、队列活项均攒批/拍板/远期），
     落地=把 C/G 专项核验结论机械化：14 指令项一一映射注册表、review 型共享
@@ -121,13 +121,13 @@ class AllTypesRegistryContractTests(BaseTest):
     """
 
     def test_instruction_items_all_registered(self):
-        """14 指令项（含禅道工单→defect_retro）一一映射注册表，实数 18。"""
+        """14 指令项一一映射注册表，实数 19（含短剧剧本）。"""
         from app.core import flows
         ids = {f["id"] for f in flows.BUILTIN_FLOWS}
-        self.assertEqual(len(flows.BUILTIN_FLOWS), 18)
+        self.assertEqual(len(flows.BUILTIN_FLOWS), 19)
         self.assertEqual(ids, {
             "direct", "code", "novel", "serial_novel", "article",
-            "video_script", "doc", "translation", "rank_scan", "defect_retro",
+            "video_script", "short_drama", "doc", "translation", "rank_scan", "defect_retro",
             "research", "speech", "presentation", "weekly_report", "email",
             "tech_proposal", "resume", "bid_doc",
         })
@@ -140,7 +140,7 @@ class AllTypesRegistryContractTests(BaseTest):
         """
         from app.core import flows
         review = [f for f in flows.BUILTIN_FLOWS if f["engine"] == "review"]
-        self.assertEqual(len(review), 15)
+        self.assertEqual(len(review), 16)
         for f in review:
             self.assertTrue(4 <= len(f["rubric"]) <= 6, f["id"])
             self.assertGreaterEqual(f["threshold"], 7.0, f["id"])

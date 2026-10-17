@@ -10,7 +10,7 @@
 只锁本轮行为，不重复邻接守卫的职责：
   - 规则覆盖/首中顺序总账/防截胡回归 → test_recommend_rules.py；
   - app.js t() 字面量键 ↔ i18n.js 全量对账 → test_borrow_iteration.py；
-  - 18 型注册矩阵与默认参数 → test_full_type_round.py。
+  - 19 型注册矩阵与默认参数 → test_full_type_round.py。
 
 跑法：python -m unittest discover -s tests -p "test_full_type_improvements.py" -v
 """

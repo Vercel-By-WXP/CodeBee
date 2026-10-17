@@ -23,6 +23,7 @@
   MiniMax Code、Mistral Vibe、Cline CLI、OpenClaw（Goose 与 GitHub Copilot CLI 当前仅检测）。
 - 智能路由与跨厂商降级。
 - 对抗式评审：评审者优先来自不同模型族。
+- 短剧剧本工作流：项目圣经、分集大纲、逐场剧本与双评审；当前交付文本，不生成视频。
 - 本地运行，隐私优先，运行时零第三方 Python 依赖。
 - 全程落盘，可回放任务、步骤、日志和报告。
 
@@ -61,6 +62,7 @@ CodeBee 不安装或替换这些 CLI。请先按各项目官方文档完成登�
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块、数据流和扩展点
 - [docs/routing_strategy.md](docs/routing_strategy.md)：可插拔路由策略接口
 - [docs/review_storage.md](docs/review_storage.md)：评审数据结构化存储方案
+- [docs/short-drama.md](docs/short-drama.md)：短剧剧本工作流与能力边界
 - [CONTRIBUTING.md](CONTRIBUTING.md)：开发和贡献流程
 - [SECURITY.md](SECURITY.md)：安全设计和漏洞报告
 

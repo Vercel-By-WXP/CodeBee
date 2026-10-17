@@ -169,11 +169,11 @@ class CoverPromptPreviewTests(BaseTest):
         self.assertIn("没有可用的 openai 协议图像接口", entry["error"])
 
     def test_flow_registry_untouched(self):
-        """未选类型不受影响：本轮零类型注册表改动，18 型实数维持，
+        """未选类型不受影响：注册表仍为 19 型，封面预览不是新任务类型，
         封面预览不是新任务类型。"""
         from app.core import flows
         ids = {f["id"] for f in flows.BUILTIN_FLOWS}
-        self.assertEqual(len(flows.BUILTIN_FLOWS), 18)
+        self.assertEqual(len(flows.BUILTIN_FLOWS), 19)
         self.assertNotIn("cover_prompt", ids)
 
 
@@ -248,12 +248,12 @@ class DistillWriteRegressionTests(BaseTest):
     """2026-10-07 轮落地件（第 3/4 步提案 1）：D 专项蒸馏 1 条调研方法论经
     skills.upsert_lesson 入经验库（零 flows/pipeline/UI 代码改动）。锁定该
     写入路径的验收口径（68→69、闭集落类、seen=1 不分裂）、复查再沉淀不
-    分裂、空输入边界，以及未触碰面（既有教训/18 类型注册表）不退化。"""
+    分裂、空输入边界，以及未触碰面（既有教训/19 类型注册表）不退化。"""
 
     TITLE = ("技能生态对标：官方插件仓按域→技能族组织，对标取域内工序划分"
-             "对照我方 18 类型流程参数——整仓不接入（三问不过）")
+             "对照我方 19 类型流程参数——整仓不接入（三问不过）")
     CONTENT = ("anthropics/knowledge-work-plugins（26k★）按「域→技能族」组织，"
-               "对标取其域内工序划分对照我方 18 类型流程参数；整仓不接入"
+               "对标取其域内工序划分对照我方 19 类型流程参数；整仓不接入"
                "（非六源清单、依赖 Cowork 宿主，三问不过），雷达跟踪即可。")
 
     def _distill(self, title=None, content=None, category="流程规范"):
@@ -292,7 +292,7 @@ class DistillWriteRegressionTests(BaseTest):
 
     def test_distill_round_leaves_existing_lessons_and_flows_untouched(self):
         """未涉及面不退化：先入库一条旧类教训，蒸馏写入后其分类/seen/题
-        原样；18 类型注册表实数与 id 集不变（本轮零 flows 改动）。"""
+        原样；19 类型注册表实数与 id 集不变（本轮零 flows 改动）。"""
         from app.core import skills
         old = skills.upsert_lesson("*", "旧条目占位标题", "旧正文",
                                    category="文笔风格")
@@ -305,8 +305,8 @@ class DistillWriteRegressionTests(BaseTest):
                          len(skills.list_lessons("*")), "标题查重应零重复")
         from app.core import flows
         ids = {f["id"] for f in flows.BUILTIN_FLOWS}
-        self.assertEqual(len(flows.BUILTIN_FLOWS), 18)
-        self.assertEqual(len(ids), 18, "类型 id 应零重复")
+        self.assertEqual(len(flows.BUILTIN_FLOWS), 19)
+        self.assertEqual(len(ids), 19, "类型 id 应零重复")
 
 
 class ProductInspectRegressionsTests(BaseTest):

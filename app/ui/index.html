@@ -641,6 +641,12 @@
                 <div class="field"><label data-i18n="验证命令">验证命令</label><input id="f-verify" placeholder="例：python -m pytest -q（可空=只评审）" data-i18n-ph="例：python -m pytest -q（可空=只评审）"></div>
               </div>
               <div id="f-review-only" class="hidden">
+                <div id="f-drama-only" class="hidden">
+                  <div class="grid-2">
+                    <div class="field"><label for="f-drama-episodes" data-i18n="短剧集数">短剧集数</label><input id="f-drama-episodes" type="number" min="1" max="200" step="1" placeholder="例：12" data-i18n-ph="例：12"></div>
+                    <div class="field"><label for="f-drama-seconds" data-i18n="单集时长（秒）">单集时长（秒）</label><input id="f-drama-seconds" type="number" min="15" max="600" step="5" placeholder="例：90" data-i18n-ph="例：90"></div>
+                  </div>
+                </div>
                 <div id="bible-create-field" class="field hidden">
                   <label><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="初始故事圣经">初始故事圣经</span><span class="field-optional" data-i18n="可选">可选</span></label>
                   <textarea id="f-bible" rows="5" placeholder="人物、世界观、主线冲突、伏笔和不能违背的设定；会在开跑前写入 story-bible.md" data-i18n-ph="人物、世界观、主线冲突、伏笔和不能违背的设定；会在开跑前写入 story-bible.md"></textarea>

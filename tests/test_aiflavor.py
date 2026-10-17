@@ -167,6 +167,37 @@ class PacingTests(BaseTest):
         self.assertIn("章末 200 字无悬念信号", line)
         self.assertIn("请评审官结合剧情判断", line)
 
+    def test_short_drama_uses_episode_end_hook_language(self):
+        """短剧逐集评审纳入节奏检测，集尾措辞不沿用小说章末语境。"""
+        from app.core import aiflavor
+        dull = self._DULL * 17
+        line = aiflavor.report_line(dull, "short_drama")
+        self.assertIn("[节奏检测]", line)
+        self.assertIn("集末 200 字无悬念信号", line)
+        self.assertIn("短剧留存取决于每集的钩子", line)
+        self.assertNotIn("章末", line)
+        self.assertNotIn("每章", line)
+
+    def test_short_drama_checks_each_marked_episode_tail(self):
+        """多集 drama.md 不只看全文末尾，逐集标题下的尾钩子都要覆盖。"""
+        from app.core import aiflavor
+        short_episode = "两人沉默地看着桌上的文件。" * 4
+        calm = self._DULL * 17
+        text = ("## 第 1 集\n" + short_episode + "\n\n## E02\n" +
+                calm + "\n就在这时，门被推开。")
+        line = aiflavor.report_line(text, "short_drama")
+        self.assertIn("分集尾钩子检查覆盖 2/2 集", line)
+        self.assertIn("缺少集尾悬念信号：第 1 集", line)
+        self.assertNotIn("第 2 集", line)
+
+    def test_short_drama_checks_short_document_episode_tails(self):
+        """整份短剧不足节奏统计门槛时，已标集仍检查尾钩子。"""
+        from app.core import aiflavor
+        text = "## 第 1 集\n两人沉默地看着桌上的文件。\n\n## E02\n就在这时，门被推开。"
+        line = aiflavor.report_line(text, "short_drama")
+        self.assertIn("分集尾钩子检查覆盖 2/2 集", line)
+        self.assertIn("缺少集尾悬念信号：第 1 集", line)
+
 
 class DetectionInjectionTests(BaseTest):
     """确定性检测行注入评审提示词（单稿件 + 连载逐章共用同一入口）。"""

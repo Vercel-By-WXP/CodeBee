@@ -83,13 +83,13 @@ def narrative_analyze(text):
     return {"cats": cats, "per_kilo": per_kilo, "alert": alert, "ending_hits": ending_hits}
 
 
-# ---------- 节奏/钩子密度（借鉴 web-novel-pacing-analyzer：连载作品的章级
-# 节奏审计——读者留存看「每章有没有钩子、段落有没有淤积、是不是通篇独白」，
+# ---------- 节奏/钩子密度（借鉴 web-novel-pacing-analyzer：连载/短剧的单元级
+# 节奏审计——读者留存看「每章/每集有没有钩子、段落有没有淤积、是不是通篇独白」，
 # 这些是能确定性统计的客观量。与套话检测同路：只给评审官一条参考线，
 # 不直接扣分——短段落多的快节奏文也可能开篇没有冲突词。）
-NARRATIVE_FLOWS = ("novel", "serial_novel", "video_script")
+NARRATIVE_FLOWS = ("novel", "serial_novel", "video_script", "short_drama")
 
-# 冲突/悬念信号词表：开篇用来看「抓不抓人」，章末用来看「留不留钩子」
+# 冲突/悬念信号词表：开篇用来看「抓不抓人」，单元末用来看「留不留钩子」
 HOOK_WORDS = (
     "突然", "忽然", "竟然", "没想到", "万万没想到", "难道", "究竟", "为什么",
     "是谁", "怎么回事", "就在这时", "就在此时", "然而", "可是", "却见", "却听",
@@ -98,11 +98,15 @@ HOOK_WORDS = (
 )
 DIALOG_RE = re.compile(r"[「『“\"]")
 OPENING_SCAN_CHARS = 300        # 开篇抓力只看前 300 字（黄金三章 / 短视频黄金 3 秒）
-PACING_TAIL_CHARS = 200         # 章末钩子只看最后 200 字
+PACING_TAIL_CHARS = 200         # 单元末钩子只看最后 200 字
 PARA_LONG_CHARS = 400           # 单段超过此字数算「信息淤积」
 PARA_AVG_ALERT = 300            # 段均长告警线
 DIALOG_ALERT_RATIO = 0.12       # 含对话段占比低于此值算「通篇叙述独白」
 PACING_MIN_CHARS = 400          # 太短（摘要/片段）不做节奏统计，避免噪声
+EPISODE_HEADING_RE = re.compile(
+    r"^\s{0,3}#{1,6}\s*(?:第\s*(\d+)\s*集|E(\d{1,3})(?:\s|[-：:、.]|$))",
+    re.IGNORECASE,
+)
 
 
 def _paras(text):
@@ -115,7 +119,7 @@ def _paras(text):
     return out
 
 
-def pacing_analyze(text):
+def pacing_analyze(text, unit="章"):
     """统计叙事节奏客观量。返回 {ok, paras, avg_len, longest, dialog_ratio,
     open_hits, tail_hits, alerts, alert}；文本过短时 ok=False。"""
     text = text or ""
@@ -138,12 +142,29 @@ def pacing_analyze(text):
     if ratio < DIALOG_ALERT_RATIO:
         alerts.append("对话段占比偏低（%.0f%%），易成通篇独白" % (ratio * 100))
     if not tail_hits:
-        alerts.append("章末 200 字无悬念信号，缺钩子")
+        alerts.append("%s末 200 字无悬念信号，缺钩子" % unit)
     if not open_hits:
         alerts.append("开篇 300 字无冲突信号，开头偏平")
     return {"ok": True, "paras": len(paras), "avg_len": avg, "longest": longest,
             "dialog_ratio": ratio, "open_hits": open_hits, "tail_hits": tail_hits,
             "alerts": alerts, "alert": bool(alerts)}
+
+
+def _episode_sections(text):
+    """按常见 Markdown 集标题拆分短剧正文，保留集号和每集正文。"""
+    sections, current_label, current_lines = [], None, []
+    for line in (text or "").splitlines():
+        match = EPISODE_HEADING_RE.match(line)
+        if match:
+            if current_label is not None:
+                sections.append((current_label, "\n".join(current_lines)))
+            current_label = match.group(1) or match.group(2)
+            current_lines = []
+        elif current_label is not None:
+            current_lines.append(line)
+    if current_label is not None:
+        sections.append((current_label, "\n".join(current_lines)))
+    return sections
 
 
 def inject_into_prompt(tpl, text, kind=None):
@@ -184,14 +205,37 @@ def report_line(text, kind=None):
                      "结尾是否靠主角想通收束。")
         lines.append(line)
     if kind in NARRATIVE_FLOWS:
-        pr = pacing_analyze(text)
+        unit = "集" if kind == "short_drama" else "章"
+        pr = pacing_analyze(text, unit=unit)
+        episode_sections = _episode_sections(text) if kind == "short_drama" else []
+        missing_episode_hooks, checked_episodes = [], 0
+        for label, episode_text in episode_sections:
+            if not episode_text.strip():
+                continue
+            checked_episodes += 1
+            tail = episode_text[-PACING_TAIL_CHARS:]
+            if not any(word in tail for word in HOOK_WORDS):
+                missing_episode_hooks.append(label)
+        line = ""
         if pr["ok"]:
             line = ("- [节奏检测] 确定性统计：%d 段（均 %.0f 字 / 最长 %d 字），"
-                    "含对话段 %.0f%%，开篇 300 字冲突信号 %d 处，章末 200 字悬念信号 %d 处。"
+                    "含对话段 %.0f%%，开篇 300 字冲突信号 %d 处，%s末 200 字悬念信号 %d 处。"
                     % (pr["paras"], pr["avg_len"], pr["longest"],
-                       pr["dialog_ratio"] * 100, pr["open_hits"], pr["tail_hits"]))
-            if pr["alert"]:
-                line += ("提示：%s。连载留存取决于每章的钩子与段落节奏，"
-                         "请评审官结合剧情判断是否真问题。" % "、".join(pr["alerts"]))
+                       pr["dialog_ratio"] * 100, pr["open_hits"], unit, pr["tail_hits"]))
+        if episode_sections:
+            line += "分集尾钩子检查覆盖 %d/%d 集。" % (
+                checked_episodes, len(episode_sections))
+            if missing_episode_hooks:
+                line += "缺少集尾悬念信号：%s。" % "、".join(
+                    "第 %s 集" % label for label in missing_episode_hooks)
+        if pr.get("alert"):
+            cadence = "每集的" if kind == "short_drama" else "每章的"
+            retention = "短剧" if kind == "short_drama" else "连载"
+            line += ("提示：%s。%s留存取决于%s钩子与段落节奏，"
+                     "请评审官结合剧情判断是否真问题。"
+                     % ("、".join(pr["alerts"]), retention, cadence))
+        elif missing_episode_hooks:
+            line += "请评审官结合剧情判断缺失是否为有意收束。"
+        if line:
             lines.append(line)
     return "\n".join(lines)
