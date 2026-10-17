@@ -116,6 +116,8 @@ def _step_timeout(run_id, requested, deadline=None):
     deadline = deadline if deadline is not None else _run_deadline(run_id)
     if deadline is not None:
         value = min(value, max(0.0, deadline - time.monotonic()))
+    elif value.is_integer():
+        value = int(value)
     return value, deadline
 
 
@@ -2878,7 +2880,13 @@ def author_review_rubric_block(dims, signing_dims):
     lines = [
         "## 评审口径（本书会按以下标准审稿，写作时对照自查）",
         "- 评分维度：" + " / ".join(dims) + "。",
-        "- 维度权重与证据要求：" + review_config.build_prompt(dims).replace("\n", "；"),
+        # 作者只需要知道审稿关注点和提交证据，不需要评审侧的数值量表。
+        # Keeping the score range out of this block prevents prompt-gaming and
+        # keeps the author/reviewer contracts intentionally separate.
+        "- 维度权重与证据要求：" + "；".join(
+            "%s（权重 %.2f）：请结合正文证据自查" % (d["name"], d["weight"])
+            for d in review_config._clean_dimensions(dims)
+        ) + "。",
         "- 逐项硬清单：" + "；".join(REVIEW_CHECKLIST_ITEMS) + "。",
         "- 全书级关注：" + GLOBAL_REVIEW_FOCUS + "。",
         "- 签约专项维度：" + "、".join(signing_dims) + "。",

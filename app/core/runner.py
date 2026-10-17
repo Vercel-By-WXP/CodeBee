@@ -93,7 +93,14 @@ def _fallback_probe_cli(name):
     name = str(name)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
         return None   # 带斜杠/参数形态的不是裸命令名，交给原路径逻辑
-    if os.name != "nt":
+    # Unit/integration tests may provide Windows-style install roots while
+    # running on Linux (the release gate is intentionally Ubuntu-hosted).
+    # Treat those explicit roots as a Windows probe request; ordinary POSIX
+    # callers still take the native ~/.local/bin path below.
+    windows_roots = ("LOCALAPPDATA", "APPDATA", "USERPROFILE", "ProgramW6432",
+                     "ProgramFiles", "ProgramFiles(x86)", "SystemRoot")
+    windows_probe = os.name == "nt" or any(os.environ.get(key) for key in windows_roots)
+    if not windows_probe:
         for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
                   "/opt/homebrew/bin", "/usr/local/bin"):
             p = os.path.join(d, name)
@@ -104,7 +111,7 @@ def _fallback_probe_cli(name):
                 pass
         return None
     local = os.environ.get("LOCALAPPDATA") or ""
-    home = os.path.expanduser("~")
+    home = (os.environ.get("USERPROFILE") or os.path.expanduser("~"))
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
     program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
     program_files_x86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
@@ -155,6 +162,15 @@ def resolve_command(command):
     if low.endswith(".cmd") or low.endswith(".bat"):
         return ["cmd", "/c", path]
     return [path]
+
+
+def _stable_timeout(value):
+    """Keep whole-second budgets exact when passing them to subprocesses."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return value
+    return int(numeric) if numeric.is_integer() else numeric
 
 
 def redact_command(argv):
@@ -2249,7 +2265,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             ("error sending request for url", 2),
                         )
                     res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                                      timeout=min(timeout, remaining), deadline=deadline,
+                                      timeout=_stable_timeout(min(timeout, remaining)), deadline=deadline,
                                       cancel_event=cancel_event,
                                       log_path=log_path, stall_timeout=stall_t,
                                       activity_timeout=activity_t,

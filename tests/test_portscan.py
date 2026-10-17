@@ -188,12 +188,19 @@ class TestClosePortLogic(PortscanBase):
         """在 mock 下跑 close_port。rows_state["rows"] 为当前扫描结果；
         taskkill_side(cmd) 处理 taskkill 调用；kill_log 收 (pid, sig)。"""
         clock = self._Clock()
-        with mock.patch.object(portscan, "listening_ports",
-                               side_effect=lambda with_names=True: list(rows_state["rows"])), \
+        # These orchestration cases exercise the taskkill contract. Keep them
+        # deterministic on the Ubuntu release-gate host as well as Windows;
+        # the real POSIX signal path is covered by the live listener test.
+        with mock.patch.object(
+                portscan, "listening_ports",
+                side_effect=lambda with_names=True: list(rows_state["rows"])), \
              mock.patch.object(portscan, "time", clock), \
-             mock.patch.object(portscan.subprocess, "run", side_effect=taskkill_side), \
-             mock.patch.object(portscan.os, "kill",
-                               side_effect=lambda pid, sig: kill_log.append((pid, sig))):
+             mock.patch.object(portscan.os, "name", "nt"), \
+             mock.patch.object(portscan.subprocess, "run",
+                               side_effect=taskkill_side), \
+             mock.patch.object(
+                 portscan.os, "kill",
+                 side_effect=lambda pid, sig: kill_log.append((pid, sig))):
             return portscan.close_port(self.PORT)
 
     def test_gentle_signal_releases(self):
