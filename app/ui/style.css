@@ -3604,6 +3604,15 @@ html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(3) { transition-del
 html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(4) { transition-delay: 0.2s; }
 html[data-skin="apple"] .sdir[open] > .dirbody > *:nth-child(5) { transition-delay: 0.25s; }
 
+/* A13) 字号优化：标题加大增强层次，辅助文字加到可读底线 */
+html[data-skin="apple"] h2 { font-size: 18px; }
+html[data-skin="apple"] .hero { font-size: 26px; }
+html[data-skin="apple"] .page-title { font-size: 17px; }
+html[data-skin="apple"] .side-label { font-size: 12px; }
+html[data-skin="apple"] .sdir summary .cnt { font-size: 11px; }
+html[data-skin="apple"] .stask .tm { font-size: 11.5px; }
+html[data-skin="apple"] .sglyph { font-size: 11px; }
+
 /* ================= 蜂巢工作台视觉 v8（归行·蜂航） =================
  * 用户拍板：横向流程图不如原始的行排——布局回归纵向泳道行（容器横向布局、
  * 交错、双列芯片全部撤掉，行内角色/执行者/尾巴/计时全量展示交还基座），
