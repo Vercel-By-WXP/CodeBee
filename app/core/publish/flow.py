@@ -1164,10 +1164,31 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             after = fq_state()
                         after_dialog = str(after.get("dialog") or "")
                         if _fanqie_submission_limit_changed(before_submit, after):
+                            # 每日字数上限弹窗：直发超额，或定时目标日额度被
+                            # 账户级队列占满（2026-10-17 凌晨实案：头七定时章
+                            # 占着额度，神瞳直发/定时双双被同一弹窗截断）。
+                            # 只要还剩可试日期就推进一天改走定时重试，不再
+                            # 整批停摆——额度总会在某个明日放出来。
                             fq_click("发布设置", "取消")
-                            raise FlowError(
-                                "番茄提示投稿字数超出每日上限；顺延定时日期无法解除，"
-                                "本次已停止，请额度恢复后再发")
+                            if tried_dates + 1 >= max_days:
+                                raise FlowError(
+                                    "番茄连续 %d 个日期均提示投稿字数超出每日上限，"
+                                    "请额度恢复后再发" % max_days)
+                            force_schedule = True
+                            trial_day += datetime.timedelta(days=1)
+                            trial_time = datetime.time(0, 0)
+                            tried_dates += 1
+                            note(i, "每日上限弹窗：顺延定时至 %s 00:00 重试"
+                                 % trial_day.strftime("%Y-%m-%d"))
+                            if "发布设置" not in after_dialog:
+                                page.call(
+                                    "()=>{const e=[...document.querySelectorAll('button')]"
+                                    ".find(x=>x.getBoundingClientRect().width>0"
+                                    "&&(x.innerText||'').trim()==='下一步');"
+                                    "if(!e)return{ok:false};e.click();return{ok:true};}",
+                                    timeout=10)
+                                time.sleep(0.8)
+                            continue
                         if _has_new_feedback(before_submit, after, ["每日上限"]):
                             force_schedule = True
                             trial_day += datetime.timedelta(days=1)
