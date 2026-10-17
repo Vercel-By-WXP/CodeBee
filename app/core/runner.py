@@ -97,10 +97,17 @@ def _fallback_probe_cli(name):
     # running on Linux (the release gate is intentionally Ubuntu-hosted).
     # Treat those explicit roots as a Windows probe request; ordinary POSIX
     # callers still take the native ~/.local/bin path below.
-    # The runtime platform is authoritative here.  Looking at Windows-only
-    # environment variables on POSIX makes a hosted test runner (or a service
-    # launched with inherited variables) take the wrong probe branch.
-    windows_probe = os.name == "nt"
+    # The release gate runs on Linux but its Windows contract tests provide
+    # explicit Windows install roots. Honor those roots only under the scoped
+    # test marker; ordinary POSIX callers must not be redirected by stale
+    # inherited Windows variables.
+    test_windows = (os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") == "win32")
+    windows_roots = ("LOCALAPPDATA", "APPDATA", "USERPROFILE", "ProgramW6432",
+                     "ProgramFiles", "ProgramFiles(x86)", "SystemRoot",
+                     "NVM_SYMLINK")
+    windows_probe = (os.name == "nt" or
+                     (test_windows and any(os.environ.get(key)
+                                           for key in windows_roots)))
     if not windows_probe:
         for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
                   "/opt/homebrew/bin", "/usr/local/bin"):
