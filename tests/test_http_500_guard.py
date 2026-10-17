@@ -87,7 +87,8 @@ def _start_server():
 
 
 @unittest.skipUnless(__name__ == "__main__" and
-                     threading.current_thread() is threading.main_thread(),
+                     threading.current_thread() is threading.main_thread() and
+                     not os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM"),
                      "HTTP guard runs in its dedicated main-thread process")
 class HttpRouteGuard(unittest.TestCase):
 
