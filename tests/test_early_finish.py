@@ -237,7 +237,106 @@ class TestEarlyFinish(BaseTest):
         info = store.continue_info(child["id"])
         self.assertEqual(info["last_chapter"], 6)
         self.assertEqual(info["remaining_chapters"], 0)
+        self.assertEqual(info["early_finish_state"], "chapters_reached")
+        self.assertFalse(info["early_finish_content_complete"])
+        self.assertEqual(info["orphaned_chapters"], [7, 8])
+
+    def test_early_finish_requires_latest_successful_review_to_be_complete(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 6)
+        self.assertTrue(ok, err)
+        for i in range(5, 7):
+            (self.workdir / ("chapter-%02d.md" % i)).write_text(
+                "第 %d 章" % i, encoding="utf-8")
+
+        run = store.create_run("orchestration", child["title"], task_id=child["id"])
+        store.update_run(run["id"], status="done", verdict={
+            "end_chapter": 6, "publishable": False,
+        })
+        info = store.continue_info(task["id"])
+        self.assertEqual(info["early_finish_state"], "review_failed")
+        self.assertTrue(info["early_finish_content_complete"])
+        self.assertFalse(info["early_finish_review_passed"])
+
+        store.update_run(run["id"], verdict={
+            "end_chapter": 6, "publishable": True,
+        })
+        info = store.continue_info(task["id"])
         self.assertEqual(info["early_finish_state"], "completed")
+        self.assertTrue(info["early_finish_content_complete"])
+        self.assertTrue(info["early_finish_review_passed"])
+
+    def test_old_batch_info_reports_latest_batch_state(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 7)
+        self.assertTrue(ok, err)
+        run = store.create_run("orchestration", child["title"], task_id=child["id"])
+        store.update_run(run["id"], status="running")
+
+        info = store.continue_info(task["id"])
+        self.assertEqual(info["early_finish_latest_task_id"], child["id"])
+        self.assertEqual(info["early_finish_latest_task_status"], "running")
+        self.assertEqual(info["early_finish_latest_run_status"], "running")
+        self.assertEqual(info["early_finish_state"], "running")
+        self.assertFalse(info["can"])
+        self.assertIn("最新", info["reason"])
+
+    def test_target_cannot_move_before_published_or_scheduled_chapters(self):
+        from app.core import store
+        from app.core.publish import ledger
+        from unittest.mock import patch
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 8)
+        self.assertTrue(ok, err)
+        with patch.object(ledger, "published_chapters", return_value=set()), \
+                patch.object(ledger, "scheduled_chapters", return_value={7}):
+            ok, err, _ = store.update_early_finish_task(
+                child["id"], target_chapter=6)
+        self.assertFalse(ok)
+        self.assertIn("排期", err)
+        self.assertEqual(store.serial_early_finish_plan(child)["target_chapter"], 8)
+
+    def test_early_finish_publish_progress_is_separate_from_content(self):
+        from app.core import store
+        from app.core.publish import ledger
+        from unittest.mock import patch
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 6)
+        self.assertTrue(ok, err)
+        with patch.object(ledger, "published_chapters", return_value={1, 2}), \
+                patch.object(ledger, "scheduled_chapters", return_value={3}), \
+                patch.object(ledger, "drafted_chapters", return_value={4}):
+            info = store.continue_info(child["id"])
+        self.assertFalse(info["early_finish_content_complete"])
+        self.assertFalse(info["early_finish_publication_complete"])
+        self.assertEqual(info["early_finish_publish_progress"], [{
+            "platform": "fanqie", "published": 2, "scheduled": 1,
+            "drafted": 1, "outstanding": 2,
+        }])
+
+    def test_publish_progress_keeps_bound_platform_after_auto_publish_disabled(self):
+        from app.core import store
+        from app.core.publish import ledger
+        from unittest.mock import patch
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 6)
+        self.assertTrue(ok, err)
+        store.set_auto_publish(task["id"], None)
+        with patch.object(ledger, "books_for", return_value={"fanqie": {}}), \
+                patch.object(ledger, "published_chapters", return_value={1, 2}), \
+                patch.object(ledger, "scheduled_chapters", return_value=set()), \
+                patch.object(ledger, "drafted_chapters", return_value=set()):
+            info = store.continue_info(child["id"])
+        self.assertEqual([row["platform"] for row in info["early_finish_publish_progress"]],
+                         ["fanqie"])
+        self.assertEqual(info["early_finish_publish_progress"][0]["published"], 2)
 
     def test_frontend_early_finish_request_is_json_encoded(self):
         from pathlib import Path
@@ -245,3 +344,6 @@ class TestEarlyFinish(BaseTest):
         source = (Path(__file__).resolve().parents[1] / "app" / "ui" / "app.js").read_text(encoding="utf-8")
         self.assertIn("body: JSON.stringify({ target_chapter: target, reason })", source)
         self.assertNotIn("body: { target_chapter: target }", source)
+        self.assertIn("earlyFinishContentComplete", source)
+        self.assertIn("latestSerialBatch", source)
+        self.assertIn("不会自动发布", source)

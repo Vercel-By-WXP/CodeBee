@@ -10,6 +10,20 @@
   const LANG_KEY = "orch.lang";
   // 字典：键 = 中文原文；值 = 英文译文。未命中即回落中文。
   const EN = {
+    "{0}：已发布 {1}，排期 {2}，草稿 {3}，待处理 {4}": "{0}: {1} published, {2} scheduled, {3} drafted, {4} outstanding",
+    "全书提前完结状态": "Early-finish status",
+    "完结内容与评审已通过": "Ending content and review passed",
+    "尚无平台发布记录；发布进度与内容完结分开计算。": "No platform publication record yet; publication progress is tracked separately from content completion.",
+    "提前完结后的遗留章节稿会保留，不会自动发布。": "Draft chapters after early finish are retained and are not published automatically.",
+    "收束章节仍待编写": "Closing chapters still need to be written",
+    "最新批次正在排队": "The latest batch is queued",
+    "最新批次正在运行": "The latest batch is running",
+    "最新批次状态：{0}": "Latest batch status: {0}",
+    "最新批次：{0} · {1}": "Latest batch: {0} · {1}",
+    "最终章后的遗留稿：{0}。文件会保留，不会自动发布。": "Drafts after the final chapter: {0}. Files are retained and are not published automatically.",
+    "最终章稿已到位，等待终稿评审": "Final chapter draft is ready; waiting for final review",
+    "章节已写完，评审未通过，需要处理意见": "Chapters are written, but review did not pass; address the feedback",
+    "缺少章节：{0}": "Missing chapters: {0}",
     "验证证据详情": "Verification evidence details",
     "覆盖": "Coverage",
     "来源": "Source",

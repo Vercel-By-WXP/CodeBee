@@ -50,6 +50,49 @@ class TestContinueSerial(BaseTest):
         self.assertEqual(nxt2["serial"]["continues"], nxt["id"])
         self.assertEqual(nxt2["serial"]["chapters"], 1)  # 续 1 章也允许
 
+    def test_continue_from_old_batch_resolves_latest_batch(self):
+        """旧批次入口继续连载时不能从旧批次分叉。"""
+        from app.core import store
+        root = store.create_task({
+            "type": "serial_novel", "title": "旧入口", "goal": "写一本连载",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 2, "words_per_chapter": 800},
+        })
+        for i in range(1, 3):
+            (self.workdir / ("chapter-%02d.md" % i)).write_text(
+                "第 %d 章" % i, encoding="utf-8")
+        ok, err, first = store.continue_task(root["id"], chapters=1)
+        self.assertTrue(ok, err)
+        (self.workdir / "chapter-03.md").write_text("第 3 章", encoding="utf-8")
+        ok, err, second = store.continue_task(root["id"], chapters=1)
+        self.assertTrue(ok, err)
+        self.assertEqual(second["serial"]["continues"], first["id"])
+        self.assertEqual(second["serial"]["start_chapter"], 4)
+
+    def test_serial_chain_latest_is_creation_ordered(self):
+        """多子批次或服务重启后，链尾仍按持久化创建时间确定。"""
+        from app.core import store
+        root = store.create_task({
+            "type": "serial_novel", "title": "链尾排序", "goal": "g",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 1, "words_per_chapter": 800},
+        })
+        first = store.create_task({
+            "type": "serial_novel", "title": "链尾排序·续", "goal": "g",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 1, "words_per_chapter": 800,
+                        "continues": root["id"]},
+        })
+        second = store.create_task({
+            "type": "serial_novel", "title": "链尾排序·续2", "goal": "g",
+            "workdir": str(self.workdir),
+            "serial": {"chapters": 1, "words_per_chapter": 800,
+                        "continues": root["id"]},
+        })
+        # Simulate a reload where insertion order differs from creation order.
+        first["created_at_ns"] = second["created_at_ns"] + 1
+        self.assertEqual(store.serial_chain_ids(root["id"])[-1], first["id"])
+
     def test_continue_info_guards(self):
         """非连载/运行中/无成稿 → 拒绝续写并给出原因。"""
         from app.core import store

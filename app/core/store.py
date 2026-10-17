@@ -241,6 +241,7 @@ def create_task(payload):
         "implementer": payload.get("implementer") or "",
         "attachments": [],
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "created_at_ns": time.time_ns(),
         "status": "created",
     }
     if flow["id"] == "short_drama":
@@ -660,6 +661,20 @@ def list_tasks(limit=None, archived=None):
         return out
 
 
+def _creation_sort_key(item):
+    """Return a stable chronological key for tasks and runs.
+
+    New records carry nanosecond creation stamps; legacy records fall back to
+    their second-resolution timestamp and id for deterministic ordering.
+    """
+    try:
+        ns = int((item or {}).get("created_at_ns") or 0)
+    except (TypeError, ValueError):
+        ns = 0
+    return (ns, str((item or {}).get("created_at") or ""),
+            str((item or {}).get("id") or ""))
+
+
 def serial_chain_ids(task_id):
     """连载链条全部任务 id，根任务在前（一本书一条链：开书资料/发布绑定沿链共享）。
 
@@ -682,14 +697,17 @@ def serial_chain_ids(task_id):
     in_chain, grew = set(order), True
     while grew:                          # 后代收进链条，迭代到收敛
         grew = False
+        candidates = []
         for tid, t in by_id.items():
             if tid in in_chain:
                 continue
             parent = str(((t.get("serial") or {}).get("continues")) or "")
             if parent and parent in in_chain:
-                order.append(tid)
-                in_chain.add(tid)
-                grew = True
+                candidates.append((tid, t))
+        for tid, _ in sorted(candidates, key=lambda pair: _creation_sort_key(pair[1])):
+            order.append(tid)
+            in_chain.add(tid)
+            grew = True
     return order
 
 
@@ -1122,7 +1140,7 @@ def latest_run_by_task():
             if not tid:
                 continue
             cur = best.get(tid)
-            if cur is None or r["id"] > cur["id"]:
+            if cur is None or _creation_sort_key(r) > _creation_sort_key(cur):
                 best[tid] = r
         return {tid: dict(r) for tid, r in best.items()}
 
@@ -1148,7 +1166,7 @@ def task_runs(task_id):
     """某任务的全部运行（新→旧，含 steps）。任务级详情视图用，按需拉全量。"""
     with LOCK:
         runs = [dict(r) for r in _RUNS.values() if r.get("task_id") == task_id]
-    runs.sort(key=lambda r: r["id"], reverse=True)
+    runs.sort(key=_creation_sort_key, reverse=True)
     return runs
 
 
@@ -1156,7 +1174,7 @@ def task_runs_page(task_id, offset=0, limit=3):
     """分页读取任务运行，只复制当前页；全量轻统计在详情打开时按需计算。"""
     with LOCK:
         runs = [r for r in _RUNS.values() if r.get("task_id") == task_id]
-    runs.sort(key=lambda run: run["id"], reverse=True)
+    runs.sort(key=_creation_sort_key, reverse=True)
     page = [dict(run) for run in runs[offset:offset + limit]]
     total_steps = settled_steps = total_tokens = 0
     total_cost = 0.0
@@ -2114,19 +2132,23 @@ def retry_task(task_id):
 _CH_FILE_RE = re.compile(r"^chapter-(\d{1,4})\.md$")
 
 
+def serial_book_chapter_numbers(task):
+    """Return chapter numbers currently present in the serial work directory."""
+    wd = str((task or {}).get("workdir") or "")
+    if not wd:
+        return []
+    try:
+        return sorted({int(m.group(1)) for p in Path(wd).glob("chapter-*.md")
+                       if (m := _CH_FILE_RE.match(p.name))})
+    except OSError:
+        return []
+
+
 def serial_book_progress(task):
     """这本书已经写到第几章：工作目录里的 chapter-*.md 是事实标准（续写批次
     共用同一目录，天然包含全部历史章）；文件缺失时沿 continues 链推算兜底。"""
-    last = 0
-    wd = str(task.get("workdir") or "")
-    if wd:
-        try:
-            for p in Path(wd).glob("chapter-*.md"):
-                m = _CH_FILE_RE.match(p.name)
-                if m:
-                    last = max(last, int(m.group(1)))
-        except OSError:
-            pass
+    chapters = serial_book_chapter_numbers(task)
+    last = max(chapters, default=0)
     if last:
         return last
     seen = set()
@@ -2187,31 +2209,149 @@ def continue_info(task_id):
             "remaining_chapters": None,
             "early_finish_state": "none",
             "early_finish_latest_task_id": None,
+            "early_finish_latest_task_status": None,
+            "early_finish_latest_run_id": None,
+            "early_finish_latest_run_status": None,
+            "early_finish_chapters_reached": False,
+            "early_finish_review_passed": False,
+            "early_finish_content_complete": False,
+            "early_finish_publish_progress": [],
+            "early_finish_publication_complete": False,
+            "orphaned_chapters": [],
+            "missing_chapters": [],
             "can_update_early_finish": False,
             "can_cancel_early_finish": False}
     if not serial:
         info["reason"] = "只有连载任务支持继续连载"
         return info
-    if task.get("status") in ("queued", "running"):
-        info["reason"] = "任务还在运行中，等结束或取消后再续写"
-        return info
-    for r in _RUNS.values():
-        if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
-            info["reason"] = "有运行中的记录，请先取消"
-            return info
-    raw_last = serial_book_progress(task)
+
+    chain = serial_chain_ids(task_id) or [task_id]
+    latest_id = chain[-1]
+    latest_task = get_task(latest_id) or task
+    latest_runs = task_runs(latest_id)
+    latest_run = latest_runs[0] if latest_runs else None
+    info["early_finish_latest_task_id"] = latest_id
+    info["early_finish_latest_task_status"] = latest_task.get("status") or ""
+    info["early_finish_latest_run_id"] = (latest_run or {}).get("id")
+    info["early_finish_latest_run_status"] = (latest_run or {}).get("status") or ""
+
+    # A normal continuation may be started from any batch in the chain: use
+    # the newest batch as the operation source so the next child cannot fork
+    # from an older batch. Early-ending plans are stricter and keep the old
+    # batch read-only below, because their target must not be bypassed.
+    if latest_id != task_id and not plan:
+        task = latest_task
+        serial = task.get("serial") or {}
+        plan = serial_early_finish_plan(task)
+
+    # A continuation chain shares one work directory; always summarize progress
+    # from the newest batch so opening an older batch cannot show stale state.
+    raw_last = serial_book_progress(latest_task)
     last = min(raw_last, int(plan["target_chapter"])) if plan else raw_last
     info["last_chapter"] = last
     if plan:
-        chain = serial_chain_ids(task_id)
-        info["early_finish_latest_task_id"] = chain[-1] if chain else task_id
-        info["remaining_chapters"] = max(0, int(plan["target_chapter"]) - last)
-        info["early_finish_state"] = "completed" if last >= int(plan["target_chapter"]) else "planned"
-        if chain and chain[-1] != task_id:
-            info["reason"] = "请从最新连载批次继续，避免旧批次重复规划"
-            return info
+        target = int(plan["target_chapter"])
+        chapter_numbers = serial_book_chapter_numbers(latest_task)
+        chapter_set = set(chapter_numbers)
+        info["orphaned_chapters"] = [n for n in chapter_numbers if n > target]
+        info["missing_chapters"] = [n for n in range(1, target + 1)
+                                     if n not in chapter_set]
+        info["remaining_chapters"] = max(0, target - last)
+        info["early_finish_chapters_reached"] = last >= target
+        verdict = (latest_run or {}).get("verdict") or {}
+        try:
+            verdict_end = int(verdict.get("end_chapter") or 0)
+        except (TypeError, ValueError):
+            verdict_end = 0
+        content_complete = bool(
+            latest_run and latest_run.get("status") == "done"
+            and verdict_end >= target and not info["missing_chapters"])
+        review_passed = bool(content_complete and verdict.get("publishable") is True)
+        info["early_finish_review_passed"] = review_passed
+        info["early_finish_content_complete"] = content_complete
+
+        # Editorial completion and platform publication are separate states.
+        # Never imply that a written/approved ending is fully published while
+        # chapters are still merely drafted or queued on a platform.
+        try:
+            from .publish import ledger, manager
+            platforms = {str(platform) for platform in ledger.books_for(task_id)
+                         if str(platform) in manager.PLATFORMS}
+            for tid in chain:
+                chained = get_task(tid) or {}
+                auto = chained.get("auto_publish")
+                platform = str((auto or {}).get("platform") or "")
+                if (isinstance(auto, dict) and auto.get("enabled")
+                        and platform in manager.PLATFORMS):
+                    platforms.add(platform)
+            publish_progress = []
+            chapter_range = set(range(1, target + 1))
+            for platform in sorted(platforms):
+                published = set(ledger.published_chapters(task_id, platform)) & chapter_range
+                scheduled = set(ledger.scheduled_chapters(task_id, platform)) & chapter_range
+                drafted = set(ledger.drafted_chapters(task_id, platform)) & chapter_range
+                outstanding = chapter_range - published - scheduled - drafted
+                publish_progress.append({
+                    "platform": platform,
+                    "published": len(published),
+                    "scheduled": len(scheduled - published),
+                    "drafted": len(drafted - published - scheduled),
+                    "outstanding": len(outstanding),
+                })
+            info["early_finish_publish_progress"] = publish_progress
+            info["early_finish_publication_complete"] = bool(
+                publish_progress and all(row["outstanding"] == 0
+                                         and row["scheduled"] == 0
+                                         and row["drafted"] == 0
+                                         for row in publish_progress))
+        except Exception:
+            # Publishing is optional; a ledger hiccup must not block writing.
+            info["early_finish_publish_progress"] = []
+            info["early_finish_publication_complete"] = False
+        latest_run_status = info["early_finish_latest_run_status"]
+        latest_status = (latest_run_status
+                         or info.get("early_finish_latest_task_status"))
+        if latest_status in ("queued", "running"):
+            info["early_finish_state"] = latest_status
+        elif review_passed:
+            info["early_finish_state"] = "completed"
+        elif content_complete:
+            info["early_finish_state"] = "review_failed"
+        elif latest_run_status in ("failed", "cancelled", "timeout"):
+            info["early_finish_state"] = latest_run_status
+        elif last >= target:
+            info["early_finish_state"] = "chapters_reached"
+        else:
+            info["early_finish_state"] = "planned"
+
+    # Check the whole chain before returning the snapshot. This keeps the
+    # summary above available while still preventing edits during active work.
+    chain_tasks = [get_task(tid) for tid in chain]
+    if latest_id != task_id and plan:
+        latest_status = (info.get("early_finish_latest_run_status")
+                         or info.get("early_finish_latest_task_status") or "未知")
+        info["reason"] = ("请从最新连载批次继续，避免旧批次重复规划；"
+                          "最新批次状态：%s" % latest_status)
+        return info
+    if any(t and t.get("status") in ("queued", "running") for t in chain_tasks):
+        info["reason"] = "连载任务还在运行中，等结束或取消后再操作"
+        return info
+    if any(r.get("task_id") in chain and r.get("status") in ("queued", "running")
+           for r in _RUNS.values()):
+        info["reason"] = "连载有运行中的记录，请先取消或等待结束"
+        return info
+    if plan and info["early_finish_review_passed"]:
+        info["reason"] = "提前完结内容与评审已完成"
+        if info["early_finish_publish_progress"] and not info["early_finish_publication_complete"]:
+            info["reason"] += "；仍有章节待在平台正式发布"
+        return info
     if plan and last >= int(plan["target_chapter"]):
-        info["reason"] = "已达到提前完结规划的最终章"
+        info["reason"] = "最终章范围已达到，但最新批次尚未完成终稿评审"
+        if info["missing_chapters"]:
+            info["reason"] += "；缺少章节：%s" % ", ".join(
+                str(n) for n in info["missing_chapters"][:20])
+        if info["orphaned_chapters"]:
+            info["reason"] += "；最终章之后的遗留稿不会自动发布"
         return info
     if last < 1:
         info["reason"] = "还没写成任何一章（工作目录里没有 chapter-*.md），先跑完一次连载"
@@ -2233,6 +2373,13 @@ def continue_task(task_id, chapters=None):
     info = continue_info(task_id)
     if not info.get("can"):
         return False, info.get("reason") or "当前不能继续连载", None
+    latest_id = info.get("early_finish_latest_task_id") or task_id
+    if latest_id != task_id:
+        latest = get_task(latest_id)
+        if not latest:
+            return False, "最新连载批次不存在，请刷新后重试", None
+        task_id = latest_id
+        task = latest
     serial = task["serial"]
     plan = serial_early_finish_plan(task)
     remaining = None
@@ -2465,6 +2612,25 @@ def update_early_finish_task(task_id, target_chapter=None, reason=None, cancel=F
     last = int(info.get("last_chapter") or 0)
     if target <= last:
         return False, "最终章号必须大于当前已完成章节", None
+    current_target = int(plan.get("target_chapter") or 0)
+    if target < current_target:
+        try:
+            from .publish import ledger, manager
+            published = set()
+            scheduled = set()
+            for platform in manager.PLATFORMS:
+                published.update(ledger.published_chapters(task_id, platform))
+                scheduled.update(ledger.scheduled_chapters(task_id, platform))
+            published_ahead = sorted(n for n in published if n > target)
+            scheduled_ahead = sorted(n for n in scheduled if n > target)
+        except Exception:
+            # A target reduction must not silently cross publication state that
+            # could not be verified. The user can retry after the ledger recovers.
+            return False, "无法核对发布台账，暂不能缩短最终章", None
+        if published_ahead:
+            return False, ("最终章不能早于已发布的第 %d 章" % published_ahead[-1]), None
+        if scheduled_ahead:
+            return False, ("最终章不能早于已排期的第 %d 章" % scheduled_ahead[-1]), None
     revised = dict(plan)
     revised["target_chapter"] = target
     if reason is not None:

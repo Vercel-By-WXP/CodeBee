@@ -876,6 +876,19 @@ function renderTypeOptions() {
   paintWorkspaceMode();
 }
 
+// 语言切换只更新类型文案，不触发 onTypeChange 的流程默认值回填，保留用户正在编辑的表单。
+function refreshTypeTranslations() {
+  const sel = $("f-type");
+  if (!sel || !S.flows) return;
+  const current = sel.value;
+  sel.innerHTML = (S.flows || []).map((f) =>
+    '<option value="' + esc(f.id) + '">' + esc(t(f.name)) + t("（") +
+    flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>").join("");
+  sel.value = current;
+  renderTypeMenu();
+  syncTypeBtn();
+}
+
 function applyTaskPreferenceDefaults() {
   if (S.prefsApplied || !S.lastPrefs) return;
   const lp = S.lastPrefs;
@@ -6114,26 +6127,38 @@ function renderTaskDetail() {
   // 没跑过运行的任务也不能残留上一个任务留下的按钮状态
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
   const latestSummary = ((S.state || {}).task_latest || {})[key] || {};
-  const plannedEnd = Number(tk && tk.serial && tk.serial.early_finish
-    && tk.serial.early_finish.target_chapter || 0);
-  const reachedPlannedEnd = plannedEnd > 0 && Number(
-    latestSummary.verdict && latestSummary.verdict.end_chapter || 0) >= plannedEnd;
+  const latestSerial = latestSerialBatch(tk);
+  const latestSerialSummary = latestSerial
+    && (((S.state || {}).task_latest || {})[latestSerial.id]) || {};
+  const earlyPlan = (latestSerial && latestSerial.serial && latestSerial.serial.early_finish)
+    || (tk && tk.serial && tk.serial.early_finish) || null;
+  const plannedEnd = Number(earlyPlan && earlyPlan.target_chapter || 0);
+  const latestEnd = Number(latestSerialSummary.verdict
+    && latestSerialSummary.verdict.end_chapter || 0);
+  const reachedPlannedEnd = plannedEnd > 0 && latestEnd >= plannedEnd;
+  const earlyFinishContentComplete = !!(plannedEnd > 0
+    && latestSerialSummary.status === "done"
+    && latestSerialSummary.verdict
+    && latestSerialSummary.verdict.publishable === true
+    && latestEnd >= plannedEnd);
   setSelectionSerialButton(tk);
   const bc = $("btn-continue");
   if (bc) bc.classList.toggle("hidden",
-    !(tk && tk.serial && tk.status !== "running" && tk.status !== "queued"));
+    !(tk && latestSerial && tk.serial
+      && tk.status !== "running" && tk.status !== "queued"
+      && !reachedPlannedEnd && !earlyFinishContentComplete));
   const bef = $("btn-early-finish");
   if (bef) bef.classList.toggle("hidden",
-    !(tk && tk.serial && !tk.serial.early_finish
+    !(tk && latestSerial && tk.id === latestSerial.id && tk.serial && !earlyPlan
       && tk.status !== "running" && tk.status !== "queued"));
   const befe = $("btn-early-finish-edit");
   if (befe) befe.classList.toggle("hidden",
-    !(tk && tk.serial && tk.serial.early_finish
-      && !reachedPlannedEnd && tk.status !== "running" && tk.status !== "queued"));
+    !(tk && earlyPlan && !earlyFinishContentComplete
+      && latestSerial.status !== "running" && latestSerial.status !== "queued"));
   const befc = $("btn-early-finish-cancel");
   if (befc) befc.classList.toggle("hidden",
-    !(tk && tk.serial && tk.serial.early_finish
-      && !reachedPlannedEnd && tk.status !== "running" && tk.status !== "queued"));
+    !(tk && earlyPlan && !earlyFinishContentComplete
+      && latestSerial.status !== "running" && latestSerial.status !== "queued"));
   setRetryBtn(retrySnapshotForTask(key, tk, latestSummary), tk);
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
@@ -6141,6 +6166,7 @@ function renderTaskDetail() {
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   renderProjectMemoryControls(key);
   if (isTask) {
+    refreshEarlyFinishChainInfo(tk, latestSummary.id || "");
     renderCheckpointControls(latestSummary.id || "", true);
     refreshCheckpointRestoreAvailability(latestSummary);
     if (latestSummary.id && S._checkpointRun !== latestSummary.id) {
@@ -7310,10 +7336,19 @@ async function renderRunDetail() {
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = [...((S.state || {}).tasks || []), ...((S.state || {}).archived_tasks || [])].find((x) => x.id === run.task_id);
-  const runPlannedEnd = Number(rcTask && rcTask.serial && rcTask.serial.early_finish
-    && rcTask.serial.early_finish.target_chapter || 0);
-  const runReachedPlannedEnd = runPlannedEnd > 0 && Number(
-    run.verdict && run.verdict.end_chapter || 0) >= runPlannedEnd;
+  const rcLatestTask = latestSerialBatch(rcTask);
+  const rcEarlyPlan = (rcLatestTask && rcLatestTask.serial && rcLatestTask.serial.early_finish)
+    || (rcTask && rcTask.serial && rcTask.serial.early_finish) || null;
+  const runPlannedEnd = Number(rcEarlyPlan && rcEarlyPlan.target_chapter || 0);
+  const rcLatestSummary = rcLatestTask
+    && (((S.state || {}).task_latest || {})[rcLatestTask.id]) || {};
+  const rcLatestEnd = Number(rcLatestSummary.verdict
+    && rcLatestSummary.verdict.end_chapter || 0);
+  const runReachedPlannedEnd = runPlannedEnd > 0 && rcLatestEnd >= runPlannedEnd;
+  const runEarlyFinishComplete = !!(runPlannedEnd > 0
+    && rcLatestSummary.status === "done" && rcLatestSummary.verdict
+    && rcLatestSummary.verdict.publishable === true
+    && rcLatestEnd >= runPlannedEnd);
   if (rcTask) {
     renderProjectMemoryControls(rcTask.id);
   } else {
@@ -7332,7 +7367,8 @@ async function renderRunDetail() {
   // 随墙钟走，签名带 1 分钟桶让「预计剩余」每分钟翻新，不必跟轮询同频。
   const etaBucket = (run.status === "running" || run.status === "queued")
     ? Math.floor(Date.now() / 60000) : 0;
-  const rdSig = JSON.stringify([run, rcTask || null, etaBucket]);
+  const rdSig = JSON.stringify([run, rcTask || null, rcLatestTask || null,
+    rcLatestSummary || null, etaBucket]);
   if (rdSig === S.runDetailSig) return;
   S.runDetailSig = rdSig;
   // 归档按钮：非运行中任务可归档/取消归档（此前只有侧栏右键菜单入口，
@@ -7341,16 +7377,18 @@ async function renderRunDetail() {
   setSelectionSerialButton(rcTask);
   setRetryBtn(run, rcTask);
   $("btn-continue").classList.toggle("hidden",
-    !(rcTask && rcTask.serial && run.status !== "running" && run.status !== "queued"));
+    !(rcTask && rcLatestTask && rcTask.serial
+      && run.status !== "running" && run.status !== "queued"
+      && !runReachedPlannedEnd && !runEarlyFinishComplete));
   $("btn-early-finish").classList.toggle("hidden",
-    !(rcTask && rcTask.serial && !rcTask.serial.early_finish
+    !(rcTask && rcLatestTask && rcTask.id === rcLatestTask.id && rcTask.serial && !rcEarlyPlan
       && run.status !== "running" && run.status !== "queued"));
   $("btn-early-finish-edit").classList.toggle("hidden",
-    !(rcTask && rcTask.serial && rcTask.serial.early_finish
-      && !runReachedPlannedEnd && run.status !== "running" && run.status !== "queued"));
+    !(rcTask && rcEarlyPlan && !runEarlyFinishComplete
+      && rcLatestTask.status !== "running" && rcLatestTask.status !== "queued"));
   $("btn-early-finish-cancel").classList.toggle("hidden",
-    !(rcTask && rcTask.serial && rcTask.serial.early_finish
-      && !runReachedPlannedEnd && run.status !== "running" && run.status !== "queued"));
+    !(rcTask && rcEarlyPlan && !runEarlyFinishComplete
+      && rcLatestTask.status !== "running" && rcLatestTask.status !== "queued"));
   setEditRetry(run.task_id, run.status, !!rcTask);
   S.lastRun = run;
   renderRunOutcome(run);
@@ -12434,6 +12472,126 @@ function runOutcomeSummary(run) {
   return String(raw).replace(/\s+/g, " ").trim().slice(0, 520);
 }
 
+function latestSerialBatch(task) {
+  if (!task || !task.serial) return task || null;
+  const state = S.state || {};
+  const rows = [...(state.tasks || []), ...(state.archived_tasks || [])];
+  let latest = task;
+  for (let depth = 0; depth < 50; depth += 1) {
+    const children = rows.filter((item) => item && item.serial
+      && String(item.serial.continues || "") === String(latest.id));
+    if (!children.length) break;
+    children.sort((a, b) => {
+      const an = Number(a.created_at_ns || 0);
+      const bn = Number(b.created_at_ns || 0);
+      return (bn - an) || String(b.created_at || b.id).localeCompare(String(a.created_at || a.id));
+    });
+    latest = children[0];
+  }
+  return latest;
+}
+
+function earlyFinishChainSummaryHtml(info) {
+  if (!info || !info.early_finish) return "";
+  const target = Number(info.planned_end_chapter || 0);
+  const progress = Math.max(0, Math.min(100,
+    Math.round(Number(info.last_chapter || 0) * 100 / Math.max(1, target))));
+  const status = String(info.early_finish_state || "planned");
+  const statusText = status === "completed" ? t("完结内容与评审已通过")
+    : status === "review_failed" ? t("章节已写完，评审未通过，需要处理意见")
+      : status === "chapters_reached" ? t("最终章稿已到位，等待终稿评审")
+        : status === "running" ? t("最新批次正在运行")
+          : status === "queued" ? t("最新批次正在排队")
+            : ["failed", "cancelled", "timeout"].includes(status)
+              ? t("最新批次状态：{0}", runStatusText({ status }))
+              : t("收束章节仍待编写");
+  const latestTitle = String(info.early_finish_latest_task_id || "");
+  const latestTask = [...(((S.state || {}).tasks) || []), ...(((S.state || {}).archived_tasks) || [])]
+    .find((item) => item.id === latestTitle);
+  const latestRunStatus = info.early_finish_latest_run_status
+    || info.early_finish_latest_task_status || "created";
+  const latestLabel = latestTask
+    ? t("最新批次：{0} · {1}", latestTask.title || latestTask.id,
+      runStatusText({ status: latestRunStatus })) : "";
+  const orphaned = Array.isArray(info.orphaned_chapters) ? info.orphaned_chapters : [];
+  const missing = Array.isArray(info.missing_chapters) ? info.missing_chapters : [];
+  const publishRows = Array.isArray(info.early_finish_publish_progress)
+    ? info.early_finish_publish_progress : [];
+  const publishText = publishRows.map((row) => {
+    const platform = row.platform === "fanqie" ? t("番茄")
+      : row.platform === "qimao" ? t("七猫") : row.platform;
+    return t("{0}：已发布 {1}，排期 {2}，草稿 {3}，待处理 {4}",
+      platform, row.published || 0, row.scheduled || 0,
+      row.drafted || 0, row.outstanding || 0);
+  }).join("；");
+  const detail = [
+    latestLabel,
+    missing.length ? t("缺少章节：{0}", missing.slice(0, 20).join("、")) : "",
+    orphaned.length ? t("最终章后的遗留稿：{0}。文件会保留，不会自动发布。", orphaned.join("、")) :
+      t("提前完结后的遗留章节稿会保留，不会自动发布。"),
+    publishText || t("尚无平台发布记录；发布进度与内容完结分开计算。"),
+  ].filter(Boolean);
+  return '<div class="rd-early-progress rd-serial-ending-summary" role="status">' +
+    '<b>' + esc(t("全书提前完结状态")) + '</b>' +
+    '<span>' + esc(t("第 {0} / {1} 章", info.last_chapter || 0, target)) + '</span>' +
+    '<i><em style="width:' + progress + '%"></em></i>' +
+    '<small>' + esc(statusText) + '</small>' +
+    detail.map((line) => '<small>' + esc(line) + '</small>').join("") +
+    '</div>';
+}
+
+function syncEarlyFinishChainSummary(info) {
+  const box = $("rd-overview");
+  if (!box) return;
+  const old = box.querySelector(".rd-serial-ending-summary");
+  if (old) old.remove();
+  const html = earlyFinishChainSummaryHtml(info);
+  if (html) box.insertAdjacentHTML("beforeend", html);
+}
+
+function refreshEarlyFinishChainInfo(task, ownerRunId) {
+  if (!task || !task.serial || !task.serial.early_finish) return;
+  const now = Date.now();
+  if (S._earlyFinishInfoTask === task.id && now - Number(S._earlyFinishInfoAt || 0) < 6000) {
+    syncEarlyFinishChainSummary(S._earlyFinishInfo);
+    return;
+  }
+  if (S._earlyFinishInfoPending === task.id) return;
+  S._earlyFinishInfoPending = task.id;
+  const seq = S._earlyFinishInfoSeq = (S._earlyFinishInfoSeq || 0) + 1;
+  api("/api/tasks/" + encodeURIComponent(task.id) + "/continue-info")
+    .then((info) => {
+      if (seq !== S._earlyFinishInfoSeq) return;
+      const current = S.detailTaskKey === task.id
+        || (!!ownerRunId && S.detailRunId === ownerRunId);
+      if (!current) return;
+      S._earlyFinishInfoTask = task.id;
+      S._earlyFinishInfoAt = Date.now();
+      S._earlyFinishInfo = info;
+      syncEarlyFinishChainSummary(info);
+      const active = ["queued", "running"].includes(info.early_finish_latest_run_status)
+        || ["queued", "running"].includes(info.early_finish_latest_task_status);
+      const finalReached = !!info.early_finish_chapters_reached;
+      const done = !!info.early_finish_content_complete
+        && !!info.early_finish_review_passed;
+      const canContinue = !!info.can && !active;
+      const continueButton = $("btn-continue");
+      if (continueButton) continueButton.classList.toggle("hidden", !canContinue);
+      const finishButton = $("btn-early-finish");
+      if (finishButton) finishButton.classList.toggle("hidden",
+        !(info.can && !info.early_finish && !active));
+      const editButton = $("btn-early-finish-edit");
+      if (editButton) editButton.classList.toggle("hidden", !info.early_finish || done || active);
+      const cancelButton = $("btn-early-finish-cancel");
+      if (cancelButton) cancelButton.classList.toggle("hidden", !info.early_finish || done || active);
+      if (finalReached && !done && continueButton) continueButton.classList.add("hidden");
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (S._earlyFinishInfoPending === task.id) S._earlyFinishInfoPending = "";
+    });
+}
+
 function renderRunOutcome(run, runs, aggregate) {
   const box = $("rd-outcome");
   if (!box) return;
@@ -12513,17 +12671,7 @@ function renderDetailOverview(run, runs, task, aggregate) {
       return '<div class="rd-budget-row"><span>' + esc(label) + '</span><div class="rd-budget-track"><i style="width:' + pct + '%"></i></div><small>' + esc(String(item[1] || 0)) + '/' + esc(String(item[2])) + '</small></div>';
     }).join("") + '</div>' : "";
   const verdict = run.verdict && typeof run.verdict === "object" ? run.verdict : {};
-  const earlyPlan = task && task.serial && task.serial.early_finish && typeof task.serial.early_finish === "object"
-    ? task.serial.early_finish : null;
-  const earlyTarget = earlyPlan ? Number(earlyPlan.target_chapter || 0) : 0;
-  const earlyDone = earlyTarget ? Math.min(earlyTarget,
-    Number(verdict.end_chapter || run.end_chapter || 0)) : 0;
-  const earlyProgressHtml = earlyTarget
-    ? '<div class="rd-early-progress" role="status"><b>' + esc(t("提前完结进度")) + '</b><span>' +
-      esc(t("第 {0} / {1} 章", earlyDone, earlyTarget)) + '</span>' +
-      '<i><em style="width:' + Math.round(earlyDone * 100 / earlyTarget) + '%"></em></i>' +
-      '<small>' + esc(earlyDone >= earlyTarget ? t("已达到规划最终章") : t("剩余 {0} 章", earlyTarget - earlyDone)) +
-      '</small></div>' : "";
+  const earlyProgressHtml = ""; // 全书状态由 continue-info 聚合，避免历史 run 显示过期进度。
   const degraded = verdict.review_degraded || verdict.quality_status === "degraded";
   const reviewHtml = degraded ? '<div class="rd-review-degraded" role="status"><strong>' + esc(t("评审降级")) + '</strong><span>' + esc((verdict.review_degradation_reasons || []).join("；") || t("当前没有满足门槛的评审者")) + '</span></div>' : "";
   const dagNodes = (run.plan && run.plan.steps) || run.subtasks || [];
@@ -12562,6 +12710,7 @@ function renderDetailOverview(run, runs, task, aggregate) {
     (contract ? contractOverviewHtml(contract) : "") +
     (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
   box.classList.remove("hidden");
+  refreshEarlyFinishChainInfo(task, run.id);
 }
 
 /* 运行时能力证据：run.capabilities 由 capability_runtime 在任务开始和
@@ -18185,6 +18334,8 @@ function setLangBtn(lang) {
   // 浏览器标签标题
   document.title = codebeeDocumentTitle(lang);
   applyI18n();
+  // 流程名称/描述由 JS 动态生成，语言切换时只重画文案，不覆盖用户已填参数。
+  refreshTypeTranslations();
   render();
   cmpRenderCapabilityMenu();
   cmpGreeting();   // 问候语跟随语言重算

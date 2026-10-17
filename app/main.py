@@ -4300,7 +4300,8 @@ def _state_run_summary(run):
     summary["pending_message_count"] = sum(1 for message in messages if not message.get("consumed"))
     verdict = run.get("verdict") or {}
     if isinstance(verdict, dict):
-        checks = ("pass", "publishable", "verify_pass", "review_pass")
+        checks = ("pass", "publishable", "verify_pass", "review_pass",
+                  "end_chapter", "quality_status")
         compact = {key: verdict[key] for key in checks if key in verdict}
         if compact:
             summary["verdict"] = compact
