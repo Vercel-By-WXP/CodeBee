@@ -7926,3 +7926,9 @@ comfyui-to-python/wpgulp/ftc-skystone（A9 词误中机器人赛）/territory（
   不安装 `goose/minimax`。原始证据为 `outputs/borrow-scan-20261015-21-batch7.{jsonl,log}`。
 - 门禁实账：根发现器 `Ran 0 tests`；显式 `tests/` 套件记录 2,102 ok、45 FAIL、2 ERROR、4 skipped，
   且无可靠 `Ran` 汇总。退出码 0 不代表全绿，本班按未绿口径收尾。
+
+## 2026-10-17 17 时班沉淀
+
+- 按现行 `keywords.md` 完成常驻组、批3、A-G 七专项及全类型/catalog/雷达复核；主扫日志推进至 Q187/228，固定仓、market、topic、radar 证据均落盘。PyPI 挑战页、两个 raw URL 404、ZCode DNS 失败按降级记录，未伪造结果。
+- Letta Code PR5137（<https://github.com/letta-ai/letta-code/pull/5137>）的周期补跑/occurrence 去重、Open SWE 提交 d177a79f（<https://github.com/langchain-ai/open-swe/commit/d177a79fbd>）的 MCP 来源暴露均需兼容性设计；本班未发现可低风险移植项，不改产品代码、关键词或 catalog。
+- 显式全量测试 `python -m unittest discover -s tests -v`：2897 tests / 779.283s，2 failures、5 skipped；失败为 MCP 初始化总时限文案断言和 runner cancel stdout 保留断言。门禁未绿，不提交、不推送。
