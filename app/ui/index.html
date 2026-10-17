@@ -705,6 +705,7 @@
             <button data-i18n="↻ 继续任务" id="btn-retry" class="primary hidden" data-i18n-title="再跑一次这个任务；连载任务会断点续跑，已完成章节不重写" title="再跑一次这个任务；连载任务会断点续跑，已完成章节不重写">↻ 继续任务</button>
             <button data-i18n="✎ 编辑重试" id="btn-editretry" class="ghost hidden" data-i18n-title="取回原任务的目标/目录/评审设置，修改后提交即重新开跑" title="取回原任务的目标/目录/评审设置，修改后提交即重新开跑">✎ 编辑重试</button>
             <button data-i18n="继续连载" id="btn-continue" class="ghost hidden">继续连载</button>
+            <button data-i18n="提前完结" id="btn-early-finish" class="ghost hidden" data-i18n-title="缩短后续卷章规划，完成新的结局后再正式完结">提前完结</button>
             <button data-i18n="从选材新开连载" id="btn-selection-serial" class="primary hidden">从选材新开连载</button>
             <button data-i18n="基于此任务新建" id="btn-newfrom" class="ghost hidden">基于此任务新建</button>
             <button data-i18n="归档任务" id="btn-arch" class="ghost hidden" data-i18n-title="归档后任务从侧栏收起，可随时用左下角时钟图标找回并取消归档" title="归档后任务从侧栏收起，可随时用左下角时钟图标找回并取消归档">归档任务</button>
@@ -1143,7 +1144,7 @@
         <div class="grid-3 review-policy-thresholds">
           <label class="field"><span data-i18n="最低评分">最低评分</span><input id="review-min-score" type="number" min="1" max="10" step="0.1"></label>
           <label class="field"><span data-i18n="最低可信度">最低可信度</span><input id="review-min-confidence" type="number" min="0" max="1" step="0.05"></label>
-          <label class="field"><span data-i18n="最低模型族">最低模型族</span><input id="review-min-family" type="text" placeholder="例如 OpenAI"></label>
+          <label class="field"><span data-i18n="最低模型族">最低模型族</span><input id="review-min-family" type="text" placeholder="例如 OpenAI" data-i18n-ph="例如 OpenAI"></label>
         </div>
         <div class="actions"><button type="button" class="primary small" onclick="saveReviewPolicy()" data-i18n="保存评审策略">保存评审策略</button><span id="review-policy-message" class="msg" role="status"></span></div>
       </section>

@@ -14,6 +14,7 @@ open 前都用 commonpath 校验路径必须落在任务工作目录内，防止
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import threading
@@ -599,7 +600,6 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
             if not task_row:
                 sandbox_error = "无法读取任务沙箱策略，外部智能体执行已拒绝"
             else:
-                from . import policy
                 sandbox_error = _external_sandbox_block_reason(
                     agent, workdir, task_row.get("sandbox") or {})
     except Exception:
@@ -1560,7 +1560,7 @@ def _code_bestof(run, task, impl, difficulty, ev):
                 original_index = original_indexes.get(
                     str(sub.get("id") or sub.get("title") or ""), i)
                 if (original_index + 1) in completed_steps:
-                    mark_task_plan(workdir, original_index + 1, "done")
+                    mark_task_plan(wt_path, original_index + 1, "done")
                     continue
                 prompt = (_RUN_CONSTITUTION + CODE_IMPL_PROMPT
                           .replace("__GOAL__", task["goal"])
@@ -1612,7 +1612,8 @@ def _code_bestof(run, task, impl, difficulty, ev):
         })
         return True
     except Exception:
-        log.warning("code bestof aborted run=%s", run_id, exc_info=True)
+        logging.getLogger(__name__).warning(
+            "code bestof aborted run=%s", run_id, exc_info=True)
         return False
     finally:
         try:
@@ -6703,7 +6704,7 @@ def execute_run(run_id):
                                    task_id=task.get("id") or "", run_id=run_id)
         if hook_txt:
             task["context"] = ((task.get("context") or "") + "\n\n" +
-                               t("## 项目钩子注入（task_start）\n") + hook_txt).strip()
+                               "## 项目钩子注入（task_start）\n" + hook_txt).strip()
             store.update_run(run_id, hook_inject=hook_txt[:400])
     except Exception:
         pass   # 外部钩子故障绝不挡主流程

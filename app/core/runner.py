@@ -97,9 +97,10 @@ def _fallback_probe_cli(name):
     # running on Linux (the release gate is intentionally Ubuntu-hosted).
     # Treat those explicit roots as a Windows probe request; ordinary POSIX
     # callers still take the native ~/.local/bin path below.
-    windows_roots = ("LOCALAPPDATA", "APPDATA", "USERPROFILE", "ProgramW6432",
-                     "ProgramFiles", "ProgramFiles(x86)", "SystemRoot")
-    windows_probe = os.name == "nt" or any(os.environ.get(key) for key in windows_roots)
+    # The runtime platform is authoritative here.  Looking at Windows-only
+    # environment variables on POSIX makes a hosted test runner (or a service
+    # launched with inherited variables) take the wrong probe branch.
+    windows_probe = os.name == "nt"
     if not windows_probe:
         for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
                   "/opt/homebrew/bin", "/usr/local/bin"):
@@ -110,6 +111,17 @@ def _fallback_probe_cli(name):
             except OSError:
                 pass
         return None
+    # An explicit NVM_SYMLINK is the current Node installation, so it must
+    # win over stale inherited PATH entries from an older nvm version.
+    nvm_link = os.environ.get("NVM_SYMLINK")
+    if nvm_link and os.path.isdir(nvm_link):
+        for ext in _CLI_EXTS:
+            p = os.path.join(nvm_link, name + ext)
+            try:
+                if os.path.isfile(p):
+                    return p
+            except OSError:
+                pass
     # POSIX release-gate hosts do not make PATHEXT-style shims visible to
     # shutil.which.  When the caller has explicitly supplied Windows install
     # roots, inspect PATH for the same .cmd/.bat names before fixed roots.
@@ -124,7 +136,9 @@ def _fallback_probe_cli(name):
             except OSError:
                 pass
     local = os.environ.get("LOCALAPPDATA") or ""
-    home = (os.environ.get("USERPROFILE") or os.path.expanduser("~"))
+    home = os.path.expanduser("~")
+    if home == "~":
+        home = os.environ.get("USERPROFILE") or home
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
     program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
     program_files_x86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
@@ -149,7 +163,11 @@ def _fallback_probe_cli(name):
     # 切版重链后启动的进程 PATH 快照常缺这条，装在里面的 npm 全局 CLI
     # （opencode/mimo 等）全体假「未安装」（2026-10-16 opencode 免费池
     # 服务侧探测落空实案）。
-    nvm_link = os.environ.get("NVM_SYMLINK")
+    # A test or service launcher may inject a temporary Windows-style root
+    # while the host environment still has a stale machine-level NVM_SYMLINK.
+    # Prefer an explicitly existing override, then ignore stale roots.
+    if nvm_link and not os.path.isdir(nvm_link):
+        nvm_link = None
     if nvm_link:
         flat_dirs += (nvm_link,)
     for d in flat_dirs:
@@ -1751,7 +1769,6 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
     """构建一次 CLI 调用的 (argv, stdin_text, prompt, tmp_files)。model 可为 None=CLI 默认。
     images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。
     tmp_files：为绕开命令行长度限制落盘的指令临时文件，调用方用完（进程结束后）删除。"""
-    env = {}
     argv = None
     stdin_text = None
     tmp_files = []

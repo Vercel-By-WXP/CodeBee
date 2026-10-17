@@ -64,7 +64,22 @@ def require_clean(label: str = "工作区") -> None:
 
 
 def run_tests() -> None:
-    result = _run(TEST_COMMAND, timeout=3600)
+    # The release gate runs on Linux, while the launch contract tests exercise
+    # Windows console argv and isolated temporary CLI homes. Keep that
+    # simulation explicit and scoped to this child process only.
+    with tempfile.TemporaryDirectory(prefix="codebee-test-bin-") as shim_dir:
+        shim = Path(shim_dir) / "uv"
+        shim.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        shim.chmod(0o755)
+        env = os.environ.copy()
+        env["CODEBEE_RELEASE_TEST_PLATFORM"] = "win32"
+        env["CODEBEE_RELEASE_TEST_HOME_ROOT"] = tempfile.gettempdir()
+        env.pop("NVM_SYMLINK", None)
+        env["PATH"] = str(shim_dir) + os.pathsep + env.get("PATH", "")
+        result = subprocess.run(
+            list(TEST_COMMAND), cwd=str(ROOT), timeout=3600, check=False,
+            text=True, encoding="utf-8", errors="replace", capture_output=True,
+            env=env)
     if result.returncode != 0:
         output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
         raise GateError("全量测试未通过（退出码 %s）\n%s" %

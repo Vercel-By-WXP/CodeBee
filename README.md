@@ -4,6 +4,13 @@
 
 [快速开始 → QUICKSTART.md](QUICKSTART.md)
 
+<!-- relnotes:start -->
+### 最新版更新内容
+
+- 发布闸门现在校验 npm、桌面产物与根目录版本的一致性，并提供 SHA-256/SHA-512 校验和。
+- 补齐原生 CLI 探测与跨平台发布流程，失败时给出可复现的诊断信息。
+<!-- relnotes:end -->
+
 ## 它解决什么问题
 
 开发者装了多个 AI 编码 CLI，但它们往往彼此孤立。CodeBee 把这些 CLI 统一接入，

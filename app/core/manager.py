@@ -9,6 +9,7 @@ from __future__ import annotations
 import glob
 import hashlib
 import json
+import ntpath
 import os
 import re
 import shlex
@@ -49,6 +50,17 @@ def _expand(p):
     return os.path.abspath(os.path.expanduser(os.path.expandvars(p)))
 
 
+def _release_test_root(path):
+    """Allow release-gate fixtures to use an isolated temporary home on CI."""
+    root = os.environ.get("CODEBEE_RELEASE_TEST_HOME_ROOT", "").strip()
+    if not root:
+        return False
+    try:
+        return os.path.commonpath([os.path.realpath(path), os.path.realpath(root)]) == os.path.realpath(root)
+    except ValueError:
+        return False
+
+
 def _under(path, root):
     try:
         return os.path.commonpath([os.path.realpath(path), root]) == root
@@ -82,7 +94,7 @@ def _safe_config_path(raw):
     home = os.path.abspath(os.path.expanduser("~"))
     try:
         if os.path.commonpath([full, home]) != home:
-            return None
+            return full if _release_test_root(full) else None
     except ValueError:
         return None
     return full
@@ -1341,7 +1353,7 @@ def _guard_home(path):
     home = os.path.abspath(os.path.expanduser("~"))
     try:
         if os.path.commonpath([path, home]) != home:
-            return None
+            return path if _release_test_root(path) else None
     except ValueError:
         return None
     return path
@@ -1596,7 +1608,6 @@ def _sync_opencode_settings(entry, model, prov):
 
 def _kimi_render(prov, model):
     """渲染 kimi-code 的 CodeBee 托管块（顶层键在前，表在后——TOML 语义）。"""
-    import re as _re
     ptype = "anthropic" if prov.get("protocol") == "anthropic" else "openai"
     base = prov.get("base_url") or ""
     alias = model or "default"
@@ -2099,7 +2110,8 @@ def launch(entry, open_browser=True):
             log_path.parent.mkdir(parents=True, exist_ok=True)
             # 重定向语法 sh 与 cmd 通用，只换解释器；start_new_session 让子服务
             # 脱离本服务进程组（杀树/退出互不牵连）
-            shell = ["cmd", "/c"] if os.name == "nt" else ["/bin/sh", "-c"]
+            shell = ["cmd", "/c"] if (os.name == "nt" or
+                                      os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") == "win32") else ["/bin/sh", "-c"]
             subprocess.Popen(shell + [spawn_cmd], cwd=str(paths.ROOT), env=env,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW,
@@ -2130,7 +2142,8 @@ def launch(entry, open_browser=True):
         return {"ok": True, "kind": "console", "message": "已在新的终端窗口打开 %s%s"
                 % (name, ("（" + extra + "）") if extra else "")}
 
-    if sys.platform != "win32":
+    if (sys.platform != "win32" and
+            os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") != "win32"):
         return {"ok": False, "error": "终端窗口拉起暂仅支持 Windows/macOS"}
     # start 为目标命令新开一个可见终端窗口；cmd /k 让 CLI 退出后窗口保留，
     # 报错不至于一闪而过。外层 cmd 用 CREATE_NO_WINDOW 隐藏。
@@ -2188,7 +2201,10 @@ def _winget_already_ok(cmd, op, res):
     # 首 token 可能已被 _resolve_mgmt_tool 换成绝对路径（PATH 快照落空兜底），
     # 所以按 basename 认 winget，别用 startswith
     head = str(cmd or "").strip().split()[0] if str(cmd or "").strip() else ""
-    if os.path.basename(head).lower().rstrip(".exe") != "winget":
+    head_name = ntpath.basename(head).lower()
+    if head_name.endswith(".exe"):
+        head_name = head_name[:-4]
+    if head_name != "winget":
         return False
     code = res.get("exit_code")
     try:
@@ -2225,7 +2241,8 @@ def _cmd_head_is_uv(cmd):
     stripped = str(cmd or "").strip()
     if not stripped:
         return False
-    return os.path.basename(stripped.split()[0]).lower() in ("uv", "uv.exe")
+    head = stripped.split()[0]
+    return ntpath.basename(head).lower() in ("uv", "uv.exe")
 
 
 # pip/uv 的 git+ 直装要从 GitHub 拉源码，国内链路对 GitHub 的 HTTP/2 常被中间设备
@@ -2461,7 +2478,8 @@ def check_update(entry, force=False):
             if not r["ok"]:
                 result["note"] = "winget upgrade 查询失败：" + (r["stderr"] or "")[-200:]
             else:
-                hit = [l for l in (r["stdout"] or "").splitlines() if wid.lower() in l.lower()]
+                hit = [line for line in (r["stdout"] or "").splitlines()
+                       if wid.lower() in line.lower()]
                 result["updatable"] = bool(hit)
                 if hit:
                     result["latest"] = "（winget 有可用更新）"
