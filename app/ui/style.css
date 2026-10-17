@@ -392,6 +392,52 @@ html[data-skin="paper"][data-theme="light"] {
   --uc-ca: #0d9488;
   --uc-out: #d97706;
 }
+/* 苹果（Apple HIG 风格）：日间=近白 + System Gray 分区 + System Blue 强调，毛玻璃纵深；
+ * 夜间=纯黑底 + 深灰分区，保持 OLED 省电与高对比。圆角/阴影/毛玻璃在下方 Apple 层统一加。 */
+html[data-skin="apple"] {
+  --bg: #000000;
+  --sidebar: #1c1c1e;
+  --panel: #1c1c1e;
+  --panel2: #2c2c2e;
+  --border: rgba(255, 255, 255, .08);
+  --border-strong: rgba(255, 255, 255, .16);
+  --text: #f5f5f7;
+  --muted: #98989d;
+  --accent: #0a84ff;
+  --accent2: #64d2ff;
+  --ok: #30d158;
+  --warn: #ffd60a;
+  --bad: #ff453a;
+  --chip-queued-bg: #2c2c2e;
+  --log-bg: #0a0a0a;
+  --log-text: #c7c7cc;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  --uc-in: #0a84ff;
+  --uc-ca: #64d2ff;
+  --uc-out: #30d158;
+}
+html[data-skin="apple"][data-theme="light"] {
+  --bg: #f2f2f7;
+  --sidebar: rgba(255, 255, 255, 0.72);
+  --panel: rgba(255, 255, 255, 0.85);
+  --panel2: #e5e5ea;
+  --border: rgba(60, 60, 67, 0.12);
+  --border-strong: rgba(60, 60, 67, 0.22);
+  --text: #1c1c1e;
+  --muted: #6e6e73;
+  --accent: #007aff;
+  --accent2: #5856d6;
+  --ok: #34c759;
+  --warn: #ff9f0a;
+  --bad: #ff3b30;
+  --chip-queued-bg: #e5e5ea;
+  --log-bg: #f9f9f9;
+  --log-text: #3a3a3c;
+  --shadow: 0 4px 16px rgba(0, 0, 0, .08);
+  --uc-in: #007aff;
+  --uc-ca: #5856d6;
+  --uc-out: #34c759;
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
@@ -786,9 +832,9 @@ code { font-family: var(--mono); background: var(--panel2); padding: 1px 6px; bo
 
 /* ---------------- 新任务（composer） ---------------- */
 /* 无框化由上方 main .panel.wide 统一负责，这里只管内边距 */
-.composer { padding: 18px 20px 16px; }
-.hero { font-size: 20px; font-weight: 700; margin: 0 0 2px; letter-spacing: -.01em; }
-.hero-sub { margin: 0 0 14px; }
+.composer { padding: 26px 28px 22px; }
+.hero { font-size: 23px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
+.hero-sub { margin: 0 0 20px; }
 
 /* ---------------- 表单 ---------------- */
 .form { display: flex; flex-direction: column; gap: 14px; }
@@ -2845,9 +2891,9 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   user-select: none;
 }
 .health-banner.alerting {
-  background: color-mix(in srgb, var(--bad) 8%, transparent);
-  color: var(--muted);
-  border: 1px solid color-mix(in srgb, var(--bad) 20%, transparent);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
   animation: health-pulse 2s ease-in-out infinite;
 }
 .health-banner.recovered {
@@ -3237,12 +3283,9 @@ main.chat-fill #run-detail.chat-mode {
   border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
   color: var(--accent); }
 .chat-avatar .ico { width: 16px; height: 16px; }
-/* 智能体回复：浅底卡片（4% 主色调 + 12% 细边），与用户消息形成清晰层次 */
+/* 智能体回复：正文平铺，无边框无底色（像官网那样整幅读） */
 .chat-bubble { overflow-wrap: anywhere; }
-.chat-bubble.agent { flex: 1; min-width: 0;
-  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
-  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-  border-radius: 12px; padding: 12px 14px;
+.chat-bubble.agent { flex: 1; min-width: 0; background: transparent; border: none; padding: 2px 0 0;
   font-size: 14.5px; line-height: 1.75; color: var(--text); }
 /* 用户消息：右侧浅灰圆角块 */
 .chat-bubble.me { max-width: 74%; background: var(--panel2); border: 1px solid var(--border);
@@ -3395,26 +3438,21 @@ html[data-skin="paper"] body::before { content: none; }
 .brand-name { color: var(--accent); letter-spacing: .02em; }
 .brand { border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, transparent); }
 
-/* 3) 主按钮：纯色 + 微阴影（扁平化，hover 变亮 + 上浮） */
+/* 3) 主按钮：主色光晕 + 顶部内高光 + 悬停轻上浮（:active 回压手感保留） */
 .primary {
-  background: var(--accent);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 20%, transparent);
-  transition: all 0.15s;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 28%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .14);
 }
-.primary:hover { background: var(--accent2); transform: translateY(-1px); box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent); }
+.primary:hover { transform: translateY(-1px); }
 .primary:active { transform: translateY(0); }
 html[data-skin="contrast"] .primary { box-shadow: none; }
 
-/* 4) 侧栏任务行激活态：左侧 2px 主色边框 + 浅底（区分度更高） */
-.stask.active {
-  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
-  border-left: 2px solid var(--accent);
-  padding-left: 10px;
-}
+/* 4) 侧栏任务行激活态：主色调染（比 panel2 更有「当前」的分量） */
+.stask.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 
-/* 5) 滚动条中性色：辅助控件降级，不抢焦点 */
-*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 30%, var(--border-strong)); }
-*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted) 50%, transparent); }
+/* 5) 滚动条主色化：细金调，悬停加深 */
+*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 22%, var(--border-strong)); }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent) 42%, transparent); }
 
 /* 6) 新建任务问候语：更轻盈的字重与字距（醒目但不喊叫） */
 #cmp-greet { font-weight: 300; letter-spacing: .02em; }
@@ -3427,18 +3465,23 @@ span.imgcap { cursor: pointer; user-select: none; }
 span.imgcap:not(.ok) { opacity: .45; }
 span.imgcap:hover { border-color: var(--accent); color: var(--accent); }
 
-/* ================= Apple-style 柔化层（去硬边·大圆角·毛玻璃·弹性过渡） =================
- * 生硬感的四个根源：1px 实色硬边框到处都是、圆角偏小、没有纵深（阴影层级单一）、
- * 缺少毛玻璃。本层全部走既有变量，高对比皮肤关掉毛玻璃与多层阴影。 */
+/* ================= Apple 皮肤专属柔化层（仅 data-skin="apple" 生效） =================
+ * 去硬边·大圆角·毛玻璃·弹性过渡。只在苹果皮肤下启用，不影响其它 8 套皮肤。 */
 
-/* A1) 全局弹性过渡曲线（苹果 spring curve 近似） */
-button, .pill, .stask, .item, .cmp-chip, .icon-btn, .foot-btn, .cn-pill, .cn-back {
+/* A1) 弹性过渡曲线（苹果 spring curve 近似） */
+html[data-skin="apple"] button,
+html[data-skin="apple"] .pill,
+html[data-skin="apple"] .stask,
+html[data-skin="apple"] .item,
+html[data-skin="apple"] .cmp-chip,
+html[data-skin="apple"] .icon-btn,
+html[data-skin="apple"] .foot-btn {
   transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   transition-duration: 0.2s;
 }
 
-/* A2) 顶栏毛玻璃：半透明 + 磨砂，替代实色背景 */
-.topbar {
+/* A2) 顶栏毛玻璃 */
+html[data-skin="apple"] .topbar {
   background: color-mix(in srgb, var(--bg) 72%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -3446,97 +3489,92 @@ button, .pill, .stask, .item, .cmp-chip, .icon-btn, .foot-btn, .cn-pill, .cn-bac
 }
 
 /* A3) 侧栏毛玻璃 */
-#sidebar {
-  background: color-mix(in srgb, var(--sidebar) 78%, transparent);
+html[data-skin="apple"] #sidebar {
+  background: var(--sidebar);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-right: 0.5px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
-/* A4) 卡片去边框 → 三层阴影纵深（Apple card style） */
-.panel {
+/* A4) 卡片去边框 → 三层阴影纵深 */
+html[data-skin="apple"] .panel {
   border: none;
+  border-radius: 16px;
   box-shadow:
     0 0.5px 1px rgba(0,0,0,0.03),
     0 2px 6px rgba(0,0,0,0.04),
     0 8px 24px rgba(0,0,0,0.04);
 }
-.panel:hover {
+html[data-skin="apple"] .panel:hover {
   box-shadow:
     0 0.5px 1px rgba(0,0,0,0.03),
     0 4px 12px rgba(0,0,0,0.06),
     0 12px 32px rgba(0,0,0,0.06);
 }
-/* 无框化的 wide 面板不需要阴影 */
-main .panel.wide { box-shadow: none; }
+html[data-skin="apple"] main .panel.wide { box-shadow: none; }
 
-/* A5) 大圆角：卡片 16px、按钮 12px、输入框 12px */
-.panel { border-radius: 16px; }
-button.primary, button.ghost, button.danger { border-radius: 12px; }
-.cmp-box { border-radius: 16px; }
-.item { border-radius: 14px; }
+/* A5) 大圆角：按钮 12px、输入框 16px */
+html[data-skin="apple"] button.primary,
+html[data-skin="apple"] button.ghost,
+html[data-skin="apple"] button.danger { border-radius: 12px; }
+html[data-skin="apple"] .cmp-box { border-radius: 16px; }
 
 /* A6) 列表项去边框 → 阴影 */
-.item {
+html[data-skin="apple"] .item {
   border: none;
+  border-radius: 14px;
   box-shadow: 0 0.5px 1px rgba(0,0,0,0.03), 0 1px 4px rgba(0,0,0,0.04);
 }
-.item:hover {
+html[data-skin="apple"] .item:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
   transform: translateY(-0.5px);
 }
 
-/* A7) 按钮 Apple 风格：更柔的阴影 + 微上浮 */
-button.primary {
+/* A7) 按钮 Apple 风格阴影 */
+html[data-skin="apple"] button.primary {
   box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
 }
-button.primary:hover {
+html[data-skin="apple"] button.primary:hover {
   box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 4px 16px color-mix(in srgb, var(--accent) 30%, transparent);
   transform: translateY(-0.5px);
 }
-button.ghost {
+html[data-skin="apple"] button.ghost {
   border: 0.5px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
   background: color-mix(in srgb, var(--panel2) 80%, transparent);
 }
 
-/* A8) 排版柔化：font-weight 降档 + 负 letter-spacing（SF Pro 感） */
-h2 { font-weight: 600; letter-spacing: -0.01em; }
-.hero { font-weight: 600; letter-spacing: -0.02em; }
-.page-title { font-weight: 600; letter-spacing: -0.01em; }
-.brand-name { font-weight: 600; letter-spacing: -0.01em; }
+/* A8) 排版柔化：SF Pro 感 */
+html[data-skin="apple"] h2 { font-weight: 600; letter-spacing: -0.01em; }
+html[data-skin="apple"] .hero { font-weight: 600; letter-spacing: -0.02em; }
+html[data-skin="apple"] .page-title { font-weight: 600; letter-spacing: -0.01em; }
+html[data-skin="apple"] .brand-name { font-weight: 600; letter-spacing: -0.01em; }
 
-/* A9) 对话气泡 iMessage 风格：去边框 + 大圆角 + 微阴影 */
-.chat-bubble.agent {
+/* A9) 对话气泡 iMessage 风格 */
+html[data-skin="apple"] .chat-bubble.agent {
   border: none;
   border-radius: 18px; border-top-left-radius: 6px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.03);
 }
-.chat-bubble.me {
+html[data-skin="apple"] .chat-bubble.me {
   border: none;
   border-radius: 18px; border-top-right-radius: 6px;
 }
 
-/* A10) 输入框 focus 光环（Apple 风格 3px accent glow） */
-.cmp-box:focus-within,
-.rd-chat-bar:focus-within {
+/* A10) 输入框 focus 光环 */
+html[data-skin="apple"] .cmp-box:focus-within,
+html[data-skin="apple"] .rd-chat-bar:focus-within {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* A11) 底部输入条毛玻璃 */
-.rd-chat-bar {
+html[data-skin="apple"] .rd-chat-bar {
   background: color-mix(in srgb, var(--panel) 85%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 22px;
 }
-
-/* A12) 高对比皮肤：关毛玻璃、简化阴影（对比优先） */
-html[data-skin="contrast"] .topbar,
-html[data-skin="contrast"] #sidebar { backdrop-filter: none; -webkit-backdrop-filter: none; }
-html[data-skin="contrast"] .panel { box-shadow: 0 0 0 1px var(--border); }
-html[data-skin="contrast"] .panel:hover { box-shadow: 0 0 0 1.5px var(--border-strong); }
-html[data-skin="contrast"] .item { box-shadow: 0 0 0 1px var(--border); }
 
 /* ================= 蜂巢工作台视觉 v8（归行·蜂航） =================
  * 用户拍板：横向流程图不如原始的行排——布局回归纵向泳道行（容器横向布局、

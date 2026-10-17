@@ -3019,6 +3019,9 @@ function renderProvDetail() {
   const pbHtml = !pb ? "" : (pb.busy
     ? '<span class="badge">' + esc(t("适配测试中…")) + "</span>"
     : (pb.ok ? '<span class="badge ok">' : '<span class="badge bad">') + esc(pb.message || "") + "</span>");
+  const builtinHtml = p.builtin ? (p.builtin_status === "ready"
+    ? '<span class="badge ok" title="' + esc(p.builtin_status_message || "") + '">✓ ' + t("本地免费服务已连接") + "</span>"
+    : '<span class="badge warn" title="' + esc(p.builtin_status_message || "") + '">⚠ ' + t("免费模型服务未启动") + "</span>") : "";
   const models = (p.models || []).filter((m) => !m.hidden)
     .sort((a, b) => (a.priority || 0) - (b.priority || 0));
   const hidden = (p.models || []).filter((m) => m.hidden);
@@ -3028,7 +3031,7 @@ function renderProvDetail() {
     '<div class="pd-title"><span class="pd-name">' + esc(p.name) + "</span>" +
     '<span class="tag">' + esc(protoLabel(p)) + "</span>" + capTags +
     (p.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") +
-    srcTag(p.source) + tpHtml + pbHtml + "</div>" +
+    srcTag(p.source) + builtinHtml + tpHtml + pbHtml + "</div>" +
     '<div class="pd-url" title="' + esc(p.base_url || "") + '">' + esc(p.base_url || "") + "</div>" +
     '<div class="pd-ops">' +
     '<button class="primary small" onclick="testProv(\'' + esc(p.id) + '\')">' + t("测试连接") + "</button>" +
@@ -13491,6 +13494,7 @@ function voiceFixup(text) {
  * 皮肤改色只需要动 style.css，预览与真实界面不会各自漂移。 */
 const SKINS = [
   { id: "ocean", name: "深海", desc: "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）" },
+  { id: "apple", name: "苹果", desc: "System Blue + 毛玻璃纵深 + 大圆角，Apple HIG 风格" },
   { id: "hermes", name: "墨金", desc: "暖墨底色 + 金色发丝线，Hermes 式古典优雅" },
   { id: "classic", name: "经典", desc: "黑白灰 + 蓝色强调，ChatGPT 式清爽配色" },
   { id: "paper", name: "简白", desc: "纯白画布 + 浅灰分区 + 克制蓝强调，Codex 式极简明亮" },
