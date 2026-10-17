@@ -133,7 +133,7 @@ def _norm_early_finish(value):
     # Persisted payloads can come from older clients or manual edits. Do not
     # silently rewrite an invalid target into a different ending chapter;
     # dropping the malformed plan lets the caller repair it explicitly.
-    if target < 2 or target > 500:
+    if target < 1 or target > 500:
         return None
     out = {"target_chapter": target}
     source = str(value.get("source_task") or "").strip()

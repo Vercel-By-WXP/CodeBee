@@ -174,10 +174,19 @@ class TestEarlyFinish(BaseTest):
         self.assertTrue(ok, err)
         self.assertIsNone(store.serial_early_finish_plan(cancelled))
 
-    def test_invalid_persisted_early_finish_targets_are_not_silently_clamped(self):
+    def test_persisted_early_finish_targets_keep_the_1_to_500_boundary(self):
         from app.core import store
 
-        for invalid in (0, 1, 501, 9999):
+        valid = store.create_task({
+            "type": "serial_novel", "title": "边界计划 1",
+            "goal": "写一本连载", "workdir": str(self.workdir),
+            "serial": {"chapters": 3, "early_finish": {
+                "target_chapter": 1}},
+        })
+        self.assertEqual(
+            (valid.get("serial") or {}).get("early_finish", {}).get("target_chapter"), 1)
+
+        for invalid in (0, 501, 9999):
             task = store.create_task({
                 "type": "serial_novel", "title": "非法计划 %s" % invalid,
                 "goal": "写一本连载", "workdir": str(self.workdir),
