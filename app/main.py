@@ -1214,8 +1214,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self._phone_admin_local():
                 return self._json(403, {"error": "请在电脑本机上管理手机配对"})
             from core import phone_relay
+            body = self._body()
+            # 配对=「我要任何网络连上」的明确意图；隧道没开就顺手拉起，
+            # URL 数秒后经回调出现，重开弹框即可见。
+            if (body or {}).get("action") == "pair":
+                remote.ensure_quick_tunnel()
             try:
-                return self._json(200, {"relay": phone_relay.operate(PORT, self._body().get("action"))})
+                return self._json(200, {"relay": phone_relay.operate(PORT, (body or {}).get("action"))})
             except ValueError as exc:
                 return self._json(400, {"error": str(exc)})
         # 写操作需要控制权：空闲自动接管；他人持有时 423，由前端引导抢夺。
@@ -4746,6 +4751,11 @@ def main():
         print("[CodeBee]          ← 任何网络可访问；临时地址重启会变，手机重新扫码即可。"
               "\n[CodeBee]          要固定域名：cloudflared tunnel login 后参考 README 公网章节。")
         store.bump_state()  # 扫码弹框下次打开即可拿到公网地址
+
+    # 手机配对时按需拉快速隧道：配对动作本身就是要「任何网络连上」，中转
+    # 域名赶上跨境路由恶化会整条不可用（2026-10-16 实案，RTT 1.5s）。
+    remote.setup_quick_tunnel(args.port, _announce_public,
+                              enabled=not args.no_public_tunnel)
 
     print("[CodeBee] 本机     http://127.0.0.1:%d" % args.port, flush=True)
     print("[CodeBee] 数据目录 %s" % paths.DATA_DIR, flush=True)

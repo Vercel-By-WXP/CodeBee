@@ -3724,6 +3724,7 @@
     "请先生成配对码并等待地址出现": "Generate a pairing code and wait for the link to appear first",
     "统一手机连接暂不可用，请在本机打开 CodeBee 后重试": "Unified phone connection is unavailable. Open CodeBee on this computer and try again.",
     "手机连接地址只使用 app.codebeeagent.com，请只分享给自己的设备。": "Phone pairing only ever uses app.codebeeagent.com — share it only with your own devices.",
+    "配对连不上时（跨境路由波动等），切换上方快速入口直接打开，无需配对；该地址电脑重启后会变。": "If pairing fails to connect (e.g. cross-border routing swings), switch to the quick entry above — no pairing needed. That address changes when the computer restarts.",
     "手机控制时另一端自动变为只读，可在顶栏接管。": "While the phone is in control, the other side turns read-only; take over from the top bar.",
     "关闭远程连接并撤销全部已配对手机？": "Disable the remote connection and unpair all paired phones?",
     "撤销全部已配对手机？": "Unpair all paired phones?",

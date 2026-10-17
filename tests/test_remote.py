@@ -183,5 +183,47 @@ class ConnectUrlsTest(unittest.TestCase):
         self.assertEqual(remote.build_connect_urls(8765), [])
 
 
+class QuickTunnelOnDemandTest(unittest.TestCase):
+    """手机配对时的按需快速隧道：不开重复进程、尊重禁用与凭据拦截。"""
+
+    def setUp(self):
+        self._saved = (remote._QUICK_ON_DEMAND, remote._QUICK_PROC, remote.PUBLIC_URL)
+        self.started = []
+
+    def tearDown(self):
+        remote._QUICK_ON_DEMAND, remote._QUICK_PROC, remote.PUBLIC_URL = self._saved
+
+    def test_pair_intent_starts_tunnel_once(self):
+        remote._QUICK_ON_DEMAND = (8765, lambda url: None, True)
+        remote._QUICK_PROC = None
+        remote.PUBLIC_URL = ""
+        remote.has_local_creds = lambda: False
+        def fake_start(port, cb):
+            self.started.append(port)
+            remote._QUICK_PROC = object()  # 真函数成功即持进程句柄
+            return True
+        remote.start_quick_tunnel = fake_start
+        self.assertTrue(remote.ensure_quick_tunnel())
+        self.assertEqual(self.started, [8765])
+        self.assertFalse(remote.ensure_quick_tunnel(), "已在拉起时不重复触发")
+        self.assertEqual(self.started, [8765])
+
+    def test_disabled_or_live_url_or_creds_skip(self):
+        remote._QUICK_PROC = None
+        remote.start_quick_tunnel = lambda port, cb: self.started.append(port) or True
+        remote._QUICK_ON_DEMAND = (8765, lambda url: None, False)
+        remote.PUBLIC_URL = ""
+        self.assertFalse(remote.ensure_quick_tunnel(), "被 --no-public-tunnel 禁用")
+        remote._QUICK_ON_DEMAND = (8765, lambda url: None, True)
+        remote.PUBLIC_URL = "https://fixed.example.com"
+        self.assertFalse(remote.ensure_quick_tunnel(), "已有公网地址")
+        remote.PUBLIC_URL = ""
+        remote.has_local_creds = lambda: True
+        self.assertFalse(remote.ensure_quick_tunnel(), "named tunnel 凭据机器上 quick 恒 404")
+        self.assertEqual(self.started, [])
+
+
+
+
 if __name__ == "__main__":
     unittest.main()

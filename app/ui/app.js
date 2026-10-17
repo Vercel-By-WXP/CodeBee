@@ -18964,6 +18964,8 @@ async function openPhoneConnect() {
   try {
     const d = await api("/api/connect");
     relay = d.relay;
+    // 后端排好的直连入口（公网隧道 / Tailscale / 局域网），配对码之外并列可选。
+    urls = (d.urls || []).map(u => ({ label: u.label, url: u.url }));
   } catch (e) { toast(e.message, true); return; }
   if (!relay) { toast(t("统一手机连接暂不可用，请在本机打开 CodeBee 后重试"), true); return; }
   if (relay && relay.pair_url) urls.unshift({ label: t("Codebee · 手机配对"), url: relay.pair_url });
@@ -18985,6 +18987,7 @@ async function openPhoneConnect() {
     '<button id="conn-copy" class="ghost small" onclick="copyConnUrl()" disabled>' + t("复制地址") + '</button></div>' +
     '<p class="hint">' + (relay ? t("统一入口仅连接已配对的电脑；电脑需保持开机联网。已配对手机可使用 30 天，也可在电脑上随时撤销。") + "<br>" : "") +
     t("手机连接地址只使用 app.codebeeagent.com，请只分享给自己的设备。") +
+    (urls.length > 1 ? "<br>" + t("配对连不上时（跨境路由波动等），切换上方快速入口直接打开，无需配对；该地址电脑重启后会变。") : "") +
     t("手机控制时另一端自动变为只读，可在顶栏接管。") + '<br>' +
     t("连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。") + '</p>' +
     "</div>";

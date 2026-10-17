@@ -68,13 +68,16 @@ export function safePath(path) {
 }
 
 // Static workbench files under the same paths the desktop serves (its route
-// regex on the unslashed path), mirrored into public/ui by sync-ui.mjs. The
-// desktop's index.html deliberately stays on the relay so the HTML that names
-// the APIs always matches the computer actually answering them.
+// regex on the unslashed path), mirrored into public/ui by sync-ui.mjs. "/"
+// maps to the mirrored workbench shell: an unpaired phone never reaches it
+// (the portal branch answers first), so the edge only serves it to paired
+// sessions — including the desktop-offline case, where a cached shell beats
+// the old 503 landing.
 const STATIC_NAME = /^[\w.-]+(\/[\w.-]+)*$/;
-const STATIC_EXT = /\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|map|json|txt)$/i;
+const STATIC_EXT = /\.(?:js|css|html|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|map|json|txt)$/i;
 
 export function assetTarget(pathname) {
+  if (pathname === "/") return "/ui/index.html";
   const name = pathname.slice(1);
   if (!STATIC_NAME.test(name) || !STATIC_EXT.test(name)) return null;
   return "/ui" + pathname;

@@ -49,11 +49,13 @@ test("portal language follows Accept-Language with English as neutral default", 
 });
 
 test("workbench asset targets mirror desktop paths, APIs stay on the relay", () => {
+  assert.equal(assetTarget("/"), "/ui/index.html");
+  assert.equal(assetTarget("/index.html"), "/ui/index.html");
   assert.equal(assetTarget("/app.js"), "/ui/app.js");
   assert.equal(assetTarget("/icons/icon-192.png"), "/ui/icons/icon-192.png");
   assert.equal(assetTarget("/manifest.json"), "/ui/manifest.json");
-  // API, documents, and odd shapes never take the asset shortcut.
-  for (const path of ["/", "/api/state", "/api/events", "/relay/portal", "/index.html",
+  // API and odd shapes never take the asset shortcut.
+  for (const path of ["/api/state", "/api/events", "/relay/portal",
                       "/a//b.js", "/x y.js", "/a/b/", "/a.b/c", "/big"]) {
     assert.equal(assetTarget(new URL("https://x" + path).pathname), null, path);
   }
@@ -61,16 +63,17 @@ test("workbench asset targets mirror desktop paths, APIs stay on the relay", () 
   assert.equal(assetTarget("/preview/r-1/tok/app.js"), "/ui/preview/r-1/tok/app.js");
 });
 
-test("synced asset mirror covers the desktop workbench bundle", () => {
+test("synced asset mirror covers the desktop workbench bundle incl. the shell", () => {
   const ui = join(import.meta.dirname, "..", "..", "..", "app", "ui");
   const mirror = join(import.meta.dirname, "..", "public", "ui");
-  const files = readdirSync(ui).filter(f => /\.(?:js|css|html|json|txt)$/i.test(f) && f !== "index.html");
+  const files = readdirSync(ui).filter(f => /\.(?:js|css|html|json|txt)$/i.test(f));
   assert.ok(files.includes("app.js") && files.includes("style.css"), "desktop bundle detected");
   for (const name of files) {
     const copied = join(mirror, name);
     assert.ok(existsSync(copied), `missing from mirror: ${name}`);
     assert.equal(statSync(copied).size, statSync(join(ui, name)).size, `size drift: ${name}`);
   }
-  // The biggest payload really is served from the edge, not the relay.
+  // The two biggest first-paint payloads really are served from the edge.
   assert.ok(statSync(join(mirror, "app.js")).size > 500 * 1024);
+  assert.ok(statSync(join(mirror, "index.html")).size > 100 * 1024);
 });

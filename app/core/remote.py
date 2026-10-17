@@ -75,6 +75,30 @@ def set_trusted_proxy(on: bool, public_url: str = ""):
 # 安全强绑定：开隧道必然同时开启 trusted-proxy（否则回源 loopback 豁免=裸奔）。
 # 代价：每次重启地址会变（手机重新扫码即可）；要固定域名见 README 公网章节。
 _QUICK_PROC = None  # cloudflared 子进程，随主服务退出
+_QUICK_ON_DEMAND = None  # (port, on_url, enabled)：手机配对时按需拉隧道的参数
+
+
+def setup_quick_tunnel(port: int, on_url, enabled: bool):
+    """记录按需拉起快速隧道所需的参数，供手机配对动作触发。
+
+    启动期的自动开隧道有 host 前置条件（host=127.0.0.1 的默认启动不开）；
+    但用户点「手机配对」本身就是要「任何网络连上」，此时隧道应补开。
+    """
+    global _QUICK_ON_DEMAND
+    _QUICK_ON_DEMAND = (port, on_url, bool(enabled))
+
+
+def ensure_quick_tunnel() -> bool:
+    """手机配对时按需拉起快速隧道；已开/已在拉/被禁用/无凭据拦截时不动。
+
+    返回 True 表示这次调用真的触发了一次启动（URL 数秒后经回调出现）。
+    """
+    if _QUICK_PROC is not None or PUBLIC_URL or not _QUICK_ON_DEMAND:
+        return False
+    port, on_url, enabled = _QUICK_ON_DEMAND
+    if not enabled or has_local_creds():
+        return False
+    return start_quick_tunnel(port, on_url)
 
 
 def cloudflared_exe() -> str:
@@ -156,7 +180,10 @@ def start_quick_tunnel(port: int, on_url) -> bool:
     flags = 0x08000000 if hasattr(subprocess, "CREATE_NO_WINDOW") else 0  # CREATE_NO_WINDOW
     try:
         _QUICK_PROC = subprocess.Popen(
-            [exe, "tunnel", "--url", "http://localhost:%d" % port, "--no-autoupdate"],
+            # 127.0.0.1 而非 localhost：Windows 上 localhost 会先解析成 IPv6
+            # [::1]，服务只监听 IPv4 时回源全部被拒（2026-10-16 实案，手机
+            # 经隧道访问整页报错）。
+            [exe, "tunnel", "--url", "http://127.0.0.1:%d" % port, "--no-autoupdate"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             creationflags=flags, text=True, encoding="utf-8", errors="replace")
     except Exception:
