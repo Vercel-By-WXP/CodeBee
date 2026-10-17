@@ -946,7 +946,15 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 def fq_enable_schedule():
                     if fq_schedule_enabled():
                         return
-                    point = fq_schedule_switch_point() or {}
+                    # 点「否」后 React 重渲染会短暂卸载开关（2026-10-17 实案：
+                    # 失败后现场开关就在弹窗里）——带退避反复找，别一击定生死。
+                    point = {}
+                    find_deadline = time.time() + 6.0
+                    while time.time() < find_deadline:
+                        point = fq_schedule_switch_point() or {}
+                        if point.get("x"):
+                            break
+                        time.sleep(0.6)
                     if not point.get("x"):
                         raise FlowError("番茄发布设置里找不到定时发布开关")
                     # Use the same trusted CDP input path as other platform
@@ -1082,6 +1090,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 except ValueError:
                     raise FlowError("定时发布时间格式应为 HH:MM：%s" % raw_time)
                 force_schedule = bool(st.get("force_schedule") or raw_date)
+                queued_hint_prev = False   # 上一轮弹窗是否带定时横幅（点否前预判用）
                 max_days = max(1, int(st.get("max_schedule_days") or 120))
                 deadline = time.time() + float(st.get("timeout") or 180)
                 tried_dates = 0
@@ -1105,6 +1114,16 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         time.sleep(0.5)
                         continue
                     if "发布设置" in dialog_text:
+                        # 定时优先（2026-10-17 实案）：点「否」后弹窗重渲染会把
+                        # 定时开关节点吞掉（sw 从 1 变 0），fq_enable_schedule
+                        # 必报「找不到定时发布开关」。定时模式下先开开关再点
+                        # 「否」；点完后开关若被重渲染洗掉，下方原路径还会补开。
+                        early_schedule = bool(force_schedule or queued_hint_prev)
+                        if early_schedule and not fq_schedule_enabled():
+                            try:
+                                fq_enable_schedule()
+                            except FlowError:
+                                pass  # 开关这刻还没渲染出来，走点否后的补开
                         if not fq_click("发布设置", "否").get("ok"):
                             raise FlowError("番茄发布设置无法选择“未使用 AI”")
                         # 「建议本章定时发布」横幅是弹窗打开后异步渲染的，
@@ -1116,6 +1135,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             or dialog_text
                         queued_hint = ("建议本章定时发布" in dialog_text or
                                        "有定时待发布章节" in dialog_text)
+                        queued_hint_prev = queued_hint
                         use_schedule = force_schedule or queued_hint
                         if use_schedule:
                             # Tell the caller that the platform accepted the
@@ -1126,7 +1146,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             values["_scheduled_by_platform"] = True
                             if tried_dates >= max_days:
                                 raise FlowError("番茄连续 %d 个日期均触发每日字数上限" % max_days)
-                            fq_enable_schedule()
+                            if not fq_schedule_enabled():
+                                fq_enable_schedule()
                             # 平台预填档期优先：定时队列里有前序章时，平台会把
                             # 下一个可用档期直接填进日期/时间框——照抄它，别硬
                             # 选自己的日期撞队列顺序（被拒即「指定的定时发布

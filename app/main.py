@@ -3054,6 +3054,8 @@ class Handler(BaseHTTPRequestHandler):
         only = body.get("chapters")            # 批量选择发布：章号数组（可省=全部待发）
         kwargs = {"only": only if isinstance(only, list) else None,
                   "as_draft": bool(body.get("as_draft"))}
+        if body.get("scheduled"):
+            kwargs["scheduled"] = True
         if force or force_confirmed or force_reason:
             kwargs.update(force=force, force_confirmed=force_confirmed,
                           force_reason=force_reason)

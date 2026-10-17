@@ -463,7 +463,7 @@ def flow_calibrated(plat, action):
 
 def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                           force=False, force_confirmed=False, force_reason="",
-                          as_draft=False, auto_prepare_book=False):
+                          as_draft=False, auto_prepare_book=False, scheduled=False):
     """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
 
     only=章号清单（批量选择发布）：从待发清单里挑出所选章号，保持章号
@@ -643,6 +643,11 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["error"] = "第 %d 章前护栏拦截：%s" % (item["chapter_no"], why)
                     return
                 upload_kwargs = {"auto_submit": auto_submit, "as_draft": as_draft}
+                if scheduled:
+                    # 强制定时（2026-10-17）：当日字数上限被账户级占用时平台
+                    # 仍接受「定时到明日」——直发/定时开关消失只是直发被禁，
+                    # 显式走 upload_chapter_scheduled 校准流程。
+                    upload_kwargs["scheduled"] = True
                 upload_kwargs.update(manager.automatic_release_kwargs(
                     auto_submit, force=force, force_confirmed=force_confirmed,
                     force_reason=force_reason, as_draft=as_draft))
