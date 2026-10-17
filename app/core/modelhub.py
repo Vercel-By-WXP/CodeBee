@@ -43,6 +43,7 @@ import sys
 import threading
 import time
 import urllib.request
+from pathlib import Path
 
 from . import paths, tlsctx
 from .error_codes import (
@@ -66,6 +67,15 @@ def _opener():
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "models.json"
 
+# dsh-our-free-model standalone exposes an OpenAI-compatible loopback gateway.
+# The provider is created by CodeBee on first startup, while its credential is
+# read from the standalone service's own settings file at runtime.  Keeping the
+# source marker stable lets us hydrate the key without persisting it in
+# CodeBee's models.json.
+OUR_FREE_MODEL_SOURCE = "builtin-our-free-model"
+OUR_FREE_MODEL_BASE_URL = "http://127.0.0.1:18900/v1"
+OUR_FREE_MODEL_NAME = "Our Free Model"
+
 # 可注入 CLI 的协议；google 只登记（当前 catalog 里没有可注入的 gemini CLI）
 _PROTOCOLS = ("anthropic", "openai", "google")
 _BINDABLE_PROTOCOLS = ("anthropic", "openai")
@@ -81,11 +91,95 @@ _WIRE_PREFERENCE = ("anthropic", "openai")
 _FAILED_REPROBE_AFTER = 15 * 60
 
 
+def _is_our_free_model_provider(prov):
+    return str((prov or {}).get("source") or "") == OUR_FREE_MODEL_SOURCE
+
+
+def _our_free_model_settings_path():
+    """Return standalone settings.json without importing the external project."""
+    configured = (os.environ.get("OFM_HOME") or
+                  os.environ.get("OUR_FREE_MODEL_HOME") or "").strip()
+    root = Path(configured).expanduser() if configured else Path.home() / ".our-free-model"
+    return root / "settings.json"
+
+
+def _read_our_free_model_settings():
+    try:
+        raw = _our_free_model_settings_path().read_text(encoding="utf-8")
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _read_our_free_model_key():
+    """Read the standalone forward key, returning an empty string on any error."""
+    value = _read_our_free_model_settings().get("forwardKey")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _our_free_model_base_url():
+    settings = _read_our_free_model_settings()
+    port = settings.get("standalonePort")
+    if isinstance(port, int) and 0 < port <= 65535:
+        return "http://127.0.0.1:%d/v1" % port
+    return OUR_FREE_MODEL_BASE_URL
+
+
+def _is_our_free_model_loopback(url):
+    import urllib.parse
+    host = urllib.parse.urlsplit(str(url or "")).hostname or ""
+    return host.lower().rstrip(".") in ("127.0.0.1", "localhost", "::1")
+
+
+def _hydrate_our_free_model_keys(data):
+    key = _read_our_free_model_key()
+    for prov in data.get("providers") or []:
+        if _is_our_free_model_provider(prov):
+            # The external service owns this credential.  It is deliberately
+            # materialized only in memory for the existing OpenAI code path.
+            prov["api_key"] = key if _is_our_free_model_loopback(prov.get("base_url")) else ""
+            prov.pop("keys", None)
+    return data
+
+
+def _strip_our_free_model_keys(data):
+    """Remove hydrated standalone credentials before writing models.json."""
+    out = copy.deepcopy(data)
+    for prov in out.get("providers") or []:
+        if _is_our_free_model_provider(prov):
+            prov.pop("api_key", None)
+            prov.pop("keys", None)
+    return out
+
+
+def _probe_our_free_model(base_url=OUR_FREE_MODEL_BASE_URL, timeout=1.2):
+    """Check the loopback standalone health endpoint without sending inference."""
+    base = str(base_url or OUR_FREE_MODEL_BASE_URL).rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    url = base + "/health"
+    try:
+        host, err = _validate_host(url, allow_private=True)
+        if host is None:
+            return False, err
+        req = urllib.request.Request(url, headers={"User-Agent": "codebee-orchestrator/1.0"},
+                                     method="GET")
+        with _opener().open(req, timeout=timeout) as resp:
+            if int(getattr(resp, "status", 200)) >= 400:
+                return False, "HTTP %s" % getattr(resp, "status", "?")
+            payload = json.loads(resp.read(256 * 1024).decode("utf-8", "replace"))
+        return (bool(payload.get("ok", True)) if isinstance(payload, dict) else True), ""
+    except Exception as exc:
+        return False, tlsctx.humanize("%s → %r" % (url, exc))
+
+
 def _load():
     try:
         data = _normalize_ids(json.loads(_FILE.read_text(encoding="utf-8")))
     except Exception:
         return {"providers": [], "bindings": {}}
+    _hydrate_our_free_model_keys(data)
     # 多 KEY 供应商的 api_key 是「首个可用 KEY」的镜像：每次读取时重算，冷却
     # 到期自动把首选 KEY 换回来（或已切到备用）。没有 keys 数组的老数据不动。
     for p in data.get("providers") or []:
@@ -760,7 +854,8 @@ def model_op(provider_id, name, op):
 def _save(data):
     _FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.write_text(json.dumps(_strip_our_free_model_keys(data),
+                              ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(_FILE)
 
 
@@ -776,6 +871,79 @@ def _backup_file(path):
 def providers():
     with _LOCK:
         return _load().get("providers", [])
+
+
+def ensure_builtin_free_provider():
+    """Create and reconcile the dsh-our-free-model standalone provider.
+
+    This is intentionally best-effort: an absent standalone service must not
+    delay or break CodeBee startup.  Existing user edits (including a manual
+    disable) are preserved.  When the service is reachable and its key is
+    readable, a background model-list refresh is scheduled.
+    """
+    key = _read_our_free_model_key()
+    with _LOCK:
+        data = _load()
+        prov = next((p for p in data.get("providers", [])
+                     if _is_our_free_model_provider(p)), None)
+        if prov is None and OUR_FREE_MODEL_SOURCE in (data.get("builtin_provider_tombstones") or []):
+            return {"provider_id": "", "created": False, "ready": False,
+                    "message": "已按用户操作移除 Our Free Model"}
+        created = prov is None
+        if prov is None:
+            prov = {
+                "id": _next_pid(data.get("providers", [])),
+                "name": OUR_FREE_MODEL_NAME,
+                "protocol": "openai",
+                "base_url": OUR_FREE_MODEL_BASE_URL,
+                "model": "",
+                "model_easy": "",
+                "model_hard": "",
+                "source": OUR_FREE_MODEL_SOURCE,
+                "source_id": "standalone",
+                "builtin_auto_enable": True,
+                "enabled": False,
+            }
+            data.setdefault("providers", []).append(prov)
+        elif "builtin_auto_enable" not in prov:
+            # Preserve an older user's explicit disabled state when introducing
+            # the auto-management marker.
+            prov["builtin_auto_enable"] = bool(prov.get("enabled", True))
+        # Older entries may predate the source marker metadata.  These are
+        # defaults only; a user-customized name or endpoint is left untouched.
+        prov.setdefault("source_id", "standalone")
+        # This credential is automatically discovered from the standalone
+        # service, so its endpoint must remain loopback-only.  User-editable
+        # fields such as name/models/enabled are preserved separately.
+        prov["base_url"] = _our_free_model_base_url()
+        prov["allow_private"] = True
+        auto_enable = bool(prov.get("builtin_auto_enable", True))
+        alive, probe_error = (False, "未读取到 standalone forwardKey")
+        if key and auto_enable:
+            alive, probe_error = _probe_our_free_model(prov.get("base_url"))
+        if auto_enable:
+            prov["enabled"] = bool(alive and key)
+        if not auto_enable:
+            prov["builtin_status"] = "disabled"
+            prov["builtin_status_message"] = "已按用户操作停用"
+        else:
+            prov["builtin_status"] = "ready" if alive and key else "not_started"
+            prov["builtin_status_message"] = (
+                "已连接，正在获取模型列表" if alive and key else
+                ("免费模型服务未启动或 Key 不可读；请先运行 standalone 服务" if not key else
+                 "免费模型服务未启动：%s；请先运行 standalone 服务"
+                 % (probe_error or "无法访问本地网关")))
+        _save(data)
+        provider_id = prov["id"]
+    if alive and key and prov.get("enabled", False) and prov.get("builtin_auto_enable", True):
+        def _refresh():
+            try:
+                refresh_models(provider_id)
+            except Exception:
+                pass
+        threading.Thread(target=_refresh, name="our-free-model-refresh", daemon=True).start()
+    return {"provider_id": provider_id, "created": created,
+            "ready": bool(alive and key), "message": prov["builtin_status_message"]}
 
 
 def connection_identity(provider_id, key_id="") -> dict:
@@ -827,6 +995,14 @@ def provider_view():
     for p in providers():
         row = {k: (_mask(v) if k == "api_key" else v) for k, v in p.items()}
         row["enabled"] = bool(p.get("enabled", True))
+        if _is_our_free_model_provider(p):
+            row["builtin"] = True
+            if not _is_our_free_model_loopback(p.get("base_url")):
+                row["builtin_status"] = "not_started"
+                row["builtin_status_message"] = "内置免费服务端点必须是本机回环地址"
+            elif p.get("builtin_status") != "disabled" and not _read_our_free_model_key():
+                row["builtin_status"] = "not_started"
+                row["builtin_status_message"] = "免费模型服务未启动或 Key 不可读；请先运行 standalone 服务"
         ks = []
         for k in _provider_keys(p):
             ks.append({"id": k["id"], "key": _mask(k["key"]),
@@ -940,6 +1116,8 @@ def key_op(provider_id, op, key_id="", key="", label="", enabled=None, ids=None)
         prov = next((p for p in data.get("providers", []) if p.get("id") == provider_id), None)
         if not prov:
             return "供应商不存在"
+        if _is_our_free_model_provider(prov):
+            return "standalone 免费服务的密钥由本机服务管理"
         keys = _materialize_keys(prov)
         if op == "add":
             val = (key or "").strip()
@@ -1153,6 +1331,8 @@ def providers_op(ids, op):
             missing = [i for i in ids if i not in known]
             if missing:
                 return 0, "供应商不存在"
+            if any(_is_our_free_model_provider(p) for p in plist if p.get("id") in ids):
+                return 0, "Our Free Model 由 standalone 管理，不能复制"
             fresh = []
             for i in ids:
                 src = next(p for p in plist if p.get("id") == i)
@@ -1177,7 +1357,13 @@ def providers_op(ids, op):
             return 0, "供应商不存在：%d 个" % len(missing)
         changed = 0
         if op == "delete":
+            deleted_builtin = [p for p in plist
+                               if p.get("id") in ids and _is_our_free_model_provider(p)]
             data["providers"] = [p for p in plist if p.get("id") not in ids]
+            if deleted_builtin:
+                tombstones = data.setdefault("builtin_provider_tombstones", [])
+                if OUR_FREE_MODEL_SOURCE not in tombstones:
+                    tombstones.append(OUR_FREE_MODEL_SOURCE)
             for b in (data.get("bindings") or {}).values():
                 if b.get("provider_id") in ids:
                     b["provider_id"] = ""
@@ -1194,6 +1380,16 @@ def providers_op(ids, op):
             for p in plist:
                 if p.get("id") in ids and bool(p.get("enabled", True)) != want:
                     p["enabled"] = want
+                    if _is_our_free_model_provider(p):
+                        # A manual disable is sticky; re-enabling opts back in
+                        # to the startup auto-enable behavior.
+                        p["builtin_auto_enable"] = want
+                        if want:
+                            p["builtin_status"] = "not_started"
+                            p["builtin_status_message"] = "已启用，等待下一次 standalone 检查"
+                        else:
+                            p["builtin_status"] = "disabled"
+                            p["builtin_status_message"] = "已按用户操作停用"
                     changed += 1
             if changed:
                 if not want:

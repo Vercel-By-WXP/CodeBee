@@ -3019,7 +3019,9 @@ function renderProvDetail() {
   const pbHtml = !pb ? "" : (pb.busy
     ? '<span class="badge">' + esc(t("适配测试中…")) + "</span>"
     : (pb.ok ? '<span class="badge ok">' : '<span class="badge bad">') + esc(pb.message || "") + "</span>");
-  const builtinHtml = p.builtin ? (p.builtin_status === "ready"
+  const builtinHtml = p.builtin ? (p.builtin_status === "disabled"
+    ? '<span class="badge" title="' + esc(p.builtin_status_message || "") + '">' + t("本地免费服务已手动停用") + "</span>"
+    : p.builtin_status === "ready"
     ? '<span class="badge ok" title="' + esc(p.builtin_status_message || "") + '">✓ ' + t("本地免费服务已连接") + "</span>"
     : '<span class="badge warn" title="' + esc(p.builtin_status_message || "") + '">⚠ ' + t("免费模型服务未启动") + "</span>") : "";
   const models = (p.models || []).filter((m) => !m.hidden)
@@ -3038,7 +3040,7 @@ function renderProvDetail() {
     '<button class="ghost small" onclick="probeWire(\'' + esc(p.id) + '\')" title="' +
     esc(t("实测该网关同一密钥是否也支持另一条 wire 协议；通过后绑定链可跨协议注入")) + '">' + t("适配测试") + "</button>" +
     '<button class="ghost small" onclick="refreshProviderModels(\'' + esc(p.id) + '\')">' + t("获取模型列表") + "</button>" +
-    '<button class="ghost small" onclick="duplicateProvider(\'' + esc(p.id) + '\')" title="' + t("复制一份（同地址同密钥，可再换 KEY / 改名）") + '">' + t("复制一份") + "</button>" +
+    (p.builtin ? "" : '<button class="ghost small" onclick="duplicateProvider(\'' + esc(p.id) + '\')" title="' + t("复制一份（同地址同密钥，可再换 KEY / 改名）") + '">' + t("复制一份") + "</button>") +
     '<button class="ghost small" onclick="toggleProviderEnabled(\'' + esc(p.id) + '\', ' +
     (p.enabled === false) + ')">' + (p.enabled === false ? t("启用供应商") : t("停用供应商")) + "</button>" +
     '<span class="pd-ops-gap"></span>' +
@@ -3094,7 +3096,9 @@ function renderProvDetail() {
     }
   }
   // 密钥区放最下：与模型列表同属「日常不动、偶尔来看」的配置，别挡在模型区前面
-  html += keyListHtml(p);
+  html += p.builtin
+    ? '<div class="hint" style="padding:8px">' + t("密钥由本机 standalone 服务管理，不能在 CodeBee 中添加备用 Key。") + "</div>"
+    : keyListHtml(p);
   box.innerHTML = html;
   updateModelCount(p.id);
   bindModelRowDnD(p.id, box);
@@ -3630,6 +3634,10 @@ function providerCard(p) {
      ["google", t("google（仅登记）")]].map(([v, label]) =>
       '<option value="' + v + '"' + (cur === v ? " selected" : "") + ">" + esc(label) + "</option>").join("") +
     "</select></div>";
+  const managedUrl = p.builtin
+    ? '<div class="field full"><label>' + t("API 地址（standalone 管理）") + '</label>' +
+      '<input id="purl-' + esc(p.id) + '" value="' + esc(p.base_url) + '" readonly></div>'
+    : fld("purl-" + p.id, t("API 地址"), p.base_url, "base_url", true);
   return '<div class="card" id="pcard-' + esc(p.id) + '">' +
     '<div class="head"><span class="name">' + esc(p.name) + '</span><span class="tag">' + esc(cur) + "</span>" +
     srcTag(p.source) + "</div>" +
@@ -3637,11 +3645,17 @@ function providerCard(p) {
     fld("pname-" + p.id, t("名称"), p.name, t("名称")) +
     protoSel +
     fld("pmodel-" + p.id, t("默认模型"), p.model || "", t("默认模型")) +
-    fld("purl-" + p.id, t("API 地址"), p.base_url, "base_url", true) +
-    fld("pkey-" + p.id, t("首选密钥（填了=替换 #1；备用号在下方密钥区添加）"), "", t("（") + (p.api_key || t("未设置")) + t("，留空=不改）"), true) +
+    managedUrl +
+    (p.builtin
+      ? '<div class="field full"><label>' + t("API 密钥（standalone 管理）") + '</label>' +
+        '<input value="' + esc(p.api_key || t("未设置")) + '" readonly></div>'
+      : fld("pkey-" + p.id, t("首选密钥（填了=替换 #1；备用号在下方密钥区添加）"), "", t("（") + (p.api_key || t("未设置")) + t("，留空=不改）"), true)) +
     fld("peasy-" + p.id, t("简单任务模型"), p.model_easy || "", t("难度路由 · 简单")) +
     fld("phard-" + p.id, t("困难任务模型"), p.model_hard || "", t("难度路由 · 困难")) +
     "</div>" +
+    (p.builtin
+      ? '<p class="hint">' + t("该供应商由 dsh-our-free-model standalone 管理，端点和密钥只从本机服务读取。") + '</p>'
+      : "") +
     (cur === "auto"
       ? '<p class="hint">' + t("协议=自动：该网关支持哪些 wire 由「适配测试」实测决定（上方能力标签）。") + '</p>' : "") +
     '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">' + t("保存") + '</button>' +
@@ -3653,7 +3667,7 @@ async function saveProvider(id) {
     id, name: $("pname-" + id).value.trim(),
     protocol: ($("pproto-" + id) || {}).value || "auto",
     base_url: $("purl-" + id).value.trim(),
-    api_key: $("pkey-" + id).value.trim(),
+    api_key: (($('pkey-' + id) || {}).value || "").trim(),
     model: $("pmodel-" + id).value.trim(),
     model_easy: $("peasy-" + id).value.trim(),
     model_hard: $("phard-" + id).value.trim(),

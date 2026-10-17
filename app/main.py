@@ -4600,6 +4600,13 @@ def main():
     if n_stale:
         print("[CodeBee] 模型绑定：清理 %d 条历史空链供应商锁定，恢复自动调度" % n_stale,
               flush=True)
+    _step("正在接入 Our Free Model…")
+    try:
+        _free = modelhub.ensure_builtin_free_provider()
+        print("[CodeBee] Our Free Model：%s" % _free.get("message", "已初始化"), flush=True)
+    except Exception as _free_err:
+        print("[CodeBee] Our Free Model 接入跳过（不影响启动）：%s: %s"
+              % (type(_free_err).__name__, _free_err), flush=True)
     _step("正在探测原生免费通道…")
     try:
         _native_wire = modelhub.auto_wire_native_channels()
