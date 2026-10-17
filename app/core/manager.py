@@ -2136,7 +2136,8 @@ def launch(entry, open_browser=True):
                 "message": "%s 正在启动，就绪后浏览器会自动打开（%s）%s"
                            % (name, bare, ("；" + extra) if extra else "")}
 
-    if sys.platform == "darwin":
+    if (sys.platform == "darwin" and
+            os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") != "win32"):
         # Terminal.app 新开窗口跑交互 TUI；do script 的命令串常驻窗口，等价
         # Windows 的 cmd /k（CLI 退出后窗口保留，报错不至于一闪而过）。
         # 两层转义各管各的：shlex.quote 管 shell 层（cd 路径的引号），

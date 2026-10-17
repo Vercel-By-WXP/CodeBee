@@ -150,7 +150,10 @@ def _fallback_probe_cli(name):
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
     program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
     program_files_x86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
-    system_root = os.environ.get("SystemRoot") or r"C:\Windows"
+    # Tests provide a dedicated root instead of mutating the hosted runner's
+    # real SystemRoot; production keeps the native environment fallback.
+    system_root = (os.environ.get("CODEBEE_RELEASE_TEST_SYSTEM_ROOT") or
+                   os.environ.get("SystemRoot") or r"C:\Windows")
     flat_dirs = (
         os.path.join(local, "Microsoft", "WinGet", "Links"),
         os.path.join(home, ".local", "bin"),
@@ -1019,7 +1022,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 # 仍按原单模型 timeout 快速换将，收到过输出则最多再给一个活动窗口。
                 active = (activity_timeout > 0 and stamp[1]
                           and time.monotonic() - stamp[2] < activity_timeout
-                          and elapsed < timeout + activity_timeout)
+                          # proc.wait() polls in 0.4s slices; include one slice
+                          # so a slow runner is not killed after fresh output.
+                          and elapsed < timeout + activity_timeout + 0.4)
                 if not active:
                     timed_out = True
                     tree_quiet = _kill_tree(proc.pid)

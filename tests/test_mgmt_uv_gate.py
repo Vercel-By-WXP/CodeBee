@@ -318,7 +318,8 @@ class TestPosixProbe(BaseTest):
     def _posix_environment(self):
         keys = ("CODEBEE_RELEASE_TEST_PLATFORM", "LOCALAPPDATA", "APPDATA",
                 "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)",
-                "SystemRoot", "NVM_SYMLINK")
+                "SystemRoot", "CODEBEE_RELEASE_TEST_SYSTEM_ROOT",
+                "NVM_SYMLINK")
         return mock.patch.dict(os.environ, {key: "" for key in keys})
 
     def test_local_bin_hit(self):
@@ -378,6 +379,7 @@ class TestWindowsProbe(BaseTest):
         """系统目录环境变量整体钉到临时目录，磁盘落点全可控。"""
         return mock.patch.dict(os.environ, {
             "CODEBEE_RELEASE_TEST_PLATFORM": "win32",
+            "CODEBEE_RELEASE_TEST_SYSTEM_ROOT": td,
             "SystemRoot": td,
             "USERPROFILE": td,
             "LOCALAPPDATA": str(Path(td) / "lc"),
