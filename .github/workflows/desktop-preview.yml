@@ -79,7 +79,15 @@ jobs:
             npm run prepare:runtime -- ${{ matrix.platform }} ${{ matrix.arch }}
           fi
       - name: Desktop smoke with bundled Python
-        run: npm run smoke
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = linux ]; then
+            # Linux headless runner: Electron needs a virtual X display
+            sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+            xvfb-run --auto-servernum npm run smoke
+          else
+            npm run smoke
+          fi
       - name: Build preview installer with strict NSIS warnings (no publishing)
         run: npm run ${{ matrix.dist }}
       - name: Test the packaged application
@@ -92,7 +100,8 @@ jobs:
           elif [ "${{ matrix.arch }}" = arm64 ]; then
             './dist/mac-arm64/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
           elif [ "${{ matrix.platform }}" = linux ]; then
-            './dist/linux-unpacked/CodeBee' --smoke-test
+            sudo apt-get install -y -qq xvfb
+            xvfb-run --auto-servernum './dist/linux-unpacked/CodeBee' --smoke-test
           else
             './dist/mac/CodeBee.app/Contents/MacOS/CodeBee' --smoke-test
           fi
