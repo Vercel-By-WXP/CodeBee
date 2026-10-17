@@ -23,7 +23,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-_release_test_platform = None
+_release_test_platform = os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM")
 with socket.socket() as _port_probe:
     _port_probe.bind(("127.0.0.1", 0))
     PORT = _port_probe.getsockname()[1]
@@ -31,7 +31,7 @@ with socket.socket() as _port_probe:
 sys.path.insert(0, str(ROOT / "app"))
 
 if __name__ == "__main__":
-    _release_test_platform = os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
+    os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
     _tmp = Path(tempfile.mkdtemp(prefix="tutti-500guard-"))
     _data = _tmp / "data"
     _data.mkdir()
@@ -88,7 +88,7 @@ def _start_server():
 
 @unittest.skipUnless(__name__ == "__main__" and
                      threading.current_thread() is threading.main_thread() and
-                     not os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM"),
+                     _release_test_platform is None,
                      "HTTP guard runs in its dedicated main-thread process")
 class HttpRouteGuard(unittest.TestCase):
 

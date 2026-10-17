@@ -4868,6 +4868,11 @@ function taskContextItems(det) {
     if (sTask && sTask.serial && !sTask.serial.early_finish
       && st !== "running" && st !== "queued")
       items.push({ label: t("提前完结"), fn: () => earlyFinishSerial(taskId) });
+    if (sTask && sTask.serial && sTask.serial.early_finish
+      && st !== "running" && st !== "queued") {
+      items.push({ label: t("调整完结计划"), fn: () => editEarlyFinishSerial(taskId) });
+      items.push({ label: t("撤销提前完结"), fn: () => cancelEarlyFinishSerial(taskId) });
+    }
     // 连载完整跑完但未达标：给「重写未达标章」，与详情页按钮同源
     // （task_latest 全量下发最近一次 run，verdict 就在里面）
     const lrTask = ((S.state || {}).task_latest || {})[taskId];
@@ -5129,16 +5134,62 @@ async function earlyFinishSerial(id) {
     if (raw != null && String(raw).trim()) toast(t("最终章号必须大于当前已完成章节"), true);
     return;
   }
+  const reason = await uiPrompt(t("可选：请输入需要优先回收的伏笔或结局要求"), "");
+  if (reason == null) return;
   let result;
   try {
     result = await api("/api/tasks/" + encodeURIComponent(id) + "/early-finish",
-      { method: "POST", body: { target_chapter: target } });
+      { method: "POST", body: JSON.stringify({ target_chapter: target, reason }) });
   } catch (e) { toast(t("创建提前完结规划失败：") + e.message, true); return; }
   chatJumpLatest();
   if (result && result.run_id) jumpToRun(result.run_id);
   poll();
 }
 window.earlyFinishSerial = earlyFinishSerial;
+
+async function editEarlyFinishSerial(id) {
+  let info;
+  try {
+    info = await api("/api/tasks/" + encodeURIComponent(id) + "/continue-info", { busy: true });
+  } catch (e) { toast(t("无法读取完结规划：") + e.message, true); return; }
+  if (!info || !info.early_finish) {
+    toast(t("当前没有提前完结规划"), true);
+    return;
+  }
+  const targetRaw = await uiPrompt(t("请输入新的最终章号（当前第 {0} 章）", info.last_chapter),
+    String(info.planned_end_chapter || info.last_chapter + 1));
+  if (targetRaw == null) return;
+  const target = parseInt(targetRaw, 10);
+  if (!target || target <= Number(info.last_chapter || 0)) {
+    toast(t("最终章号必须大于当前已完成章节"), true);
+    return;
+  }
+  const reason = await uiPrompt(t("可选：请输入需要优先回收的伏笔或结局要求"),
+    String(info.early_finish.reason || ""));
+  if (reason == null) return;
+  try {
+    await api("/api/tasks/" + encodeURIComponent(id) + "/early-finish", {
+      method: "POST",
+      body: JSON.stringify({ action: "update", target_chapter: target, reason }),
+    });
+    toast(t("提前完结规划已更新"));
+    poll();
+  } catch (e) { toast(t("更新提前完结规划失败：") + e.message, true); }
+}
+window.editEarlyFinishSerial = editEarlyFinishSerial;
+
+async function cancelEarlyFinishSerial(id) {
+  if (!await uiConfirm(t("撤销后将允许继续扩写，但不会删除或回滚已有章节。确定撤销提前完结规划吗？"),
+    { ok: t("撤销规划"), danger: true })) return;
+  try {
+    await api("/api/tasks/" + encodeURIComponent(id) + "/early-finish", {
+      method: "POST", body: JSON.stringify({ action: "cancel" }),
+    });
+    toast(t("提前完结规划已撤销"));
+    poll();
+  } catch (e) { toast(t("撤销提前完结规划失败：") + e.message, true); }
+}
+window.cancelEarlyFinishSerial = cancelEarlyFinishSerial;
 
 function setSelectionSerialButton(task) {
   const button = $("btn-selection-serial");
@@ -6048,6 +6099,11 @@ function renderTaskDetail() {
   // 任务级按钮只看任务本身（state 里有 serial），不依赖 run 拉取——
   // 没跑过运行的任务也不能残留上一个任务留下的按钮状态
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
+  const latestSummary = ((S.state || {}).task_latest || {})[key] || {};
+  const plannedEnd = Number(tk && tk.serial && tk.serial.early_finish
+    && tk.serial.early_finish.target_chapter || 0);
+  const reachedPlannedEnd = plannedEnd > 0 && Number(
+    latestSummary.verdict && latestSummary.verdict.end_chapter || 0) >= plannedEnd;
   setSelectionSerialButton(tk);
   const bc = $("btn-continue");
   if (bc) bc.classList.toggle("hidden",
@@ -6056,7 +6112,14 @@ function renderTaskDetail() {
   if (bef) bef.classList.toggle("hidden",
     !(tk && tk.serial && !tk.serial.early_finish
       && tk.status !== "running" && tk.status !== "queued"));
-  const latestSummary = ((S.state || {}).task_latest || {})[key] || {};
+  const befe = $("btn-early-finish-edit");
+  if (befe) befe.classList.toggle("hidden",
+    !(tk && tk.serial && tk.serial.early_finish
+      && !reachedPlannedEnd && tk.status !== "running" && tk.status !== "queued"));
+  const befc = $("btn-early-finish-cancel");
+  if (befc) befc.classList.toggle("hidden",
+    !(tk && tk.serial && tk.serial.early_finish
+      && !reachedPlannedEnd && tk.status !== "running" && tk.status !== "queued"));
   setRetryBtn(retrySnapshotForTask(key, tk, latestSummary), tk);
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
@@ -7233,6 +7296,10 @@ async function renderRunDetail() {
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
   const rcTask = [...((S.state || {}).tasks || []), ...((S.state || {}).archived_tasks || [])].find((x) => x.id === run.task_id);
+  const runPlannedEnd = Number(rcTask && rcTask.serial && rcTask.serial.early_finish
+    && rcTask.serial.early_finish.target_chapter || 0);
+  const runReachedPlannedEnd = runPlannedEnd > 0 && Number(
+    run.verdict && run.verdict.end_chapter || 0) >= runPlannedEnd;
   if (rcTask) {
     renderProjectMemoryControls(rcTask.id);
   } else {
@@ -7264,6 +7331,12 @@ async function renderRunDetail() {
   $("btn-early-finish").classList.toggle("hidden",
     !(rcTask && rcTask.serial && !rcTask.serial.early_finish
       && run.status !== "running" && run.status !== "queued"));
+  $("btn-early-finish-edit").classList.toggle("hidden",
+    !(rcTask && rcTask.serial && rcTask.serial.early_finish
+      && !runReachedPlannedEnd && run.status !== "running" && run.status !== "queued"));
+  $("btn-early-finish-cancel").classList.toggle("hidden",
+    !(rcTask && rcTask.serial && rcTask.serial.early_finish
+      && !runReachedPlannedEnd && run.status !== "running" && run.status !== "queued"));
   setEditRetry(run.task_id, run.status, !!rcTask);
   S.lastRun = run;
   renderRunOutcome(run);
@@ -12426,6 +12499,17 @@ function renderDetailOverview(run, runs, task, aggregate) {
       return '<div class="rd-budget-row"><span>' + esc(label) + '</span><div class="rd-budget-track"><i style="width:' + pct + '%"></i></div><small>' + esc(String(item[1] || 0)) + '/' + esc(String(item[2])) + '</small></div>';
     }).join("") + '</div>' : "";
   const verdict = run.verdict && typeof run.verdict === "object" ? run.verdict : {};
+  const earlyPlan = task && task.serial && task.serial.early_finish && typeof task.serial.early_finish === "object"
+    ? task.serial.early_finish : null;
+  const earlyTarget = earlyPlan ? Number(earlyPlan.target_chapter || 0) : 0;
+  const earlyDone = earlyTarget ? Math.min(earlyTarget,
+    Number(verdict.end_chapter || run.end_chapter || 0)) : 0;
+  const earlyProgressHtml = earlyTarget
+    ? '<div class="rd-early-progress" role="status"><b>' + esc(t("提前完结进度")) + '</b><span>' +
+      esc(t("第 {0} / {1} 章", earlyDone, earlyTarget)) + '</span>' +
+      '<i><em style="width:' + Math.round(earlyDone * 100 / earlyTarget) + '%"></em></i>' +
+      '<small>' + esc(earlyDone >= earlyTarget ? t("已达到规划最终章") : t("剩余 {0} 章", earlyTarget - earlyDone)) +
+      '</small></div>' : "";
   const degraded = verdict.review_degraded || verdict.quality_status === "degraded";
   const reviewHtml = degraded ? '<div class="rd-review-degraded" role="status"><strong>' + esc(t("评审降级")) + '</strong><span>' + esc((verdict.review_degradation_reasons || []).join("；") || t("当前没有满足门槛的评审者")) + '</span></div>' : "";
   const dagNodes = (run.plan && run.plan.steps) || run.subtasks || [];
@@ -12459,7 +12543,7 @@ function renderDetailOverview(run, runs, task, aggregate) {
       (duration != null ? '<span>' + esc(t("耗时")) + ' <b>' + esc(chatDurTxt(duration < 1 ? Number(duration.toFixed(1)) : Math.round(duration))) + '</b></span>' : "") +
       (etaText ? '<span class="rd-eta">' + esc(etaText) + '</span>' : "") +
     '</div>' +
-    reviewHtml + budgetHtml + dagHtml + capabilityEvidenceHtml(run.capabilities) +
+    earlyProgressHtml + reviewHtml + budgetHtml + dagHtml + capabilityEvidenceHtml(run.capabilities) +
     (lastText ? '<div class="rd-overview-last"><b>' + esc(t("最近一步")) + '</b><span>' + esc(lastText) + '</span></div>' : "") +
     (contract ? contractOverviewHtml(contract) : "") +
     (actions.length ? '<div class="rd-overview-actions">' + actions.join("") + '</div>' : "");
@@ -19853,6 +19937,14 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-early-finish").addEventListener("click", () => {
     const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
     if (tid) earlyFinishSerial(tid);
+  });
+  $("btn-early-finish-edit").addEventListener("click", () => {
+    const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
+    if (tid) editEarlyFinishSerial(tid);
+  });
+  $("btn-early-finish-cancel").addEventListener("click", () => {
+    const tid = (S.lastRun && S.lastRun.task_id) || S.detailTaskKey || "";
+    if (tid) cancelEarlyFinishSerial(tid);
   });
   $("btn-selection-serial").addEventListener("click", () => {
     const tid = S.detailTaskKey || (S.lastRun && S.lastRun.task_id) || "";

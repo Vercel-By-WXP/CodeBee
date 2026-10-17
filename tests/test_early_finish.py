@@ -136,3 +136,103 @@ class TestEarlyFinish(BaseTest):
         self.assertEqual(result["status"], "done", result.get("error"))
         self.assertEqual((result.get("verdict") or {}).get("end_chapter"), 7)
         self.assertFalse((self.workdir / "chapter-08.md").exists())
+
+    def test_plan_can_be_updated_and_cancelled(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 7)
+        self.assertTrue(ok, err)
+        ok, err, updated = store.update_early_finish_task(
+            child["id"], target_chapter=9, reason="保留终局伏笔")
+        self.assertTrue(ok, err)
+        self.assertEqual(updated["serial"]["early_finish"]["target_chapter"], 9)
+        self.assertEqual(store.serial_early_finish_plan(task)["target_chapter"], 9)
+        self.assertEqual(store.serial_early_finish_plan(child)["reason"], "保留终局伏笔")
+
+        ok, err, cancelled = store.update_early_finish_task(child["id"], cancel=True)
+        self.assertTrue(ok, err)
+        self.assertTrue(cancelled["serial"].get("early_finish") is None)
+        self.assertIsNone(store.serial_early_finish_plan(child))
+
+    def test_plan_actions_from_an_old_batch_follow_latest_batch(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 7)
+        self.assertTrue(ok, err)
+
+        ok, err, updated = store.update_early_finish_task(
+            task["id"], target_chapter=9, reason="从首批入口调整")
+        self.assertTrue(ok, err)
+        self.assertEqual(updated["id"], child["id"])
+        self.assertEqual(
+            store.serial_early_finish_plan(child)["target_chapter"], 9)
+
+        ok, err, cancelled = store.update_early_finish_task(
+            task["id"], cancel=True)
+        self.assertTrue(ok, err)
+        self.assertIsNone(store.serial_early_finish_plan(cancelled))
+
+    def test_invalid_persisted_early_finish_targets_are_not_silently_clamped(self):
+        from app.core import store
+
+        for invalid in (0, 1, 501, 9999):
+            task = store.create_task({
+                "type": "serial_novel", "title": "非法计划 %s" % invalid,
+                "goal": "写一本连载", "workdir": str(self.workdir),
+                "serial": {"chapters": 3, "early_finish": {
+                    "target_chapter": invalid}},
+            })
+            self.assertNotIn(
+                "early_finish", task.get("serial") or {},
+                "非法最终章号 %s 不应被静默改写" % invalid)
+
+    def test_plan_update_rejects_running_and_out_of_range_targets(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 7)
+        self.assertTrue(ok, err)
+        ok, err, _ = store.update_early_finish_task(child["id"], target_chapter=501)
+        self.assertFalse(ok)
+        self.assertIn("500", err)
+
+        run = store.create_run("orchestration", child["title"], task_id=child["id"])
+        store.update_task_status(child["id"], "queued")
+        ok, err, _ = store.update_early_finish_task(child["id"], target_chapter=8)
+        self.assertFalse(ok)
+        self.assertIn("运行", err)
+        store.update_run(run["id"], status="failed", error="test")
+        store.update_task_status(child["id"], "failed")
+
+    def test_repeated_same_target_resolves_existing_batch(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 7)
+        self.assertTrue(ok, err)
+        existing = store.early_finish_existing_task(task["id"], 7)
+        self.assertEqual(existing["id"], child["id"])
+        self.assertIsNone(store.early_finish_existing_task(task["id"], 8))
+
+    def test_progress_caps_stale_chapters_after_planned_end(self):
+        from app.core import store
+
+        task = self._task()
+        ok, err, child = store.early_finish_task(task["id"], 6)
+        self.assertTrue(ok, err)
+        for i in range(5, 9):
+            (self.workdir / ("chapter-%02d.md" % i)).write_text(
+                "遗留稿 %d" % i, encoding="utf-8")
+        info = store.continue_info(child["id"])
+        self.assertEqual(info["last_chapter"], 6)
+        self.assertEqual(info["remaining_chapters"], 0)
+        self.assertEqual(info["early_finish_state"], "completed")
+
+    def test_frontend_early_finish_request_is_json_encoded(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "app" / "ui" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("body: JSON.stringify({ target_chapter: target, reason })", source)
+        self.assertNotIn("body: { target_chapter: target }", source)

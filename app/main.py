@@ -1822,9 +1822,40 @@ class Handler(BaseHTTPRequestHandler):
                                         "run_id": run["id"]})
             elif m.group(2) == "early-finish":
                 body = self._body() or {}
+                action = str(body.get("action") or "create").strip().lower()
+                if action in ("update", "cancel"):
+                    ok, err, updated = store.update_early_finish_task(
+                        m.group(1), body.get("target_chapter"), body.get("reason"),
+                        cancel=action == "cancel")
+                    if not ok:
+                        return self._json(400, {"error": err})
+                    info = store.continue_info(m.group(1)) or {}
+                    return self._json(200, {
+                        "ok": True,
+                        "task_id": m.group(1),
+                        "cancelled": action == "cancel",
+                        "planned_end_chapter": info.get("planned_end_chapter"),
+                        "last_chapter": info.get("last_chapter", 0),
+                        "remaining_chapters": info.get("remaining_chapters"),
+                    })
                 ok, err, new_task = store.early_finish_task(
                     m.group(1), body.get("target_chapter"), body.get("reason"))
                 if not ok:
+                    # A browser retry after a successful response must not
+                    # create a second continuation batch. Reuse the existing
+                    # batch only when the requested target is identical.
+                    existing = store.early_finish_existing_task(
+                        m.group(1), body.get("target_chapter"))
+                    if existing:
+                        latest_run = store.latest_run_by_task().get(existing["id"]) or {}
+                        return self._json(200, {
+                            "ok": True, "deduplicated": True,
+                            "task_id": existing["id"],
+                            "run_id": latest_run.get("id"),
+                            "planned_end_chapter": ((existing.get("serial") or {})
+                                                       .get("early_finish") or {})
+                                                       .get("target_chapter"),
+                        })
                     return self._json(400, {"error": err})
                 run = None
                 try:

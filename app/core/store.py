@@ -127,10 +127,13 @@ def _norm_early_finish(value):
     if not isinstance(value, dict):
         return None
     try:
-        target = max(1, min(500, int(value.get("target_chapter") or 0)))
+        target = int(value.get("target_chapter") or 0)
     except (TypeError, ValueError):
         return None
-    if target < 2:
+    # Persisted payloads can come from older clients or manual edits. Do not
+    # silently rewrite an invalid target into a different ending chapter;
+    # dropping the malformed plan lets the caller repair it explicitly.
+    if target < 2 or target > 500:
         return None
     out = {"target_chapter": target}
     source = str(value.get("source_task") or "").strip()
@@ -2159,7 +2162,12 @@ def continue_info(task_id):
             "words_per_chapter": int(serial.get("words_per_chapter") or 2500),
             "can": False, "reason": "",
             "early_finish": plan or None,
-            "planned_end_chapter": (plan or {}).get("target_chapter") if plan else None}
+            "planned_end_chapter": (plan or {}).get("target_chapter") if plan else None,
+            "remaining_chapters": None,
+            "early_finish_state": "none",
+            "early_finish_latest_task_id": None,
+            "can_update_early_finish": False,
+            "can_cancel_early_finish": False}
     if not serial:
         info["reason"] = "只有连载任务支持继续连载"
         return info
@@ -2170,10 +2178,14 @@ def continue_info(task_id):
         if r.get("task_id") == task_id and r.get("status") in ("queued", "running"):
             info["reason"] = "有运行中的记录，请先取消"
             return info
-    last = serial_book_progress(task)
+    raw_last = serial_book_progress(task)
+    last = min(raw_last, int(plan["target_chapter"])) if plan else raw_last
     info["last_chapter"] = last
     if plan:
         chain = serial_chain_ids(task_id)
+        info["early_finish_latest_task_id"] = chain[-1] if chain else task_id
+        info["remaining_chapters"] = max(0, int(plan["target_chapter"]) - last)
+        info["early_finish_state"] = "completed" if last >= int(plan["target_chapter"]) else "planned"
         if chain and chain[-1] != task_id:
             info["reason"] = "请从最新连载批次继续，避免旧批次重复规划"
             return info
@@ -2184,6 +2196,9 @@ def continue_info(task_id):
         info["reason"] = "还没写成任何一章（工作目录里没有 chapter-*.md），先跑完一次连载"
         return info
     info["can"] = True
+    if plan:
+        info["can_update_early_finish"] = True
+        info["can_cancel_early_finish"] = True
     return info
 
 
@@ -2277,6 +2292,24 @@ def early_finish_info(task_id):
     return info
 
 
+def early_finish_existing_task(task_id, target_chapter):
+    """Return an existing ending batch for an idempotent repeated request."""
+    task = get_task(task_id)
+    if not task:
+        return None
+    plan = serial_early_finish_plan(task)
+    if not plan:
+        return None
+    try:
+        target = int(target_chapter)
+    except (TypeError, ValueError):
+        return None
+    if target != int(plan.get("target_chapter") or 0):
+        return None
+    chain = serial_chain_ids(task_id)
+    return get_task(chain[-1]) if chain else task
+
+
 def early_finish_task(task_id, target_chapter, reason=""):
     """Create the first shortened-ending continuation batch.
 
@@ -2298,7 +2331,10 @@ def early_finish_task(task_id, target_chapter, reason=""):
         target = int(target_chapter)
     except (TypeError, ValueError):
         return False, "最终章号必须是整数", None
-    target = max(1, min(500, target))
+    if target > 500:
+        return False, "最终章号不能超过 500", None
+    if target < 1:
+        return False, "最终章号必须是正整数", None
     if target <= int(info.get("last_chapter") or 0):
         return False, "最终章号必须大于当前已完成章节", None
     plan = {"target_chapter": target, "source_task": task_id,
@@ -2350,6 +2386,84 @@ def early_finish_task(task_id, target_chapter, reason=""):
                 _save_json(paths.TASKS_DIR / (tid + ".json"), item)
         return False, err, None
     return True, "", new
+
+
+def update_early_finish_task(task_id, target_chapter=None, reason=None, cancel=False):
+    """Adjust or cancel an existing early-ending plan before it is complete."""
+    task = get_task(task_id)
+    if not task:
+        return False, "任务不存在", None
+    plan = serial_early_finish_plan(task)
+    if not plan:
+        return False, "当前没有提前完结规划", None
+    info = continue_info(task_id)
+    if not info:
+        return False, "任务不存在", None
+    latest_id = info.get("early_finish_latest_task_id") or task_id
+    if latest_id != task_id:
+        # Details for a serial chain are often opened on the first batch. Keep
+        # those controls useful by resolving the operation to the current
+        # latest batch instead of forcing the user to hunt through the chain.
+        latest = get_task(latest_id)
+        if not latest:
+            return False, "最新连载批次不存在，请刷新后重试", None
+        task_id = latest_id
+        task = latest
+        info = continue_info(task_id)
+        plan = serial_early_finish_plan(task)
+        if not info or not plan:
+            return False, "当前没有提前完结规划", None
+    if info.get("early_finish_state") == "completed":
+        return False, "提前完结规划已经完成，不能再修改", None
+    if task.get("status") in ("queued", "running"):
+        return False, "任务正在运行中，完成或取消后再调整", None
+    for run in _RUNS.values():
+        if run.get("task_id") == task_id and run.get("status") in ("queued", "running"):
+            return False, "有运行中的记录，请先取消", None
+    chain = serial_chain_ids(task_id) or [task_id]
+    if cancel:
+        with LOCK:
+            for tid in chain:
+                item = _TASKS.get(tid) or get_task(tid)
+                if not item:
+                    continue
+                serial_data = dict(item.get("serial") or {})
+                serial_data.pop("early_finish", None)
+                item["serial"] = serial_data
+                _save_json(paths.TASKS_DIR / (tid + ".json"), item)
+            bump_state()
+        return True, "", get_task(task_id)
+    try:
+        target = int(target_chapter)
+    except (TypeError, ValueError):
+        return False, "最终章号必须是整数", None
+    if target > 500:
+        return False, "最终章号不能超过 500", None
+    if target < 1:
+        return False, "最终章号必须是正整数", None
+    last = int(info.get("last_chapter") or 0)
+    if target <= last:
+        return False, "最终章号必须大于当前已完成章节", None
+    revised = dict(plan)
+    revised["target_chapter"] = target
+    if reason is not None:
+        text = str(reason).strip()
+        if text:
+            revised["reason"] = text[:240]
+        else:
+            revised.pop("reason", None)
+    revised["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    with LOCK:
+        for tid in chain:
+            item = _TASKS.get(tid) or get_task(tid)
+            if not item:
+                continue
+            serial_data = dict(item.get("serial") or {})
+            serial_data["early_finish"] = dict(revised)
+            item["serial"] = serial_data
+            _save_json(paths.TASKS_DIR / (tid + ".json"), item)
+        bump_state()
+    return True, "", get_task(task_id)
 
 
 def set_task_git_state(task_id, state):

@@ -626,12 +626,14 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
     if n <= 0:
         n = 1
     if early_plan and early_plan.get("target_chapter"):
+        early_reason = str(early_plan.get("reason") or "").strip()
+        reason_line = ("作者指定的收束要求：%s\n" % early_reason) if early_reason else ""
         early_block = ("## 提前完结规划（必须执行）\n"
                        "本书因连载表现调整为提前完结，最终章固定为第 %s 章。"
                        "请把剩余章节重新组织成完整收束路线：优先回收主线、人物弧光、"
                        "关键伏笔与读者承诺，不再扩展新的长期支线或卷；最终章必须有完本感。"
-                       "不得把提前完结写成突然中断，也不得改写已发布章节。\n"
-                       % early_plan["target_chapter"])
+                       "不得把提前完结写成突然中断，也不得改写已发布章节。\n%s"
+                       % (early_plan["target_chapter"], reason_line))
     else:
         early_block = ""
     # The orchestrator must see the same stable capability snapshot as the
