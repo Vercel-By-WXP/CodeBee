@@ -128,6 +128,22 @@ def fingerprint(diagnostic: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def stable_fingerprint(diagnostic: Mapping[str, Any]) -> str:
+    """Identify a diagnostic independently of source line movement.
+
+    Adding code above an existing warning should not turn the warning into a
+    new finding. Keep the original location-sensitive fingerprint for
+    backwards compatibility and use this companion identity for baselines.
+    """
+    relevant = {
+        key: diagnostic.get(key)
+        for key in ("tool", "file", "code", "severity", "rule", "message")
+        if diagnostic.get(key) not in (None, "")
+    }
+    encoded = json.dumps(relevant, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def new_diagnostics(
     diagnostics: Iterable[Mapping[str, Any]], baseline: Set[str]
 ) -> List[Dict[str, Any]]:
@@ -135,7 +151,7 @@ def new_diagnostics(
     return [
         dict(item)
         for item in diagnostics
-        if fingerprint(item) not in baseline
+        if fingerprint(item) not in baseline and stable_fingerprint(item) not in baseline
     ]
 
 
@@ -242,6 +258,7 @@ def _baseline_section(
         "version": version,
         "count": len(diagnostics),
         "fingerprints": sorted(fingerprint(item) for item in diagnostics),
+        "stable_fingerprints": sorted({stable_fingerprint(item) for item in diagnostics}),
     }
 
 
@@ -279,7 +296,14 @@ def _section_fingerprints(section: Mapping[str, Any]) -> Set[str]:
     count = section.get("count")
     if not isinstance(count, int) or count != len(values) or count != len(set(values)):
         raise RuntimeError("invalid static-check baseline count")
-    return set(values)
+    stable_values = section.get("stable_fingerprints")
+    if stable_values is not None and (
+        not isinstance(stable_values, list)
+        or not all(isinstance(item, str) for item in stable_values)
+        or len(stable_values) != len(set(stable_values))
+    ):
+        raise RuntimeError("invalid stable static-check baseline fingerprints")
+    return set(values) | set(stable_values or ())
 
 
 def _write_baseline(path: Path, baseline: Mapping[str, Any]) -> None:
