@@ -86,7 +86,8 @@ def _start_server():
     return False
 
 
-@unittest.skipUnless(__name__ == "__main__",
+@unittest.skipUnless(__name__ == "__main__" and
+                     threading.current_thread() is threading.main_thread(),
                      "HTTP guard runs in its dedicated main-thread process")
 class HttpRouteGuard(unittest.TestCase):
 
