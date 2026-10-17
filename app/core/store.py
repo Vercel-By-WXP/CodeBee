@@ -347,7 +347,7 @@ def create_task(payload):
             serial = flow.get("serial")
         if isinstance(serial, dict) and serial.get("chapters"):
             try:
-                s = {
+                s: dict[str, object] = {
                     # 续写批次允许只续 1 章，下限放宽到 1（全新连载仍由前端约束 ≥2）
                     "chapters": max(1, min(20, int(serial["chapters"]))),
                     "words_per_chapter": max(500, min(8000,

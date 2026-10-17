@@ -86,9 +86,18 @@ jobs:
 
           stdlib = set(getattr(sys, "stdlib_module_names", ()))
           stdlib.update({"__future__"})
-          roots = {path.name for path in pathlib.Path("app").iterdir() if path.is_dir()}
-          roots.update(path.stem for path in pathlib.Path("app").glob("*.py"))
-          roots.update({"app"})
+          roots = {"app", "tests", "tools", "scripts", "sitecustomize"}
+          for package in (pathlib.Path("app"), pathlib.Path("tests"),
+                          pathlib.Path("tools"), pathlib.Path("scripts")):
+              if not package.is_dir():
+                  continue
+              roots.update(path.name for path in package.iterdir()
+                           if path.is_dir())
+              roots.update(path.stem for path in package.glob("*.py"))
+          optional_imports = {
+              "PIL", "certifi", "chinese_calendar", "numpy", "playwright",
+              "psutil", "wechatauto", "yaml",
+          }
           third_party = []
           for path in pathlib.Path(".").rglob("*.py"):
               if ".git" in path.parts or "__pycache__" in path.parts:
@@ -100,12 +109,14 @@ jobs:
               for node in ast.walk(tree):
                   if isinstance(node, ast.Import):
                       names = [item.name.split(".")[0] for item in node.names]
-                  elif isinstance(node, ast.ImportFrom) and node.module:
+                  elif (isinstance(node, ast.ImportFrom) and node.module
+                        and node.level == 0):
                       names = [node.module.split(".")[0]]
                   else:
                       continue
                   for name in names:
-                      if name not in stdlib and name not in roots and name not in {"tests"}:
+                      if (name not in stdlib and name not in roots
+                              and name not in optional_imports):
                           third_party.append(f"{path}: {name}")
           if third_party:
               print("Unexpected imports:")

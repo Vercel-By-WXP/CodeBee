@@ -323,8 +323,10 @@ class TestPosixProbe(BaseTest):
             exe = Path(td) / ".local" / "bin" / "aider"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"#!/bin/sh\n")
+            exe.chmod(0o755)
             with self._posix_environment(), \
                  mock.patch("os.name", "posix"), \
+                 mock.patch("os.access", lambda path, mode: True), \
                  mock.patch("os.path.expanduser", lambda p: td):
                 self.assertEqual(runner._fallback_probe_cli("aider"), str(exe))
 
@@ -349,8 +351,10 @@ class TestPosixProbe(BaseTest):
             exe = Path(td) / ".local" / "bin" / "trae-cli"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"#!/bin/sh\n")
+            exe.chmod(0o755)
             with self._posix_environment(), \
                  mock.patch("os.name", "posix"), \
+                 mock.patch("os.access", lambda path, mode: True), \
                  mock.patch("os.path.expanduser", lambda p: td), \
                  mock.patch("app.core.manager.shutil.which", lambda c: None):
                 self.assertEqual(manager._which_cli("trae-cli"), str(exe))
@@ -370,6 +374,7 @@ class TestWindowsProbe(BaseTest):
         """系统目录环境变量整体钉到临时目录，磁盘落点全可控。"""
         return mock.patch.dict(os.environ, {
             "SystemRoot": td,
+            "USERPROFILE": td,
             "LOCALAPPDATA": str(Path(td) / "lc"),
             "APPDATA": str(Path(td) / "roam"),
             "ProgramW6432": str(Path(td) / "pf"),

@@ -23,6 +23,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+_release_test_platform = None
 with socket.socket() as _port_probe:
     _port_probe.bind(("127.0.0.1", 0))
     PORT = _port_probe.getsockname()[1]
@@ -30,6 +31,7 @@ with socket.socket() as _port_probe:
 sys.path.insert(0, str(ROOT / "app"))
 
 if __name__ == "__main__":
+    _release_test_platform = os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
     _tmp = Path(tempfile.mkdtemp(prefix="tutti-500guard-"))
     _data = _tmp / "data"
     _data.mkdir()
@@ -88,15 +90,12 @@ class HttpRouteGuard(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # The release gate simulates Windows CLI contracts globally, but this
-        # guard intentionally boots a POSIX HTTP service in-process.
-        cls._platform_marker = os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
         cls.up = _start_server()
 
     @classmethod
     def tearDownClass(cls):
-        if cls._platform_marker is not None:
-            os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = cls._platform_marker
+        if _release_test_platform is not None:
+            os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = _release_test_platform
 
     def test_01_service_up(self):
         self.assertTrue(self.up, "服务未在临时数据目录起盘")
@@ -151,10 +150,12 @@ class HttpRouteGuardProcess(unittest.TestCase):
 
     def runTest(self):
         import subprocess
+        child_env = os.environ.copy()
+        child_env.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
         result = subprocess.run(
             [sys.executable, "-X", "utf8", str(Path(__file__).resolve()), "-v"],
             cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=90)
+            errors="replace", timeout=90, env=child_env)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
