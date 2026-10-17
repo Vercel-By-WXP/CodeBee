@@ -497,14 +497,23 @@ class CompetitiveFeatureTests(unittest.TestCase):
         docker = sandbox_runtime.shutil.which("docker")
         if not docker:
             self.skipTest("Docker CLI unavailable")
-        daemon = subprocess.run([docker, "info"], stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, timeout=8)
+        try:
+            daemon = subprocess.run([docker, "info"], stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, timeout=8)
+        except subprocess.TimeoutExpired:
+            # Docker Desktop/engine may be installed but stopped on hosted
+            # runners.  An unavailable runtime makes this optional integration
+            # test inapplicable; it must not fail the portable unit suite.
+            self.skipTest("Docker daemon probe timed out")
         if daemon.returncode:
             self.skipTest("Docker daemon unavailable")
         image = "python:3.12-slim"
-        image_check = subprocess.run([docker, "image", "inspect", image],
-                                     stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL, timeout=8)
+        try:
+            image_check = subprocess.run([docker, "image", "inspect", image],
+                                         stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL, timeout=8)
+        except subprocess.TimeoutExpired:
+            self.skipTest("Docker image probe timed out")
         if image_check.returncode:
             self.skipTest("Docker integration image is not preloaded")
         with tempfile.TemporaryDirectory() as workdir:
