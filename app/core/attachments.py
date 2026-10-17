@@ -355,6 +355,26 @@ def extract_office_text(path):
         return None
 
 
+def _safe_attachment_target(workdir, name):
+    """Return a canonical attachment path, rejecting link escapes.
+
+    The destination is user-controlled workspace state.  Resolve it before
+    creating parent directories so an existing symlink/junction cannot redirect
+    an upload outside the workspace.
+    """
+    root = Path(workdir).expanduser().resolve(strict=False)
+    target = root / "_attachments" / Path(name)
+    cursor = root
+    for part in target.relative_to(root).parts:
+        cursor = cursor / part
+        if cursor.is_symlink() or (hasattr(cursor, "is_junction") and cursor.is_junction()):
+            raise ValueError("附件目标路径包含不安全链接")
+    resolved = target.resolve(strict=False)
+    if resolved != root and root not in resolved.parents:
+        raise ValueError("附件目标路径超出工作目录")
+    return resolved
+
+
 def commit_to_workdir(workdir, ids):
     """把待提交附件移入 <workdir>/_attachments/，返回 [{name,size,mime,path}]。
 
@@ -389,7 +409,13 @@ def commit_to_workdir(workdir, ids):
             name = (relative_dir + "/" + filename) if relative_dir != "." else filename
             i += 1
         try:
-            target = adir / name
+            target = _safe_attachment_target(workdir, name)
+        except (OSError, ValueError):
+            # Keep the pending file for a later retry after the workspace
+            # boundary is repaired; never discard an attachment on a safety
+            # rejection.
+            continue
+        try:
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
                 f.replace(target)  # 同盘 move

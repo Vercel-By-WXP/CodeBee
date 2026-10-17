@@ -1516,6 +1516,34 @@ def _log_note(log_path, text):
         pass
 
 
+def _finish_attempt_ledger(ledger, run_id, command_context, att, out):
+    """Close one provider-attempt row, including an in-place stream retry."""
+    if not ledger:
+        return
+    raw = out.get("raw") if isinstance(out.get("raw"), dict) else {}
+    usage = out.get("usage") or {}
+    retry_class = ""
+    if not out.get("ok"):
+        code = error_code_value(out.get("error_code"))
+        retry_class = "rate_limit" if _rate_limited(out.get("error")) else (
+            "transient" if _transient_error(out.get("error")) else code)
+    try:
+        ledger.finish(
+            run_id or "unbound",
+            command_context.get("role", "")
+            if isinstance(command_context, dict) else "",
+            ((att.get("provider") or {}).get("name", "")
+             if isinstance(att.get("provider"), dict) else ""),
+            out.get("model") or att.get("model") or "", ok=bool(out.get("ok")),
+            error=out.get("error") or "", usage=usage,
+            duration_s=raw.get("duration", 0.0), retry_class=retry_class,
+            ttft_ms=(raw.get("first_token_ms") or 0),
+            tokens_per_sec=(raw.get("tokens_per_sec") or 0),
+            attempt=out.get("attempt_ordinal", 1))
+    except Exception:
+        pass
+
+
 def _rate_limited(err):
     return _shared_rate_limited_error(err)
 
@@ -2336,6 +2364,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         max_attempts = base_attempts + (STREAM_RETRY_N if readonly
                                         and kind in ("codex", "claude") else 0)
         for attempt in range(max_attempts):  # claude 空响应 + 只读流中断各自有界重试
+            ledger = None
             remaining = model_deadline - time.monotonic()
             if remaining <= 0:
                 res = {"ok": False, "exit_code": None, "stdout": "", "stderr": "",
@@ -2395,12 +2424,22 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                    "sid": "", "raw": res, "kind": kind, "model": att["model"],
                    "provider_id": att.get("provider_id") or "",
                    "provider": att.get("provider") or {},
-                   "stream_retries": stream_retries}
+                   "stream_retries": stream_retries,
+                   "attempt_ordinal": attempt + 1}
             if not res["ok"]:
                 if (kind == "opencode" and attempt == 0
                         and _opencode_fast_banner_death(res)
                         and not (cancel_event is not None
                                  and cancel_event.is_set())):
+                    _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                           command_context, att, {
+                                               "ok": False,
+                                               "error": "opencode 启动横幅后退出",
+                                               "error_code": ErrorCode.VENDOR_ERROR,
+                                               "raw": res,
+                                               "model": att.get("model"),
+                                               "attempt_ordinal": attempt + 1,
+                                               "usage": None})
                     _log_note(log_path,
                               "opencode 启动即退（仅横幅无错误文本）——按瞬时抖动 2s 后原地重试一次")
                     time.sleep(2.0)
@@ -2478,14 +2517,21 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       or _classify_failure(res, kind=kind))
                 out["error"] += _login_hint(kind, out["error_code"],
                                             out["error"])
-                if (stream_retries < STREAM_RETRY_N
-                        and _stream_retryable_failure(
-                            res, out["error"], kind=kind, readonly=readonly)
-                        and model_deadline - time.monotonic() > 1
-                        and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
-                    stream_retries += 1
-                    _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
-                    continue
+                retryable_stream = (stream_retries < STREAM_RETRY_N
+                                    and _stream_retryable_failure(
+                                        res, out["error"], kind=kind,
+                                        readonly=readonly)
+                                    and model_deadline - time.monotonic() > 1)
+                if retryable_stream:
+                    if _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S):
+                        _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                               command_context, att, out)
+                        stream_retries += 1
+                        _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                        continue
+                    _stream_retry_cancelled(out, cancel_event)
+                _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                       command_context, att, out)
                 break
             if kind == "codex":
                 out["text"], out["usage"], out_sid = _parse_codex_jsonl(res["stdout"])
@@ -2558,14 +2604,21 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error"] = "claude 输出无法解析为 JSON；stdout 尾部: " + res["stdout"][-500:]
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=None)
                     out["error"] += _login_hint("claude", out["error_code"], out["error"])
-                    if (stream_retries < STREAM_RETRY_N
-                            and _stream_retryable_failure(
-                                res, out["error"], kind=kind, readonly=readonly)
-                            and model_deadline - time.monotonic() > 1
-                            and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
-                        stream_retries += 1
-                        _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
-                        continue
+                    retryable_stream = (stream_retries < STREAM_RETRY_N
+                                        and _stream_retryable_failure(
+                                            res, out["error"], kind=kind,
+                                            readonly=readonly)
+                                        and model_deadline - time.monotonic() > 1)
+                    if retryable_stream:
+                        if _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S):
+                            _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                                   command_context, att, out)
+                            stream_retries += 1
+                            _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                            continue
+                        _stream_retry_cancelled(out, cancel_event)
+                    _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                           command_context, att, out)
                     break
                 out["text"] = parsed["text"]
                 out["cost_usd"] = parsed["cost_usd"]
@@ -2581,16 +2634,25 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     if drift:
                         out["error"] += "；" + drift
                     out["error_code"] = _classify_failure(res, kind="claude", parsed=parsed)
-                    if (stream_retries < STREAM_RETRY_N
-                            and _stream_retryable_failure(
-                                res, out["error"], kind=kind, readonly=readonly)
-                            and model_deadline - time.monotonic() > 1
-                            and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
-                        stream_retries += 1
-                        _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
-                        continue
+                    retryable_stream = (stream_retries < STREAM_RETRY_N
+                                        and _stream_retryable_failure(
+                                            res, out["error"], kind=kind,
+                                            readonly=readonly)
+                                        and model_deadline - time.monotonic() > 1)
+                    if retryable_stream:
+                        if _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S):
+                            _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                                   command_context, att, out)
+                            stream_retries += 1
+                            _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
+                            continue
+                        _stream_retry_cancelled(out, cancel_event)
+                    _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                           command_context, att, out)
                     break
                 if not out["text"] and attempt == 0:
+                    _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                           command_context, att, out)
                     continue  # 空响应，同模型重试
                 if not out["text"] and attempt == 1:
                     out["error_code"] = _classify_failure(
@@ -2602,39 +2664,26 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["text"] = clean_cli_text(res["stdout"]).strip()
                 if not out["text"]:
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
-            if (not out.get("ok") and stream_retries < STREAM_RETRY_N
-                    and _stream_retryable_failure(
-                        res, out.get("error"), kind=kind, readonly=readonly)
-                    and model_deadline - time.monotonic() > 1
-                    and _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S)):
-                stream_retries += 1
-                _log_note(log_path, "只读流中断：第 %d 次原地重试" % stream_retries)
-                continue
+            retryable_stream = (not out.get("ok")
+                                and stream_retries < STREAM_RETRY_N
+                                and _stream_retryable_failure(
+                                    res, out.get("error"), kind=kind,
+                                    readonly=readonly)
+                                and model_deadline - time.monotonic() > 1)
+            if retryable_stream:
+                if _stream_retry_wait(cancel_event, STREAM_RETRY_DELAY_S):
+                    _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                           command_context, att, out)
+                    stream_retries += 1
+                    _log_note(log_path,
+                              "只读流中断：第 %d 次原地重试" % stream_retries)
+                    continue
+                _stream_retry_cancelled(out, cancel_event)
+            _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                   command_context, att, out)
             break
         _report_key(att, out)
         raw = out.get("raw") or {}
-        try:
-            ledger = _attempt_ledger(checkpoint_run_id)
-            if ledger:
-                usage = out.get("usage") or {}
-                retry_class = ""
-                if not out.get("ok"):
-                    code = error_code_value(out.get("error_code"))
-                    retry_class = "rate_limit" if _rate_limited(out.get("error")) else (
-                        "transient" if _transient_error(out.get("error")) else code)
-                ledger.finish(
-                    checkpoint_run_id or "unbound",
-                    command_context.get("role", "") if isinstance(command_context, dict) else "",
-                    ((att.get("provider") or {}).get("name", "")
-                     if isinstance(att.get("provider"), dict) else ""),
-                    out.get("model") or att.get("model") or "", ok=bool(out.get("ok")),
-                    error=out.get("error") or "", usage=usage,
-                    duration_s=raw.get("duration", 0.0), retry_class=retry_class,
-                    ttft_ms=(raw.get("first_token_ms") or 0),
-                    tokens_per_sec=(raw.get("tokens_per_sec") or 0),
-                    attempt=attempt + 1)
-        except Exception:
-            pass
         attempt_history.append({
             "model": out.get("model") or att.get("model") or "",
             "provider_id": out.get("provider_id") or att.get("provider_id") or "",
