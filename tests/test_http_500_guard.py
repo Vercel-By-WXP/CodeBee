@@ -32,6 +32,9 @@ sys.path.insert(0, str(ROOT / "app"))
 
 if __name__ == "__main__":
     os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
+    # This dedicated subprocess is the real POSIX HTTP fixture even when its
+    # parent release-gate runner simulates Windows elsewhere in the suite.
+    _release_test_platform = None
     _tmp = Path(tempfile.mkdtemp(prefix="tutti-500guard-"))
     _data = _tmp / "data"
     _data.mkdir()
@@ -75,7 +78,17 @@ def _req(method, path, payload=None, timeout=15):
 def _start_server():
     sys.argv = ["main.py", "--port", str(PORT), "--no-browser",
                 "--host", "127.0.0.1"]
-    threading.Thread(target=app_main.main, daemon=True).start()
+
+    def serve():
+        # POSIX only permits signal handlers to be installed on the main
+        # thread. This fixture is intentionally hosted by a worker thread so
+        # unittest can drive it; suppress those process-level handlers here.
+        if os.name != "nt":
+            import signal
+            signal.signal = lambda *_args: None
+        app_main.main()
+
+    threading.Thread(target=serve, daemon=True).start()
     for _ in range(60):
         try:
             if _req("GET", "/api/state")[0] == 200:
