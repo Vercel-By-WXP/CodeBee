@@ -937,7 +937,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
                         "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
                         "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
-                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "let d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "if(!d)d=[...ds].reverse().find(e=>(e.innerText||'').includes('定时发布'));"
                         "const s=d&&[...d.querySelectorAll('button[role=switch],[role=switch]')]"
                         ".filter(vis).at(-1);if(!s)return null;const r=s.getBoundingClientRect();"
                         "return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),"
@@ -949,7 +950,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     # 点「否」后 React 重渲染会短暂卸载开关（2026-10-17 实案：
                     # 失败后现场开关就在弹窗里）——带退避反复找，别一击定生死。
                     point = {}
-                    find_deadline = time.time() + 6.0
+                    find_deadline = time.time() + 30.0
                     while time.time() < find_deadline:
                         point = fq_schedule_switch_point() or {}
                         if point.get("x"):
