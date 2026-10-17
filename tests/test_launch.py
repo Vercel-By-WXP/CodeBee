@@ -220,6 +220,7 @@ class TestCodexSync(BaseTest):
 
     def setUp(self):
         super().setUp()
+        _mark_windows_contract(self)
         self.home = self.tmp / "home"
         self.home.mkdir()
 

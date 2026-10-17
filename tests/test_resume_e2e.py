@@ -71,9 +71,14 @@ class TestResumeE2E(BaseTest):
         # 产品详情页一致，走 UTF-8 → GBK → replace 的兼容解码链。
         body = runner.read_text_any_enc(log_abs)
         # 子进程 cwd 必须是会话项目目录（不是任务工作目录）
-        cwd_lines = [line for line in body.splitlines() if line.startswith("cwd=")]
-        self.assertEqual(cwd_lines, ["cwd=%s" % str(session_dir)])
-        self.assertNotIn("cwd=%s" % str(task_wd), cwd_lines)
+        cwd_lines = [line[4:] for line in body.splitlines() if line.startswith("cwd=")]
+        # macOS exposes /var through a /private/var symlink; compare canonical
+        # paths so the assertion checks the selected directory, not its alias.
+        canonical_cwds = [os.path.normcase(os.path.realpath(path)) for path in cwd_lines]
+        expected_cwd = os.path.normcase(os.path.realpath(str(session_dir)))
+        task_cwd = os.path.normcase(os.path.realpath(str(task_wd)))
+        self.assertEqual(canonical_cwds, [expected_cwd])
+        self.assertNotIn(task_cwd, canonical_cwds)
         # 恢复参数与 stdin 提示词
         self.assertIn("-s", body)
         self.assertIn("ses_demo", body)
