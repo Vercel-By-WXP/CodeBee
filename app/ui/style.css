@@ -3427,6 +3427,117 @@ span.imgcap { cursor: pointer; user-select: none; }
 span.imgcap:not(.ok) { opacity: .45; }
 span.imgcap:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ================= Apple-style 柔化层（去硬边·大圆角·毛玻璃·弹性过渡） =================
+ * 生硬感的四个根源：1px 实色硬边框到处都是、圆角偏小、没有纵深（阴影层级单一）、
+ * 缺少毛玻璃。本层全部走既有变量，高对比皮肤关掉毛玻璃与多层阴影。 */
+
+/* A1) 全局弹性过渡曲线（苹果 spring curve 近似） */
+button, .pill, .stask, .item, .cmp-chip, .icon-btn, .foot-btn, .cn-pill, .cn-back {
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition-duration: 0.2s;
+}
+
+/* A2) 顶栏毛玻璃：半透明 + 磨砂，替代实色背景 */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 0.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* A3) 侧栏毛玻璃 */
+#sidebar {
+  background: color-mix(in srgb, var(--sidebar) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-right: 0.5px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+/* A4) 卡片去边框 → 三层阴影纵深（Apple card style） */
+.panel {
+  border: none;
+  box-shadow:
+    0 0.5px 1px rgba(0,0,0,0.03),
+    0 2px 6px rgba(0,0,0,0.04),
+    0 8px 24px rgba(0,0,0,0.04);
+}
+.panel:hover {
+  box-shadow:
+    0 0.5px 1px rgba(0,0,0,0.03),
+    0 4px 12px rgba(0,0,0,0.06),
+    0 12px 32px rgba(0,0,0,0.06);
+}
+/* 无框化的 wide 面板不需要阴影 */
+main .panel.wide { box-shadow: none; }
+
+/* A5) 大圆角：卡片 16px、按钮 12px、输入框 12px */
+.panel { border-radius: 16px; }
+button.primary, button.ghost, button.danger { border-radius: 12px; }
+.cmp-box { border-radius: 16px; }
+.item { border-radius: 14px; }
+
+/* A6) 列表项去边框 → 阴影 */
+.item {
+  border: none;
+  box-shadow: 0 0.5px 1px rgba(0,0,0,0.03), 0 1px 4px rgba(0,0,0,0.04);
+}
+.item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
+  transform: translateY(-0.5px);
+}
+
+/* A7) 按钮 Apple 风格：更柔的阴影 + 微上浮 */
+button.primary {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+button.primary:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 4px 16px color-mix(in srgb, var(--accent) 30%, transparent);
+  transform: translateY(-0.5px);
+}
+button.ghost {
+  border: 0.5px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+  background: color-mix(in srgb, var(--panel2) 80%, transparent);
+}
+
+/* A8) 排版柔化：font-weight 降档 + 负 letter-spacing（SF Pro 感） */
+h2 { font-weight: 600; letter-spacing: -0.01em; }
+.hero { font-weight: 600; letter-spacing: -0.02em; }
+.page-title { font-weight: 600; letter-spacing: -0.01em; }
+.brand-name { font-weight: 600; letter-spacing: -0.01em; }
+
+/* A9) 对话气泡 iMessage 风格：去边框 + 大圆角 + 微阴影 */
+.chat-bubble.agent {
+  border: none;
+  border-radius: 18px; border-top-left-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.03);
+}
+.chat-bubble.me {
+  border: none;
+  border-radius: 18px; border-top-right-radius: 6px;
+}
+
+/* A10) 输入框 focus 光环（Apple 风格 3px accent glow） */
+.cmp-box:focus-within,
+.rd-chat-bar:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* A11) 底部输入条毛玻璃 */
+.rd-chat-bar {
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* A12) 高对比皮肤：关毛玻璃、简化阴影（对比优先） */
+html[data-skin="contrast"] .topbar,
+html[data-skin="contrast"] #sidebar { backdrop-filter: none; -webkit-backdrop-filter: none; }
+html[data-skin="contrast"] .panel { box-shadow: 0 0 0 1px var(--border); }
+html[data-skin="contrast"] .panel:hover { box-shadow: 0 0 0 1.5px var(--border-strong); }
+html[data-skin="contrast"] .item { box-shadow: 0 0 0 1px var(--border); }
+
 /* ================= 蜂巢工作台视觉 v8（归行·蜂航） =================
  * 用户拍板：横向流程图不如原始的行排——布局回归纵向泳道行（容器横向布局、
  * 交错、双列芯片全部撤掉，行内角色/执行者/尾巴/计时全量展示交还基座），

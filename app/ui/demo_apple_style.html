@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee Apple-style Demo</title>
+<style>
+:root {
+  --bg: #f5f6fa;
+  --panel: #ffffff;
+  --panel2: #f0f1f5;
+  --text: #1d1d1f;
+  --muted: #86868b;
+  --border: #e5e5ea;
+  --border-strong: #d1d1d6;
+  --accent: #6d5df6;
+  --accent2: #8b7cf8;
+  --ok: #34c759;
+  --bad: #ff3b30;
+  --sidebar: rgba(255,255,255,0.72);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== layout ===== */
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+/* ===== topbar: 毛玻璃 ===== */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 24px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 0.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.topbar .page-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.topbar .spacer { flex: 1; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  backdrop-filter: blur(8px);
+  border: 0.5px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 999px; padding: 5px 14px; font-size: 12.5px;
+  color: var(--text); cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.pill:hover { background: color-mix(in srgb, var(--panel) 95%, transparent); }
+
+/* ===== sidebar: 毛玻璃 ===== */
+.sidebar {
+  display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-right: 0.5px solid color-mix(in srgb, var(--border) 50%, transparent);
+  padding: 14px 12px;
+  overflow: hidden;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 14px; }
+.brand-icon {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 14px; font-weight: 700;
+}
+.brand-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+
+.stask {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 10px;
+  font-size: 13px; cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  margin-bottom: 2px;
+}
+.stask:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.stask.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-weight: 500;
+}
+.stask .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+.stask .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== main ===== */
+.main-area {
+  overflow-y: auto; padding: 28px 32px 80px;
+}
+.main-area .page {
+  max-width: 900px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 20px;
+}
+
+/* ===== cards: 去边框用阴影 ===== */
+.card {
+  background: var(--panel);
+  border: none;
+  border-radius: 16px;
+  padding: 20px 24px;
+  box-shadow:
+    0 0.5px 1px rgba(0,0,0,0.03),
+    0 2px 6px rgba(0,0,0,0.04),
+    0 8px 24px rgba(0,0,0,0.04);
+  transition: box-shadow 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.card:hover {
+  box-shadow:
+    0 0.5px 1px rgba(0,0,0,0.03),
+    0 4px 12px rgba(0,0,0,0.06),
+    0 12px 32px rgba(0,0,0,0.06);
+}
+.card h3 {
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  margin: 0 0 12px; letter-spacing: -0.005em;
+}
+
+/* ===== composer ===== */
+.composer-card {
+  background: var(--panel);
+  border: none;
+  border-radius: 20px;
+  padding: 22px 24px 18px;
+  box-shadow:
+    0 0.5px 1px rgba(0,0,0,0.03),
+    0 2px 6px rgba(0,0,0,0.04),
+    0 8px 24px rgba(0,0,0,0.04);
+}
+.composer-card .hero {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+  margin: 0 0 4px; color: var(--text);
+}
+.composer-card .hero-sub {
+  font-size: 14px; color: var(--muted); margin: 0 0 16px;
+  font-weight: 400; letter-spacing: -0.005em;
+}
+.cmp-box {
+  border: 1.5px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 14px; background: color-mix(in srgb, var(--bg) 50%, var(--panel));
+  padding: 4px 6px 6px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.cmp-box:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.cmp-box textarea {
+  border: none; background: transparent; resize: none;
+  padding: 10px 8px 4px; font-size: 15px; line-height: 1.6;
+  min-height: 56px; width: 100%; font-family: inherit;
+  color: var(--text);
+}
+
+/* ===== buttons: Apple-style ===== */
+.btn-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.btn-primary {
+  background: var(--accent);
+  color: #fff; border: none;
+  border-radius: 12px; padding: 9px 22px;
+  font-size: 14px; font-weight: 500; letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.btn-primary:hover {
+  background: var(--accent2);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 4px 16px color-mix(in srgb, var(--accent) 30%, transparent);
+  transform: translateY(-0.5px);
+}
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost {
+  background: color-mix(in srgb, var(--panel2) 80%, transparent);
+  color: var(--text); border: 0.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 10px; padding: 7px 16px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.btn-ghost:hover { background: var(--panel2); }
+
+/* ===== chat: Apple iMessage style ===== */
+.chat-section { display: flex; flex-direction: column; gap: 16px; }
+.chat-row { display: flex; gap: 10px; align-items: flex-start; }
+.chat-row.me { justify-content: flex-end; }
+.chat-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, var(--panel)), color-mix(in srgb, var(--accent2) 15%, var(--panel)));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; border: none;
+}
+.chat-bubble {
+  font-size: 14.5px; line-height: 1.65;
+  max-width: 74%;
+}
+.chat-bubble.agent {
+  background: var(--panel);
+  border: none;
+  border-radius: 18px; border-top-left-radius: 6px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.03);
+}
+.chat-bubble.me {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 18px; border-top-right-radius: 6px;
+  padding: 10px 16px;
+}
+.chat-bubble.me .chat-meta { color: rgba(255,255,255,0.7); }
+.chat-meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+
+/* ===== chat input bar: frosted ===== */
+.chat-bar {
+  border: 1.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  backdrop-filter: blur(12px);
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.chat-bar:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.chat-bar input {
+  border: none; background: transparent; flex: 1;
+  font-size: 14.5px; font-family: inherit; color: var(--text);
+  outline: none;
+}
+
+/* ===== list items: shadow instead of border ===== */
+.list-item {
+  background: var(--panel);
+  border: none;
+  border-radius: 14px;
+  padding: 14px 18px;
+  box-shadow: 0 0.5px 1px rgba(0,0,0,0.03), 0 1px 4px rgba(0,0,0,0.04);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  display: flex; align-items: center; gap: 12px;
+}
+.list-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
+  transform: translateY(-0.5px);
+}
+.list-item .item-name { font-weight: 500; font-size: 14px; flex: 1; }
+.list-item .item-time { font-size: 12px; color: var(--muted); }
+
+/* ===== section title ===== */
+.section-title {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--muted); margin: 24px 0 12px;
+  text-transform: uppercase;
+}
+
+/* ===== annotation ===== */
+.note {
+  margin-top: 12px; padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px; color: var(--muted); line-height: 1.6;
+}
+.note strong { color: var(--text); }
+
+/* ===== comparison layout ===== */
+.demo-wrap { padding: 32px 24px 60px; }
+.demo-title { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; }
+.demo-sub { font-size: 14px; color: var(--muted); margin-bottom: 36px; }
+.demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 48px; }
+.demo-col { display: flex; flex-direction: column; gap: 16px; }
+.demo-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.demo-label::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted);
+}
+.demo-label.after::before { background: var(--ok); }
+
+@media (max-width: 900px) {
+  .demo-grid { grid-template-columns: 1fr; }
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="demo-wrap">
+  <h1 class="demo-title">Apple-style 优化 Demo</h1>
+  <p class="demo-sub">去硬边 → 阴影纵深、大圆角、毛玻璃、弹性过渡。下方是完整模拟界面。</p>
+</div>
+
+<!-- ===== 完整界面模拟 ===== -->
+<div class="app-shell">
+  <!-- topbar -->
+  <div class="topbar">
+    <span class="page-title">任务编排</span>
+    <div class="spacer"></div>
+    <button class="pill">GPT-4o</button>
+    <button class="pill">Ocean</button>
+  </div>
+
+  <!-- sidebar -->
+  <div class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">B</div>
+      <span class="brand-name">CodeBee</span>
+    </div>
+    <div class="stask"><span class="dot"></span><span class="name">重构认证模块</span></div>
+    <div class="stask active"><span class="dot"></span><span class="name">添加 OAuth2 支持</span></div>
+    <div class="stask"><span class="dot"></span><span class="name">编写单元测试</span></div>
+    <div class="stask"><span class="dot"></span><span class="name">API 文档更新</span></div>
+  </div>
+
+  <!-- main -->
+  <div class="main-area">
+    <div class="page">
+      <!-- composer -->
+      <div class="composer-card">
+        <h1 class="hero">新建任务</h1>
+        <p class="hero-sub">描述你要完成的工作，CodeBee 会拆解并执行</p>
+        <div class="cmp-box">
+          <textarea placeholder="例如：重构用户认证模块，添加 OAuth2 支持..."></textarea>
+          <div class="btn-row">
+            <button class="btn-primary">创建任务</button>
+            <button class="btn-ghost">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- task list -->
+      <div class="section-title">最近任务</div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="list-item">
+          <span class="item-name">重构用户认证模块</span>
+          <span class="item-time">2 小时前</span>
+        </div>
+        <div class="list-item">
+          <span class="item-name">添加 OAuth2 支持</span>
+          <span class="item-time">昨天</span>
+        </div>
+        <div class="list-item">
+          <span class="item-name">编写单元测试</span>
+          <span class="item-time">3 天前</span>
+        </div>
+      </div>
+
+      <!-- chat preview -->
+      <div class="section-title">对话预览</div>
+      <div class="card">
+        <div class="chat-section">
+          <div class="chat-row me">
+            <div class="chat-bubble me">
+              <div class="chat-meta">你</div>
+              <div>请帮我重构认证模块</div>
+            </div>
+          </div>
+          <div class="chat-row">
+            <div class="chat-avatar">🐝</div>
+            <div class="chat-bubble agent">
+              <div class="chat-meta">CodeBee</div>
+              <div>好的，我来分析当前的认证模块结构。发现 3 个可以改进的地方：Token 刷新逻辑、Session 管理、以及权限校验中间件。</div>
+            </div>
+          </div>
+          <div class="chat-row me">
+            <div class="chat-bubble me">
+              <div class="chat-meta">你</div>
+              <div>请开始重构</div>
+            </div>
+          </div>
+          <div class="chat-row">
+            <div class="chat-avatar">🐝</div>
+            <div class="chat-bubble agent">
+              <div class="chat-meta">CodeBee</div>
+              <div>已完成。重构了 3 个文件，新增 2 个测试用例，所有现有测试通过。</div>
+            </div>
+          </div>
+        </div>
+        <!-- chat input -->
+        <div style="margin-top: 16px;">
+          <div class="chat-bar">
+            <input type="text" placeholder="输入消息...">
+            <button class="btn-primary" style="padding: 6px 14px; font-size: 13px; border-radius: 14px;">发送</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 改动说明 ===== -->
+<div class="demo-wrap" style="padding-top: 0;">
+  <div style="max-width: 900px; margin: 0 auto;">
+    <div class="card" style="margin-top: 24px;">
+      <h3 style="font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 14px;">Apple-style 改动清单</h3>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 13.5px; line-height: 1.7; color: var(--muted);">
+        <div>
+          <p><strong style="color: var(--text);">1. 去硬边 → 阴影纵深</strong></p>
+          <p>所有 1px border 换成多层 box-shadow（0.5px + 2px + 8px 三层），卡片像浮在背景上。</p>
+        </div>
+        <div>
+          <p><strong style="color: var(--text);">2. 大圆角</strong></p>
+          <p>卡片 16→20px、按钮 10→12px、对话气泡 18px、输入框 14→22px。更圆润柔和。</p>
+        </div>
+        <div>
+          <p><strong style="color: var(--text);">3. 毛玻璃</strong></p>
+          <p>顶栏 + 侧栏 + 输入条加 backdrop-filter: blur(20px) saturate(180%)，半透明磨砂质感。</p>
+        </div>
+        <div>
+          <p><strong style="color: var(--text);">4. 弹性过渡</strong></p>
+          <p>所有 transition 从 linear/.15s 改成 cubic-bezier(0.25, 0.46, 0.45, 0.94) + 0.2s，苹果弹簧曲线。</p>
+        </div>
+        <div>
+          <p><strong style="color: var(--text);">5. 排版柔化</strong></p>
+          <p>font-weight 700→600/500、letter-spacing 加负值（-0.01~-0.02em），更像 SF Pro。</p>
+        </div>
+        <div>
+          <p><strong style="color: var(--text);">6. 半透明边框</strong></p>
+          <p>border 从实色改成 color-mix 50~60% 透明度 + 0.5px 细线，边界若隐若现。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
