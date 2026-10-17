@@ -880,7 +880,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
 
     activity_timeout：基础 timeout 到期后，最近仍有真实输出的流式 CLI 允许继续
     运行的最长静默窗口（秒，0=关闭）。它独立于 stall_timeout，避免环境把
-    停滞看门狗设为 0 后，Claude/Codex 又在基础超时处被硬杀；总延长仍有上限。
+    停滞看门狗设为 0 后，Claude/Codex 又在基础超时处被硬杀；窗口按每次输出
+    滑动，不设过紧的总时长上限。调用方传入的 deadline 仍是整个任务的硬上限。
 
     repeat_abort：可选 (marker, count)，也接受多个 ``(marker, count)``；同一
     致命错误达到次数即提前杀树，处理 CLI 自身不断打印重连消息、因此永远
@@ -1023,16 +1024,13 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             if elapsed > timeout:
                 # Claude/Codex 的工具循环可能持续吐 stream-json 事件而迟迟
                 # 不给最终 result。活动延长与 stall 看门狗分离：无输出的挂死
-                # 仍按原单模型 timeout 快速换将，收到过输出则最多再给一个活动窗口。
+                # 仍按原单模型 timeout 快速换将；有输出则按最近输出滑动续跑。
                 active = (activity_timeout > 0 and stamp[1]
-                          and time.monotonic() - stamp[2] < activity_timeout
-                          # proc.wait() polls in 0.4s slices; include one slice
-                          # so a slow runner is not killed after fresh output.
-                          and elapsed < timeout + activity_timeout + 0.4)
+                          and time.monotonic() - stamp[2] < activity_timeout)
                 if not active:
                     # A slow hosted runner can wake the wait timeout after the
                     # child has already exited.  Reap that race before killing
-                    # an otherwise successful process at the activity cap.
+                    # an otherwise successful process at the activity boundary.
                     if proc.poll() is not None:
                         break
                     timed_out = True

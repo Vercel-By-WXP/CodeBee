@@ -187,6 +187,24 @@ class TestRunProcessActivityWindow(BaseTest):
         self.assertGreater(time.time() - started, .25)
         self.assertIn("event7", res["stdout"])
 
+    def test_stream_activity_window_slides_past_absolute_cap(self):
+        """持续输出按最近活动续跑，不受固定总延长上限误杀。"""
+        from app.core.runner import run_process
+        child_script = (
+            "import time\n"
+            "for i in range(12):\n"
+            "    print(f'event{i}', flush=True)\n"
+            "    time.sleep(.1)\n"
+        )
+        # The old timeout + activity + polling grace cap was 0.8s here,
+        # shorter than the ~1.2s stream.  A sliding activity window must keep
+        # the process alive while each output arrives within activity_timeout.
+        res = run_process(
+            argv=[sys.executable, "-c", child_script], timeout=.1,
+            activity_timeout=.3, stall_timeout=0)
+        self.assertTrue(res["ok"], msg=res)
+        self.assertIn("event11", res["stdout"])
+
     def test_activity_extension_requires_output(self):
         from app.core.runner import run_process
         child_script = "import time; time.sleep(5)"
