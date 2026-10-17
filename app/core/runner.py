@@ -98,16 +98,13 @@ def _fallback_probe_cli(name):
     # Treat those explicit roots as a Windows probe request; ordinary POSIX
     # callers still take the native ~/.local/bin path below.
     # The release gate runs on Linux but its Windows contract tests provide
-    # explicit Windows install roots. Honor those roots only under the scoped
-    # test marker; ordinary POSIX callers must not be redirected by stale
-    # inherited Windows variables.
-    test_windows = (os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") == "win32")
-    windows_roots = ("LOCALAPPDATA", "APPDATA", "USERPROFILE", "ProgramW6432",
+    # explicit Windows install roots. Do not treat USERPROFILE alone as a
+    # Windows signal: the HTTP guard uses it for a temporary POSIX home.
+    windows_roots = ("LOCALAPPDATA", "APPDATA", "ProgramW6432",
                      "ProgramFiles", "ProgramFiles(x86)", "SystemRoot",
                      "NVM_SYMLINK")
     windows_probe = (os.name == "nt" or
-                     (test_windows and any(os.environ.get(key)
-                                           for key in windows_roots)))
+                     any(os.environ.get(key) for key in windows_roots))
     if not windows_probe:
         for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
                   "/opt/homebrew/bin", "/usr/local/bin"):
