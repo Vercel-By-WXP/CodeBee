@@ -88,7 +88,15 @@ class HttpRouteGuard(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # The release gate simulates Windows CLI contracts globally, but this
+        # guard intentionally boots a POSIX HTTP service in-process.
+        cls._platform_marker = os.environ.pop("CODEBEE_RELEASE_TEST_PLATFORM", None)
         cls.up = _start_server()
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._platform_marker is not None:
+            os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = cls._platform_marker
 
     def test_01_service_up(self):
         self.assertTrue(self.up, "服务未在临时数据目录起盘")

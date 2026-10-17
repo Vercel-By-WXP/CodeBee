@@ -311,26 +311,34 @@ class TestBootstrapUv(BaseTest):
 class TestPosixProbe(BaseTest):
     """POSIX 磁盘落点探测：~/.local/bin 命中、落空返回 None。"""
 
+    def _posix_environment(self):
+        keys = ("CODEBEE_RELEASE_TEST_PLATFORM", "LOCALAPPDATA", "APPDATA",
+                "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)",
+                "SystemRoot", "NVM_SYMLINK")
+        return mock.patch.dict(os.environ, {key: "" for key in keys})
+
     def test_local_bin_hit(self):
         from app.core import runner
         with tempfile.TemporaryDirectory() as td:
             exe = Path(td) / ".local" / "bin" / "aider"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"#!/bin/sh\n")
-            with mock.patch("os.name", "posix"), \
+            with self._posix_environment(), \
+                 mock.patch("os.name", "posix"), \
                  mock.patch("os.path.expanduser", lambda p: td):
                 self.assertEqual(runner._fallback_probe_cli("aider"), str(exe))
 
     def test_miss_returns_none(self):
         from app.core import runner
         with tempfile.TemporaryDirectory() as td:
-            with mock.patch("os.name", "posix"), \
+            with self._posix_environment(), \
+                 mock.patch("os.name", "posix"), \
                  mock.patch("os.path.expanduser", lambda p: td):
                 self.assertIsNone(runner._fallback_probe_cli("aider"))
 
     def test_non_bare_name_rejected(self):
         from app.core import runner
-        with mock.patch("os.name", "posix"):
+        with self._posix_environment(), mock.patch("os.name", "posix"):
             self.assertIsNone(runner._fallback_probe_cli("./aider"))
             self.assertIsNone(runner._fallback_probe_cli("aider --help"))
 
@@ -341,7 +349,8 @@ class TestPosixProbe(BaseTest):
             exe = Path(td) / ".local" / "bin" / "trae-cli"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"#!/bin/sh\n")
-            with mock.patch("os.name", "posix"), \
+            with self._posix_environment(), \
+                 mock.patch("os.name", "posix"), \
                  mock.patch("os.path.expanduser", lambda p: td), \
                  mock.patch("app.core.manager.shutil.which", lambda c: None):
                 self.assertEqual(manager._which_cli("trae-cli"), str(exe))

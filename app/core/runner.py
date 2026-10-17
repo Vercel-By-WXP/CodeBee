@@ -100,11 +100,13 @@ def _fallback_probe_cli(name):
     # The release gate runs on Linux but its Windows contract tests provide
     # explicit Windows install roots. Do not treat USERPROFILE alone as a
     # Windows signal: the HTTP guard uses it for a temporary POSIX home.
+    test_windows = (os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") == "win32")
     windows_roots = ("LOCALAPPDATA", "APPDATA", "ProgramW6432",
                      "ProgramFiles", "ProgramFiles(x86)", "SystemRoot",
                      "NVM_SYMLINK")
     windows_probe = (os.name == "nt" or
-                     any(os.environ.get(key) for key in windows_roots))
+                     (test_windows and any(os.environ.get(key)
+                                           for key in windows_roots)))
     if not windows_probe:
         for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
                   "/opt/homebrew/bin", "/usr/local/bin"):
@@ -141,6 +143,8 @@ def _fallback_probe_cli(name):
                 pass
     local = os.environ.get("LOCALAPPDATA") or ""
     home = os.path.expanduser("~")
+    if test_windows and os.environ.get("USERPROFILE"):
+        home = os.environ["USERPROFILE"]
     if home == "~":
         home = os.environ.get("USERPROFILE") or home
     appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
