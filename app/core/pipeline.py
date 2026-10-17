@@ -728,7 +728,12 @@ def _external_sandbox_block_reason(agent, workdir, sandbox):
         return ""
     from . import policy
     root = os.path.realpath(workdir or ".")
-    normalized = policy.normalize_sandbox(sandbox, root)
+    try:
+        normalized = policy.normalize_sandbox(sandbox, root)
+    except ValueError as exc:
+        # Invalid or out-of-scope policy input is still a policy rejection;
+        # callers need a stable reason instead of an uncaught task error.
+        return "沙箱拒绝：%s" % exc
     if normalized.get("backend") == "docker":
         return "沙箱拒绝：Docker 目前仅接入内置命令工具，外部 CLI 未验证容器启动，拒绝运行"
     if (agent or {}).get("kind") == "codex":
