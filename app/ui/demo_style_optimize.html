@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee 样式优化 Demo</title>
+<style>
+/* ===== 基础 token（ocean light 近似值） ===== */
+:root {
+  --bg: #f5f6fa;
+  --panel: #ffffff;
+  --panel2: #f0f1f5;
+  --text: #1a1d2e;
+  --muted: #6b7280;
+  --border: #e2e5ed;
+  --border-strong: #c8ccd8;
+  --accent: #6d5df6;
+  --accent2: #8b7cf8;
+  --ok: #22c55e;
+  --bad: #ef4444;
+  --warn: #f59e0b;
+  --mono: 'Cascadia Code', 'Fira Code', monospace;
+  --r-md: 10px;
+  --r-lg: 14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 40px 20px;
+}
+
+.demo-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.demo-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.demo-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 40px;
+}
+
+.demo-section {
+  margin-bottom: 60px;
+}
+
+.demo-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+}
+
+.demo-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.demo-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+}
+
+.demo-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.demo-label::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.demo-label.after::before {
+  background: var(--ok);
+}
+
+/* ===== 1. 对话区：智能体回复卡片化 ===== */
+.chat-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.chat-row.me {
+  justify-content: flex-end;
+}
+
+.chat-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  color: var(--accent);
+}
+
+.chat-bubble {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* 当前版本：透明 */
+.chat-bubble.agent.current {
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+}
+
+/* 优化版本：浅底 + 细边 */
+.chat-bubble.agent.optimized {
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.chat-bubble.me {
+  max-width: 70%;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  border-top-right-radius: 4px;
+  padding: 10px 14px;
+}
+
+.chat-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* ===== 2. 主按钮：扁平化 ===== */
+.btn-demo {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+button.primary.current {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 28%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .14);
+}
+
+button.primary.optimized {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  transition: all 0.15s;
+}
+
+button.primary.optimized:hover {
+  background: var(--accent2);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  transform: translateY(-1px);
+}
+
+button.primary.optimized:active {
+  transform: translateY(0);
+}
+
+button.ghost {
+  background: none;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 6px 13px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+/* ===== 3. Composer 空白优化 ===== */
+.composer-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.composer.current {
+  padding: 26px 28px 22px;
+}
+
+.composer.optimized {
+  padding: 18px 20px 16px;
+}
+
+.hero {
+  font-size: 23px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.composer.optimized .hero {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.hero-sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+
+.composer.optimized .hero-sub {
+  margin-bottom: 14px;
+}
+
+.cmp-box {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 4px 6px 6px;
+}
+
+.cmp-box textarea {
+  border: none;
+  background: transparent;
+  resize: none;
+  padding: 10px 8px 4px;
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 64px;
+  width: 100%;
+  font-family: inherit;
+}
+
+.composer.optimized .cmp-box textarea {
+  min-height: 56px;
+  font-size: 14px;
+}
+
+.cmp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px;
+}
+
+.cmp-send {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ===== 4. 滚动条对比 ===== */
+.scroll-demo {
+  height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.scroll-demo.current::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 22%, var(--border-strong));
+}
+
+.scroll-demo.optimized::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 30%, var(--border-strong));
+}
+
+.scroll-demo.current::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.scroll-demo.optimized::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+
+.scroll-demo::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scroll-demo::-webkit-scrollbar-track {
+  background: var(--panel2);
+}
+
+/* ===== 5. 顶部健康横幅降噪 ===== */
+.health-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
+
+.health-banner.current {
+  background: color-mix(in srgb, var(--warn) 15%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border));
+  color: var(--text);
+}
+
+.health-banner.optimized {
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--warn) 20%, var(--border));
+  color: var(--muted);
+}
+
+.health-banner .icon {
+  font-size: 14px;
+}
+
+.health-banner .dismiss {
+  margin-left: auto;
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.health-banner.optimized .dismiss {
+  opacity: 0.7;
+}
+
+/* ===== 6. 侧栏任务行激活态 ===== */
+.sidebar-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stask {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stask:hover {
+  background: var(--panel2);
+}
+
+.stask.current.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.stask.optimized.active {
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+
+.stask .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.stask .task-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 注释框 ===== */
+.demo-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.demo-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .demo-comparison {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+<div class="demo-container">
+  <h1 class="demo-title">CodeBee 样式优化建议</h1>
+  <p class="demo-subtitle">基于 style.css 9253 行完整审阅，聚焦 6 个高收益优化点。左侧为当前版本，右侧为优化建议。</p>
+
+  <!-- 1. 对话区 -->
+  <div class="demo-section">
+    <h2 class="demo-section-title">1. 对话区：智能体回复卡片化</h2>
+    <div class="demo-comparison">
+      <div class="demo-panel">
+        <div class="demo-label">当前版本（透明背景）</div>
+        <div class="chat-demo">
+          <div class="chat-row">
+            <div class="chat-avatar">🐝</div>
+            <div class="chat-bubble agent current">
+              <div class="chat-meta">CodeBee · 刚刚</div>
+              <div>已完成代码审查。发现 3 个潜在问题：未处理的异常、硬编码的配置值、缺少单元测试覆盖。</div>
+            </div>
+          </div>
+          <div class="chat-row me">
+            <div class="chat-bubble me">
+              <div class="chat-meta">你</div>
+              <div>请修复这些问题</div>
+            </div>
+          </div>
+          <div class="chat-row">
+            <div class="chat-avatar">🐝</div>
+            <div class="chat-bubble agent current">
+              <div class="chat-meta">CodeBee · 刚刚</div>
+              <div>已修复。添加了 try-catch 块、提取配置到环境变量、补充了 5 个测试用例。</div>
+            </div>
+          </div>
+        </div>
+        <div class="demo-note">
+          <strong>问题：</strong>智能体回复完全透明，与页面背景融为一体，难以快速区分用户消息和智能体回复的边界。
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-label after">优化版本（浅底卡片）</div>
+        <div class="chat-demo">
+          <div class="chat-row">
+            <div class="chat-avatar">🐝</div>
+            <div class="chat-bubble agent optimized">
+              <div class="chat-meta">CodeBee · 刚刚</div>
+              <div>已完成代码审查。发现 3 个潜在问题：未处理的异常、硬编码的配置值、缺少单元测试覆盖。</div>
+            </div>
+          </div>
+          <div class="chat-row me">
+            <div class="chat-bubble me">
+              <div class="chat-meta">你</div>
+              <div>请修复这些问题</div>
+            </div>
+          </div>
+          <div class="chat-row">
+            <div class="chat-avatar">🐝</div>
+            <div class="chat-bubble agent optimized">
+              <div class="chat-meta">CodeBee · 刚刚</div>
+              <div>已修复。添加了 try-catch 块、提取配置到环境变量、补充了 5 个测试用例。</div>
+            </div>
+          </div>
+        </div>
+        <div class="demo-note">
+          <strong>改进：</strong>智能体回复加 4% 主色调浅底 + 12% 细边，形成视觉卡片但不喧宾夺主。用户消息保持右侧灰块，层次更清晰。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 主按钮 -->
+  <div class="demo-section">
+    <h2 class="demo-section-title">2. 主按钮：扁平化</h2>
+    <div class="demo-comparison">
+      <div class="demo-panel">
+        <div class="demo-label">当前版本（渐变 + 高光）</div>
+        <div class="btn-demo">
+          <button class="primary current">创建任务</button>
+          <button class="ghost">取消</button>
+        </div>
+        <div class="demo-note">
+          <strong>问题：</strong>135° 渐变 + inset 高光 + 外发光，视觉元素过多。2026 年主流设计趋向扁平 + 微阴影。
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-label after">优化版本（纯色 + 微阴影）</div>
+        <div class="btn-demo">
+          <button class="primary optimized">创建任务</button>
+          <button class="ghost">取消</button>
+        </div>
+        <div class="demo-note">
+          <strong>改进：</strong>纯色背景 + 1px 微阴影，hover 时变亮 + 上浮 1px。视觉重量降低，交互反馈更清晰。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Composer 空白 -->
+  <div class="demo-section">
+    <h2 class="demo-section-title">3. Composer 空白优化</h2>
+    <div class="demo-comparison">
+      <div class="demo-panel">
+        <div class="demo-label">当前版本（大空白）</div>
+        <div class="composer-demo">
+          <div class="composer current">
+            <h1 class="hero">新建任务</h1>
+            <p class="hero-sub">描述你要完成的工作，CodeBee 会拆解并执行</p>
+            <div class="cmp-box">
+              <textarea placeholder="例如：重构用户认证模块，添加 OAuth2 支持..."></textarea>
+              <div class="cmp-bar">
+                <div class="cmp-send">
+                  <button class="primary current" style="padding: 6px 16px; font-size: 13px;">创建</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="demo-note">
+          <strong>问题：</strong>padding 26px 28px + hero 23px + margin-bottom 20px，首屏空白占比过高。
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-label after">优化版本（紧凑）</div>
+        <div class="composer-demo">
+          <div class="composer optimized">
+            <h1 class="hero">新建任务</h1>
+            <p class="hero-sub">描述你要完成的工作，CodeBee 会拆解并执行</p>
+            <div class="cmp-box">
+              <textarea placeholder="例如：重构用户认证模块，添加 OAuth2 支持..."></textarea>
+              <div class="cmp-bar">
+                <div class="cmp-send">
+                  <button class="primary optimized" style="padding: 6px 16px; font-size: 13px;">创建</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="demo-note">
+          <strong>改进：</strong>padding 收成 18px 20px，hero 降为 20px，间距压缩 30%。首屏信息密度提升，textarea 仍保持焦点。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 滚动条 -->
+  <div class="demo-section">
+    <h2 class="demo-section-title">4. 滚动条降噪</h2>
+    <div class="demo-comparison">
+      <div class="demo-panel">
+        <div class="demo-label">当前版本（主色调）</div>
+        <div class="scroll-demo current">
+          <p>这段内容用于演示滚动条样式。当前版本的滚动条使用 22% 主色调混合，视觉上较为突出。</p>
+          <p style="margin-top: 8px;">滚动条是辅助控件，不应抢占视觉焦点。主色调滚动条在浅色皮肤上尤其显眼，容易分散对内容的注意力。</p>
+          <p style="margin-top: 8px;">特别是在多行代码或长文本场景下，高饱和度的滚动条会形成视觉干扰。</p>
+        </div>
+        <div class="demo-note">
+          <strong>问题：</strong>全局主色调滚动条过于显眼，辅助控件抢焦点。
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-label after">优化版本（中性色）</div>
+        <div class="scroll-demo optimized">
+          <p>这段内容用于演示滚动条样式。优化版本使用 30% 中性灰混合，视觉上更低调。</p>
+          <p style="margin-top: 8px;">滚动条退居幕后，内容成为焦点。hover 时加深到 50%，交互反馈仍清晰。</p>
+          <p style="margin-top: 8px;">中性色滚动条在所有皮肤下表现一致，不随主色漂移。</p>
+        </div>
+        <div class="demo-note">
+          <strong>改进：</strong>滚动条改用 30% 中性灰，hover 50%。辅助控件降级，内容优先。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 健康横幅 -->
+  <div class="demo-section">
+    <h2 class="demo-section-title">5. 顶部健康横幅降噪</h2>
+    <div class="demo-comparison">
+      <div class="demo-panel">
+        <div class="demo-label">当前版本（高饱和）</div>
+        <div class="health-banner current">
+          <span class="icon">⚠️</span>
+          <span>OpenAI API 连接失败，请检查配置</span>
+          <span class="dismiss">×</span>
+        </div>
+        <div class="health-banner current">
+          <span class="icon">⚠️</span>
+          <span>Anthropic API 配额已用尽</span>
+          <span class="dismiss">×</span>
+        </div>
+        <div class="demo-note">
+          <strong>问题：</strong>15% 饱和度背景 + 40% 饱和度边框，多条警告时视觉噪音大。
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-label after">优化版本（低调）</div>
+        <div class="health-banner optimized">
+          <span class="icon">⚠️</span>
+          <span>OpenAI API 连接失败，请检查配置</span>
+          <span class="dismiss">×</span>
+        </div>
+        <div class="health-banner optimized">
+          <span class="icon">⚠️</span>
+          <span>Anthropic API 配额已用尽</span>
+          <span class="dismiss">×</span>
+        </div>
+        <div class="demo-note">
+          <strong>改进：</strong>背景降到 8%，边框降到 20%，文字改用 muted 色。警告仍在，但不刺眼。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. 侧栏激活态 -->
+  <div class="demo-section">
+    <h2 class="demo-section-title">6. 侧栏任务行激活态</h2>
+    <div class="demo-comparison">
+      <div class="demo-panel">
+        <div class="demo-label">当前版本（背景染色）</div>
+        <div class="sidebar-demo">
+          <div class="stask current">
+            <span class="status-dot"></span>
+            <span class="task-name">重构用户认证模块</span>
+          </div>
+          <div class="stask current active">
+            <span class="status-dot"></span>
+            <span class="task-name">添加 OAuth2 支持</span>
+          </div>
+          <div class="stask current">
+            <span class="status-dot"></span>
+            <span class="task-name">编写单元测试</span>
+          </div>
+        </div>
+        <div class="demo-note">
+          <strong>问题：</strong>10% 主色调背景，与 hover 态区分度不够。
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-label after">优化版本（左边框指示）</div>
+        <div class="sidebar-demo">
+          <div class="stask optimized">
+            <span class="status-dot"></span>
+            <span class="task-name">重构用户认证模块</span>
+          </div>
+          <div class="stask optimized active">
+            <span class="status-dot"></span>
+            <span class="task-name">添加 OAuth2 支持</span>
+          </div>
+          <div class="stask optimized">
+            <span class="status-dot"></span>
+            <span class="task-name">编写单元测试</span>
+          </div>
+        </div>
+        <div class="demo-note">
+          <strong>改进：</strong>背景降到 8% + 左侧 2px 主色边框。指示更明确，视觉重量更轻。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 60px; padding: 20px; background: var(--panel); border-radius: var(--r-lg); border: 1px solid var(--border);">
+    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">总结</h3>
+    <ul style="font-size: 14px; line-height: 1.8; color: var(--muted); padding-left: 20px;">
+      <li><strong style="color: var(--text);">对话区卡片化</strong> — 智能体回复加浅底，层次更清晰</li>
+      <li><strong style="color: var(--text);">按钮扁平化</strong> — 去渐变去高光，符合 2026 设计趋势</li>
+      <li><strong style="color: var(--text);">Composer 紧凑</strong> — 减少 30% 空白，提升首屏密度</li>
+      <li><strong style="color: var(--text);">滚动条降噪</strong> — 辅助控件降级，内容优先</li>
+      <li><strong style="color: var(--text);">健康横幅低调</strong> — 警告在但不刺眼</li>
+      <li><strong style="color: var(--text);">侧栏指示明确</strong> — 左边框 + 浅底，区分度提升</li>
+    </ul>
+    <p style="margin-top: 16px; font-size: 13px; color: var(--muted);">
+      以上优化均基于现有 CSS 变量体系，改动量小、风险低。如认可方向，可逐项落地到 style.css 的 2026 refresh 层。
+    </p>
+  </div>
+</div>
+</body>
+</html>
