@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest import mock
 
 from base import BaseTest
 
@@ -15,7 +16,16 @@ class TestQwenInjectorGuard(BaseTest):
 
     def _entry(self, home: Path):
         cfg = home / ".qwen" / "settings.json"
-        return {"id": "qwencode", "config": {"path": str(cfg)}}, cfg
+        return {"id": "qwencode", "config": {"path": "~/.qwen/settings.json"}}, cfg
+
+    def _fake_home(self, home):
+        def expanduser(path):
+            if path == "~":
+                return str(home)
+            if path.startswith("~/"):
+                return str(home / path[2:])
+            return path
+        return mock.patch("app.core.manager.os.path.expanduser", expanduser)
 
     def _prod_env(self):
         """生产形态：TUTTI_DATA 不重定向假家（mimo 用例同款）。"""
@@ -35,7 +45,8 @@ class TestQwenInjectorGuard(BaseTest):
         prov = {"id": "p1", "name": "Bigmodel", "protocol": "anthropic",
                 "base_url": "https://open.bigmodel.cn/api/anthropic",
                 "api_key": "k"}
-        err = manager._sync_qwen_settings(entry, "glm-5.3-flash", prov)
+        with self._fake_home(home):
+            err = manager._sync_qwen_settings(entry, "glm-5.3-flash", prov)
         self.assertIsNotNone(err, "anthropic 面必须拒写")
         self.assertIn("anthropic", err)
         self.assertEqual(cfg.read_text(encoding="utf-8"), before,
@@ -50,7 +61,8 @@ class TestQwenInjectorGuard(BaseTest):
         cfg.write_text('{"env": {"KEEP_ME": "1"}, "$version": 4}', encoding="utf-8")
         prov = {"id": "p2", "name": "维云", "protocol": "openai",
                 "base_url": "https://vsllm.cc/v1", "api_key": "sk-ok"}
-        err = manager._sync_qwen_settings(entry, "deepseek-v4", prov)
+        with self._fake_home(home):
+            err = manager._sync_qwen_settings(entry, "deepseek-v4", prov)
         self.assertIsNone(err, err)
         data = json.loads(cfg.read_text(encoding="utf-8"))
         self.assertEqual(data["env"]["OPENAI_BASE_URL"], "https://vsllm.cc/v1")

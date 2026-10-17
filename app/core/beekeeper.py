@@ -159,6 +159,12 @@ def sweep():
         if proc is not None:
             try:
                 if proc.poll() is not None:
+                    # A finished direct child can remain a zombie until its
+                    # Popen owner reaps it; do that while the reference is live.
+                    try:
+                        proc.wait(timeout=0)
+                    except Exception:
+                        pass
                     continue          # 已退出，跳过
             except Exception:
                 pass
@@ -176,6 +182,11 @@ def sweep():
             except Exception:
                 try:
                     os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+            if proc is not None:
+                try:
+                    proc.wait(timeout=2)
                 except Exception:
                     pass
 

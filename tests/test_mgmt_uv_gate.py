@@ -373,6 +373,7 @@ class TestWindowsProbe(BaseTest):
     def _patch_env(self, td):
         """系统目录环境变量整体钉到临时目录，磁盘落点全可控。"""
         return mock.patch.dict(os.environ, {
+            "CODEBEE_RELEASE_TEST_PLATFORM": "win32",
             "SystemRoot": td,
             "USERPROFILE": td,
             "LOCALAPPDATA": str(Path(td) / "lc"),
@@ -388,8 +389,7 @@ class TestWindowsProbe(BaseTest):
                    / "powershell.exe")
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"stub")
-            with mock.patch("os.name", "nt"), \
-                 mock.patch("os.path.expanduser", lambda p: td), \
+            with mock.patch("os.path.expanduser", lambda p: td), \
                  self._patch_env(td):
                 self.assertEqual(runner._fallback_probe_cli("powershell"),
                                  str(exe))
@@ -397,8 +397,7 @@ class TestWindowsProbe(BaseTest):
     def test_windows_miss_returns_none(self):
         from app.core import runner
         with tempfile.TemporaryDirectory() as td:
-            with mock.patch("os.name", "nt"), \
-                 mock.patch("os.path.expanduser", lambda p: td), \
+            with mock.patch("os.path.expanduser", lambda p: td), \
                  self._patch_env(td):
                 self.assertIsNone(runner._fallback_probe_cli("powershell"))
 
@@ -408,8 +407,7 @@ class TestWindowsProbe(BaseTest):
             exe = Path(td) / ".minimax-code" / "mcode.cmd"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"stub")
-            with mock.patch("os.name", "nt"), \
-                 mock.patch("os.path.expanduser", lambda p: td), \
+            with mock.patch("os.path.expanduser", lambda p: td), \
                  self._patch_env(td):
                 self.assertEqual(runner._fallback_probe_cli("mcode"), str(exe))
 
@@ -421,8 +419,7 @@ class TestWindowsProbe(BaseTest):
                    / "powershell.exe")
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"stub")
-            with mock.patch("os.name", "nt"), \
-                 mock.patch("os.path.expanduser", lambda p: td), \
+            with mock.patch("os.path.expanduser", lambda p: td), \
                  mock.patch("app.core.manager.shutil.which", lambda c: None), \
                  self._patch_env(td):
                 cmd, missing = manager._resolve_mgmt_tool(
@@ -437,8 +434,7 @@ class TestWindowsProbe(BaseTest):
             exe = Path(td) / ".minimax-code" / "mcode.cmd"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"stub")
-            with mock.patch("os.name", "nt"), \
-                 mock.patch("os.path.expanduser", lambda p: td), \
+            with mock.patch("os.path.expanduser", lambda p: td), \
                  mock.patch("app.core.manager.shutil.which", lambda c: None), \
                  self._patch_env(td):
                 self.assertEqual(manager._which_cli("mcode"), str(exe))

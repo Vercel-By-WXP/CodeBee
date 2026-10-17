@@ -26,7 +26,7 @@ class TestGitWorkbench(BaseTest):
         def g(*args):
             return runner.run_process(argv=["git", *args], cwd=str(repo), timeout=60)
 
-        g("init")
+        g("init", "--initial-branch=master")
         g("config", "user.name", "Tester")
         g("config", "user.email", "tester@local")
         (repo / "README.md").write_text("baseline\n", encoding="utf-8")
@@ -255,10 +255,13 @@ class TestGitWorkbench(BaseTest):
         clone = self.tmp / "clone"
         g2 = lambda *a: runner_git(a, str(clone))
         r = runner_git(["clone", "--quiet", str(bare), str(clone)], self.tmp)
+        self.assertTrue(r["ok"], r)
+        g2("config", "user.name", "Tester")
+        g2("config", "user.email", "tester@local")
         (clone / "from-other.md").write_text("别的机器\n", encoding="utf-8")
         runner_git(["add", "-A"], str(clone))
-        runner_git(["commit", "-m", "远端改动"], str(clone))
-        runner_git(["push", "--quiet", "origin", "master"], str(clone))
+        self.assertTrue(g2("commit", "-m", "远端改动")["ok"])
+        self.assertTrue(g2("push", "--quiet", "origin", "master")["ok"])
         ok, err, _ = gitmod.workbench_op(str(repo), "pull", {})
         self.assertTrue(ok, err)
         self.assertTrue((repo / "from-other.md").exists())

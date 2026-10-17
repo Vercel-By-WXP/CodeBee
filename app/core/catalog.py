@@ -446,8 +446,10 @@ def command_for(entry, op, platform=None):
     """
     if not isinstance(entry, dict):
         return None
-    platform = platform or ("windows" if os.name == "nt" else
-                            "macos" if sys.platform == "darwin" else "linux")
+    platform = platform or (
+        "windows" if os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") == "win32"
+        else "windows" if os.name == "nt"
+        else "macos" if sys.platform == "darwin" else "linux")
     platform = {"win": "windows", "win32": "windows", "nt": "windows",
                 "mac": "macos", "darwin": "macos", "osx": "macos"}.get(
                     str(platform).lower(), str(platform).lower())

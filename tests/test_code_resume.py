@@ -13,6 +13,8 @@ B 断点简报：失败/取消/超时的代码 run 收尾组装 handoff（走到
 """
 from __future__ import annotations
 
+from unittest import mock
+
 from base import BaseTest
 
 FAKE_IMPL = {"id": "fake-cli", "label": "Fake CLI", "kind": "codex", "mode": "real",
@@ -222,10 +224,12 @@ class TestCodeResume(BaseTest):
     # ---- 工具函数 ---------------------------------------------------------------
 
     def test_same_workdir(self):
+        import ntpath
         from app.core import pipeline
         wd = str(self.workdir)
         self.assertTrue(pipeline._same_workdir(wd, wd))
-        self.assertTrue(pipeline._same_workdir(wd.upper(), wd))  # Windows 大小写不敏感
+        with mock.patch("app.core.pipeline.os.path.normcase", ntpath.normcase):
+            self.assertTrue(pipeline._same_workdir(wd.upper(), wd))  # Windows 大小写不敏感
         self.assertFalse(pipeline._same_workdir(wd, ""))
         self.assertFalse(pipeline._same_workdir("", wd))
         sub = str(self.workdir / "sub")

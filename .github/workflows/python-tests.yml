@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+  PYTHONPATH: ${{ github.workspace }}/scripts/production_guard
+
 jobs:
   static-check:
     runs-on: ubuntu-latest
@@ -44,6 +49,11 @@ jobs:
       - name: Run unit and sandbox integration tests
         run: python -m unittest discover -s tests -v
       - name: Run required bubblewrap isolation tests with namespace privileges
+        env:
+          CODEBEE_REQUIRE_BWRAP: "1"
+        run: sudo -E "$(which python)" -m unittest discover -s tests -p test_sandbox_runtime.py -v
+      - name: Verify native sandbox availability with namespace privileges
+        working-directory: .
         env:
           CODEBEE_REQUIRE_BWRAP: "1"
         run: sudo -E "$(which python)" -m unittest discover -s tests -p test_sandbox_runtime.py -v

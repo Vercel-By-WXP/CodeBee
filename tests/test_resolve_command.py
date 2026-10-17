@@ -20,12 +20,14 @@ class TestResolveCommandFallback(BaseTest):
     def setUp(self):
         self._saved = {k: os.environ.get(k)
                        for k in ("PATH", "LOCALAPPDATA", "APPDATA", "USERPROFILE",
+                                 "CODEBEE_RELEASE_TEST_PLATFORM",
                                  "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)")}
         self.tmp = Path(tempfile.mkdtemp(prefix="tutti_resolve_"))
         # PATH 剥空逼 which 落空；三个家目录全指临时盘，探测只看得到夹具
         os.environ["PATH"] = ""
         for key in ("LOCALAPPDATA", "APPDATA", "USERPROFILE"):
             os.environ[key] = str(self.tmp)
+        os.environ["CODEBEE_RELEASE_TEST_PLATFORM"] = "win32"
         os.environ["ProgramW6432"] = str(self.tmp / "Program Files")
         os.environ["ProgramFiles"] = str(self.tmp / "Program Files")
         os.environ["ProgramFiles(x86)"] = str(self.tmp / "Program Files (x86)")

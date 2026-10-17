@@ -447,7 +447,8 @@ class TestNativeChannelAutoWire(BaseTest):
         link.mkdir()
         exe = link / "opencode.cmd"
         exe.write_text("@echo off", encoding="utf-8")
-        env = {"NVM_SYMLINK": str(link), "LOCALAPPDATA": str(self.tmp / "lal"),
+        env = {"CODEBEE_RELEASE_TEST_PLATFORM": "win32",
+               "NVM_SYMLINK": str(link), "LOCALAPPDATA": str(self.tmp / "lal"),
                "APPDATA": str(self.tmp / "ad")}
         with mock.patch.dict("os.environ", env), \
              mock.patch.object(runner.shutil, "which", return_value=None):

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import threading
 import unittest
+import ntpath
 from unittest import mock
 
 from base import BaseTest
@@ -138,9 +139,22 @@ class ClearStalePortTests(BaseTest):
         from app.core import portguard
         return portguard
 
+    def _windows_paths(self, pg):
+        return mock.patch.multiple(
+            pg.os.path,
+            abspath=ntpath.abspath,
+            isabs=ntpath.isabs,
+            normcase=ntpath.normcase,
+            normpath=ntpath.normpath,
+        )
+
     def test_is_own_instance_match(self):
         pg = self._pg()
         repo_main = r"E:\GoOut\MultiAgentOrchestration\app\main.py"
+        with self._windows_paths(pg):
+            self._assert_windows_instance_matches(pg, repo_main)
+
+    def _assert_windows_instance_matches(self, pg, repo_main):
         # 源码仓实例：cmdline 含完整绝对路径才认
         self.assertTrue(pg.is_own_instance(
             r'"py.exe" -3 "E:\GoOut\MultiAgentOrchestration\app\main.py" --port 8765',
@@ -177,7 +191,8 @@ class ClearStalePortTests(BaseTest):
 
     def test_clear_own_instance_kills_tree(self):
         pg = self._pg()
-        with mock.patch.object(pg.portscan, "listening_ports",
+        with self._windows_paths(pg), \
+             mock.patch.object(pg.portscan, "listening_ports",
                                return_value=[{"port": 8765, "pid": 4242}]), \
              mock.patch.object(pg, "proc_cmdline",
                                return_value=r"python E:\x\app\main.py --port 8765"), \

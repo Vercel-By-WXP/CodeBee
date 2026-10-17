@@ -65,7 +65,7 @@ BUILTIN_FLOWS = [
      "threshold": 7.0, "rounds": 2,
      "goal_hint": "什么主题、多长时长、投哪个平台（抖音/B站/视频号）",
      "note": "分镜 + 口播脚本：起草 → 多维评审 → 修订循环 → 发布门禁"},
-    {"id": "short_drama", "name": "短剧剧本", "icon": "i-clapper", "engine": "review", "builtin": True,
+    {"id": "short_drama", "name": "短剧剧本", "icon": "i-layers", "engine": "review", "builtin": True,
      "manuscript": "drama.md",
      "rubric": ["戏剧钩子", "分集节奏", "人物连续性", "场次可拍性", "对白情绪", "集尾悬念"],
      "threshold": 7.0, "rounds": 2,

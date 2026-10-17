@@ -50,20 +50,31 @@ def _expand(p):
     return os.path.abspath(os.path.expanduser(os.path.expandvars(p)))
 
 
+def _canonical(path):
+    """Return a comparison-safe absolute path.
+
+    realpath removes platform symlink aliases (notably macOS ``/var``), while
+    normcase handles Windows case/short-name differences in CI environments.
+    """
+    return os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(path))))
+
+
 def _release_test_root(path):
     """Allow release-gate fixtures to use an isolated temporary home on CI."""
     root = os.environ.get("CODEBEE_RELEASE_TEST_HOME_ROOT", "").strip()
     if not root:
         return False
     try:
-        return os.path.commonpath([os.path.realpath(path), os.path.realpath(root)]) == os.path.realpath(root)
+        return os.path.commonpath([_canonical(path), _canonical(root)]) == _canonical(root)
     except ValueError:
         return False
 
 
 def _under(path, root):
     try:
-        return os.path.commonpath([os.path.realpath(path), root]) == root
+        path = _canonical(path)
+        root = _canonical(root)
+        return os.path.commonpath([path, root]) == root
     except ValueError:
         return False
 
@@ -82,7 +93,7 @@ def tmp_data_no_home_write():
     if not td:
         return False
     tmp = tempfile.gettempdir()
-    home = os.path.abspath(os.path.expanduser("~"))
+    home = _canonical("~")
     return _under(td, tmp) and not _under(home, tmp)
 
 
@@ -91,9 +102,9 @@ def _safe_config_path(raw):
     if not raw:
         return None
     full = _expand(raw)
-    home = os.path.abspath(os.path.expanduser("~"))
+    home = _canonical("~")
     try:
-        if os.path.commonpath([full, home]) != home:
+        if os.path.commonpath([_canonical(full), home]) != home:
             return full if _release_test_root(full) else None
     except ValueError:
         return None
@@ -701,10 +712,10 @@ def write_model(entry, model):
         return {"ok": False, "error": "模型名不能为空"}
     # 写入前二次校验：解析真实路径后必须仍在用户主目录内（防穿越/符号链接），
     # 校验通过后统一改用解析路径写入
-    home = os.path.abspath(os.path.expanduser("~"))
+    home = _canonical("~")
     path = os.path.realpath(path)
     try:
-        if os.path.commonpath([path, home]) != home:
+        if os.path.commonpath([_canonical(path), home]) != home:
             return {"ok": False, "error": "配置路径越出用户主目录，已拒绝写入"}
     except ValueError:
         return {"ok": False, "error": "配置路径越出用户主目录，已拒绝写入"}
@@ -911,9 +922,9 @@ def _sync_dsh_settings(entry, model, base_url):
     if not path:
         return "dsh 配置路径无效"
     path = os.path.realpath(path)
-    home = os.path.abspath(os.path.expanduser("~"))
+    home = _canonical("~")
     try:
-        if os.path.commonpath([path, home]) != home:
+        if os.path.commonpath([_canonical(path), home]) != home:
             return "dsh 配置路径越出用户主目录，已拒绝"
     except ValueError:
         return "dsh 配置路径越出用户主目录，已拒绝"
@@ -1054,9 +1065,9 @@ def _sync_codex_settings(entry, model, cp):
     if not path:
         return "codex 配置路径无效"
     path = os.path.realpath(path)
-    home = os.path.abspath(os.path.expanduser("~"))
+    home = _canonical("~")
     try:
-        if os.path.commonpath([path, home]) != home:
+        if os.path.commonpath([_canonical(path), home]) != home:
             return "codex 配置路径越出用户主目录，已拒绝"
     except ValueError:
         return "codex 配置路径越出用户主目录，已拒绝"
@@ -1350,9 +1361,9 @@ def _guard_home(path):
     if not path:
         return None
     path = os.path.realpath(path)
-    home = os.path.abspath(os.path.expanduser("~"))
+    home = _canonical("~")
     try:
-        if os.path.commonpath([path, home]) != home:
+        if os.path.commonpath([_canonical(path), home]) != home:
             return path if _release_test_root(path) else None
     except ValueError:
         return None
@@ -1500,8 +1511,8 @@ def _sync_opencode_settings(entry, model, prov):
         for path in targets:
             try:
                 path = os.path.realpath(path)
-                home = os.path.abspath(os.path.expanduser("~"))
-                if os.path.commonpath([path, home]) != home:
+                home = _canonical("~")
+                if os.path.commonpath([_canonical(path), home]) != home:
                     errs.append("路径越出主目录：%s" % path)
                     continue
                 if os.path.isfile(path):
@@ -1554,9 +1565,9 @@ def _sync_opencode_settings(entry, model, prov):
     for path in targets:
         try:
             path = os.path.realpath(path)
-            home = os.path.abspath(os.path.expanduser("~"))
+            home = _canonical("~")
             try:
-                if os.path.commonpath([path, home]) != home:
+                if os.path.commonpath([_canonical(path), home]) != home:
                     errs.append("路径越出主目录：%s" % path)
                     continue
             except ValueError:

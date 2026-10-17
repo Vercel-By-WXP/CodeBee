@@ -68,9 +68,10 @@ class TestSampleShare(BaseTest):
         self.assertEqual(len(evalbench.custom_samples()), 1)
 
     def test_import_id_conflict_auto_renames(self):
-        s, _ = evalbench.sample_op("add", _sample())
-        code, _ = evalbench.export_sample_code(s["id"])
-        res, err = evalbench.import_sample_code(code)   # 同 ID 再导 → 换号
+        with mock.patch.object(evalbench.time, "time", return_value=1700000000):
+            s, _ = evalbench.sample_op("add", _sample())
+            code, _ = evalbench.export_sample_code(s["id"])
+            res, err = evalbench.import_sample_code(code)   # 同毫秒、同 ID 再导 → 换号
         self.assertIsNone(err, err)
         self.assertNotEqual(res["id"], s["id"])
         self.assertEqual(len(evalbench.custom_samples()), 2)

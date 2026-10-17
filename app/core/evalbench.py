@@ -21,6 +21,7 @@ import json
 import re
 import threading
 import time
+import uuid
 
 # L2：可 import L0（paths/usage）与 L1（modelhub）；verify 子进程走 runner（L2 同层）
 from . import paths
@@ -135,9 +136,8 @@ def sample_op(op, sample=None, sid=""):
             return None, "样题必须是对象"
         if len(custom_samples()) >= CUSTOM_MAX:
             return None, "自定义样题最多 %d 道" % CUSTOM_MAX
-        sid = str(sample.get("id") or "").strip() or \
-            ("c-" + format(int(time.time() * 1000) % 10**10, "x"))
-        if not _SAMPLE_ID_RE.match(sid):
+        sid = str(sample.get("id") or "").strip()
+        if sid and not _SAMPLE_ID_RE.match(sid):
             return None, "样题 ID 只能是小写 c- 开头的字母/数字/-/_（≤24 位）"
         name = str(sample.get("name") or "").strip()[:20]
         prompt = str(sample.get("prompt") or "").strip()
@@ -155,6 +155,11 @@ def sample_op(op, sample=None, sid=""):
                  "dims": dims, "prompt": prompt, "builtin": False}
         with _LOCK:
             arr = custom_samples()
+            if not sid:
+                existing = {s.get("id") for s in arr}
+                while not sid or sid in existing:
+                    sid = "c-" + uuid.uuid4().hex[:20]
+                entry["id"] = sid
             arr = [s for s in arr if s.get("id") != sid]
             arr.append(entry)
             _samples_path().parent.mkdir(parents=True, exist_ok=True)

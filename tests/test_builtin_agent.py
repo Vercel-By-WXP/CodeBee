@@ -637,9 +637,8 @@ class TestBuiltinRunCommandPolicyGate(BaseTest):
         return ("cmd /c echo %s" % expr) if os.name == "nt" else ("echo %s" % expr)
 
     def _has_bwrap(self):
-        import os
-        import shutil
-        return os.name == "posix" and bool(shutil.which("bwrap"))
+        from app.core.sandbox_runtime import native_sandbox_available
+        return native_sandbox_available()
 
     def test_default_policy_runs_without_bwrap(self):
         from app.core import builtin_agent

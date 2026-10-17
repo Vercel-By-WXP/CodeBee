@@ -82,8 +82,10 @@ def run_tests() -> None:
             env=env)
     if result.returncode != 0:
         output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
-        raise GateError("全量测试未通过（退出码 %s）\n%s" %
-                        (result.returncode, output[-8000:]))
+        # Keep every traceback in CI logs; the last 8 KB can hide earlier errors.
+        print(output, file=sys.stderr)
+        raise GateError("全量测试未通过（退出码 %s；完整输出见上方日志）" %
+                        result.returncode)
 
 
 def _pack_json(raw: str) -> dict:

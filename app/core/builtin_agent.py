@@ -445,7 +445,8 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
     # this in-process runner cannot honor fail closed, while a default wide
     # policy keeps the user-approved full-trust tier (2026-09-22) instead of
     # refusing every command.
-    has_bwrap = os.name == "posix" and bool(shutil.which("bwrap"))
+    from .sandbox_runtime import native_sandbox_available
+    has_bwrap = native_sandbox_available()
     if sandbox.get("network") is False and not has_bwrap and sandbox.get("backend") != "docker":
         return "（沙箱拒绝：当前系统没有可用的网络隔离后端，命令未执行）"
     if sandbox.get("env_allowlist") and sandbox.get("backend") != "docker":

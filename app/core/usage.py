@@ -885,7 +885,7 @@ _DURATION_BASELINES = {
     "direct": 90, "rank_scan": 1200, "email": 180, "weekly_report": 240,
     "translation": 240, "speech": 360, "video_script": 360, "article": 480,
     "doc": 480, "resume": 420, "code": 600, "tech_proposal": 720,
-    "research": 900, "novel": 720, "serial_novel": 2400,
+    "research": 900, "novel": 720, "serial_novel": 2400, "short_drama": 1200,
     "presentation": 480, "bid_doc": 720, "defect_retro": 240,
 }
 

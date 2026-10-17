@@ -8,6 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+  PYTHONPATH: ${{ github.workspace }}/scripts/production_guard
+
 jobs:
   syntax-check:
     name: Syntax check (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -55,15 +64,16 @@ jobs:
         shell: bash
         run: |
           if [ -d tests ]; then
-            python -m unittest discover -s tests -p "test_*.py" -v
+            python scripts/run_protected_suite.py
           else
             echo "No root tests directory; skipping"
           fi
       - name: Run app tests when present
         shell: bash
+        working-directory: app
         run: |
-          if [ -d app/tests ]; then
-            python -m unittest discover -s app/tests -p "test_*.py" -v
+          if [ -d tests ]; then
+            python -m unittest discover -s tests -p "test_*.py" -v
           else
             echo "No app/tests directory; skipping"
           fi

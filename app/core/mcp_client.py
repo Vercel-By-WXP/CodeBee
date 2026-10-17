@@ -21,9 +21,8 @@ import hashlib
 import os
 import queue
 import re
-import shutil
+import shutil  # noqa: F401  (retained as a patch seam for MCP backend tests)
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -54,8 +53,9 @@ def invalidate_tools_cache():
 
 
 def sandbox_backend_available():
-    """Whether the OS backend required for MCP process isolation is present."""
-    return os.name == "posix" and sys.platform != "darwin" and bool(shutil.which("bwrap"))
+    """Whether bubblewrap is installed and can create its required namespace."""
+    from .sandbox_runtime import native_sandbox_available
+    return native_sandbox_available()
 
 
 def parse_servers(text):

@@ -187,8 +187,9 @@ class CapabilityRuntimeTests(BaseTest):
         self.assertIn("桥接知识", first)
 
     def test_prompt_evidence_records_final_cli_capability_input(self):
-        from app.core import capability_runtime, store
+        from app.core import capability_runtime, skills, store
 
+        skills.upsert_lesson("direct", "注入审计规则", "执行前核对任务输入和能力证据。")
         task = store.create_task({"type": "direct", "title": "注入审计",
                                   "goal": "验证 CLI 收到能力", "workdir": str(self.workdir)})
         run = store.create_run("orchestration", task["title"], task_id=task["id"])

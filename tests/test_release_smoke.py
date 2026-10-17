@@ -100,7 +100,7 @@ def safe_extract_tar(tf, dest):
         written += 1
     for p in dest.rglob("*"):
         rp = p.resolve()
-        if base != rp and base not in p.parents:
+        if base != rp and base not in rp.parents:
             raise ValueError("解包落点越界: %s" % p)
     return written
 

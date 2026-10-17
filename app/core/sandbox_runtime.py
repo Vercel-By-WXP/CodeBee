@@ -9,11 +9,50 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
+import sys
+import threading
 from pathlib import Path
 
 
 class SandboxUnavailable(RuntimeError):
     pass
+
+
+_BWRAP_PROBE_LOCK = threading.Lock()
+_BWRAP_PROBE_CACHE = {}
+
+
+def native_sandbox_available():
+    """Return whether bubblewrap can actually create its namespace.
+
+    A bwrap binary may be installed while the runner disables user namespaces.
+    Treat a failed probe as unavailable so strict callers fail closed.
+    """
+    if os.name != "posix" or sys.platform == "darwin":
+        return False
+    executable = shutil.which("bwrap")
+    if not executable:
+        return False
+    with _BWRAP_PROBE_LOCK:
+        if executable in _BWRAP_PROBE_CACHE:
+            return _BWRAP_PROBE_CACHE[executable]
+        try:
+            argv = [executable, "--die-with-parent", "--new-session", "--tmpfs", "/"]
+            for system_path in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):
+                if os.path.exists(system_path):
+                    argv.extend(["--dir", system_path, "--ro-bind", system_path, system_path])
+            argv.extend(["--dir", "/proc", "--dir", "/dev", "--proc", "/proc",
+                         "--dev", "/dev", "--tmpfs", "/tmp", "--", "/bin/true"])
+            result = subprocess.run(
+                argv,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=3, check=False)
+            available = result.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            available = False
+        _BWRAP_PROBE_CACHE[executable] = available
+        return available
 
 
 def requested_backend(sandbox):

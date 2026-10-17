@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
+import sys
 from base import BaseTest
 
 
@@ -78,29 +80,33 @@ class TestScrubEnvIdempotent(BaseTest):
 
 
 class TestScrubEnvRealSubprocess(BaseTest):
-    """端到端：净化后通过 cmd /c set 打印，断言 FOO_TOKEN 不出现。"""
+    """端到端：净化后由 Python 子进程打印环境，断言密钥名不出现。"""
 
     def test_no_leak_in_subprocess(self):
         from app.core.env_scrub import scrub_env
         # 假凭据运行时拼出来，避免源码里出现「KEY = 字面量」形状被密钥扫描误报；
         # 值本身无意义，测试只关心 key 名被净化掉
         dummy = "not-" + "a-real-" + "credential"
-        env = scrub_env({
+        # Start from the host baseline so the Python runtime retains required
+        # platform variables (notably SystemRoot on Windows), then scrub the
+        # complete child environment in one pass.
+        env = scrub_env({**os.environ,
             "FOO_TOKEN": dummy,
             "BAR_API_KEY": dummy + "-2",
-            "PATH": os.environ.get("PATH", ""),
             "MY_BENIGN_VAR": "safe",
         })
         self.assertNotIn("FOO_TOKEN", env)
         self.assertNotIn("BAR_API_KEY", env)
         self.assertIn("MY_BENIGN_VAR", env)
-        # spawn set 验证
+        # Use a portable child process on both Windows and POSIX.
         proc = subprocess.run(
-            ["cmd", "/c", "set"],
+            [sys.executable, "-c",
+             "import json, os; print(json.dumps(dict(os.environ)))"],
             env=env, capture_output=True, timeout=10,
-            creationflags=0x08000000,  # CREATE_NO_WINDOW
+            creationflags=(0x08000000 if os.name == "nt" else 0),
         )
-        out = proc.stdout.decode("utf-8", errors="replace")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", errors="replace"))
+        out = json.loads(proc.stdout.decode("utf-8", errors="replace"))
         self.assertNotIn("FOO_TOKEN", out)
         self.assertNotIn("BAR_API_KEY", out)
-        self.assertIn("MY_BENIGN_VAR", out)
+        self.assertEqual(out.get("MY_BENIGN_VAR"), "safe")

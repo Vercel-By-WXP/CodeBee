@@ -31,6 +31,15 @@ POLICY_FILE = ROOT / "architecture-policy.json"
 BASELINE_FILE = ROOT / ".architecture-baseline.json"
 
 
+def _resolved_path(path):
+    """Resolve symlink aliases before comparing paths across platforms.
+
+    macOS runners commonly expose ``/var`` while ``Path.resolve()`` returns
+    ``/private/var``; Windows can likewise vary by case/short-name aliases.
+    """
+    return Path(path).resolve()
+
+
 def load_policy():
     return json.loads(POLICY_FILE.read_text(encoding="utf-8"))
 
@@ -53,7 +62,7 @@ def save_baseline(baseline):
 def module_name(py_file):
     """app/core/x.py → x；app/core/publish/manager.py → publish.manager；
     app/main.py → main。与 import 的裸名同一命名空间，图才连得起来。"""
-    rel = py_file.relative_to(ROOT / "app")
+    rel = _resolved_path(py_file).relative_to(_resolved_path(ROOT / "app"))
     parts = list(rel.with_suffix("").parts)
     if parts and parts[0] == "core":
         parts = parts[1:]
@@ -113,7 +122,7 @@ def build_graph(policy, only_files=None):
     graph, problems = {}, []
     for pat in policy.get("checkGlobs", ["app/**/*.py"]):
         for py in sorted(ROOT.glob(pat)):
-            if only_files is not None and str(py).replace("\\", "/") not in only_files:
+            if only_files is not None and str(_resolved_path(py)).replace("\\", "/") not in only_files:
                 continue
             name, deps, errs = module_deps(py)
             graph[name] = deps

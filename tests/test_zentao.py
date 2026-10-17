@@ -1094,8 +1094,16 @@ class TestHolidaySkip(ZenCase):
     def runTest(self):
         """skip_holidays：法定休假日顺延扫描到下一工作日；调休补班周末照常扫；
         库缺失时保存报错、运行时判定不了照常扫（不卡死）。"""
-        import chinese_calendar as hcal
-        today = date.today()
+        # 固定调休日历，覆盖业务分支而不依赖本机可选库或年度数据发布。
+        today = date(2024, 9, 30)
+        hcal = mock.Mock()
+        hcal.is_workday.side_effect = lambda d: (
+            d == date(2024, 10, 12) or
+            (d.weekday() < 5 and d not in {
+                date(2024, 10, 1), date(2024, 10, 2), date(2024, 10, 3)}))
+        calendar_patch = mock.patch.object(self.zen_mod, "_hcal", hcal)
+        calendar_patch.start()
+        self.addCleanup(calendar_patch.stop)
 
         def scan_day(delta):
             """把模块时钟钉到 today+delta 天 10:00 跑一次 fire_due（清 next_scan 过节流闸）。"""

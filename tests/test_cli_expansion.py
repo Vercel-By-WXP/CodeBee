@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Regression coverage for the additional CLI catalog entries."""
 
+import os
+from unittest import mock
+
 from base import BaseTest
 
 
@@ -39,7 +42,11 @@ class TestCliExpansion(BaseTest):
         entry = next(x for x in catalog.DEFAULT_CATALOG if x["id"] == "minimax-code")
         self.assertIn("install.ps1", catalog.command_for(entry, "install", "windows"))
         self.assertIn("install.sh", catalog.command_for(entry, "install", "linux"))
-        self.assertIn("USERPROFILE", catalog.uninstall_command(dict(entry)))
+        # Release-gate runs this Windows command contract on a POSIX host.
+        with mock.patch.dict(os.environ, {"CODEBEE_RELEASE_TEST_PLATFORM": "win32"}), \
+             mock.patch.object(catalog.os, "name", "posix"), \
+             mock.patch.object(catalog.sys, "platform", "linux"):
+            self.assertIn("USERPROFILE", catalog.uninstall_command(dict(entry)))
 
         goose = next(x for x in catalog.DEFAULT_CATALOG if x["id"] == "goose")
         self.assertIn("download_cli.ps1", catalog.command_for(goose, "install", "windows"))

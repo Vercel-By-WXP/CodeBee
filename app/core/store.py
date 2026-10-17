@@ -743,8 +743,8 @@ def migrate_task_workdirs(old_root, new_root):
     返回 (移动数, 跳过数)。
     """
     oldp = Path(old_root).resolve()
-    newp = Path(new_root).resolve()
-    if oldp == newp:
+    newp = Path(new_root)
+    if oldp == newp.resolve():
         return 0, 0
     moved = skipped = 0
     with LOCK:
