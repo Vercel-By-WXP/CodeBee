@@ -42,20 +42,27 @@ try:
       return true;}""")
     shot_dir = Path('tests/_out/shots')
     shot_dir.mkdir(parents=True, exist_ok=True)
-    n = flow.run_flow(page, steps, values=values, config=fq.CONFIG,
-                      auto_submit=True, dup_check=True,
-                      shot=lambda name: page.screenshot(str(shot_dir / (name + '.png'))),
-                      log=lambda s: (logs.append(s), print('LOG', s)))
-    print('流程执行到步:', n)
-    time.sleep(3)
-    resp = page.call("()=>window.__resp||[]")
-    print('== 网络捕获 ==')
-    for r0 in (resp or []):
-        print(json.dumps(r0, ensure_ascii=False)[:420])
-    io.open('tests/_out/fanqie_net_trace.json', 'w', encoding='utf-8').write(
-        json.dumps({'logs': logs, 'resp': resp, 'url': page.call('()=>location.href')},
-                   ensure_ascii=False, indent=1))
-    print('最终URL:', page.call('()=>location.href'))
+    n = -1
+    try:
+        n = flow.run_flow(page, steps, values=values, config=fq.CONFIG,
+                          auto_submit=True, dup_check=True,
+                          shot=lambda name: page.screenshot(str(shot_dir / (name + '.png'))),
+                          log=lambda s: (logs.append(s), print('LOG', s)))
+    except Exception as e:
+        print('流程异常:', str(e)[:120])
+    finally:
+        time.sleep(3)
+        try:
+            resp = page.call("()=>window.__resp||[]")
+            url = page.call("()=>location.href")
+        except Exception:
+            resp, url = [], 'page gone'
+        print('== 网络捕获 ==')
+        for r0 in (resp or []):
+            print(json.dumps(r0, ensure_ascii=False)[:420])
+        io.open('tests/_out/fanqie_net_trace.json', 'w', encoding='utf-8').write(
+            json.dumps({'logs': logs, 'resp': resp, 'url': url}, ensure_ascii=False, indent=1))
+        print('流程执行到步:', n, '| 最终URL:', url)
 finally:
     try:
         b.close()
