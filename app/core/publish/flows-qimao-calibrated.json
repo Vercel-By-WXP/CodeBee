@@ -1,368 +1,373 @@
 {
-  "_note": "七猫真机校准（2026-10-14）：发章从目标作品章节管理页点击“新建章节”进入真实编辑器；填写标题/正文后直接点击“立即发布”，兼容“更正序号去发布”与“确认发布”弹层；最终必须在章节管理页按本章标题和待审核/审核中/已发布状态核验，草稿不算发布。",
-  "upload_chapter_draft": [
-    {
-      "do": "navigate",
-      "url": "about:blank"
-    },
-    {
-      "do": "navigate",
-      "url": "{editor_url}"
-    },
-    {
-      "do": "url_any",
-      "any": [
-        "qimao.com"
-      ]
-    },
-    {
-      "do": "wait",
-        "sel": "textarea[placeholder='请输入章节名称，最多20个字'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
-      "timeout": 20
-    },
-    {
-      "do": "fill",
-        "sel": "textarea[placeholder='请输入章节名称，最多20个字'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
-      "key": "chapter_title"
-    },
-    {
-      "do": "wait",
-      "sel": ".q-contenteditable",
-      "timeout": 12
-    },
-    {
-      "do": "fill",
-      "sel": ".q-contenteditable",
-      "key": "chapter_body"
-    },
-    {
-      "do": "shot",
-      "name": "chapter-filled-draft"
-    },
-    {
-      "do": "click_real",
-      "text": "存草稿",
-      "tries": 25
-    },
-    {
-      "do": "sleep",
-      "s": 2
-    },
-    {
-      "do": "expect_text",
-      "any": [
-        "保存成功",
-        "存草稿成功",
-        "草稿保存成功",
-        "保存草稿成功",
-        "已保存"
-      ],
-      "timeout": 12
-    },
-    {
-      "do": "verify",
-      "url": "{draft_url}",
-      "any": [
-        "{chapter_title}"
-      ],
-      "settle": 5
-    }
-  ],
-  "probe_form": [
-    {
-      "do": "navigate",
-      "url": "{book_manage}"
-    },
-    {
-      "do": "url_any",
-      "any": [
-        "qimao.com"
-      ]
-    },
-    {
-      "do": "click_match",
-      "contains": true,
-      "any": [
-        "新建小说",
-        "创建作品"
-      ]
-    },
-    {
-      "do": "click_match",
-      "any": [
-        "七猫中文网",
-        "网站特色"
-      ],
-      "max_len": 160
-    },
-    {
-      "do": "probe",
-      "note": "建书表单"
-    }
-  ],
-  "create_book": [
-    {
-      "do": "navigate",
-      "url": "{book_manage}"
-    },
-    {
-      "do": "url_any",
-      "any": [
-        "qimao.com"
-      ]
-    },
-    {
-      "do": "click_match",
-      "contains": true,
-      "any": [
-        "新建小说",
-        "创建作品"
-      ]
-    },
-    {
-      "do": "click_match",
-      "any": [
-        "七猫中文网",
-        "网站特色"
-      ],
-      "max_len": 400
-    },
-    {
-      "do": "click_text",
-      "text": "确认",
-      "scope": "button,[class*=btn]"
-    },
-    {
-      "do": "wait",
-      "sel": "textarea[placeholder*='作品名称']",
-      "timeout": 15
-    },
-    {
-      "do": "fill_label",
-      "label": "作品名称",
-      "key": "title"
-    },
-    {
-      "do": "radio",
-      "key": "target_reader",
-      "map": {
-        "男生": "0",
-        "女生": "1"
-      }
-    },
-    {
-      "do": "click",
-      "sel": "input[placeholder='请选择一级分类']"
-    },
-    {
-      "do": "click_text",
-      "text": "{category_main}",
-      "contains": true,
-      "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
-    },
-    {
-      "do": "click",
-      "sel": "input[placeholder='请选择二级分类']"
-    },
-    {
-      "do": "click_text",
-      "text": "{category_sub}",
-      "contains": true,
-      "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
-    },
-    {
-      "do": "sleep",
-      "s": 1.0
-    },
-    {
-      "do": "click_text",
-      "text": "添加标签"
-    },
-    {
-      "do": "tags"
-    },
-    {
-      "do": "click_text",
-      "text": "确定",
-      "scope": "button,[class*=btn]"
-    },
-    {
-      "do": "fill_label",
-      "label": "主角名",
-      "key": "protagonist"
-    },
-    {
-      "do": "radio",
-      "key": "status",
-      "map": {
-        "连载中": "0",
-        "已完结": "1"
-      }
-    },
-    {
-      "do": "fill_label",
-      "label": "作品简介",
-      "key": "summary"
-    },
-    {
-      "do": "shot",
-      "name": "create-book-filled"
-    },
-    {
-      "do": "submit",
-      "text": "确认创建"
-    }
-  ],
-  "upload_chapter": [
-    {
-      "do": "navigate",
-      "url": "{chapter_manage_url}",
-      "timeout": 40
-    },
-    {
-      "do": "url_any",
-      "any": [
-        "qimao.com"
-      ]
-    },
-    {
-      "do": "wait",
-      "sel": "a.create-new-chapter-btn, a[class*=\"create-new-chapter\"]",
-      "timeout": 20
-    },
-    {
-      "do": "click_text",
-      "text": "新建章节",
-      "contains": true,
-      "scope": "a,button,[role=button]"
-    },
-    {
-      "do": "wait",
-      "sel": "textarea[placeholder=\"请输入章节名称，最多20个字\"]",
-      "timeout": 20
-    },
-    {
-      "do": "fill",
-      "sel": "textarea[placeholder=\"请输入章节名称，最多20个字\"]",
-      "key": "chapter_title"
-    },
-    {
-      "do": "fill",
-      "sel": ".chapter-index-input-input input",
-      "key": "chapter_no"
-    },
-    {
-      "do": "wait",
-      "sel": ".q-contenteditable.book.font-size-16.edit-mask",
-      "timeout": 15
-    },
-    {
-      "do": "fill",
-      "sel": ".q-contenteditable.book.font-size-16.edit-mask",
-      "key": "chapter_body"
-    },
-    {
-      "do": "shot",
-      "name": "chapter-filled"
-    },
-    {
-      "do": "expect_text",
-      "any": [
-        "已保存到云端"
-      ],
-      "timeout": 15
-    },
-    {
-      "do": "submit",
-      "gate": true
-    },
-    {
-      "do": "click_real",
-      "text": "立即发布",
-      "scope": "a,button,[role=button],span",
-      "tries": 25
-    },
-    {
-      "do": "js_click",
-      "text": "立即发布",
-      "scope": "a,button,[role=button]",
-      "tries": 10,
-      "skip_if_modal": true
-    },
-    {
-      "do": "expect_text",
-      "any": [
-        "立即发布确认",
-        "检测到章节序号不连续"
-      ],
-      "timeout": 12,
-      "visible_only": true
-    },
-    {
-      "do": "shot",
-      "name": "after-immediate-publish"
-    },
-    {
-      "do": "sleep",
-      "s": 1.2
-    },
-    {
-      "do": "js_click",
-      "text": "更正序号去发布",
-      "scope": "a,button,[role=button]",
-      "tries": 12,
-      "optional": true
-    },
-    {
-      "do": "sleep",
-      "s": 0.8
-    },
-    {
-      "do": "js_click",
-      "text": "确认发布",
-      "scope": ".el-dialog a,.el-dialog button",
-      "tries": 15,
-      "optional": false
-    },
-    {
-      "do": "expect_text_absent",
-      "any": [
-        "立即发布确认"
-      ],
-      "timeout": 15,
-      "visible_only": true
-    },
-    {
-      "do": "sleep",
-      "s": 2.5
-    },
-    {
-      "do": "verify_chapter_status",
-      "url": "{chapter_manage_url}",
-      "timeout": 35,
-      "settle": 4,
-      "new_tab": true,
-      "row_sel": ".el-table__row, tr",
-      "live_status": [
-        "待审核",
-        "审核中",
-        "已发布"
-      ],
-      "draft_status": [
-        "草稿"
-      ]
-    }
-  ],
-  "check_login": [
-    {
-      "do": "navigate",
-      "url": "{home}"
-    },
-    {
-      "do": "url_any",
-      "any": [
-        "qimao.com"
-      ]
-    }
-  ]
+ "_note": "七猫真机校准（2026-10-14）：发章从目标作品章节管理页点击“新建章节”进入真实编辑器；填写标题/正文后直接点击“立即发布”，兼容“更正序号去发布”与“确认发布”弹层；最终必须在章节管理页按本章标题和待审核/审核中/已发布状态核验，草稿不算发布。",
+ "upload_chapter_draft": [
+  {
+   "do": "navigate",
+   "url": "about:blank"
+  },
+  {
+   "do": "navigate",
+   "url": "{editor_url}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": "textarea[placeholder='请输入章节名称，最多20个字'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
+   "timeout": 20
+  },
+  {
+   "do": "fill",
+   "sel": "textarea[placeholder='请输入章节名称，最多20个字'],input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],[contenteditable=true][data-placeholder*='章节'],[contenteditable=true][data-placeholder*='标题'],[contenteditable=true][data-placeholder*='章名']",
+   "key": "chapter_title"
+  },
+  {
+   "do": "wait",
+   "sel": ".q-contenteditable",
+   "timeout": 12
+  },
+  {
+   "do": "fill",
+   "sel": ".q-contenteditable",
+   "key": "chapter_body"
+  },
+  {
+   "do": "shot",
+   "name": "chapter-filled-draft"
+  },
+  {
+   "do": "click_real",
+   "text": "存草稿",
+   "tries": 25
+  },
+  {
+   "do": "sleep",
+   "s": 2
+  },
+  {
+   "do": "expect_text",
+   "any": [
+    "保存成功",
+    "存草稿成功",
+    "草稿保存成功",
+    "保存草稿成功",
+    "已保存"
+   ],
+   "timeout": 12
+  },
+  {
+   "do": "verify",
+   "url": "{draft_url}",
+   "any": [
+    "{chapter_title}"
+   ],
+   "settle": 5
+  }
+ ],
+ "probe_form": [
+  {
+   "do": "navigate",
+   "url": "{book_manage}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "click_match",
+   "contains": true,
+   "any": [
+    "新建小说",
+    "创建作品"
+   ]
+  },
+  {
+   "do": "click_match",
+   "any": [
+    "七猫中文网",
+    "网站特色"
+   ],
+   "max_len": 160
+  },
+  {
+   "do": "probe",
+   "note": "建书表单"
+  }
+ ],
+ "create_book": [
+  {
+   "do": "navigate",
+   "url": "{book_manage}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": "[class*=client-select]",
+   "timeout": 12
+  },
+  {
+   "do": "click_match",
+   "contains": true,
+   "any": [
+    "新建小说",
+    "创建作品"
+   ]
+  },
+  {
+   "do": "click_match",
+   "any": [
+    "七猫中文网",
+    "网站特色"
+   ],
+   "max_len": 400
+  },
+  {
+   "do": "click_text",
+   "text": "确认",
+   "scope": "button,[class*=btn]"
+  },
+  {
+   "do": "wait",
+   "sel": "textarea[placeholder*='作品名称']",
+   "timeout": 15
+  },
+  {
+   "do": "fill_label",
+   "label": "作品名称",
+   "key": "title"
+  },
+  {
+   "do": "radio",
+   "key": "target_reader",
+   "map": {
+    "男生": "0",
+    "女生": "1"
+   }
+  },
+  {
+   "do": "click",
+   "sel": "input[placeholder='请选择一级分类']"
+  },
+  {
+   "do": "click_text",
+   "text": "{category_main}",
+   "contains": true,
+   "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+  },
+  {
+   "do": "click",
+   "sel": "input[placeholder='请选择二级分类']"
+  },
+  {
+   "do": "click_text",
+   "text": "{category_sub}",
+   "contains": true,
+   "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+  },
+  {
+   "do": "sleep",
+   "s": 1.0
+  },
+  {
+   "do": "click_text",
+   "text": "添加标签"
+  },
+  {
+   "do": "tags"
+  },
+  {
+   "do": "click_text",
+   "text": "确定",
+   "scope": "button,[class*=btn]"
+  },
+  {
+   "do": "fill_label",
+   "label": "主角名",
+   "key": "protagonist"
+  },
+  {
+   "do": "radio",
+   "key": "status",
+   "map": {
+    "连载中": "0",
+    "已完结": "1"
+   }
+  },
+  {
+   "do": "fill_label",
+   "label": "作品简介",
+   "key": "summary"
+  },
+  {
+   "do": "shot",
+   "name": "create-book-filled"
+  },
+  {
+   "do": "submit",
+   "text": "确认创建"
+  }
+ ],
+ "upload_chapter": [
+  {
+   "do": "navigate",
+   "url": "{chapter_manage_url}",
+   "timeout": 40
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  },
+  {
+   "do": "wait",
+   "sel": "a.create-new-chapter-btn, a[class*=\"create-new-chapter\"]",
+   "timeout": 20
+  },
+  {
+   "do": "click_text",
+   "text": "新建章节",
+   "contains": true,
+   "scope": "a,button,[role=button]"
+  },
+  {
+   "do": "wait",
+   "sel": "textarea[placeholder=\"请输入章节名称，最多20个字\"]",
+   "timeout": 20
+  },
+  {
+   "do": "fill",
+   "sel": "textarea[placeholder=\"请输入章节名称，最多20个字\"]",
+   "key": "chapter_title"
+  },
+  {
+   "do": "fill",
+   "sel": ".chapter-index-input-input input",
+   "key": "chapter_no"
+  },
+  {
+   "do": "wait",
+   "sel": ".q-contenteditable.book.font-size-16.edit-mask",
+   "timeout": 15
+  },
+  {
+   "do": "fill",
+   "sel": ".q-contenteditable.book.font-size-16.edit-mask",
+   "key": "chapter_body"
+  },
+  {
+   "do": "shot",
+   "name": "chapter-filled"
+  },
+  {
+   "do": "expect_text",
+   "any": [
+    "已保存到云端"
+   ],
+   "timeout": 15
+  },
+  {
+   "do": "submit",
+   "gate": true
+  },
+  {
+   "do": "click_real",
+   "text": "立即发布",
+   "scope": "a,button,[role=button],span",
+   "tries": 25
+  },
+  {
+   "do": "js_click",
+   "text": "立即发布",
+   "scope": "a,button,[role=button]",
+   "tries": 10,
+   "skip_if_modal": true
+  },
+  {
+   "do": "expect_text",
+   "any": [
+    "立即发布确认",
+    "检测到章节序号不连续"
+   ],
+   "timeout": 12,
+   "visible_only": true
+  },
+  {
+   "do": "shot",
+   "name": "after-immediate-publish"
+  },
+  {
+   "do": "sleep",
+   "s": 1.2
+  },
+  {
+   "do": "js_click",
+   "text": "更正序号去发布",
+   "scope": "a,button,[role=button]",
+   "tries": 12,
+   "optional": true
+  },
+  {
+   "do": "sleep",
+   "s": 0.8
+  },
+  {
+   "do": "js_click",
+   "text": "确认发布",
+   "scope": ".el-dialog a,.el-dialog button",
+   "tries": 15,
+   "optional": false
+  },
+  {
+   "do": "expect_text_absent",
+   "any": [
+    "立即发布确认"
+   ],
+   "timeout": 15,
+   "visible_only": true
+  },
+  {
+   "do": "sleep",
+   "s": 2.5
+  },
+  {
+   "do": "verify_chapter_status",
+   "url": "{chapter_manage_url}",
+   "timeout": 35,
+   "settle": 4,
+   "new_tab": true,
+   "row_sel": ".el-table__row, tr",
+   "live_status": [
+    "待审核",
+    "审核中",
+    "已发布"
+   ],
+   "draft_status": [
+    "草稿"
+   ]
+  }
+ ],
+ "check_login": [
+  {
+   "do": "navigate",
+   "url": "{home}"
+  },
+  {
+   "do": "url_any",
+   "any": [
+    "qimao.com"
+   ]
+  }
+ ]
 }

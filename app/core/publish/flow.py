@@ -145,8 +145,10 @@ def _click_match_js():
             "let act=el.closest('a,button,[role=button],[class*=btn]');"
             "if(!act){const card=el.closest('.client-box');if(card)act=card;}"
             "if(!act)act=el;"
-            "act.scrollIntoView({block:'center'});act.click();"
-            "return{ok:true,tag:act.tagName};}")
+            "act.scrollIntoView({block:'center'});"
+            "const rc=act.getBoundingClientRect();"
+            "return{ok:true,tag:act.tagName,"
+            "x:Math.round(rc.x+rc.width/2),y:Math.round(rc.y+rc.height/2)};}")
 
 
 def _fill_label_js():
@@ -193,17 +195,25 @@ def _click_text_js():
 def _checked_js():
     # radio/checkbox 点击闭环：点击派发成功 ≠ 选中成功（遮罩/几何打偏会静默
     # 吞掉，2026-09-28 建书两 radio 全空实案）。点完回头验 checked 态：
-    # arco 系 label 挂 checked 类、原生 input 挂 checked 属性，双信号任一即算
+    # arco 系 label 挂 checked 类、原生 input 挂 checked 属性，双信号任一即算。
+    # 元素匹配必须「文本精确等值」优先：scope 里的 [class*=serial-radio] 会先
+    # 命中整个 radio 组容器（serial-radio-group，文本“男频女频”包含“女频”），
+    # 而组内第一个 input 恒为第一选项——按 includes 取容器后验证「女频」读到
+    # 的一直是男频的未选中态，点击明明已生效却误报未选中（2026-10-18 番茄
+    # 建书「女频连点8次仍未见选中态」实案）。组容器仅在无精确匹配时兜底，
+    # 此时语义放宽为「容器内任意 input 选中即算」。
     return ("(t,scope)=>{"
             "const els=[...document.querySelectorAll("
             "scope||'label,[class*=radio],[class*=checkbox]')]"
             ".filter(e=>e.getBoundingClientRect().width>0);"
-            "const el=els.find(e=>((e.innerText||'').trim()).includes(t));"
+            "const eq=els.filter(e=>((e.innerText||'').trim())===t);"
+            "const el=eq[0]||els.find(e=>((e.innerText||'').trim()).includes(t));"
             "if(!el)return{ok:false,err:'nf'};"
             "const box=el.closest('[class*=radio],[class*=checkbox]')||el;"
-            "const inp=box.querySelector('input[type=radio],input[type=checkbox]')||"
-            "el.querySelector('input[type=radio],input[type=checkbox]');"
-            "const ck=(inp&&inp.checked)||/checked|active/.test(box.className||'')"
+            "let any=false;"
+            "for(const i of box.querySelectorAll('input[type=radio],input[type=checkbox]')){"
+            "if(i.checked){any=true;break;}}"
+            "const ck=any||/checked|active/.test(box.className||'')"
             "||/checked|active/.test(el.className||'');"
             "return{ok:!!ck};}")
 
@@ -559,6 +569,18 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     time.sleep(1.0)
                 if not (r or {}).get("ok"):
                     raise FlowError((r or {}).get("err") or "卡片未找到")
+                # 站点卡片（七猫 client-box 等）只认真实鼠标事件序列：合成
+                # act.click() 点了不选中，确认时被「请选择建书站点」拦下，
+                # 表单永不出现（2026-10-18 七猫建书 textarea 等待超时实案）。
+                # 这里按 JS 返回的卡片中心坐标派发 CDP 真实鼠标（同
+                # real_click_text 通道）；无坐标的历史返回形态退回合成点击。
+                if (r or {}).get("x") is not None:
+                    page.send("Input.dispatchMouseEvent",
+                              {"type": "mousePressed", "x": r["x"], "y": r["y"],
+                               "button": "left", "clickCount": 1}, timeout=8.0)
+                    page.send("Input.dispatchMouseEvent",
+                              {"type": "mouseReleased", "x": r["x"], "y": r["y"],
+                               "button": "left", "clickCount": 1}, timeout=8.0)
                 # Vue card selections update asynchronously; the following
                 # confirm action must observe the selected class before it is
                 # clicked (Qimao otherwise reports “请选择建书站点”).
