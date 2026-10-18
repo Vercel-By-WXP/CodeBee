@@ -3391,15 +3391,92 @@ def _critique_json(res, dims):
             "summary": "评审输出无法解析：%s" % (text or res.get("error") or "")[:150]}
 
 
+_QUOTE_STYLE_CACHE = {}   # workdir → 'ascii' | 'corner' | None（书内主流引号制）
+
+
+def _dominant_quote_style(workdir):
+    """探测书内主流引号制：扫既有章稿统计三类引号，ASCII 直引号或直角引号
+    占绝对多数（≥60% 且总量≥20）才判定；新书/无特征返回 None 不做转换。
+    结果按 workdir 缓存——书内制式不会中途换。"""
+    style = _QUOTE_STYLE_CACHE.get(workdir, "?")
+    if style != "?":
+        return style
+    import glob as _glob
+    counts = {"ascii": 0, "corner": 0, "curly": 0}
+    files = sorted(_glob.glob(os.path.join(str(workdir), "chapter-*.md")))[:8]
+    for fp in files:
+        try:
+            with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                s = f.read(20000)
+        except OSError:
+            continue
+        counts["ascii"] += s.count('"')
+        counts["corner"] += s.count("「") + s.count("」")
+        counts["curly"] += (s.count("\u201c") + s.count("\u201d")
+                            + s.count("\u2018") + s.count("\u2019"))
+    total = sum(counts.values())
+    style = None
+    if total >= 20:
+        for key in ("ascii", "corner"):
+            if counts[key] * 5 >= total * 3:   # ≥60%
+                style = key
+                break
+    _QUOTE_STYLE_CACHE[str(workdir)] = style
+    return style
+
+
+def _normalize_quotes(text, workdir):
+    """按书内主流制式归一引号（2026-10-18 实案：修订轮反复把弯引号写回
+    神瞳稿，评审体例 major 三度复发——提示词拦不住写手回归，落盘层兜底）。"""
+    style = _dominant_quote_style(workdir)
+    if style == "ascii":
+        for k in ("\u201c", "\u201d", "\u300c", "\u300d"):
+            text = text.replace(k, '"')
+        for k in ("\u2018", "\u2019", "\u300e", "\u300f"):
+            text = text.replace(k, "'")
+    elif style == "corner":
+        text = (text.replace("\u201c", "\u300c").replace("\u201d", "\u300d")
+                .replace("\u2018", "\u300e").replace("\u2019", "\u300f"))
+    return text
+
+
+class _QuoteNormalizingWriter(object):
+    """写句柄包装：每次 write 按书内主流引号制归一后再落盘。"""
+
+    def __init__(self, fh, workdir):
+        self._fh = fh
+        self._wd = workdir
+
+    def write(self, s):
+        return self._fh.write(_normalize_quotes(s, self._wd))
+
+    def __enter__(self):
+        self._fh.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return self._fh.__exit__(*exc)
+
+    def close(self):
+        return self._fh.close()
+
+    def __getattr__(self, name):
+        return getattr(self._fh, name)
+
+
 def _chapter_io(workdir, i, mode):
     """打开第 i 章文件；open 紧邻边界校验，路径越界直接拒绝（形态同 _ms_io）。
-    读模式兼容 GBK 落盘的章稿（见 _read_text_any_enc）。"""
+    读模式兼容 GBK 落盘的章稿（见 _read_text_any_enc）。写模式按书内主流
+    引号制归一（见 _normalize_quotes）。"""
     p = os.path.abspath(os.path.join(workdir, "chapter-%02d.md" % i))
     if not _inside(workdir, p):
         raise ValueError("章节路径越界: chapter-%02d.md" % i)
     if mode == "r":
         return _read_text_any_enc(p)
-    return open(p, mode, encoding="utf-8", errors="replace")
+    fh = open(p, mode, encoding="utf-8", errors="replace")
+    if mode == "w":
+        return _QuoteNormalizingWriter(fh, workdir)
+    return fh
 
 
 def _read_chapter(workdir, i):
