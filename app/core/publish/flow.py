@@ -604,7 +604,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     raise FlowError((r or {}).get("err") or "填字段失败")
             elif act == "radio":
                 # 单选组：values[map[key]] 映射到 radio value 后点它。
-                # 隐藏 input（Element UI）点不到——点它的最近可见 label 祖先。
+                # 隐藏 input（Element UI）点不到——真实鼠标点它的可见 label
+                # 中心。合成 label.click() 在 label 包住整组 radio 的形态下
+                # 永远激活组内第一个选项（2026-10-18 七猫建书「女生被选成
+                # 男生」实案：频道错→分类下拉加载成男生分类→连锁全错）。
+                # 点后回读 checked 态，未中重点（含 y 微调避开相邻项）。
                 key = st.get("key") or ""
                 group = st.get("map") or {}
                 want = str(values.get(key, "")).strip()
@@ -615,14 +619,78 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         continue
                     raise FlowError("单选 %s：值「%s」不在映射 %s 里" % (key, want, list(group)))
                 note(i, "单选 %s=%s（value=%s）" % (key, want, val))
-                r = page.call(
-                    "(v)=>{const r=[...document.querySelectorAll('input[type=radio]')]"
-                    ".find(x=>x.value===v);if(!r)return{ok:false,err:'radio v='+v};"
-                    "const lab=r.closest('label')||(r.closest('.el-radio')||{}).firstElementChild||r;"
-                    "const t=lab.matches('label,.el-radio')?lab:(r.parentElement||r);"
-                    "t.scrollIntoView({block:'center'});t.click();return{ok:true};}", str(val))
-                if not (r or {}).get("ok"):
-                    raise FlowError((r or {}).get("err") or "单选点击失败")
+                # 分组定位：同页多组 radio 的 value 会撞车（七猫建书实案：
+                # 目标读者 0/1 与连载状态 0/1 同值——点连载 value=0 命中
+                # 目标读者组的男生，把已选女生翻回去，some() 验证还被两组
+                # 同值假阳性骗过）。scope_text 先定位含该文本的表单行
+                # （.el-form-item 等），组内再找 value——找不到容器才退全局。
+                scope_text = str(st.get("scope_text") or "").strip()
+                base_js = ("(v,sc)=>{let root=null;"
+                           "if(sc){const els=[...document.querySelectorAll"
+                           "('[class*=form-item],[class*=form_row],fieldset')]"
+                           ".filter(e=>e.getBoundingClientRect().width>0"
+                           "&&e.querySelector('input[type=radio]'));"
+                           "const hit=els.filter(e=>(e.innerText||'').includes(sc))"
+                           ".sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+                           "if(hit.length)root=hit[0];}"
+                           "const all=[...document.querySelectorAll('input[type=radio]')];"
+                           "const pool=root?root.querySelectorAll('input[type=radio]'):all;"
+                           "const rs=[...pool].filter(x=>x.value===v&&!x.disabled);"
+                           "if(!rs.length)return{ok:false,err:'nf'};"
+                           "return{ok:true,idx:all.indexOf(rs[0])};}")
+
+                def _checked():
+                    return page.call(
+                        "(i)=>{const all=[...document.querySelectorAll"
+                        "('input[type=radio]')];return i>=0&&i<all.length"
+                        "&&!!all[i].checked;}", idx)
+
+                verified = False
+                idx = -1
+                for _try in range(8):
+                    r = page.call(base_js, str(val), scope_text)
+                    if not (r or {}).get("ok"):
+                        raise FlowError("单选 %s=%s 目标未找到（scope_text=%s）"
+                                        % (key, want, scope_text or "无"))
+                    idx = r["idx"]
+                    # 策略1：隐藏 input 原生 click（Element UI 的 input 未
+                    # display:none，编程点击可直接翻转受控状态）
+                    page.call(
+                        "(i)=>{const all=[...document.querySelectorAll"
+                        "('input[type=radio]')];if(i>=0&&i<all.length)all[i].click();}",
+                        idx)
+                    time.sleep(0.45)
+                    if _checked():
+                        verified = True
+                        break
+                    # 策略2：label 中心真实鼠标（elementFromPoint 守卫，
+                    # 被吸顶栏/浮层挡住时不盲点）
+                    pos = page.call(
+                        "(i)=>{const all=[...document.querySelectorAll"
+                        "('input[type=radio]');const r0=all[i];"
+                        "const lab=r0.closest('label')||r0.closest('.el-radio')"
+                        "||r0.parentElement;"
+                        "lab.scrollIntoView({block:'center'});"
+                        "const rc=lab.getBoundingClientRect();"
+                        "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
+                        "const hit=document.elementFromPoint(x,y);"
+                        "if(!hit||(hit!==lab&&!lab.contains(hit)&&!hit.contains(lab)))"
+                        "return{ok:false};"
+                        "return {ok:true,x:x,y:y};}", idx)
+                    if (pos or {}).get("ok") and pos.get("x") is not None:
+                        page.send("Input.dispatchMouseEvent",
+                                  {"type": "mousePressed", "x": pos["x"], "y": pos["y"],
+                                   "button": "left", "clickCount": 1}, timeout=8.0)
+                        page.send("Input.dispatchMouseEvent",
+                                  {"type": "mouseReleased", "x": pos["x"], "y": pos["y"],
+                                   "button": "left", "clickCount": 1}, timeout=8.0)
+                        time.sleep(0.5)
+                        if _checked():
+                            verified = True
+                            break
+                    note(i, "单选 %s=%s 已点未选中，重试" % (key, want))
+                if not verified:
+                    raise FlowError("单选 %s=%s 连点 8 次未选中" % (key, want))
             elif act == "tags":
                 # 标签弹层逐个点选：manager 把标签清单放 values["_tags"]。
                 # 项为 [组名, 标签] 且弹层呈现分组结构（.tags-wrap）时走

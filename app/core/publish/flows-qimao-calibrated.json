@@ -1,5 +1,5 @@
 {
- "_note": "七猫真机校准（2026-10-14）：发章从目标作品章节管理页点击“新建章节”进入真实编辑器；填写标题/正文后直接点击“立即发布”，兼容“更正序号去发布”与“确认发布”弹层；最终必须在章节管理页按本章标题和待审核/审核中/已发布状态核验，草稿不算发布。",
+ "_note": "七猫真机校准（2026-10-14）：发章从目标作品章节管理页点击“新建章节”进入真实编辑器；填写标题/正文后直接点击“立即发布”，兼容“更正序号去发布”与“确认发布”弹层；最终必须在章节管理页按本章标题和待审核/审核中/已发布状态核验，草稿不算发布。 | 2026-10-18 重建：站点弹层下线，直达 information?client_id=1；频道radio必须先于分类（gating）；分类下拉选后补 sleep。",
  "upload_chapter_draft": [
   {
    "do": "navigate",
@@ -103,39 +103,13 @@
  "create_book": [
   {
    "do": "navigate",
-   "url": "{book_manage}"
+   "url": "https://zuozhe.qimao.com/front/book-manage/information?client_id=1"
   },
   {
    "do": "url_any",
    "any": [
     "qimao.com"
    ]
-  },
-  {
-   "do": "wait",
-   "sel": "[class*=client-select]",
-   "timeout": 12
-  },
-  {
-   "do": "click_match",
-   "contains": true,
-   "any": [
-    "新建小说",
-    "创建作品"
-   ]
-  },
-  {
-   "do": "click_match",
-   "any": [
-    "七猫中文网",
-    "网站特色"
-   ],
-   "max_len": 400
-  },
-  {
-   "do": "click_text",
-   "text": "确认",
-   "scope": "button,[class*=btn]"
   },
   {
    "do": "wait",
@@ -153,31 +127,48 @@
    "map": {
     "男生": "0",
     "女生": "1"
-   }
+   },
+   "scope_text": "目标读者"
+  },
+  {
+   "do": "sleep",
+   "s": 0.8
   },
   {
    "do": "click",
    "sel": "input[placeholder='请选择一级分类']"
   },
   {
+   "do": "sleep",
+   "s": 1.5
+  },
+  {
    "do": "click_text",
    "text": "{category_main}",
-   "contains": true,
-   "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+   "contains": false,
+   "scope": "[class*=dropdown] li,[class*=dropdown] span,[class*=popper] li"
+  },
+  {
+   "do": "sleep",
+   "s": 0.6
   },
   {
    "do": "click",
    "sel": "input[placeholder='请选择二级分类']"
   },
   {
+   "do": "sleep",
+   "s": 1.2
+  },
+  {
    "do": "click_text",
    "text": "{category_sub}",
-   "contains": true,
-   "scope": "li,span,[class*=dropdown] *,[class*=popper] *"
+   "contains": false,
+   "scope": "[class*=dropdown] li,[class*=dropdown] span,[class*=popper] li"
   },
   {
    "do": "sleep",
-   "s": 1.0
+   "s": 0.8
   },
   {
    "do": "click_text",
@@ -195,14 +186,6 @@
    "do": "fill_label",
    "label": "主角名",
    "key": "protagonist"
-  },
-  {
-   "do": "radio",
-   "key": "status",
-   "map": {
-    "连载中": "0",
-    "已完结": "1"
-   }
   },
   {
    "do": "fill_label",
