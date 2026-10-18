@@ -142,6 +142,25 @@ class TestDownQuery(HealthBase):
         self.assertFalse(health.is_down("weiyun"))  # 还在 failing
         self.assertEqual(health.down_names(), {"cavoti"})
 
+    def test_permanent_provider_errors_open_circuit_immediately(self):
+        from app.core import health
+        from app.core.error_codes import ErrorCode
+
+        health.report_failure("cavoti", "HTTP 403 model rejected",
+                              model="m1", error_code=ErrorCode.FORBIDDEN)
+        snap = health.snapshot()["providers"][0]
+        self.assertNotEqual(snap["status"], "down")
+        self.assertNotIn("cavoti", health.down_names())
+        self.assertTrue(health.is_model_down("cavoti", "m1"))
+        self.assertFalse(health.is_model_down("cavoti", "m2"))
+        self.assertEqual(snap["consecutive_failures"], 0)
+
+        health.reset("cavoti")
+        health.report_failure("cavoti", "unknown model id",
+                              model="missing", error_code="UPSTREAM_SERVER")
+        self.assertNotEqual(health.snapshot()["providers"][0]["status"], "down")
+        self.assertTrue(health.is_model_down("cavoti", "missing"))
+
 
 class TestPersistence(HealthBase):
 

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import queue
+import os
 import sys
 import threading
 import time
@@ -34,6 +35,7 @@ _pool_lock = threading.Lock()
 _idle_cond = threading.Condition(_pool_lock)
 _timer_lock = threading.Lock()
 _deferred_timers = {}
+_workdir_waiters = {}  # normalized workdir -> {run_id: job} (insertion order)
 _worker_lock = threading.Lock()
 _workers = {}  # run_id → Thread; immediate follow-ups wait for the old writer to exit
 _seq = 0
@@ -416,6 +418,7 @@ def _schedule_enqueue(job, delay_s):
     def _fire():
         with _timer_lock:
             _deferred_timers.pop(run_id, None)
+            _forget_workdir_waiter_locked(run_id)
         try:
             enqueue(job)
         except Exception:
@@ -436,6 +439,87 @@ def _schedule_enqueue(job, delay_s):
             _close_unstarted(job, "自动续跑定时器启动失败，请手动重试")
             raise
     return True
+
+
+def _workdir_key(workdir):
+    """Normalize a workdir for the waiter index without touching the filesystem."""
+    try:
+        raw = str(workdir or "").strip()
+        if not raw:
+            return ""
+        value = os.path.normcase(os.path.abspath(raw)).rstrip("\\/")
+        return value if value and value not in (".", os.path.sep) else ""
+    except Exception:
+        return ""
+
+
+def _forget_workdir_waiter_locked(run_id):
+    """Remove a run from all workdir waiter buckets; caller holds _timer_lock."""
+    for key, waiters in list(_workdir_waiters.items()):
+        waiters.pop(run_id, None)
+        if not waiters:
+            _workdir_waiters.pop(key, None)
+
+
+def register_workdir_waiter(workdir, job, delay_s=60.0):
+    """Register a workdir-blocked orchestration and schedule its fallback timer.
+
+    The timer preserves recovery across process churn; a finishing run can call
+    :func:`wake_workdir_waiters` to promote the oldest waiter immediately.
+    """
+    key = _workdir_key(workdir)
+    run_id = (job or {}).get("run_id")
+    if not key or not run_id:
+        return _schedule_enqueue(job, delay_s)
+    queued_job = dict(job)
+    queued_job["workdir"] = str(workdir or "")
+    with _timer_lock:
+        _workdir_waiters.setdefault(key, {})[run_id] = queued_job
+    if _schedule_enqueue(queued_job, delay_s):
+        return True
+    with _timer_lock:
+        _forget_workdir_waiter_locked(run_id)
+    return False
+
+
+def wake_workdir_waiters(workdir):
+    """Wake the oldest queued orchestration waiting for ``workdir``.
+
+    Only one waiter is promoted per release so a burst of same-directory jobs
+    cannot all race back into the pipeline and recreate the 60-second loop.
+    """
+    key = _workdir_key(workdir)
+    if not key:
+        return False
+    while True:
+        with _timer_lock:
+            waiters = _workdir_waiters.get(key)
+            if not waiters:
+                return False
+            run_id, job = next(iter(waiters.items()))
+            waiters.pop(run_id, None)
+            if not waiters:
+                _workdir_waiters.pop(key, None)
+            timer = _deferred_timers.pop(run_id, None)
+        if timer is not None:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+        try:
+            from . import store
+            run = store.get_run(run_id)
+            if not run or run.get("status") != "queued":
+                continue
+            store.update_run(run_id, expected_status="queued", resume_enqueue_at="")
+        except Exception:
+            continue
+        try:
+            if _schedule_enqueue(job, 0.0):
+                return True
+        except Exception:
+            pass
+        return False
 
 
 def enqueue_now(run_id):
@@ -520,6 +604,7 @@ def _run_job(job):
     """直接执行线程入口；无 get/put 等待阶段。"""
     run_id = job.get("run_id")
     ev = cancel_event_for(run_id) if run_id else threading.Event()
+    did_execute = False
     try:
         # enqueue 已把 run 原子切为 running。线程真正得到调度时再检查一次，
         # 用户若在两者之间取消，直接跳过，避免取消后仍进入流水线。
@@ -532,10 +617,13 @@ def _run_job(job):
                 return
         if job.get("kind") == "orchestration":
             from . import pipeline
+            did_execute = True
             pipeline.execute_run(run_id)
         elif job.get("kind") == "mgmt":
+            did_execute = True
             _do_mgmt(job, ev)
         elif job.get("kind") == "selfupgrade":
+            did_execute = True
             _do_selfupgrade(job, ev)
         else:
             raise ValueError("未知任务类型 %r" % job.get("kind"))
@@ -548,17 +636,27 @@ def _run_job(job):
         except Exception:
             pass
     finally:
+        workdir_to_wake = ""
+        should_wake_workdir = False
         if run_id:
             # 执行线程退出就是生命周期的最后边界。流水线分支若意外提前 return、
             # 或内部吞掉异常却漏写终态，旧逻辑会让 run/task 永久停在 running。
             try:
                 from . import store
                 latest = store.get_run(run_id)
+                workdir_to_wake = store.run_workdir(run_id)
                 if latest and latest.get("status") == "running":
                     store.update_run(
                         run_id, expected_status="running", status="failed",
                         ended_at=_now(),
                         error="执行流程已退出但未写入完成状态，已自动标记失败；可重试")
+                    should_wake_workdir = True
+                elif (did_execute and latest
+                      and latest.get("status") not in ("queued", "running")):
+                    # A pipeline that deliberately returned itself to queued
+                    # (for example, a workdir blocker) must not wake that same
+                    # waiter while its blocker is still running.
+                    should_wake_workdir = True
             except Exception:
                 pass
             CANCELS.pop(run_id, None)
@@ -572,6 +670,11 @@ def _run_job(job):
             except Exception:
                 pass
         _release_slot(job)
+        if should_wake_workdir and workdir_to_wake:
+            try:
+                wake_workdir_waiters(workdir_to_wake)
+            except Exception:
+                pass
         with _worker_lock:
             _workers.pop(run_id, None)
 
@@ -619,6 +722,7 @@ def cancel(run_id):
             if changed is not None:
                 with _timer_lock:
                     timer = _deferred_timers.pop(run_id, None)
+                    _forget_workdir_waiter_locked(run_id)
                 if timer is not None:
                     timer.cancel()
                 return True
@@ -989,6 +1093,7 @@ def _drain_test_queue():
     with _timer_lock:
         timers = list(_deferred_timers.values())
         _deferred_timers.clear()
+        _workdir_waiters.clear()
     for timer in timers:
         try:
             timer.cancel()

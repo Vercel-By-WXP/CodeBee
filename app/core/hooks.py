@@ -19,7 +19,9 @@ import logging
 import os
 import shlex
 import subprocess
+import threading
 import time
+from pathlib import Path
 
 from . import hook_diagnostics
 
@@ -32,6 +34,10 @@ _DEFAULT_TIMEOUT = 10
 _FILE = None          # 测试重绑（同 modelhub._FILE 惯例）
 
 _CREATE_NO_WINDOW = 0x08000000 if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+_FAILURE_COOLDOWN_S = 300.0
+_SUPPRESSION_LOCK = threading.RLock()
+_SUPPRESSED_FAILURES = {}
+_SUPPRESSION_MAX = 512
 
 
 def _path():
@@ -94,6 +100,88 @@ def _argv(cmd):
     return out
 
 
+def _missing_path(argv):
+    """Return a missing executable/script path for common hook commands.
+
+    Hook commands are arbitrary local processes, so probing every argument as a
+    path would reject valid payload flags.  We only inspect an explicit
+    executable and the script operand of Python/Node commands.
+    """
+    if not argv:
+        return ""
+    executable = str(argv[0])
+    exe_name = Path(executable).name.lower()
+    if (os.path.isabs(executable) or "/" in executable or "\\" in executable):
+        if not Path(executable).expanduser().exists():
+            return executable
+    bare_name = exe_name[:-4] if exe_name.endswith(".exe") else exe_name
+    is_python = (bare_name in ("python", "py") or
+                 bare_name.startswith("python3") or bare_name.startswith("python2"))
+    is_node = bare_name in ("node", "nodejs")
+    if not (is_python or is_node):
+        return ""
+    args = list(argv[1:])
+    # Python's -c/-m payloads do not name a script file.  Other interpreter
+    # flags may precede the script (for example ``python -u hook.py``).  A few
+    # options consume the following token; skip that value rather than treating
+    # it as the script (``python -X utf8 hook.py``).
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        raw_flag = str(args[i])
+        flag = raw_flag.lower()
+        if is_python and flag in ("-c", "--command", "-m", "--module"):
+            return ""
+        if is_python and raw_flag in ("-X", "-W", "--check-hash-based-pycs"):
+            i += 2
+            continue
+        # Node options such as --require consume their following operand; do
+        # not mistake that operand for the entry script.
+        if is_node and flag in ("-e", "--eval", "--require", "-r", "--loader",
+                                "--import"):
+            i += 2
+            continue
+        i += 1
+    if i >= len(args):
+        return ""
+    script = args[i]
+    if not str(script).lower().endswith((".py", ".pyw", ".js", ".mjs", ".cjs")):
+        return ""
+    path = Path(script).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return str(path) if not path.exists() else ""
+
+
+def _suppression_key(h):
+    return (str(_path()), str(h.get("id") or ""), str(h.get("event") or ""),
+            str(h.get("cmd") or ""))
+
+
+def _suppressed(h):
+    now = time.monotonic()
+    key = _suppression_key(h)
+    with _SUPPRESSION_LOCK:
+        for old_key, until in list(_SUPPRESSED_FAILURES.items()):
+            if until <= now:
+                _SUPPRESSED_FAILURES.pop(old_key, None)
+        until = _SUPPRESSED_FAILURES.get(key, 0)
+        if until > now:
+            return True
+        _SUPPRESSED_FAILURES.pop(key, None)
+        return False
+
+
+def _remember_failure(h, result):
+    key = _suppression_key(h)
+    with _SUPPRESSION_LOCK:
+        if result.get("status") in ("invalid_command", "spawn_failed"):
+            _SUPPRESSED_FAILURES[key] = time.monotonic() + _FAILURE_COOLDOWN_S
+        else:
+            _SUPPRESSED_FAILURES.pop(key, None)
+        while len(_SUPPRESSED_FAILURES) > _SUPPRESSION_MAX:
+            _SUPPRESSED_FAILURES.pop(next(iter(_SUPPRESSED_FAILURES)))
+
+
 def _execute(h, payload):
     """Execute once and report the real process outcome without raising."""
     start = time.monotonic()
@@ -113,6 +201,9 @@ def _execute(h, payload):
         argv = _argv(h.get("cmd"))
         if not argv:
             return finish("invalid_command", error="Hook command is empty")
+        missing = _missing_path(argv)
+        if missing:
+            return finish("invalid_command", error="Hook script not found: %s" % missing)
     except ValueError as exc:
         return finish("invalid_command", error=str(exc))
     try:
@@ -142,7 +233,10 @@ def _execute(h, payload):
 
 
 def _run_one(h, payload):
+    if _suppressed(h):
+        return None
     result = _execute(h, payload)
+    _remember_failure(h, result)
     return result["output"] if result["ok"] else None
 
 

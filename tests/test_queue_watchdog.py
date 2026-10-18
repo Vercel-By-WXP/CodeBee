@@ -78,6 +78,51 @@ class QueueWatchdogTest(BaseTest):
             release.set()
             self.assertTrue(jobs.wait_for_idle(3))
 
+    def test_workdir_waiter_is_woken_immediately_and_timer_is_fallback(self):
+        """完成同目录任务后只唤醒最早等待者，避免固定 60 秒空转。"""
+        from app.core import jobs, store
+        task = store.create_task({
+            "type": "serial_novel", "title": "目录等待", "goal": "写一章",
+            "workdir": str(self.tmp), "serial": {"chapters": 1, "words_per_chapter": 10},
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_run(run["id"], resume_enqueue_at="2099-01-01 00:00:00")
+        calls = []
+
+        def fake_schedule(job, delay):
+            calls.append((dict(job), delay))
+            return True
+
+        with mock.patch.object(jobs, "_schedule_enqueue", side_effect=fake_schedule):
+            self.assertTrue(jobs.register_workdir_waiter(
+                str(self.tmp), {"kind": "orchestration", "run_id": run["id"],
+                                "task_id": task["id"]}, 60))
+            self.assertTrue(jobs.wake_workdir_waiters(str(self.tmp)))
+
+        self.assertEqual([round(c[1], 3) for c in calls], [60, 0])
+        self.assertEqual(store.get_run(run["id"])["resume_enqueue_at"], "")
+
+    def test_workdir_blocker_does_not_wake_itself_on_rollback(self):
+        """回滚 queued 的执行线程仍在等待占用者，不能触发自身唤醒。"""
+        from app.core import jobs, pipeline, store
+        task = store.create_task({
+            "type": "serial_novel", "title": "目录回滚", "goal": "写一章",
+            "workdir": str(self.tmp), "serial": {"chapters": 1, "words_per_chapter": 10},
+        })
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+
+        def fake_execute(run_id):
+            store.update_run(run_id, expected_status="running", status="queued")
+
+        jobs.configure(12)
+        with mock.patch.object(pipeline, "execute_run", side_effect=fake_execute), \
+                mock.patch.object(jobs, "wake_workdir_waiters") as wake:
+            jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                          "task_id": task["id"]})
+            self.assertTrue(jobs.wait_for_idle(3))
+        wake.assert_not_called()
+        self.assertEqual(store.get_run(run["id"])["status"], "queued")
+
     def test_worker_exit_without_terminal_state_is_closed_as_failed(self):
         """流水线漏写终态直接返回时，线程出口必须收尸，不能永久 running。"""
         from app.core import jobs, store, pipeline

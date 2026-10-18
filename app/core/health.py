@@ -38,12 +38,18 @@ PROBE_BACKOFF = (60, 120, 300)   # 探测退避秒数（封顶 300）
 SILENCE_FOREVER = -1         # 手动静默不自动过期（恢复时才清除）
 CLI_FAILURE_THRESHOLD = 3
 CLI_COOLDOWN_SECONDS = 300
+_PERMANENT_FAILURE_CODES = frozenset({
+    "QUOTA", "AUTH", "MISSING_CREDENTIAL", "FORBIDDEN", "MODEL_UNAVAILABLE",
+})
+_MODEL_FAILURE_CODES = frozenset({"FORBIDDEN", "MODEL_UNAVAILABLE"})
 
 _LOCK = threading.RLock()
 _PROVIDERS = {}              # name -> 状态 dict
 _FILE = None                 # init() 注入（data/provider_health.json）
 _PROBE_THREAD = None
 _STARTED = False
+_UNSOURCED_LOG_COOLDOWN_S = 300.0
+_UNSOURCED_LOGGED = {}
 
 
 def init(data_dir=None, *, start_probe=True):
@@ -54,6 +60,7 @@ def init(data_dir=None, *, start_probe=True):
     """
     global _FILE, _PROVIDERS, _STARTED, _PROBE_THREAD
     with _LOCK:
+        _UNSOURCED_LOGGED.clear()
         base = Path(data_dir) if data_dir else Path(_default_dir())
         base.mkdir(parents=True, exist_ok=True)
         _FILE = base / "provider_health.json"
@@ -125,6 +132,28 @@ def _now():
     return time.time()
 
 
+def _allow_unsourced_log(provider, model, text):
+    """Rate-limit repetitive local CLI crashes without hiding new signatures."""
+    import re
+    signature = re.sub(r"\d+", "N", str(text or "").lower())
+    signature = re.sub(r"\s+", " ", signature).strip()[:240]
+    key = (str(provider or ""), str(model or ""), signature)
+    now = time.monotonic()
+    with _LOCK:
+        previous = _UNSOURCED_LOGGED.get(key, 0.0)
+        if now - previous < _UNSOURCED_LOG_COOLDOWN_S:
+            return False
+        _UNSOURCED_LOGGED[key] = now
+        if len(_UNSOURCED_LOGGED) > 512:
+            cutoff = now - _UNSOURCED_LOG_COOLDOWN_S
+            for old_key, at in list(_UNSOURCED_LOGGED.items()):
+                if at < cutoff:
+                    _UNSOURCED_LOGGED.pop(old_key, None)
+            while len(_UNSOURCED_LOGGED) > 512:
+                _UNSOURCED_LOGGED.pop(next(iter(_UNSOURCED_LOGGED)))
+        return True
+
+
 def _fmt_ts(epoch):
     if not epoch:
         return ""
@@ -133,7 +162,7 @@ def _fmt_ts(epoch):
 
 # ---------------------------------------------------------------- 上报入口
 
-def report_success(provider: str):
+def report_success(provider: str, *, model: str = ""):
     """一次真实成功调用（CLI 或 API 直连）。"""
     if not provider:
         return
@@ -141,6 +170,10 @@ def report_success(provider: str):
         st = _PROVIDERS.get(provider)
         if st is None:
             return  # 没失败过就不建档（零开销）
+        model = str(model or "").strip()
+        model_circuits = st.setdefault("model_circuits", {})
+        if model and model in model_circuits:
+            model_circuits.pop(model, None)
         if st.get("status") in ("failing", "down"):
             st["status"] = "recovered"
             st["recovered_at"] = _now()
@@ -151,6 +184,8 @@ def report_success(provider: str):
             st["silenced"] = False       # 静默只管一次故障期；恢复后重新武装
             st["silence_until"] = 0
             st["half_open"] = False
+            st["circuit_open_until"] = 0
+            st.pop("permanent_error_code", None)
             log.info("[health] %s 已恢复（告警自动解除）", provider)
         else:
             st["last_ok_at"] = _now()
@@ -165,7 +200,7 @@ _LAUNCH_FAILURE_PREFIX = "启动失败"
 
 
 def report_failure(provider: str, error: str = "", *, model: str = "",
-                   provider_id: str = ""):
+                   provider_id: str = "", error_code: str = ""):
     """一次真实失败调用。provider 用展示名（与 usage 台账一致）。
 
     本地 CLI 启动失败（找不到可执行文件等）与供应商无关，记进来会把健康
@@ -188,6 +223,18 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
                     provider, str(error or "")[:160])
         return
     text = str(error or "")
+    # Deterministic account/model failures should open a short circuit on the
+    # first observation.  Waiting for the generic three-failure threshold makes
+    # every chapter or reviewer retry a request that cannot succeed.
+    try:
+        from .error_codes import classify_error_text, error_code_value
+        code = error_code_value(error_code) or error_code_value(classify_error_text(text))
+    except Exception:
+        code = getattr(error_code, "value", str(error_code or ""))
+    lower_text = text.lower()
+    if ("unknown model" in lower_text or "invalid model" in lower_text
+            or "model not found" in lower_text or "unknown model id" in lower_text):
+        code = "MODEL_UNAVAILABLE"
     if "stderr/stdout:" in text[:160]:
         try:
             from .error_codes import classify_error_text
@@ -195,8 +242,9 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         except Exception:
             unclassified = False
         if unclassified:
-            log.warning("[health] CLI 崩溃无供应商侧信号（与供应商 %s 无关，"
-                        "不记健康故障）：%s", provider, text[:160])
+            if _allow_unsourced_log(provider, model, text):
+                log.warning("[health] CLI 崩溃无供应商侧信号（与供应商 %s 无关，"
+                            "不记健康故障）：%s", provider, text[:160])
             return
     # 快照闸起跑前拒绝（checkpoints.begin_git_step 的固定文案族）是本地闸门
     # 决定，供应商侧零参与——记进去会把健康的 CLI 通道按连续失败推进 down
@@ -228,23 +276,44 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             "last_fail_at": 0, "last_ok_at": 0, "last_error": "",
             "alerted": False, "silenced": False, "silence_until": 0,
             "probe_next_at": 0, "probe_backoff_idx": 0,
-            "recovered_at": 0,
+            "recovered_at": 0, "model_circuits": {},
         })
         st["name"] = provider
         if provider_id and not st.get("provider_id"):
             st["provider_id"] = provider_id
         if model and not st.get("model"):
             st["model"] = model
+        model = str(model or "").strip()
+        if code in _MODEL_FAILURE_CODES and model:
+            circuits = st.setdefault("model_circuits", {})
+            previous = circuits.get(model) or {}
+            circuits[model] = {
+                "open_until": _now() + CLI_COOLDOWN_SECONDS,
+                "error_code": code,
+                "failures": int(previous.get("failures") or 0) + 1,
+                "last_error": str(error or "")[:300],
+                "updated_at": _now(),
+            }
+            # Model-specific errors must not contaminate provider-level
+            # failure counters or timestamps used by the provider circuit.
+            st["last_error_code"] = code
+            _persist()
+            return
         n = int(st.get("consecutive_failures") or 0) + 1
         st["consecutive_failures"] = n
         st["last_fail_at"] = _now()
         st["last_error"] = str(error or "")[:300]
+        st["last_error_code"] = code
         if st.get("status") in ("ok", "recovered", ""):
             st["status"] = "failing"
             st["first_fail_at"] = _now()
             st["probe_next_at"] = _now() + PROBE_BACKOFF[0]
             st["probe_backoff_idx"] = 0
-        if n >= CLI_FAILURE_THRESHOLD:
+        if code in _PERMANENT_FAILURE_CODES:
+            st["status"] = "down"
+            st["circuit_open_until"] = _now() + CLI_COOLDOWN_SECONDS
+            st["permanent_error_code"] = code
+        elif n >= CLI_FAILURE_THRESHOLD:
             st["status"] = "down"
             st["circuit_open_until"] = _now() + CLI_COOLDOWN_SECONDS
         # failing → down：连续次数或持续时间任一达到
@@ -285,7 +354,9 @@ def reset(provider: str):
             return False, "未知的供应商"
         st.update({"status": "recovered", "consecutive_failures": 0,
                    "alerted": False, "silenced": False, "silence_until": 0,
-                   "probe_next_at": 0, "recovered_at": _now()})
+                   "probe_next_at": 0, "recovered_at": _now(),
+                   "circuit_open_until": 0, "half_open": False,
+                   "model_circuits": {}})
         _persist()
         return True, ""
 
@@ -363,6 +434,45 @@ def is_down(provider: str) -> bool:
             st["half_open"] = True
             return False
         return True
+
+
+def is_model_down(provider: str, model: str) -> bool:
+    """Return whether one provider/model pair is in a short model circuit."""
+    provider = str(provider or "")
+    model = str(model or "").strip()
+    if not provider or not model:
+        return False
+    with _LOCK:
+        st = _PROVIDERS.get(provider) or {}
+        circuits = st.get("model_circuits") or {}
+        row = circuits.get(model)
+        if not isinstance(row, dict):
+            return False
+        until = float(row.get("open_until") or 0)
+        if until and until <= _now():
+            circuits.pop(model, None)
+            _persist()
+            return False
+        return bool(until)
+
+
+def down_models() -> set:
+    """Return active ``(provider, model)`` model-level circuits."""
+    now = _now()
+    out = set()
+    with _LOCK:
+        changed = False
+        for provider, st in _PROVIDERS.items():
+            circuits = st.get("model_circuits") or {}
+            for model, row in list(circuits.items()):
+                if not isinstance(row, dict) or float(row.get("open_until") or 0) <= now:
+                    circuits.pop(model, None)
+                    changed = True
+                else:
+                    out.add((provider, model))
+        if changed:
+            _persist()
+    return out
 
 
 def cli_status(cli: str):
@@ -486,6 +596,7 @@ def _probe_loop():
                 targets = [(name, st) for name, st in _PROVIDERS.items()
                            if not st.get("static")  # 静态死链无端点可探，绑定恢复时自动解除
                            and st.get("status") in ("failing", "down")
+                           and float(st.get("circuit_open_until") or 0) <= _now()
                            and (st.get("probe_next_at") or 0) <= _now()]
                 for name, st in targets:
                     idx = int(st.get("probe_backoff_idx") or 0)

@@ -62,6 +62,96 @@ class SessionRuntimeTests(unittest.TestCase):
         self.assertEqual(recovered["status"], "idle")
         self.runtime.admit_turn(row["id"], "retry")
 
+    def test_admitted_turn_heartbeats_and_finish_releases_lease(self):
+        row = self.runtime.create(workspace=self.root / "workspace", owner="ui-1")
+        self.runtime.admit_turn(row["id"], "long task")
+        lease = self.runtime._leases[row["id"]]
+        self.assertTrue(lease.heartbeat_running())
+        self.runtime.finish_turn(row["id"], "done")
+        self.assertFalse(lease.valid())
+        self.assertFalse(lease.heartbeat_running())
+
+    def test_heartbeat_renews_before_short_ttl_expires(self):
+        lease = session_runtime.WorkspaceLease.acquire(
+            self.root / "heartbeat-workspace", "owner", ttl=0.2, root=self.root)
+        lease.start_heartbeat(ttl=0.2, interval=0.1)
+        time.sleep(0.35)
+        self.assertTrue(lease.valid())
+        lease.release()
+
+    def test_drain_releases_lease_and_next_turn_reacquires(self):
+        row = self.runtime.create(workspace=self.root / "workspace", owner="ui-1")
+        self.runtime.admit_turn(row["id"], "aborted")
+        old = self.runtime._leases[row["id"]]
+        self.runtime.drain_turns(row["id"], "aborted")
+        self.assertFalse(old.valid())
+        self.runtime.admit_turn(row["id"], "retry")
+        self.assertTrue(self.runtime._leases[row["id"]].valid())
+
+    def test_stale_finish_and_drain_cannot_touch_resumed_owner(self):
+        row = self.runtime.create(workspace=self.root / "workspace", owner="ui-1")
+        old = self.runtime.admit_turn(row["id"], "old")
+        resumed = self.runtime.resume(row["id"], owner="ui-2")
+        current = self.runtime.admit_turn(row["id"], "new")
+        self.runtime.finish_turn(row["id"], "late old", admission=old)
+        after_finish = self.runtime.get(row["id"])
+        self.assertEqual(after_finish["inflight_count"], 1)
+        self.assertIn(current["token"], after_finish["active_turns"])
+        self.runtime.drain_turns(row["id"], "late drain",
+                                 admissions=[old], owner="ui-1",
+                                 owner_epoch=old["owner_epoch"])
+        after_drain = self.runtime.get(row["id"])
+        self.assertEqual(after_drain["owner"], "ui-2")
+        self.assertEqual(after_drain["inflight_count"], 1)
+        self.assertEqual(after_drain["owner_epoch"], current["owner_epoch"])
+
+    def test_scoped_drain_preserves_turn_admitted_after_snapshot(self):
+        row = self.runtime.create(workspace=self.root / "workspace", owner="ui-1")
+        first = self.runtime.admit_turn(row["id"], "first", allow_parallel=True)
+        second = self.runtime.admit_turn(row["id"], "second", allow_parallel=True)
+        drained = self.runtime.drain_turns(
+            row["id"], "first aborted", admissions=[first],
+            owner="ui-1", owner_epoch=first["owner_epoch"])
+        self.assertTrue(drained["inflight"])
+        self.assertEqual(drained["inflight_count"], 1)
+        self.assertEqual(drained["active_turns"], [second["token"]])
+
+    def test_heartbeat_renew_error_stops_thread_cleanly(self):
+        lease = session_runtime.WorkspaceLease.acquire(
+            self.root / "heartbeat-error", "owner", ttl=1, root=self.root)
+        original = lease.renew
+        lease.renew = lambda ttl=90.0: (_ for _ in ()).throw(OSError("read failed"))
+        try:
+            lease.start_heartbeat(ttl=1, interval=0.01)
+            deadline = time.time() + 1
+            while lease.heartbeat_running() and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertFalse(lease.heartbeat_running())
+        finally:
+            lease.renew = original
+            lease.release()
+
+    def test_close_rejects_late_finish_and_drain(self):
+        row = self.runtime.create(workspace=self.root / "workspace", owner="ui-1")
+        admission = self.runtime.admit_turn(row["id"], "close me")
+        self.runtime.close(row["id"])
+        closed = self.runtime.finish_turn(row["id"], "late", admission=admission)
+        self.assertEqual(closed["status"], "closed")
+        self.assertEqual(closed["inflight_count"], 0)
+        drained = self.runtime.drain_turns(
+            row["id"], "late drain", admissions=[admission],
+            owner="ui-1", owner_epoch=admission["owner_epoch"])
+        self.assertEqual(drained["status"], "closed")
+
+    def test_startup_removes_expired_lease_files(self):
+        workspace = self.root / "old-workspace"
+        old = session_runtime.WorkspaceLease.acquire(
+            workspace, "old", ttl=0.01, root=self.root / "leases")
+        time.sleep(0.03)
+        self.assertTrue(old.path.exists())
+        session_runtime.SessionRuntime(self.root)
+        self.assertFalse(old.path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ import os
 import re
 import threading
 import time
+import weakref
 
 from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
 from . import builtin_agent
@@ -541,7 +542,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     if not allowed:
         return {"ok": False, "error": "任务预算已达上限：%s" % quota_error,
                 "budget": quota.snapshot()}
-    _ensure_runtime_session(run_id, workdir, role, prompt, agent)
+    admission = _ensure_runtime_session(run_id, workdir, role, prompt, agent)
     deadline = _ensure_budget(run_id)
     timeout, deadline = _step_timeout(run_id, timeout, deadline)
     # 绑定解析为空分两种（2026-09-18 起 区分对待）：
@@ -617,7 +618,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                "raw": {"exit_code": None, "sandbox_blocked": True},
                "kind": agent.get("kind", "generic"), "model": agent.get("model")}
         _finish_step_result(run_id, step, res, role, agent, start,
-                            readonly=readonly)
+                            readonly=readonly, admission=admission)
         return res
     if dead_binding:
         from .error_codes import ErrorCode
@@ -627,7 +628,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                "raw": {"exit_code": None}, "kind": agent.get("kind", "generic"),
                "model": agent.get("model")}
         _finish_step_result(run_id, step, res, role, agent, start,
-                            readonly=readonly)
+                            readonly=readonly, admission=admission)
         return res
     if agent.get("mode") == "mock":
         time.sleep(0.3)
@@ -651,7 +652,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                    "kind": agent.get("kind", "generic"),
                    "model": agent.get("model")}
             _finish_step_result(run_id, step, res, role, agent, start,
-                                readonly=readonly)
+                                readonly=readonly, admission=admission)
             return res
         # 运行中指挥：drain 用户追加的指令/附件，注入本步（守门拦截时不 drain，
         # 消息留给下一个真实步骤，不空耗）；role/step_n 作送达回执
@@ -679,7 +680,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
                    "raw": {"exit_code": None, "checkpoint_blocked": True},
                    "kind": agent.get("kind", "generic"), "model": agent.get("model")}
             _finish_step_result(run_id, step, res, role, agent, start,
-                                readonly=readonly)
+                                readonly=readonly, admission=admission)
             return res
         res = _spawn_step(session_run_id=run_id, role=role, agent=agent,
                           prompt=effective_prompt, workdir=workdir, readonly=readonly,
@@ -710,7 +711,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     # 先收尾再查取消：取消时进程已被 run_process 杀停，若先抛 Cancelled，
     # 步骤记录会永远停在「运行中」变僵尸（与 _run_verify 的顺序对齐）
     _finish_step_result(run_id, step, res, role, agent, start,
-                        readonly=readonly)
+                        readonly=readonly, admission=admission)
     if (res.get("raw") or {}).get("deadline_exceeded"):
         store.update_run(run_id, expected_status="running", status="timeout",
                          ended_at=_now(), error="任务总时限已到")
@@ -808,6 +809,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     sandbox：任务沙箱策略由调用方透传（本函数无 task 上下文），builtin_agent
     内部 normalize 后在工具执行期强制。"""
     _wait_gate(run_id, ev)
+    admission = _ensure_runtime_session(run_id, workdir, role, prompt,
+                                        {"id": "builtin", "model": bi.get("model") or ""})
     deadline = _ensure_budget(run_id)
     from . import execution_config
     step, log_abs = store.add_step(run_id, role, "builtin", "CodeBee", note=note,
@@ -825,7 +828,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
                "error": guard["reminder"], "error_code": ErrorCode.ENV_BLOCK,
                "raw": {"exit_code": None, "repeat_stop": True},
                "model": bi.get("model")}
-        _finish_step_result(run_id, step, res, role, agent_pseudo, start)
+        _finish_step_result(run_id, step, res, role, agent_pseudo, start,
+                            admission=admission)
         return res
     # 运行中指挥：drain 用户追加的指令/附件，注入本轮（与 _run_step 同语义）
     directive_block, directive_imgs = _drain_directives(run_id, workdir, role=role, step_n=step["n"])
@@ -892,7 +896,8 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     res["tokens"] = int(usage.get("total") or 0)
     res.setdefault("cost_usd", 0.0)
     # 先收尾再查取消：与 _run_step 同序，防步骤记录停在「运行中」变僵尸
-    _finish_step_result(run_id, step, res, role, agent_pseudo, start)
+    _finish_step_result(run_id, step, res, role, agent_pseudo, start,
+                        admission=admission)
     if (res.get("raw") or {}).get("deadline_exceeded"):
         store.update_run(run_id, expected_status="running", status="timeout",
                          ended_at=_now(), error="任务总时限已到")
@@ -1058,20 +1063,21 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     return res
 
 
-def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None):
+def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
+                        admission=None):
     """step 收尾：记录 + 用量 + 运行时断言（5F）。"""
     # 被取消杀停的步骤如实记「已取消」；超时被杀记「超时」——都只是步骤
     # 显示层的细分，run 级仍是 failed，善后路径（重试/自动续跑）不变
     raw = res.get("raw") or {}
     try:
         from . import session_runtime
-        row = session_runtime.default_runtime().get(run_id)
         # A stale/aborted worker must never suppress durable step finalization.
-        # Only decrement the runtime turn when this worker actually owns an
-        # inflight admission; the store remains the source of truth for steps.
-        if row.get("inflight"):
+        # Only an admission token owned by this worker may decrement runtime
+        # state; the store remains the source of truth for durable steps.
+        if admission:
             session_runtime.default_runtime().finish_turn(
-                run_id, res.get("text") or res.get("error") or "")
+                run_id, res.get("text") or res.get("error") or "",
+                admission=admission)
     except Exception:
         pass
     if raw.get("cancelled"):
@@ -1231,14 +1237,26 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
         # 告警模块：CLI 调用成功/失败上报（provider 名与 usage 台账一致）
         from . import health
         prov = res.get("provider") or agent.get("provider") or {}
+        prov_id = (res.get("provider_id") or
+                   (prov.get("id") if isinstance(prov, dict) else "") or "")
         prov_name = (prov.get("name") if isinstance(prov, dict) else "") or ""
+        if not prov_name and prov_id:
+            # Some generic adapters return the canonical id but omit the
+            # hydrated provider object.  Recover the display name so health
+            # accounting can actually trip the provider circuit.
+            try:
+                prov_name = next((p.get("name") for p in modelhub.providers()
+                                  if p.get("id") == prov_id), "")
+            except Exception:
+                prov_name = ""
         if prov_name and not runner.attempt_cancelled(res):
             if res.get("ok"):
-                health.report_success(prov_name)
+                health.report_success(prov_name, model=res.get("model") or "")
             else:
                 health.report_failure(prov_name, res.get("error") or "",
                                       model=res.get("model") or "",
-                                      provider_id=prov.get("id") or "")
+                                      provider_id=prov_id,
+                                      error_code=res.get("error_code") or "")
     except Exception:
         pass
 
@@ -6528,7 +6546,7 @@ def _workdir_blocker(task, run_id):
     return None
 
 
-def execute_run(run_id):
+def _execute_run_impl(run_id):
     run = store.get_run(run_id)
     if not run:
         return
@@ -6649,16 +6667,18 @@ def execute_run(run_id):
                                            time.localtime(time.time() + 60))
                 store.update_run(run_id, expected_status="running", status="queued",
                                  started_at="", resume_enqueue_at=_resume_at,
-                                 warnings=["工作目录被运行中任务「%s」占用，排队等待（每 60 秒自动重试）"
+                                 warnings=["工作目录被运行中任务「%s」占用，排队等待（任务完成即唤醒，60 秒定时兜底）"
                                            % ((_blocker.get("title") or _blocker.get("id") or "")[:24])])
                 try:
                     store.update_task_status(task.get("id"), "queued")
                 except Exception:
                     pass
-                jobs._schedule_enqueue(
+                jobs.register_workdir_waiter(
+                    _wd,
                     {"kind": "orchestration", "run_id": run_id,
-                     "task_id": task.get("id")}, 60)
-                print("[CodeBee] 工作目录被「%s」占用：%s 排队等待，60 秒后自动重试"
+                     "task_id": task.get("id")},
+                    60)
+                print("[CodeBee] 工作目录被「%s」占用：%s 排队等待，任务完成即唤醒（60 秒定时兜底）"
                       % ((_blocker.get("title") or _blocker.get("id") or "")[:24],
                          task.get("title") or task.get("id")), flush=True)
                 return
@@ -6869,8 +6889,16 @@ def execute_run(run_id):
             store.update_run(run_id, warnings=(current.get("warnings") or []) + [warning])
         try:
             from . import session_runtime
-            session_runtime.default_runtime().drain_turns(
-                run_id, "run finalized: %s" % ((store.get_run(run_id) or {}).get("status") or "unknown"))
+            runtime = session_runtime.default_runtime()
+            runtime_row = runtime.get(run_id)
+            runtime_admissions = [
+                {"token": token, "owner_epoch": runtime_row.get("owner_epoch")}
+                for token in (runtime_row.get("active_turns") or [])]
+            runtime.drain_turns(
+                run_id, "run finalized: %s" % ((store.get_run(run_id) or {}).get("status") or "unknown"),
+                admissions=runtime_admissions,
+                owner=runtime_row.get("owner"),
+                owner_epoch=runtime_row.get("owner_epoch"))
         except Exception:
             pass
         # Persist keyless replay material and a portable provenance record before
@@ -6966,3 +6994,17 @@ def execute_run(run_id):
             knowledge.learn_async(run_id)
         except Exception:
             pass
+
+
+# Serialize duplicate workers for one durable run. This prevents a retry from
+# racing the previous execution's runtime-session admission cleanup.
+_EXECUTION_LOCKS = weakref.WeakValueDictionary()
+_EXECUTION_LOCKS_LOCK = threading.Lock()
+
+
+def execute_run(run_id):
+    key = str(run_id)
+    with _EXECUTION_LOCKS_LOCK:
+        lock = _EXECUTION_LOCKS.setdefault(key, threading.RLock())
+    with lock:
+        return _execute_run_impl(run_id)

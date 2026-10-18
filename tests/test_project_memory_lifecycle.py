@@ -347,7 +347,8 @@ class TestProjectMemoryLifecycle(BaseTest):
         task, run = self.task_run()
         missing = dict(task, id="missing", workdir=str(self.workdir / "missing"))
         result = project_memory.backfill([missing, task], [run])
-        self.assertEqual(result["errors"], 1)
+        self.assertEqual(result["errors"], 0)
+        self.assertEqual(result["skipped"], 1)
         self.assertEqual(result["runs"], 1)
 
     def test_legacy_symlink_is_rejected(self):

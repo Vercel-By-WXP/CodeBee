@@ -117,7 +117,7 @@ def _log_usage(source, role, task, res, agent=None, tool="", model="", provider=
         if provider and not runner.attempt_cancelled(res):
             from . import health
             if (res or {}).get("ok"):
-                health.report_success(provider)
+                health.report_success(provider, model=model or ((res or {}).get("model") or ""))
             else:
                 health.report_failure(provider, (res or {}).get("error") or "",
                                       model=model, provider_id=provider_id)

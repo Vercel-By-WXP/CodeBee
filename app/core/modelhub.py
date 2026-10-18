@@ -3315,10 +3315,18 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                       % (label, proto if proto != "auto" else "auto 未探出可用 wire",
                          "、".join(allowed)))
                 continue
+            effective_model = model or _usable_default_model(prov, prov.get("model"))
             if prov.get("name") in down_set:
                 _dead(dead_reasons, "%s：健康监测判定 down" % label)
                 continue  # 健康监测判定 down：跳过，省掉无效等待
-            if not native_cli and not _evaluation_is_usable(pid, model):
+            try:
+                from . import health as _health
+                if _health.is_model_down(label, effective_model):
+                    _dead(dead_reasons, "%s/%s：模型级健康熔断" % (label, effective_model))
+                    continue
+            except Exception:
+                pass
+            if not native_cli and not _evaluation_is_usable(pid, effective_model):
                 _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
                       % label)
                 continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
@@ -3426,6 +3434,14 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         model = ""   # 默认/难度模型键位指向停用或已删模型：不冒充可用，回落启用名单
     if not model and names:
         model = names[0] if (not routing or difficulty != "easy") else names[-1]
+    try:
+        from . import health as _health
+        if _health.is_model_down(label, model):
+            _dead(single_reasons, "%s/%s：模型级健康熔断" % (label, model))
+            _note_dead_reasons(agent_kind_or_id, single_reasons)
+            return None
+    except Exception:
+        pass
     if not native_cli and not _evaluation_is_usable(pid, model):
         # 2026-10-16 起草全灭案：这里是 legacy 分支最后一个静默 None——供应商
         # 本体全绿、只挂在这颗模型的评测结论（健康事件作废/探针失败）上时，
@@ -3511,6 +3527,12 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         # 候选阶段不能先截前三个：便宜档往往排在供应商列表后面，easy 任务
         # 需要看到完整启用列表后再按成本与档位评分。最终调用链仍受上限约束。
         for model in names:
+            try:
+                from . import health as _health
+                if _health.is_model_down(prov.get("name") or pid, model):
+                    continue
+            except Exception:
+                pass
             if not native_cli and not _evaluation_is_usable(pid, model):
                 continue
             candidates.append({"provider_id": pid, "model": model})

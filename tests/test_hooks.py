@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import sys
+import json
+from pathlib import Path
 
 from base import BaseTest
 
@@ -90,6 +92,46 @@ class TestHooks(BaseTest):
         ok, out = hooks.test_one(_py("print('')"))
         self.assertTrue(ok)
         self.assertIn("无输出", out)
+
+    def test_missing_interpreter_script_is_reported_without_running(self):
+        missing = self.data_dir / "missing-hook.py"
+        hooks.save_list([{
+            "id": "missing-script", "event": "run_end",
+            "cmd": '"%s" "%s"' % (sys.executable, missing),
+        }])
+        self.assertEqual(hooks.run_event("run_end"), "")
+        row = hooks.diagnostics()["recent"][0]
+        self.assertEqual(row["status"], "invalid_command")
+        self.assertIn("not found", row["error"].lower())
+        hooks.run_event("run_end")
+        self.assertEqual(len(hooks.diagnostics()["recent"]), 1)
+
+    def test_missing_python3_script_with_unbuffered_flag_is_reported(self):
+        missing = self.data_dir / "missing-python3-hook.py"
+        hooks.save_list([{
+            "id": "missing-python3-script", "event": "run_end",
+            "cmd": "python3 -u \"%s\"" % missing,
+        }])
+        self.assertEqual(hooks.run_event("run_end"), "")
+        row = hooks.diagnostics()["recent"][0]
+        self.assertEqual(row["status"], "invalid_command")
+
+    def test_missing_python_script_after_value_flag_is_reported(self):
+        missing = self.data_dir / "missing-python-x-hook.py"
+        argv = [sys.executable, "-X", "utf8", str(missing)]
+        self.assertEqual(hooks._missing_path(argv), str(missing))
+        self.assertEqual(hooks._missing_path([sys.executable, "-x", str(missing)]),
+                         str(missing))
+
+    def test_missing_node_script_after_optional_inspect_flag_is_reported(self):
+        missing = self.data_dir / "missing-node-hook.js"
+        self.assertEqual(hooks._missing_path(["node", "--inspect", str(missing)]),
+                         str(missing))
+
+    def test_release_manifest_includes_run_end_hook(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        self.assertIn("tools/run_end_autocommit.py", manifest["files"])
 
     def test_pop_inject_roundtrip(self):
         from app.core import store

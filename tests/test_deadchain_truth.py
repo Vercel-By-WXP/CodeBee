@@ -225,3 +225,13 @@ class TestUnclassifiedFailureNotProviderFault(BaseTest):
         names = [p["provider"] for p in health.snapshot()["providers"]]
         self.assertIn("厂商Z", names)
         self.assertFalse(evaluation.get("model", "prov-z", "m-z")["fresh"])
+
+    def test_unclassified_crash_warning_is_rate_limited(self):
+        from app.core import health
+        with health._LOCK:
+            health._UNSOURCED_LOGGED.clear()
+        with mock.patch.object(health.log, "warning") as warning:
+            for _ in range(4):
+                health.report_failure("厂商Z", self.BANNER_CRASH,
+                                      model="m-z", provider_id="prov-z")
+        self.assertEqual(warning.call_count, 1)

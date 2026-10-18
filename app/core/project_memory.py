@@ -269,6 +269,16 @@ def _backfill(tasks, runs):
         if not workdir:
             continue
         try:
+            if not Path(str(workdir)).expanduser().is_dir():
+                # Historical tasks can outlive a deleted checkout.  This is
+                # expected cleanup, not a migration error and should not
+                # flood startup logs with a traceback-shaped warning.
+                result["skipped"] = int(result.get("skipped") or 0) + 1
+                continue
+        except OSError:
+            result["skipped"] = int(result.get("skipped") or 0) + 1
+            continue
+        try:
             key = str(_file(workdir))
             if key not in sources:
                 result["legacy"] += migrate_legacy(workdir)
