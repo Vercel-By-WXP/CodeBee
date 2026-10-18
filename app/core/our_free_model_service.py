@@ -429,5 +429,3 @@ def stop():
 
 def status():
     return manager.status()
-
-\n
