@@ -923,6 +923,10 @@ class Handler(BaseHTTPRequestHandler):
                 view = pub.view()
                 view["history"] = pub.history(limit=30)
                 return self._json(200, view)
+            if path == "/api/publish/accounts":
+                # 多账号：账号清单（含各账号状态槽）——GET 供自动化轮询
+                from core.publish import manager as pub
+                return self._json(200, {"accounts": pub.list_accounts()})
             if path == "/api/browser/workspace":
                 origin = self.headers.get("Origin") or ""
                 if origin and urlparse(origin).netloc.lower() != (self.headers.get("Host") or "").lower():
@@ -1938,6 +1942,26 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 log.warning("浏览器工作区操作失败（%s）：%s", platform, exc)
                 return self._json(503, {"error": "受控浏览器操作失败，已准备回退"})
+        if path == "/api/publish/accounts":
+            from core.publish import manager as pub
+            return self._json(200, {"accounts": pub.list_accounts()})
+        if path == "/api/publish/accounts/add":
+            from core.publish import manager as pub
+            body = self._body() or {}
+            item, err = pub.add_account(str(body.get("platform") or "").strip(),
+                                        str(body.get("id") or "").strip(),
+                                        str(body.get("label") or "").strip())
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "account": item})
+        if path == "/api/publish/accounts/delete":
+            from core.publish import manager as pub
+            body = self._body() or {}
+            ok, err = pub.remove_account(str(body.get("platform") or "").strip(),
+                                         str(body.get("id") or "").strip())
+            if not ok:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True})
         m = re.match(r"^/api/publish/(fanqie|qimao)/(connect|disconnect|probe)$", path)
         if m:
             return self._api_publish_platform_op(m.group(1), m.group(2))
@@ -2910,10 +2934,12 @@ class Handler(BaseHTTPRequestHandler):
     def _api_publish_platform_op(self, platform, op):
         """平台会话操作：connect 开浏览器等扫码 / disconnect 关 / probe 探测表单。"""
         from core.publish import manager as pub
+        body = self._body() or {}
+        account = str(body.get("account") or "").strip()
         if op == "connect":
-            ok, err = pub.connect(platform)
+            ok, err = pub.connect(platform, account)
         elif op == "disconnect":
-            ok, err = pub.disconnect(platform), ""
+            ok, err = pub.disconnect(platform, account), ""
         else:
             ok, err = pub.probe_form_async(platform)
         if not ok:
@@ -2951,7 +2977,9 @@ class Handler(BaseHTTPRequestHandler):
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
                        "force_reason": force_reason}
                       if force or force_confirmed or force_reason else {})
-            ok, err = pub.create_book_async(task_id, platform, auto_submit, **kwargs)
+            ok, err = pub.create_book_async(task_id, platform, auto_submit,
+                                            account=str(body.get("account") or "").strip(),
+                                            **kwargs)
         elif op == "auto-publish":
             # 定时发布配置（P2.5）：enabled=false 也落（保留 time 供再开）；
             # 校验/归一在 auto.norm_auto_publish，语义见 auto.py 头注

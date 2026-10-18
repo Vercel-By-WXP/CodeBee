@@ -36,7 +36,8 @@ def _month_file(day):
 def record(platform, action, task_id="", chapter_no=0, book_id="",
            title="", ok=True, error="", shot="", operation_id="",
            operation_status="", remote_receipt="", quality_forced=False,
-           quality_reason="", scheduled_date="", scheduled_time=""):
+           quality_reason="", scheduled_date="", scheduled_time="",
+           account=""):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
     try:
         rec = {
@@ -61,6 +62,8 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             # new default date/time.  Older ledger rows simply have blanks.
             "scheduled_date": str(scheduled_date or "")[:10],
             "scheduled_time": str(scheduled_time or "")[:5],
+            # 多账号：这单落在哪台账号（空=默认账号）
+            "account": str(account or "")[:16],
         }
         with LOCK:
             paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
@@ -243,7 +246,7 @@ def _chain_order(task_id):
     return [tid] + [t for t in chain if t != tid]
 
 
-def save_book(task_id, platform, info):
+def save_book(task_id, platform, info, account=None):
     """登记/更新任务在某平台的作品绑定。info: {book_id, title, url?}。
 
     绑定属于「这本书」而不是某一批章节：写入链条上已有条目的任务（通常根
@@ -272,6 +275,9 @@ def save_book(task_id, platform, info):
         # Distinguish a title-only manual binding from an unverified create-book result.
         if "source" in info:
             entry["source"] = str(info.get("source") or "")[:20]
+        # 多账号：记录建书账号（None=不改，保持既有绑定账号）
+        if account is not None:
+            entry["account"] = str(account or "")[:16]
         tmp = _BOOKS_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
                        encoding="utf-8")

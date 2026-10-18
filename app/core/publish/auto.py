@@ -86,7 +86,9 @@ def _prepare_book(task_id, platform):
         else:
             return False, "自动生成%s作品信息超时" % platform
 
-    ok, err = manager.create_book_async(task_id, platform, auto_submit=True)
+    acc = str((task.get("auto_publish") or {}).get("account") or "").strip()
+    ok, err = manager.create_book_async(task_id, platform, auto_submit=True,
+                                        account=acc)
     if not ok and "未登录" in str(err or ""):
         # Authentication is the one external prerequisite that cannot be
         # fabricated. Open the persistent platform profile automatically and
@@ -98,7 +100,8 @@ def _prepare_book(task_id, platform):
             state = (manager.view().get("platforms") or {}).get(platform) or {}
             if state.get("status") == "connected":
                 ok, err = manager.create_book_async(task_id, platform,
-                                                    auto_submit=True)
+                                                    auto_submit=True,
+                                                    account=acc)
                 break
             time.sleep(1.0)
     if not ok:
@@ -839,10 +842,14 @@ def norm_auto_publish(ap):
     h, mi = int(m.group(1)), int(m.group(2))
     if not (0 <= h <= 23 and 0 <= mi <= 59):
         return None, "time 超出 0-23:00-59"
+    account = str(ap.get("account") or "").strip()
+    if account and not re.match(r"^[A-Za-z0-9_-]{1,16}$", account):
+        return None, "account 只能是字母/数字/下划线/连字符（1-16）"
     return {"enabled": bool(ap.get("enabled")),
             "platform": platform,
             "time": "%02d:%02d" % (h, mi),
             "auto_submit": bool(ap.get("auto_submit")),
+            "account": account,
             "at": time.strftime("%Y-%m-%d %H:%M:%S")}, ""
 
 

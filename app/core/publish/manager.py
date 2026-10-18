@@ -136,7 +136,7 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
 
 
 def view():
-    """前端状态视图：平台状态 + 是否找到浏览器 + 作品登记。"""
+    """前端状态视图：平台状态 + 是否找到浏览器 + 作品登记 + 账号列表。"""
     from .browser import find_browser
     out = {}
     for pid, mod in PLATFORMS.items():
@@ -144,7 +144,21 @@ def view():
         out[pid] = {"label": mod.CONFIG["label"], "status": s.get("status") or "none",
                     "at": s.get("at") or "", "error": s.get("error") or "",
                     "last_action": s.get("last_action") or "",
-                    "profile": str(_profile_dir(pid))}
+                    "profile": str(_profile_dir(pid)),
+                    "accounts": []}
+    # 多账号：账号条目带各自状态槽（slot=fanqie@a2）；老前端忽略此字段不受影响
+    for a in load_accounts():
+        pid = a.get("platform")
+        if pid not in out:
+            continue
+        slot = "%s@%s" % (pid, a.get("id"))
+        st = _st(slot)
+        out[pid]["accounts"].append({
+            "id": a.get("id"), "label": a.get("label") or "",
+            "status": st.get("status") or "none",
+            "at": st.get("at") or "", "error": st.get("error") or "",
+            "last_action": st.get("last_action") or "",
+            "profile": str(_profile_dir(slot))})
     return {"platforms": out, "browser_found": bool(find_browser())}
 
 
@@ -158,13 +172,14 @@ def recover_orphans():
     _load()
     n = 0
     stale = []
-    for plat in PLATFORMS:
-        s = _st(plat)
+    # 多账号：状态槽含 fanqie@a2 形态，全量扫（基础平台也在其中）
+    for slot in list((_state.get("platforms") or {}).keys()) + list(PLATFORMS):
+        s = _st(slot)
         if s.get("status") in ("waiting_login", "busy"):
-            _set(plat, status="error", error="上次操作随服务重启中断，请重试")
+            _set(slot, status="error", error="上次操作随服务重启中断，请重试")
             n += 1
         elif s.get("status") == "error" and "等待登录超时" in (s.get("error") or ""):
-            stale.append(plat)
+            stale.append(slot)
     if stale:
         threading.Thread(target=_recheck_stale_errors, args=(stale,),
                          daemon=True, name="pub-stale-recheck").start()
@@ -245,6 +260,98 @@ def _profile_dir(plat):
     return _profiles_base() / plat
 
 
+# ---------------------------------------------------------------- 多账号
+# 账号=独立浏览器 profile（~/.codebee/publish_profiles/<plat>@<acc>）+ 独立
+# 状态槽（state.json platforms 键 = slot）。默认账号槽名就是平台名（老
+# 安装零迁移）；书在哪台账号建的（books.json entry.account），发章/校准
+# 就自动路由到那台——同平台双账号可并行操作（不同 profile 不同浏览器）。
+ACCOUNTS_FILE = paths.PUBLISH_DIR / "accounts.json"
+
+
+def base_plat(slot):
+    """槽名（fanqie@a2）→ 基础平台名（fanqie）。"""
+    return str(slot).split("@", 1)[0]
+
+
+def slot_of(plat, account=""):
+    """基础平台 + 账号 → 槽名。空账号=默认槽（=平台名，老数据零迁移）。"""
+    acc = str(account or "").strip()
+    if not acc:
+        return str(plat)
+    if plat not in PLATFORMS:
+        raise ValueError("未知平台：%s" % plat)
+    import re as _re
+    if not _re.match(r"^[A-Za-z0-9_-]{1,16}$", acc):
+        raise ValueError("账号 ID 只能是字母/数字/下划线/连字符，长度 1-16")
+    return "%s@%s" % (plat, acc)
+
+
+def load_accounts():
+    try:
+        d = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
+        items = d.get("accounts") if isinstance(d, dict) else d
+        return items if isinstance(items, list) else []
+    except Exception:
+        return []
+
+
+def _save_accounts(items):
+    with LOCK:
+        paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = ACCOUNTS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"accounts": items}, ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(ACCOUNTS_FILE)
+
+
+def list_accounts(plat=None):
+    out = [dict(a) for a in load_accounts()
+           if not plat or a.get("platform") == plat]
+    out.sort(key=lambda a: (a.get("platform") or "", a.get("id") or ""))
+    return out
+
+
+def add_account(plat, acc_id, label=""):
+    if plat not in PLATFORMS:
+        return None, "未知平台：%s" % plat
+    try:
+        slot_of(plat, acc_id)
+    except ValueError as e:
+        return None, str(e)
+    with LOCK:
+        items = load_accounts()
+        if any(a.get("platform") == plat and a.get("id") == acc_id for a in items):
+            return None, "该账号已存在"
+        items.append({"platform": plat, "id": acc_id,
+                      "label": str(label or "")[:30],
+                      "created_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+        _save_accounts(items)
+    return {"platform": plat, "id": acc_id, "label": str(label or "")[:30]}, ""
+
+
+def remove_account(plat, acc_id):
+    """删账号登记（不动 profile 目录与线上作品）。有书绑在该账号时拒绝——
+    先解绑/换绑，防发章路由悬空。"""
+    with LOCK:
+        items = load_accounts()
+        hit = next((a for a in items
+                    if a.get("platform") == plat and a.get("id") == acc_id), None)
+        if not hit:
+            return False, "账号不存在"
+        books = ledger.load_books()
+        for _tid, plats in books.items():
+            ent = (plats or {}).get(plat)
+            if ent and str(ent.get("account") or "") == acc_id:
+                return False, ("仍有作品绑定在该账号（%s），请先解绑"
+                               % (ent.get("title") or ""))
+        _save_accounts([a for a in items if a is not hit])
+        slot = "%s@%s" % (plat, acc_id)
+        _state["platforms"].pop(slot, None)
+        _browsers.pop(slot, None)
+        _save()
+    return True, ""
+
+
 def _ensure_browser(plat):
     """attach-or-launch：进程内缓存 → 记住的端口 → 全新 launch。"""
     with LOCK:
@@ -285,9 +392,10 @@ def _open_page(plat):
 def _check_login(plat, page):
     """打开后台首页看 URL 是否被踢到登录页。返回 (ok, 当前url)。
 
+    plat 可以是槽名（fanqie@a2）：状态写槽、平台配置取基础平台。
     导航失败页（chrome-error://）不含登录标记，曾把「域名打不开」误判成
     已登录——假 connected 的来源，先排除。"""
-    mod = PLATFORMS[plat]
+    mod = PLATFORMS[base_plat(plat)]
     try:
         page.navigate(mod.CONFIG["home"], timeout=30)
     except BrowserError as e:
@@ -391,17 +499,24 @@ def _flow_contract_ok(plat, action, steps):
 
 
 # ---------------------------------------------------------------- 动作：连接
-def connect(plat):
-    """开浏览器到平台首页，起后台线程轮询登录态（等扫码）。"""
+def connect(plat, account=""):
+    """开浏览器到平台首页，起后台线程轮询登录态（等扫码）。
+
+    account 非空时用该账号的独立 profile/状态槽（多账号）。"""
     if plat not in PLATFORMS:
         return False, "未知平台"
     try:
-        b, page = _open_page(plat)
+        slot = slot_of(plat, account)
+    except ValueError as e:
+        return False, str(e)
+    try:
+        b, page = _open_page(slot)
     except BrowserError as e:
-        _set(plat, status="error", error=str(e))
+        _set(slot, status="error", error=str(e))
         return False, str(e)
     page.navigate(PLATFORMS[plat].CONFIG["home"])
-    _set(plat, status="waiting_login", error="")
+    _set(slot, status="waiting_login", error="")
+    acc = str(account or "").strip()
 
     def wait_login():
         mod = PLATFORMS[plat]
@@ -413,44 +528,52 @@ def connect(plat):
                         and "about:blank" not in url and "chrome-error" not in url:
                     # 用户登录完成（离开登录页）。再主动开一次首页做复核，
                     # 复核被踢回登录页说明只是中间跳转，继续等。
-                    ok, _u = _check_login(plat, page)
+                    ok, _u = _check_login(slot, page)
                     if ok:
-                        _set(plat, status="connected", last_login=time.strftime("%m-%d %H:%M"))
-                        ledger.record(plat, "connect", ok=True)
+                        _set(slot, status="connected",
+                             last_login=time.strftime("%m-%d %H:%M"))
+                        ledger.record(plat, "connect", ok=True, account=acc)
                         return
             except (BrowserError, Exception):
                 pass                        # 页面被用户关掉等：继续等到超时
             time.sleep(5)
-        _finalize_login_wait(plat)
+        _finalize_login_wait(slot, plat, acc)
 
     threading.Thread(target=wait_login, daemon=True,
-                     name="pub-login-%s" % plat).start()
+                     name="pub-login-%s" % slot).start()
     return True, ""
 
 
-def _finalize_login_wait(plat):
+def _finalize_login_wait(slot, plat=None, acc=""):
     """等扫码超时后的终审：用户可能已在本窗口登录后把窗口关了（profile
     里登录态还在），attach-or-launch 重拉页面再复核一次，别急着冤判
     超时——「明明登录着却报超时」是发布卡死感的最大来源。复核也过不了
-    才落超时错误。返回 True 表示复核通过（已判 connected）。"""
+    才落超时错误。返回 True 表示复核通过（已判 connected）。
+    slot 兼容旧调用（只传 plat）：平台名即默认槽。"""
+    if plat is None:
+        plat = base_plat(slot)
     try:
-        _b, page = _open_page(plat)
-        ok, _u = _check_login(plat, page)
+        _b, page = _open_page(slot)
+        ok, _u = _check_login(slot, page)
     except Exception:
         ok = False
     if ok:
-        _set(plat, status="connected", last_login=time.strftime("%m-%d %H:%M"))
-        ledger.record(plat, "connect", ok=True)
+        _set(slot, status="connected", last_login=time.strftime("%m-%d %H:%M"))
+        ledger.record(plat, "connect", ok=True, account=acc)
     else:
-        _set(plat, status="error", error="等待登录超时（15 分钟），请重新点连接")
+        _set(slot, status="error", error="等待登录超时（15 分钟），请重新点连接")
     return ok
 
 
-def disconnect(plat):
-    b = _browsers.pop(plat, None)
+def disconnect(plat, account=""):
+    try:
+        slot = slot_of(plat, account)
+    except ValueError as e:
+        return False, str(e)
+    b = _browsers.pop(slot, None)
     if b:
         b.close()
-    _set(plat, status="none", error="")
+    _set(slot, status="none", error="")
     return True
 
 
@@ -619,11 +742,19 @@ def _create_preflight(plat, data):
 
 
 def create_book_async(task_id, plat, auto_submit=False, force=False,
-                      force_confirmed=False, force_reason=""):
-    """按任务 book_meta 的资料在平台建书。返回 (ok, err)。"""
+                      force_confirmed=False, force_reason="", account=""):
+    """按任务 book_meta 的资料在平台建书。返回 (ok, err)。
+
+    account 非空=用该账号的独立 profile/状态槽建书（多账号），建成的
+    绑定记 account 字段，发章自动路由到同一账号。"""
     from .. import store
     if plat not in PLATFORMS:
         return False, "未知平台"
+    try:
+        slot = slot_of(plat, account)
+    except ValueError as e:
+        return False, str(e)
+    acc = str(account or "").strip()
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
@@ -631,7 +762,7 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
     meta = store.inherited_book_meta(task, plat)
     if meta.get("status") != "done" or not meta.get("data"):
         return False, "请先生成该平台的作品信息"
-    if _st(plat).get("status") == "busy":
+    if _st(slot).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     existing = ledger.book_for(task_id, plat)
     # A title-only manual registration is usable as a binding. For legacy
@@ -657,10 +788,10 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     quality_forced = bool(quality.get("forced") or release_flags.get("force"))
     quality_reason = str(release_flags.get("force_reason") or "")
-    ok_login, why = _login_guard(plat)
+    ok_login, why = _login_guard(slot)
     if not ok_login:
         return False, why
-    _set(plat, status="busy", last_action="create_book", error="")
+    _set(slot, status="busy", last_action="create_book", error="")
 
     data = meta["data"]
     mod = PLATFORMS[plat]
@@ -790,7 +921,8 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                 # 未取得 id 不落台账：空条目会让界面亮「已建书」、校准盲跑，
                 # 而发章/下次建书各自有按书名对账的兜底，空条目只剩害处。
                 ledger.save_book(task_id, plat, {"book_id": book_id, "title": final_name,
-                                                 "source": "create"})
+                                                 "source": "create"},
+                                  account=acc)
             _set(plat, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -1025,6 +1157,10 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
         return False, "该任务尚未在此平台建书，请先「创建作品」"
     if not book.get("book_id") and book.get("source") != "manual":
         return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
+    # 多账号路由：书在哪个账号建的（books entry.account），这章就发到
+    # 那个账号的浏览器/状态槽——默认账号（无 account 字段）= 平台默认槽。
+    acc = str(book.get("account") or "").strip()
+    slot = slot_of(plat, acc)
     # 闭包中需要在找回 book_id 后更新书籍引用；使用独立副本避免
     # Python 将 book 误判为 run() 的局部变量，导致前置解析触发
     # UnboundLocalError。
@@ -1035,7 +1171,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
         # Legacy records sometimes stored the short public work number. It
         # opens an empty chapter page, so resolve the canonical id by title.
         book_ref["book_id"] = ""
-    if _st(plat).get("status") == "busy":
+    if _st(slot).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     if as_draft:
         # 草稿与别的自动发布批次互斥（2026-10-10 实案：连载发章占着浏览器，
@@ -1088,7 +1224,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     if as_draft and ch_no and ch_no in ledger.drafted_chapters(task_id, plat):
         return False, ("第 %d 章已存过草稿（台账幂等拦截）；请到平台草稿箱检查后"
                        "提交发布，确需重存请先在平台删旧稿" % ch_no)
-    ok_login, why = _login_guard(plat)
+    ok_login, why = _login_guard(slot)
     if not ok_login:
         return False, why
     flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
@@ -1104,7 +1240,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             return False, "该平台未配置定时发布流程"
     if scheduled:
         auto_submit = True
-    _set(plat, status="busy", last_action=flow_key, error="")
+    _set(slot, status="busy", last_action=flow_key, error="")
 
     mod = PLATFORMS[plat]
     values = chapter_fill_values(ch_no, title, body,
@@ -1175,7 +1311,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
                               title=title, ok=True, operation_id=operation_id,
                               operation_status="confirmed",
-                              remote_receipt="platform-draft")
+                              remote_receipt="platform-draft", account=acc)
             elif auto_submit:
                 recorded_action = ("upload_chapter_scheduled"
                                     if scheduled or values.get("_scheduled_by_platform")
@@ -1189,14 +1325,14 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               scheduled_date=values.get("scheduled_date") if recorded_action == "upload_chapter_scheduled" else "",
                               scheduled_time=values.get("scheduled_time") if recorded_action == "upload_chapter_scheduled" else "",
                               quality_forced=quality_forced,
-                              quality_reason=quality_reason)
+                              quality_reason=quality_reason, account=acc)
             else:
                 # run_flow stops immediately before the submit step. Keep the
                 # operation pending and never count the filled form as published.
                 ledger.record(plat, "upload_chapter_pending", task_id=task_id,
                               chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
                               title=title, ok=False, error="等待人工提交",
-                              operation_id=operation_id, operation_status="pending")
+                              operation_id=operation_id, operation_status="pending", account=acc)
             _set(plat, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -1207,7 +1343,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                           ok=False, error=str(e)[:300], operation_id=operation_id,
                           operation_status=operation_status,
                           quality_forced=quality_forced,
-                          quality_reason=quality_reason)
+                          quality_reason=quality_reason, account=acc)
         finally:
             _save()
 
