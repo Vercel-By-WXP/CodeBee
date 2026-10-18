@@ -6,9 +6,11 @@ import json
 import os
 import queue
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
+from pathlib import Path
 
 from .env_scrub import scrub_env
 
@@ -302,6 +304,36 @@ def _path(workdir, configured_root, requested):
     return root, resolved
 
 
+def _atomic_write_text(target, content):
+    """Write UTF-8 text beside *target* and replace it atomically.
+
+    ACP agents can be interrupted while a file update is in flight. Writing
+    directly to the destination would truncate a previously valid file before
+    the new contents are complete. A same-directory temporary file keeps the
+    replacement on one filesystem and exposes either the old or new file.
+    """
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="", delete=False,
+                dir=str(target.parent), prefix=".%s-" % target.name,
+                suffix=".tmp") as handle:
+            temporary = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(str(temporary), str(target))
+    except Exception:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+        raise
+
+
 def _fs_request(method, params, workdir, configured_root, readonly, checkpoint_run_id):
     from . import checkpoints
     root, target = _path(workdir, configured_root, params.get("path"))
@@ -326,11 +358,7 @@ def _fs_request(method, params, workdir, configured_root, readonly, checkpoint_r
             saved = checkpoints.capture_file(checkpoint_run_id, str(root), target)
             if not saved.get("ok"):
                 raise ValueError("检查点无法保存原始文件，拒绝写入")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        # Keep Python 3.8 compatibility: pathlib.Path.write_text did not yet
-        # accept ``newline`` on all supported runtimes.
-        with target.open("w", encoding="utf-8", newline="") as handle:
-            handle.write(content)
+        _atomic_write_text(target, content)
         if checkpoint_run_id and not checkpoints.mark_file_after(
                 checkpoint_run_id, str(root), target):
             raise ValueError("检查点无法记录写入后的状态")
