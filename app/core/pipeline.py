@@ -3472,7 +3472,18 @@ def _chapter_io(workdir, i, mode):
     if not _inside(workdir, p):
         raise ValueError("章节路径越界: chapter-%02d.md" % i)
     if mode == "r":
-        return _read_text_any_enc(p)
+        text = _read_text_any_enc(p)
+        # 读侧自愈（2026-10-18 实案：外部CLI用自己的工具写章，绕过写盘归一器；
+        # 评审/合并读章时发现引号漂移就地治好——写手是谁都逃不掉）
+        try:
+            fixed = _normalize_quotes(text, workdir)
+            if fixed != text:
+                from pathlib import Path as _P
+                _P(p).write_text(fixed, encoding="utf-8")
+                text = fixed
+        except Exception:
+            pass
+        return text
     fh = open(p, mode, encoding="utf-8", errors="replace")
     if mode == "w":
         return _QuoteNormalizingWriter(fh, workdir)
