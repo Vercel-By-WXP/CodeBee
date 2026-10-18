@@ -2632,7 +2632,12 @@ async function poll() {
   try {
     // 状态先独立拉取并渲染；目录/模型是低频数据，后台刷新不能挡住任务树和点击。
     if (!document.hidden) refreshPollLookups(false);
-    if (!S.sseLive) await refreshState();
+    // EventSource.onopen only confirms that the stream headers arrived. On a
+    // phone relay the first SSE data frame can still be delayed or lost while
+    // the connection stays open; keep the ordinary state request alive until
+    // at least one state payload has actually been applied, otherwise the UI
+    // remains stuck on "Connecting…" forever.
+    if (!S.sseLive || !S.state) await refreshState();
     else if (S._lastSseAt && Date.now() - S._lastSseAt > 60000 && !document.hidden) {
       // SSE 静默看门狗：连接半死时 EventSource 不报错、sseLive 恒真、上面
       // 的拉取被跳过——侧栏会冻在几分钟前的快照，而详情卡自拉自新，两头
@@ -7933,6 +7938,22 @@ function pbBlock(task, platform, selectionOnly = false) {
   }
   btns += '<button class="ghost pb-tool" onclick="pbProbe(\'' + platform + '\')" title="' +
     esc(t("dump 平台表单结构（校准自动填表用）")) + '">' + t("探测") + "</button>";
+  // 多账号（2026-10-18）：每台账号独立浏览器/独立配额，chips 带各自登录/断开
+  const accList = ps.accounts || [];
+  if (accList.length) {
+    btns += '<div class="pb-accounts">';
+    for (const acc of accList) {
+      const accSt = acc.status === "connected" ? t("已连接")
+        : (acc.status === "busy" ? t("操作中") : (acc.status === "error" ? t("出错") : t("未连接")));
+      btns += '<span class="pb-acc-chip" title="' + esc(t("独立浏览器账号：") + (acc.profile || "")) + '">' +
+        esc(acc.id + "·" + accSt) +
+        ' <button class="ghost pb-tool" onclick="pbConnectAcc(\'' + platform + '\',\'' + esc(acc.id) + '\')">' + t("登录") + "</button>" +
+        ' <button class="ghost pb-tool" onclick="pbDisconnectAcc(\'' + platform + '\',\'' + esc(acc.id) + '\')">' + t("断开") + "</button></span>";
+    }
+    btns += "</div>";
+  }
+  btns += ' <button class="ghost pb-tool" onclick="pbAddAccount(\'' + platform + '\')" title="' +
+    esc(t("新增一台独立浏览器账号（独立登录/独立建书配额），建书时可下拉选用")) + '">' + t("+账号") + "</button>";
   if (bookReady) {
     btns += '<span class="pb-book" title="' + esc(t("已在此平台创建的作品")) + '">' +
       esc(t("已建书：") + (book.title || "")) + "</span>";
@@ -8108,6 +8129,8 @@ function pbBlock(task, platform, selectionOnly = false) {
     if (book && book.title) {
       btns += '<span class="pb-book pb-err">' + esc(t("建书未确认：") + book.title) + "</span>";
     }
+    // 多账号（2026-10-18）：建书用哪台账号的浏览器/配额，下拉选择
+    btns += '<span class="pb-acc-sel-wrap">' + pbAccountSelectHtml(platform) + "</span>";
     btns += '<button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbCreateBook(\'' + esc(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
     btns += '<button class="ghost" onclick="pbRegToggle(\'' + esc(task.id) + "','" + platform + '\')" title="' +
@@ -8293,12 +8316,64 @@ window.pbProbe = async function (platform) {
   S._pbSig = ""; pbKick();
 };
 
+/* ---------------- 多账号（2026-10-18） ----------------
+ * 每台账号=独立浏览器 profile（fanqie@a2）+独立建书配额；books.json 记
+ * account 字段，发章自动路由到建书账号。下拉选择存 S.pbAccSel[platform]。 */
+function pbAccountSelectHtml(platform) {
+  const ps = (S.pubState && S.pubState.platforms && S.pubState.platforms[platform]) || {};
+  const accs = ps.accounts || [];
+  const sel = (S.pbAccSel && S.pbAccSel[platform]) || "";
+  let html = '<select class="pb-acc-sel" onchange="pbAccSelSet(\'' + platform +
+    '\', this.value)" title="' + esc(t("建书/发章用哪台账号")) + '">' +
+    '<option value=""' + (sel ? "" : " selected") + '>' + esc(t("默认账号")) + "</option>";
+  for (const a of accs) {
+    html += '<option value="' + esc(a.id) + '"' + (sel === a.id ? " selected" : "") + ">" +
+      esc(a.id + (a.label ? "·" + a.label : "")) + "</option>";
+  }
+  return html + "</select>";
+}
+
+window.pbAccSelSet = function (platform, id) {
+  S.pbAccSel = S.pbAccSel || {};
+  S.pbAccSel[platform] = id || "";
+};
+
+window.pbAddAccount = async function (platform) {
+  const id = (window.prompt(t("新账号 ID（字母/数字/下划线/连字符，1-16 位；如 a2、b1）：")) || "").trim();
+  if (!id) return;
+  const label = (window.prompt(t("备注名（可空，如“二号机”）：")) || "").trim();
+  try {
+    await api("/api/publish/accounts/add", { method: "POST",
+      body: JSON.stringify({ platform, id, label }) });
+    toast(t("账号已登记，点它的「登录」扫码即可使用"));
+  } catch (e) { toast(t("登记失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbConnectAcc = async function (platform, accId) {
+  try {
+    await api("/api/publish/" + platform + "/connect", { method: "POST",
+      body: JSON.stringify({ account: accId }) });
+    toast(t("已打开独立浏览器——用账号 ") + esc(accId) + t(" 登录，完成后自动变「已连接」"));
+  } catch (e) { toast(t("连接失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbDisconnectAcc = async function (platform, accId) {
+  try {
+    await api("/api/publish/" + platform + "/disconnect", { method: "POST",
+      body: JSON.stringify({ account: accId }) });
+  } catch (e) { toast(t("断开失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
 window.pbCreateBook = async function (taskId, platform) {
   const autoSubmit = true;
+  const account = (S.pbAccSel && S.pbAccSel[platform]) || "";
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
-      { platform, auto_submit: autoSubmit }, "创建作品前的质量门禁未通过", taskId);
+      { platform, auto_submit: autoSubmit, account }, "创建作品前的质量门禁未通过", taskId);
     if (!(r && r.gate_reviewed))
       toast(t("正在自动填写并提交建书表单，随后核对作品创建结果…"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
