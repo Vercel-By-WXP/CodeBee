@@ -86,6 +86,16 @@ class TestOurFreeModelService(unittest.TestCase):
             self.assertEqual(manager._probe_existing(), (False, None))
         probe.assert_not_called()
 
+    def test_lock_probe_treats_windows_kill_system_error_as_dead(self):
+        manager = self._manager()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "service.lock").write_text(
+            json.dumps({"product": "our-free-model-standalone", "pid": 4242}),
+            encoding="utf-8")
+        with mock.patch("app.core.our_free_model_service.os.kill",
+                        side_effect=SystemError("kill returned a result with an error set")):
+            self.assertIsNone(manager._live_lock_pid(self.data_dir))
+
     def test_spawn_uses_standalone_root_data_dir_and_environment(self):
         manager = self._manager()
         proc = _FakeProcess()

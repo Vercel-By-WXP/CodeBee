@@ -82,6 +82,24 @@ class TestStateMachine(HealthBase):
         self.assertEqual(snap["consecutive_failures"], 1)
         self.assertEqual(snap["status"], "failing")
 
+    def test_context_overflow_does_not_poison_provider_health(self):
+        from app.core import health
+        health.report_failure(
+            "公司OpenAI",
+            "退出码 1；stderr/stdout: turn/start failed: Input exceeds the maximum length",
+            error_code="VENDOR_ERROR",
+        )
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_structured_vendor_error_is_refined_from_cli_text(self):
+        from app.core import health
+        health.report_failure(
+            "OpenCode 原生免费模型",
+            "退出码 1；stderr/stdout: OpenCode's free tier can only be used from within OpenCode",
+            model="free-model", error_code="VENDOR_ERROR",
+        )
+        self.assertTrue(health.is_model_down("OpenCode 原生免费模型", "free-model"))
+
 
 class TestSilenceAndReset(HealthBase):
 

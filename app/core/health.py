@@ -228,7 +228,11 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     # every chapter or reviewer retry a request that cannot succeed.
     try:
         from .error_codes import classify_error_text, error_code_value
-        code = error_code_value(error_code) or error_code_value(classify_error_text(text))
+        supplied_code = error_code_value(error_code)
+        detected_code = error_code_value(classify_error_text(text))
+        code = (detected_code
+                if supplied_code in ("", "VENDOR_ERROR") and detected_code
+                else supplied_code or detected_code)
     except Exception:
         code = getattr(error_code, "value", str(error_code or ""))
     lower_text = text.lower()
@@ -238,7 +242,10 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     if "stderr/stdout:" in text[:160]:
         try:
             from .error_codes import classify_error_text
-            unclassified = classify_error_text(text) is None
+            # Prefer the structured code already produced by runner. Long CLI
+            # envelopes may contain truncation/diagnostic text that obscures a
+            # reliable signal when the whole string is classified again.
+            unclassified = not code and classify_error_text(text) is None
         except Exception:
             unclassified = False
         if unclassified:
@@ -246,6 +253,10 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
                 log.warning("[health] CLI 崩溃无供应商侧信号（与供应商 %s 无关，"
                             "不记健康故障）：%s", provider, text[:160])
             return
+    # Prompt-size failures are local input problems. They should trigger the
+    # compaction/retry path, never poison provider health or flood the console.
+    if code == "CONTEXT_OVERFLOW":
+        return
     # 快照闸起跑前拒绝（checkpoints.begin_git_step 的固定文案族）是本地闸门
     # 决定，供应商侧零参与——记进去会把健康的 CLI 通道按连续失败推进 down
     # 并踢出候选链（2026-10-16 实案：mimo/opencode 连记 4 次假告警）。与

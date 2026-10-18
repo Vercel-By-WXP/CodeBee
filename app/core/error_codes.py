@@ -129,6 +129,11 @@ _MODEL_UNAVAILABLE = (
     "model does not exist", "no such model", "model unavailable",
     "free tier can only be used from within opencode",
 )
+_CONTEXT_OVERFLOW = (
+    "input exceeds the maximum length", "maximum context length",
+    "context length exceeded", "context window exceeded",
+    "prompt is too long", "request too large",
+)
 _TRANSIENT_HINTS = ("stream closed before response.completed", "output stall", "timed out",
                     "timeout", "output stalled", "ENOTFOUND", "Reconnecting...",
                     "initialize", "[1211]")
@@ -162,6 +167,8 @@ def classify_error_text(error):
     if (any(marker in text for marker in _MODEL_UNAVAILABLE)
             or re.search(r"\bmodel(?:\s+[^:\n]{1,80})?\s+is\s+not\s+configured\b", text)):
         return ErrorCode.MODEL_UNAVAILABLE
+    if any(marker in text for marker in _CONTEXT_OVERFLOW):
+        return ErrorCode.CONTEXT_OVERFLOW
     # 计费拒绝的强信号先于 401/403 正则：网关用 403 包装「预扣费失败」时，
     # 必须归类为 QUOTA（账号级）而不是 FORBIDDEN（权限级）——下游的停用与
     # 降级策略依赖这个区分（2026-10-15 qwen 欠费连撞 31 次案）。

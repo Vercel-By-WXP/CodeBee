@@ -171,7 +171,7 @@ class OurFreeModelServiceManager:
                 os.kill(pid, 0)
             except PermissionError:
                 return pid
-            except OSError:
+            except (OSError, SystemError):
                 return None
             return pid
         except (OSError, ValueError, TypeError):

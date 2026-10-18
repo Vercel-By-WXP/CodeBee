@@ -143,6 +143,8 @@ class TestSharedFailureClassification(BaseTest):
             ("unknown model id: grok-3-mini", ErrorCode.MODEL_UNAVAILABLE),
             ("model not found: mistral-large", ErrorCode.MODEL_UNAVAILABLE),
             ("HTTP 503: model unavailable", ErrorCode.MODEL_UNAVAILABLE),
+            ("turn/start failed: Input exceeds the maximum length of 1048576 characters",
+             ErrorCode.CONTEXT_OVERFLOW),
             ("Invalid configuration in C:/Users/test/.gemini/settings.json: Expected object, received string",
              ErrorCode.TOOL_LAUNCH),
             ("DeepSeek transport failed while opening stream", ErrorCode.NETWORK),
