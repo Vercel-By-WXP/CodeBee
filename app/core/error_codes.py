@@ -38,6 +38,7 @@ class ErrorCode(str, Enum):
     LOCAL_STATE = "LOCAL_STATE"            # 本地 CLI 状态/锁冲突
     CONTEXT_OVERFLOW = "CONTEXT_OVERFLOW"  # 触发压缩（与 MAX_TOKENS 不同）
     TOOL_LAUNCH = "TOOL_LAUNCH"            # 本地 CLI 启动失败（找不到可执行文件）
+    MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"  # 模型未配置、已下线或模型 ID 不存在
 
     # === ok ===
     # "" 表示成功，不设枚举值
@@ -100,6 +101,7 @@ _NETWORK = ("stream disconnected", "stream closed", "connection reset", "connect
             "name resolution", "network error", "network is unreachable", "reqwest error stream",
             "error sending request for url", "no route to host", "connection error",
             "reset by peer", "channel is closed", "name or service not known",
+            "transport failed",
             "输出停滞")
 _LOCAL_STATE = ("database is locked", "database locked", "sqlite busy",
                 "unable to open database file")
@@ -116,6 +118,16 @@ _TOOL_LAUNCH = (
     "启动失败", "modulenotfounderror", "no module named", "command not found",
     "not recognized as an internal or external command", "no such file or directory",
     "cannot find the path specified",
+)
+_TOOL_CONFIG = (
+    "invalid configuration in", "invalid configuration for",
+    "expected object, received string",
+)
+_MODEL_UNAVAILABLE = (
+    "model is not configured", "model not configured", "not configured for model",
+    "unknown model id", "unknown model", "invalid model", "model not found",
+    "model does not exist", "no such model", "model unavailable",
+    "free tier can only be used from within opencode",
 )
 _TRANSIENT_HINTS = ("stream closed before response.completed", "output stall", "timed out",
                     "timeout", "output stalled", "ENOTFOUND", "Reconnecting...",
@@ -142,8 +154,14 @@ def classify_error_text(error):
     text = str(error or "").lower()
     if not text:
         return None
-    if any(marker in text for marker in _TOOL_LAUNCH):
+    config_file_hint = any(marker in text for marker in
+                           ("settings.json", "config.json", "configuration file"))
+    if (any(marker in text for marker in _TOOL_LAUNCH)
+            or (config_file_hint and any(marker in text for marker in _TOOL_CONFIG))):
         return ErrorCode.TOOL_LAUNCH
+    if (any(marker in text for marker in _MODEL_UNAVAILABLE)
+            or re.search(r"\bmodel(?:\s+[^:\n]{1,80})?\s+is\s+not\s+configured\b", text)):
+        return ErrorCode.MODEL_UNAVAILABLE
     # 计费拒绝的强信号先于 401/403 正则：网关用 403 包装「预扣费失败」时，
     # 必须归类为 QUOTA（账号级）而不是 FORBIDDEN（权限级）——下游的停用与
     # 降级策略依赖这个区分（2026-10-15 qwen 欠费连撞 31 次案）。
@@ -210,7 +228,8 @@ def is_rate_limited_error(error):
     return classify_error_text(error) == ErrorCode.RATE_LIMIT
 
 
-# 账号级死错：换请求/换提示词也不会好（余额耗尽/凭据缺失/权限封禁/CLI 起不来）。
+# 账号/候选级死错：换请求/换提示词也不会好（余额耗尽/凭据缺失/权限封禁、
+# 模型不可用或 CLI 起不来）。
 # 与 transient（限流/超时/网络抖动）相对——那些只值得退避重试，不配让 CLI 下场。
 # 供本场停用台账（bench）判定。
 ACCOUNT_DEAD_CODES = frozenset({
@@ -250,6 +269,7 @@ _SAFE_ERROR_SUMMARIES = {
     ErrorCode.LOCAL_STATE: "CLI 本地状态或数据库锁冲突",
     ErrorCode.CONTEXT_OVERFLOW: "输入上下文超出模型容量",
     ErrorCode.TOOL_LAUNCH: "本地 CLI 启动失败（可执行文件不存在，与供应商无关）",
+    ErrorCode.MODEL_UNAVAILABLE: "模型未配置、已下线或模型 ID 不存在",
 }
 
 

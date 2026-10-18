@@ -21,6 +21,7 @@ class TestErrorCodeEnum(BaseTest):
         self.assertEqual(ErrorCode.VENDOR_ERROR.value, "VENDOR_ERROR")
         self.assertEqual(ErrorCode.CANCELLED.value, "CANCELLED")
         self.assertEqual(ErrorCode.EMPTY.value, "EMPTY")
+        self.assertEqual(ErrorCode.MODEL_UNAVAILABLE.value, "MODEL_UNAVAILABLE")
 
     def test_execution_standard_matrix_matches_enum(self):
         """The markdown matrix is a checked interface, not a second memory."""
@@ -138,17 +139,34 @@ class TestSharedFailureClassification(BaseTest):
             ("Unexpected error database is locked", ErrorCode.LOCAL_STATE),
             ("ModuleNotFoundError: No module named 'mistral_vibe'", ErrorCode.TOOL_LAUNCH),
             ("dsh: command not found", ErrorCode.TOOL_LAUNCH),
+            ("model \"gemini-4-argon\" is not configured", ErrorCode.MODEL_UNAVAILABLE),
+            ("unknown model id: grok-3-mini", ErrorCode.MODEL_UNAVAILABLE),
+            ("model not found: mistral-large", ErrorCode.MODEL_UNAVAILABLE),
+            ("HTTP 503: model unavailable", ErrorCode.MODEL_UNAVAILABLE),
+            ("Invalid configuration in C:/Users/test/.gemini/settings.json: Expected object, received string",
+             ErrorCode.TOOL_LAUNCH),
+            ("DeepSeek transport failed while opening stream", ErrorCode.NETWORK),
+            ("free tier can only be used from within OpenCode", ErrorCode.MODEL_UNAVAILABLE),
         )
         for message, expected in cases:
             with self.subTest(message=message):
                 self.assertEqual(classify_error_text(message), expected)
                 self.assertEqual(error_code_value(expected), expected.value)
         self.assertIsNone(classify_error_text("some unclassified vendor output"))
+        self.assertIsNone(classify_error_text("Invalid configuration in upstream response"))
         self.assertIsNone(classify_error_text("vendor failed for model foo-403beta"))
         self.assertFalse(is_auth_error("HTTP 403: invalid API key for this model"))
         self.assertTrue(classify_error_text("Error: failed to run prompt: provider.connection_error: Connection error"))
         self.assertIsNone(classify_error_text("record 402 is missing from the report"))
         self.assertEqual(classify_error_text("HTTP 402 payment required"), ErrorCode.QUOTA)
+
+    def test_deterministic_model_failures_are_account_dead(self):
+        from app.core.error_codes import (
+            ErrorCode, is_account_dead_error, safe_error_summary,
+        )
+        self.assertFalse(is_account_dead_error(ErrorCode.MODEL_UNAVAILABLE))
+        self.assertEqual(safe_error_summary(ErrorCode.MODEL_UNAVAILABLE),
+                         "模型未配置、已下线或模型 ID 不存在")
 
     def test_runner_error_code_uses_shared_taxonomy(self):
         from app.core import runner

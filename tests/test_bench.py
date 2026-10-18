@@ -53,7 +53,8 @@ class TestAccountDeadCodes(BaseTest):
         for code in ("QUOTA", "AUTH", "MISSING_CREDENTIAL", "FORBIDDEN", "TOOL_LAUNCH"):
             self.assertTrue(is_account_dead_error(code), code)
         # transient / 正常错误不配下场
-        for code in ("RATE_LIMIT", "TIMEOUT", "NETWORK", "UPSTREAM_SERVER", "", None):
+        for code in ("RATE_LIMIT", "TIMEOUT", "NETWORK", "UPSTREAM_SERVER",
+                     "MODEL_UNAVAILABLE", "", None):
             self.assertFalse(is_account_dead_error(code), code)
 
 
@@ -73,7 +74,8 @@ class TestBenchRegistry(BaseTest):
         self.assertIn("额度", self.bench.reason("r-test", "qwen"))
 
     def test_transient_codes_never_bench(self):
-        for code in ("RATE_LIMIT", "TIMEOUT", "NETWORK", "VENDOR_ERROR", "EMPTY"):
+        for code in ("RATE_LIMIT", "TIMEOUT", "NETWORK", "VENDOR_ERROR", "EMPTY",
+                     "MODEL_UNAVAILABLE"):
             self.assertFalse(self.bench.bench("r-test", "kimi", code))
         self.assertFalse(self.bench.is_benched("r-test", "kimi"))
 
