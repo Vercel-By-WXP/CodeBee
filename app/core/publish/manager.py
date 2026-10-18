@@ -1139,7 +1139,7 @@ def read_chapter(fp):
 
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                          force=False, force_confirmed=False, force_reason="",
-                         as_draft=False, scheduled=False):
+                         as_draft=False, scheduled=False, direct_today=False):
     """把一章发到平台（或填好待人工确认/as_draft 只存草稿）。
 
     幂等：已成功发布**或已存草稿**的章号拒绝重做——重复发会平台上出双章，
@@ -1247,6 +1247,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                                  book_ref.get("title") or "")
     values["publish_date"] = ""
     values["publish_time"] = "00:00"
+    # 今天直发：平台弹「建议定时/有定时待发」也点否拒绝（新书首发指令）
+    values["force_direct"] = bool(direct_today)
     # When the platform already has a queued chapter, continue its cadence.
     # The flow may still fall back to tomorrow/00:00 when no local slot is
     # known (for example a queue created manually before CodeBee was used).

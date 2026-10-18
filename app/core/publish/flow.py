@@ -1182,6 +1182,10 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     raise FlowError("定时发布时间格式应为 HH:MM：%s" % raw_time)
                 force_schedule = bool(st.get("force_schedule") or raw_date)
                 queued_hint_prev = False   # 上一轮弹窗是否带定时横幅（点否前预判用）
+                # force_direct：今天就要上线——平台弹「建议本章定时发布」
+                # 或「有定时待发布章节」横幅时一律点否拒绝、直接确认发布
+                # （2026-10-18 用户指令：新书首发今天可发，别全排到明天）
+                force_direct = bool(values.get("force_direct"))
                 max_days = max(1, int(st.get("max_schedule_days") or 120))
                 deadline = time.time() + float(st.get("timeout") or 180)
                 tried_dates = 0
@@ -1221,7 +1225,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         queued_hint = ("建议本章定时发布" in dialog_text or
                                        "有定时待发布章节" in dialog_text)
                         queued_hint_prev = queued_hint
-                        use_schedule = force_schedule or queued_hint
+                        use_schedule = ((force_schedule or queued_hint)
+                                        and not force_direct)
                         if use_schedule:
                             # Tell the caller that the platform accepted the
                             # scheduled path even when the flow was entered
@@ -1255,6 +1260,20 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                      (trial_day.strftime("%Y-%m-%d"),
                                       trial_time.strftime("%H:%M")))
                             tried_dates += 1
+                        if not use_schedule and fq_schedule_enabled():
+                            # force_direct：平台预填了定时开关（新书建议定时的
+                            # 形态）——照既有结论「开关只认真实指针序列」，
+                            # 真实点击关掉它，确认发布才是真·今天直发。
+                            pt = fq_schedule_switch_point() or {}
+                            if pt.get("x"):
+                                page.send("Input.dispatchMouseEvent", {
+                                    "type": "mousePressed", "x": pt["x"], "y": pt["y"],
+                                    "button": "left", "clickCount": 1}, timeout=8.0)
+                                page.send("Input.dispatchMouseEvent", {
+                                    "type": "mouseReleased", "x": pt["x"], "y": pt["y"],
+                                    "button": "left", "clickCount": 1}, timeout=8.0)
+                                time.sleep(0.5)
+                                note(i, "已关闭平台预填的定时开关（今天直发）")
                         before_submit = fq_state()
                         if not fq_click("发布设置", "确认发布").get("ok"):
                             raise FlowError("番茄发布设置没有确认发布按钮")

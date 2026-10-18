@@ -3025,7 +3025,7 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("scheduled"):
                 kwargs["scheduled"] = True
             ok, err = pub.upload_chapter_async(task_id, platform, str(fp), auto_submit,
-                                               **kwargs)
+                                               **kwargs, direct_today=bool(body.get("direct_today")))
         if not ok:
             payload = {"error": err or "操作失败"}
             if str(err or "").startswith("质量门禁拦截："):
