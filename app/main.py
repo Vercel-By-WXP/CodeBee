@@ -4592,6 +4592,21 @@ def main():
     threading.Thread(target=_discover_clis, name="cli-discovery", daemon=True).start()
     from core import bench as _bench_health
     _bench_health.init()  # CLI 账号死错台账：恢复落盘状态 + 定时探活
+    # CodeBee 托管 standalone 的生命周期：已运行实例只复用，不在退出时误杀；
+    # 当前进程创建的实例由 atexit 统一清理，CLI、桌面和异常启动路径都覆盖。
+    from core import our_free_model_service
+    import atexit
+    _step("正在启动 Our Free Model standalone…")
+    _ofm = {"state": "failed", "managed": False, "message": "未启动"}
+    try:
+        _ofm = our_free_model_service.start()
+        print("[CodeBee] Our Free Model standalone：%s" %
+              _ofm.get("message", "已检查"), flush=True)
+    except Exception as _ofm_err:
+        # standalone 是可选本地服务，找不到 Node/源码时不影响 CodeBee 主服务。
+        print("[CodeBee] Our Free Model standalone 启动跳过（不影响启动）：%s: %s" %
+              (type(_ofm_err).__name__, _ofm_err), flush=True)
+    atexit.register(our_free_model_service.stop)
     from core import modelhub
     _step("正在迁移模型绑定…")
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
@@ -4607,6 +4622,23 @@ def main():
     except Exception as _free_err:
         print("[CodeBee] Our Free Model 接入跳过（不影响启动）：%s: %s"
               % (type(_free_err).__name__, _free_err), flush=True)
+    # Node 首次启动偶尔会超过进程就绪等待窗口；继续后台重试一次供应商
+    # 接线，避免本次 CodeBee 会话一直停留在“未启动”。手动停用仍由
+    # modelhub 的 builtin_auto_enable 标记保护，不会被后台重启覆盖。
+    if _ofm.get("state") == "started" and not _ofm.get("port"):
+        def _retry_our_free_model():
+            for _ in range(20):
+                time.sleep(1.0)
+                try:
+                    if our_free_model_service.status().get("state") == "failed":
+                        return
+                    result = modelhub.ensure_builtin_free_provider()
+                    if result.get("ready"):
+                        return
+                except Exception:
+                    pass
+        threading.Thread(target=_retry_our_free_model,
+                         name="our-free-model-retry", daemon=True).start()
     _step("正在探测原生免费通道…")
     try:
         _native_wire = modelhub.auto_wire_native_channels()
@@ -4755,7 +4787,6 @@ def main():
     except Exception:
         pass
     tok = remote.token()
-    import atexit
     import os as _os
     remote.set_trusted_proxy(args.trusted_proxy or _os.environ.get("TUTTI_TRUST_PROXY") == "1",
                              args.public_url)

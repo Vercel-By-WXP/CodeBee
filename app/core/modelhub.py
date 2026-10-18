@@ -99,7 +99,14 @@ def _our_free_model_settings_path():
     """Return standalone settings.json without importing the external project."""
     configured = (os.environ.get("OFM_HOME") or
                   os.environ.get("OUR_FREE_MODEL_HOME") or "").strip()
-    root = Path(configured).expanduser() if configured else Path.home() / ".our-free-model"
+    if configured:
+        root = Path(configured).expanduser()
+    elif os.environ.get("TUTTI_DATA", "").strip():
+        # Match the lifecycle manager so isolated CodeBee instances never read
+        # or write the user's production standalone credentials.
+        root = Path(os.environ["TUTTI_DATA"]).expanduser() / "our-free-model"
+    else:
+        root = Path.home() / ".our-free-model"
     return root / "settings.json"
 
 
@@ -997,6 +1004,11 @@ def provider_view():
         row["enabled"] = bool(p.get("enabled", True))
         if _is_our_free_model_provider(p):
             row["builtin"] = True
+            try:
+                from . import our_free_model_service
+                row["builtin_process"] = our_free_model_service.manager.public_status()
+            except Exception:
+                row["builtin_process"] = {"state": "unknown", "managed": False}
             if not _is_our_free_model_loopback(p.get("base_url")):
                 row["builtin_status"] = "not_started"
                 row["builtin_status_message"] = "内置免费服务端点必须是本机回环地址"

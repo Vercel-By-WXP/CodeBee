@@ -6,7 +6,11 @@ CodeBee 启动时会自动创建一个名为 **Our Free Model** 的内置供应�
 
 ## 启动 standalone
 
-在 `dsh-our-free-model` 源码根目录运行：
+CodeBee 启动时会自动查找并启动 standalone。源码目录可以放在 CodeBee 同级的
+`dsh-our-free-model` / `dsh-our-free-model-main`，或通过
+`OUR_FREE_MODEL_ROOT`（也兼容 `OFM_STANDALONE_ROOT`）指定。
+
+如果需要单独运行或调试，也可以在 `dsh-our-free-model` 源码根目录运行：
 
 ```powershell
 npm run start:standalone
@@ -26,6 +30,9 @@ npm run start:standalone -- --data-dir F:\ofm-data --port 18900
 $env:OFM_HOME = 'F:\ofm-data'
 ```
 
+如果 CodeBee 使用 `TUTTI_DATA` 运行隔离实例且没有设置 `OFM_HOME`，standalone
+数据会自动放在 `<TUTTI_DATA>\our-free-model`，不会与默认用户目录或其他实例混用。
+
 服务会把 API Key 保存到 standalone 数据目录的 `settings.json` 的 `forwardKey` 字段。
 CodeBee 只在内存中读取这个 Key，不会把真实值写入自己的 `data/models.json`。
 
@@ -36,6 +43,10 @@ CodeBee 只在内存中读取这个 Key，不会把真实值写入自己的 `dat
 - standalone 端口从 `settings.json` 的 `standalonePort` 读取；端点强制为本机回环地址。
 - 用户可以修改默认模型、难度模型和启停状态；内置端点与 Key 由 standalone 管理。
 - 删除内置供应商后，CodeBee 会记住该操作，不会在每次启动时重新创建。
+- CodeBee 自己启动的 standalone 会在 CodeBee 退出时自动关闭；如果启动前已经有
+  standalone 在运行，CodeBee 会复用它，并在退出时保留该外部实例。
+- standalone 启动日志写入其数据目录的 `codebee-standalone.log`。找不到源码、Node
+  版本不满足要求或启动失败时，CodeBee 仍会继续启动，供应商会显示对应状态。
 
-当前版本只预置并接入 standalone，不在 CodeBee 进程内托管 Node 子进程。standalone 的
-账号渠道、额度和上游隐私策略仍由其自身项目负责。
+standalone 的账号渠道、额度和上游隐私策略仍由其自身项目负责。CodeBee 只托管它
+的 Node 子进程生命周期，不接管其数据目录或真实 API Key。

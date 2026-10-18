@@ -3019,6 +3019,15 @@ function renderProvDetail() {
   const pbHtml = !pb ? "" : (pb.busy
     ? '<span class="badge">' + esc(t("适配测试中…")) + "</span>"
     : (pb.ok ? '<span class="badge ok">' : '<span class="badge bad">') + esc(pb.message || "") + "</span>");
+  const bp = p.builtin_process || {};
+  const builtinProcessHtml = p.builtin ? (
+    bp.state === "started" && bp.managed
+      ? '<span class="badge ok" title="' + esc(bp.message || "") + '">✓ ' + t("CodeBee 已托管运行") + "</span>"
+      : bp.state === "already_running"
+      ? '<span class="badge" title="' + esc(bp.message || "") + '">' + t("检测到外部 standalone") + "</span>"
+      : (bp.state === "failed" || bp.state === "unavailable") && bp.error
+      ? '<span class="badge warn" title="' + esc(bp.error) + '">' + t("standalone 未启动") + "</span>"
+      : "") : "";
   const builtinHtml = p.builtin ? (p.builtin_status === "disabled"
     ? '<span class="badge" title="' + esc(p.builtin_status_message || "") + '">' + t("本地免费服务已手动停用") + "</span>"
     : p.builtin_status === "ready"
@@ -3033,7 +3042,7 @@ function renderProvDetail() {
     '<div class="pd-title"><span class="pd-name">' + esc(p.name) + "</span>" +
     '<span class="tag">' + esc(protoLabel(p)) + "</span>" + capTags +
     (p.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") +
-    srcTag(p.source) + builtinHtml + tpHtml + pbHtml + "</div>" +
+    srcTag(p.source) + builtinHtml + builtinProcessHtml + tpHtml + pbHtml + "</div>" +
     '<div class="pd-url" title="' + esc(p.base_url || "") + '">' + esc(p.base_url || "") + "</div>" +
     '<div class="pd-ops">' +
     '<button class="primary small" onclick="testProv(\'' + esc(p.id) + '\')">' + t("测试连接") + "</button>" +

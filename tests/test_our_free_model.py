@@ -177,3 +177,14 @@ class TestOurFreeModelProvider(BaseTest):
                         if p.get("source") == modelhub.OUR_FREE_MODEL_SOURCE)
         self.assertIn("standalone", modelhub.key_op(provider["id"], "add", key="other"))
         self.assertIn("不能复制", modelhub.providers_op([provider["id"]], "duplicate")[1])
+
+    def test_builtin_process_status_does_not_expose_local_paths(self):
+        from app.core import modelhub
+
+        modelhub.ensure_builtin_free_provider()
+        provider = next(p for p in modelhub.provider_view()
+                        if p.get("source") == modelhub.OUR_FREE_MODEL_SOURCE)
+        process = provider.get("builtin_process") or {}
+        self.assertNotIn("root", process)
+        self.assertNotIn("data_dir", process)
+        self.assertNotIn("pid", process)

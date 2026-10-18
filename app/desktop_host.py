@@ -199,6 +199,14 @@ def main() -> None:
             if not (info["alive"] or info["chat_alive"]):
                 break
             time.sleep(0.1)
+        # os._exit() below intentionally bypasses Python atexit handlers. Stop
+        # the standalone child explicitly so closing the desktop shell also
+        # closes the Our Free Model service owned by this sidecar.
+        try:
+            from core import our_free_model_service
+            our_free_model_service.stop()
+        except Exception:
+            pass
         # The shell owns the sidecar process. Once the response is sent and
         # workers have drained, exit directly; calling HTTPServer.shutdown()
         # from an auxiliary thread can wait behind a keep-alive request.
