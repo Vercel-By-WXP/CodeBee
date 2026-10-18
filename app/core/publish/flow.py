@@ -1115,16 +1115,10 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         time.sleep(0.5)
                         continue
                     if "发布设置" in dialog_text:
-                        # 定时优先（2026-10-17 实案）：点「否」后弹窗重渲染会把
-                        # 定时开关节点吞掉（sw 从 1 变 0），fq_enable_schedule
-                        # 必报「找不到定时发布开关」。定时模式下先开开关再点
-                        # 「否」；点完后开关若被重渲染洗掉，下方原路径还会补开。
-                        early_schedule = bool(force_schedule or queued_hint_prev)
-                        if early_schedule and not fq_schedule_enabled():
-                            try:
-                                fq_enable_schedule()
-                            except FlowError:
-                                pass  # 开关这刻还没渲染出来，走点否后的补开
+                        # 先点「否」再开定时（2026-10-18 实案：先开开关会触发
+                        # 重渲染挪走 AI 单选，导致「无法选择未使用 AI」）。
+                        # 点否后开关可能被重渲染洗掉——由 fq_enable_schedule
+                        # 内的 30 秒退避重试负责找回。
                         if not fq_click("发布设置", "否").get("ok"):
                             raise FlowError("番茄发布设置无法选择“未使用 AI”")
                         # 「建议本章定时发布」横幅是弹窗打开后异步渲染的，
