@@ -134,6 +134,13 @@ async function main() {
             { name: "第1章 风起.md" }, { name: "第2章 云涌.md" }, { name: "作品信息-番茄.md" },
           ] }), { status: 200 });
         }
+        if (u.includes("/prepare-chapter") && (opts || {}).method === "POST") {
+          return new Response(JSON.stringify({ ok: true, calibrated_at: "2026-10-19 10:00:00",
+            book: { platform: "fanqie", items: [
+              { file: "第1章 风起.md", chapter_no: 1 },
+              { file: "第2章 云涌.md", chapter_no: 2 },
+            ] } }), { status: 200 });
+        }
         if (u.includes("/api/publish/") && (opts || {}).method === "POST") {
           window.__pbPosts.push({ url: u, body: (opts.body || "") });
           return new Response(JSON.stringify({ ok: true, started: true }), { status: 200 });
@@ -147,7 +154,8 @@ async function main() {
       sideOpenTask("pub-t1");
       for (let i = 0; i < 14; i++) {
         await new Promise(r2 => setTimeout(r2, 500));
-        if (document.querySelectorAll(".bm-pub").length >= 2) break;
+        if (document.querySelectorAll(".bm-pub").length >= 2 &&
+            [...document.querySelectorAll(".bm-pub .pb-badge")].some(x => x.textContent.includes("已连接"))) break;
       }
       await new Promise(r2 => setTimeout(r2, 600));
       const box = document.getElementById("rd-bookmeta");

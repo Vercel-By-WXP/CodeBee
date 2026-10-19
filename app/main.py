@@ -1975,6 +1975,39 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/(create-book|chapter|auto-publish)$", path)
         if m:
             return self._api_publish_task_op(m.group(1), m.group(2))
+        m = re.match(r"^/api/publish/task/([^/]+)/prepare-chapter$", path)
+        if m:
+            # 章节选择前必须先把平台章节管理页的实况同步回来。这个接口
+            # 是用户主动点击「发一章」触发的，因此允许打开/接管受控浏览器；
+            # 与后台静默校准不同，失败时直接阻止生成可发送的章节清单。
+            from core.publish import auto as pub_auto
+            from core.publish import ledger as pub_ledger
+            from core.publish import manager as pub
+            tid = m.group(1)
+            if not store.get_task(tid):
+                return self._json(404, {"error": "任务不存在"})
+            body = self._body() or {}
+            plat = str(body.get("platform") or "").strip()
+            if plat not in ("fanqie", "qimao"):
+                return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+            if plat not in pub_ledger.books_for(tid):
+                return self._json(400, {"error": "该平台未登记作品"})
+            ok, err = pub.sync_published(tid, plat, manual=True)
+            if not ok:
+                return self._json(409, {
+                    "error": "发布前校准失败：%s" % (err or "未知原因"),
+                    "calibration_required": True,
+                })
+            view = pub_auto.status(tid)
+            book = next((b for b in view.get("books") or []
+                         if b.get("platform") == plat), None)
+            ent = pub_ledger.book_for(tid, plat) or {}
+            return self._json(200, {
+                "ok": True,
+                "calibrated_at": ent.get("remote_synced_at") or "",
+                "book": book or {"platform": plat, "items": []},
+                "running": view.get("running"),
+            })
         m = re.match(r"^/api/publish/task/([^/]+)/confirm-chapter$", path)
         if m:
             from core.publish import manager as pub
@@ -2961,7 +2994,7 @@ class Handler(BaseHTTPRequestHandler):
         elif op == "disconnect":
             ok, err = pub.disconnect(platform, account), ""
         else:
-            ok, err = pub.probe_form_async(platform)
+            ok, err = pub.probe_form_async(platform, account)
         if not ok:
             return self._json(400, {"error": err or "操作失败"})
         return self._json(200, {"ok": True})
@@ -3039,6 +3072,15 @@ class Handler(BaseHTTPRequestHandler):
                 fp.relative_to(_P(wd).resolve())
             except (OSError, ValueError):
                 return self._json(400, {"error": "章节文件必须在任务工作目录内"})
+            # 单章入口不能信任页面刚才列出的旧待发清单：用户可能在别处
+            # 手工提交过本章，或平台队列已经变化。真正打开编辑器前再做一
+            # 次平台实况校准；校准失败就拒绝发起，避免把已发布章再次送出。
+            sync_ok, sync_err = pub.sync_published(task_id, platform, manual=False)
+            if not sync_ok:
+                return self._json(409, {
+                    "error": "发章前必须先完成平台校准：%s" % (sync_err or "未知原因"),
+                    "calibration_required": True,
+                })
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
                        "force_reason": force_reason}
                       if force or force_confirmed or force_reason else {})
@@ -3062,7 +3104,9 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body() or {}
         ok, err = pub.register_book(task_id, (body.get("platform") or "").strip(),
                                     str(body.get("title") or ""),
-                                    book_id=str(body.get("book_id") or ""))
+                                     book_id=str(body.get("book_id") or ""),
+                                     account=(str(body["account"]).strip()
+                                              if "account" in body else None))
         if not ok:
             return self._json(400, {"error": err or "登记失败"})
         return self._json(200, {"ok": True})

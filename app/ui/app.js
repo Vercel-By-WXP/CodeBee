@@ -2411,6 +2411,14 @@ function saveBrowserNotifyPreference() {
 /* ---------------------------------------------------------- 状态同步：SSE 实时 + 轮询降级 */
 /* 应用 /api/state 或 SSE 推送的状态载荷 */
 function applyState(d) {
+  if (!d || typeof d !== "object") return;
+  // A slower /api/state response can finish after a newer SSE frame. The
+  // version is monotonic on the desktop and prevents that stale snapshot from
+  // rolling the phone workbench back to an older state.
+  const incomingVersion = Number(d.v);
+  const currentVersion = Number(S.state && S.state.v);
+  if (Number.isFinite(incomingVersion) && Number.isFinite(currentVersion) &&
+      incomingVersion < currentVersion) return;
   const prevState = S.state;
   S.state = d;
   runSettleWatch(prevState, d);
@@ -2669,6 +2677,17 @@ async function refreshPollLookups(force) {
 }
 
 let _pollBusy = false;
+let _sseEpoch = 0;
+let _sseRetryTimer = null;
+
+function scheduleSSEReconnect() {
+  if (_sseRetryTimer || document.hidden || S.es) return;
+  _sseRetryTimer = setTimeout(() => {
+    _sseRetryTimer = null;
+    if (!document.hidden && !S.es) startSSE();
+  }, 3000);
+}
+
 async function poll() {
   // 上一轮还没回来就跳过本轮：服务端偶发卡顿（如目录探测）时，无超时的
   // 轮询会每 2s 叠两条连接，塞满浏览器 6 连接池后连点击的请求都排不上队
@@ -2713,10 +2732,16 @@ function schedulePolling() {
 /* SSE：状态变化即时推送；断开自动重连，重连失败降级为 2s 轮询 */
 function startSSE() {
   if (!window.EventSource) return;
+  if (S.es) return;
+  clearTimeout(_sseRetryTimer);
+  _sseRetryTimer = null;
+  const epoch = ++_sseEpoch;
   try {
     const es = new EventSource("/api/events" + qsAuth());
     S.es = es;
+    const current = () => epoch === _sseEpoch && S.es === es;
     es.onopen = () => {
+      if (!current()) { try { es.close(); } catch (e) {} return; }
       S.sseLive = true;
       S._lastSseAt = Date.now();
       schedulePolling();
@@ -2725,19 +2750,29 @@ function startSSE() {
     // 命名事件：台账有新记账（event: usage）。不进 onmessage、不触发
     // applyState——只刷新左下角用量条，3s 节流在 sideUsageLoad 里。
     es.addEventListener("usage", () => {
+      if (!current()) return;
       S._lastSseAt = Date.now();
       sideUsageLoad(true);
     });
     es.onmessage = (ev) => {
+      if (!current()) return;
       S._lastSseAt = Date.now();
       try { applyState(JSON.parse(ev.data)); render(); } catch (e) { /* ignore */ }
     };
     es.onerror = () => {
+      if (!current()) { try { es.close(); } catch (e) {} return; }
+      // EventSource may remain in CONNECTING for a long time without closing.
+      // Mark the stream unavailable immediately so the mobile relay falls back
+      // to /api/state instead of skipping polls while the phone shows failure.
+      S.sseLive = false;
+      schedulePolling();
       if (es.readyState === EventSource.CLOSED) {  // 彻底失败（如 401）：降级轮询
         S.es = null; S.sseLive = false; schedulePolling(); poll();
+        scheduleSSEReconnect();
       } else {
         $("conn").textContent = t("重连中…");
         $("conn").className = "conn bad";
+        poll();
       }
     };
   } catch (e) { /* EventSource 不可用：保持轮询 */ }
@@ -2749,6 +2784,9 @@ function startSSE() {
  * 立即重开 SSE 并拉一次全量。轮询在隐藏态本就被跳过，后台零连接占用。 */
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    clearTimeout(_sseRetryTimer);
+    _sseRetryTimer = null;
+    ++_sseEpoch;
     if (S.es) { try { S.es.close(); } catch (e) {} S.es = null; S.sseLive = false; schedulePolling(); }
   } else if (!S.es) {
     startSSE();
@@ -8226,9 +8264,30 @@ function pbBlock(task, platform, selectionOnly = false) {
 }
 
 let _pbTimer = 0;
-window.pbOpenSelection = function (taskId, platform) {
+async function pbPrepareChapter(taskId, platform) {
+  const r = await api("/api/publish/task/" + encodeURIComponent(taskId) + "/prepare-chapter",
+    { method: "POST", body: JSON.stringify({ platform }) });
+  // 让批量选择弹框立即使用校准后的清单；保留另一平台的状态，避免面板
+  // 重绘时把它的卡片信息清掉。
+  if (r && r.book) {
+    const old = S.pubAuto || {};
+    const books = (old.books || []).filter((b) => b.platform !== platform);
+    books.push(r.book);
+    S.pubAuto = Object.assign({}, old, { books, running: r.running || null });
+  }
+  return r;
+}
+
+window.pbOpenSelection = async function (taskId, platform) {
   const task = ((S.state || {}).tasks || []).find((x) => x.id === taskId);
   if (!task) return;
+  try {
+    toast(t("正在校准平台章节状态…"));
+    await pbPrepareChapter(taskId, platform);
+  } catch (e) {
+    toast(t("发布前校准失败：") + e.message, true);
+    return;
+  }
   const html = pbBlock(task, platform, true);
   if (!html) { toast(t("当前没有可选择的待发章节")); return; }
   const title = t("选择章节并发布") + " · " + t(platform === "fanqie" ? "番茄" : "七猫");
@@ -8448,10 +8507,12 @@ window.pbRegToggle = function (taskId, platform) {
 window.pbRegister = async function (taskId, platform, rebind) {
   const title = (($("pb-reg-title-" + platform) || {}).value || "").trim();
   const bookId = (($("pb-reg-id-" + platform) || {}).value || "").trim();
+  const account = (S.pbAccSel && S.pbAccSel[platform]) || "";
   if (!title) { toast(t("请填写平台上的作品名"), true); return; }
   try {
     await api("/api/publish/task/" + encodeURIComponent(taskId) + "/register-book",
-      { method: "POST", body: JSON.stringify({ platform: platform, title: title, book_id: bookId }) });
+      { method: "POST", body: JSON.stringify({ platform: platform, title: title,
+        book_id: bookId, account: account }) });
     toast(rebind ? t("已更新绑定，可直接发章") : t("已登记，可直接发章"));
     const box = $("pb-reg-" + platform);
     if (box) box.classList.add("hidden");
@@ -8485,11 +8546,15 @@ window.pbUploadChapter = async function (taskId, platform) {
   if (!wd) { box.innerHTML = '<div class="pb-err">' + esc(t("找不到任务工作目录")) + "</div>"; return; }
   let files = [];
   try {
-    const r = await api("/api/publish/task/" + encodeURIComponent(taskId) + "/pending");
-    const book = (r.books || []).find((b) => b.platform === platform);
+    // 章节选择必须建立在刚刚完成的平台实况校准上。旧的 GET /pending
+    // 只读本地台账，平台手工补交后会把已发布章再次列出来；prepare-chapter
+    // 同步章节管理页并返回校准后的待发清单。
+    box.innerHTML = '<div class="pb-loading">' + esc(t("正在校准平台章节状态…")) + "</div>";
+    const r = await pbPrepareChapter(taskId, platform);
+    const book = r.book || (r.books || []).find((b) => b.platform === platform);
     files = ((book && book.items) || []).map((f) => ({ name: f.file, chapter_no: f.chapter_no }));
   } catch (e) {
-    box.innerHTML = '<div class="pb-err">' + esc(t("列文件失败：") + e.message) + "</div>";
+    box.innerHTML = '<div class="pb-err">' + esc(t("发布前校准失败：") + e.message) + "</div>";
     return;
   }
   if (!files.length) { box.innerHTML = '<div class="pb-hint">' + esc(t("暂无待发章节，已发布和已存草稿的章节已排除")) + "</div>"; return; }
@@ -19465,9 +19530,20 @@ function sideUsageRenderRuns() {
 async function openPhoneConnect() {
   let urls = [];
   let relay = null;
+  let pairError = null;
   try {
     const d = await api("/api/connect");
     relay = d.relay;
+    // The pairing view opens with a usable QR code. Keep an existing code so
+    // reopening the dialog does not invalidate a code the user is scanning.
+    if (relay && !relay.pair_url && !relay.configured) {
+      try {
+        const result = await ensurePhoneRelayPair();
+        relay = result || relay;
+      } catch (error) {
+        pairError = error;
+      }
+    }
     // 后端排好的直连入口（公网隧道 / Tailscale / 局域网），配对码之外并列可选。
     urls = (d.urls || []).map(u => ({ label: u.label, url: u.url }));
   } catch (e) { toast(e.message, true); return; }
@@ -19481,7 +19557,7 @@ async function openPhoneConnect() {
     (relay ? '<div class="relay-connect"><strong>' + t("Codebee · 连接自己的电脑") + '</strong>' +
       '<p class="hint">' + t("手机打开 {0}，扫描下方配对二维码。配对码 5 分钟内有效，仅能使用一次。", esc(relay.entry)) + '</p>' +
       '<p id="relay-connect-status" role="status"></p>' +
-      '<div class="conn-chips"><button class="primary small" onclick="window.phoneRelayAction(\'pair\')">' + t("生成配对码") + '</button>' +
+      '<div class="conn-chips"><button class="primary small" onclick="window.phoneRelayAction(\'pair\')">' + t("切换配对码") + '</button>' +
       '<button class="ghost small" onclick="window.phoneRelayAction(\'revoke\')">' + t("撤销全部手机") + '</button>' +
       '<button class="ghost small" onclick="window.phoneRelayAction(\'disable\')">' + t("关闭远程连接") + '</button></div>' +
       '<p class="hint" id="relay-pair-code"></p></div>' : "") +
@@ -19498,6 +19574,17 @@ async function openPhoneConnect() {
   openModal(t("📱 手机连接"), body, "");
   if (relay) renderPhoneRelay(relay);
   renderConnQR();
+  if (pairError) toast(t("自动生成配对码失败，请重试"), true);
+}
+
+let _phoneRelayPairPromise = null;
+function ensurePhoneRelayPair() {
+  if (_phoneRelayPairPromise) return _phoneRelayPairPromise;
+  _phoneRelayPairPromise = api("/api/connect/relay", { method: "POST", timeout: 15000,
+    body: JSON.stringify({ action: "pair" }) })
+    .then(result => (result && result.relay) || null)
+    .finally(() => { _phoneRelayPairPromise = null; });
+  return _phoneRelayPairPromise;
 }
 
 let _phoneRelayTimer = null;
@@ -19505,11 +19592,11 @@ function renderPhoneRelay(relay) {
   clearTimeout(_phoneRelayTimer);
   const status = $("relay-connect-status");
   if (!status) return;
-  status.textContent = !relay.enabled ? t("尚未启用，点击生成配对码连接手机。") :
+  status.textContent = !relay.enabled ? t("尚未启用，点击切换配对码连接手机。") :
     !relay.connected ? (relay.pair_url ? t("连接正在恢复，配对码暂时保留，恢复后即可扫码。") :
       (relay.error || t("正在连接，请稍候…"))) :
       relay.pair_url ? (relay.pair_ready === false ? t("正在同步配对码，请稍候…") : t("已连接，请用手机扫码配对。")) :
-        t("电脑已连接，可生成新配对码或撤销手机连接。");
+        t("电脑已连接，可切换配对码或撤销手机连接。");
   const code = $("relay-pair-code");
   if (code) code.textContent = relay.pair_code ? t("连接码：") + relay.pair_code : "";
   const old = S.connUrls.findIndex(u => u.label === t("Codebee · 手机配对"));
@@ -19535,10 +19622,11 @@ async function phoneRelayAction(action) {
       !await uiConfirm(action === "disable" ? t("关闭远程连接并撤销全部已配对手机？") : t("撤销全部已配对手机？"),
         { title: t("确认操作"), ok: action === "disable" ? t("关闭并撤销") : t("撤销"), danger: true })) return;
   try {
-    const result = await api("/api/connect/relay", { method: "POST", timeout: 15000,
-      body: JSON.stringify({ action }) });
+    const relay = action === "pair" ? await ensurePhoneRelayPair() :
+      (await api("/api/connect/relay", { method: "POST", timeout: 15000,
+        body: JSON.stringify({ action }) })).relay;
     S.connIdx = 0;
-    renderPhoneRelay(result.relay);
+    renderPhoneRelay(relay);
     if (action !== "pair") toast(t("已撤销全部手机连接"));
   } catch (error) { toast(error.message, true); }
 }
@@ -19549,7 +19637,7 @@ function renderConnQR() {
   if (!box) return;
   const copy = $("conn-copy");
   if (copy) copy.disabled = !u;
-  if (!u) { box.textContent = t("点击“生成配对码”后，二维码会显示在这里。"); $("conn-url").textContent = ""; return; }
+  if (!u) { box.textContent = t("正在生成配对码…"); $("conn-url").textContent = ""; return; }
   if (typeof qrcode !== "function") { box.textContent = u.url; return; }  // 兜底：库没加载也能用
   const qr = qrcode(0, "M");
   qr.addData(u.url);
@@ -19566,7 +19654,7 @@ function pickConnUrl(i) {
 
 function copyConnUrl() {
   const u = S.connUrls[S.connIdx];
-  if (!u) { toast(t("请先生成配对码并等待地址出现"), true); return; }
+  if (!u) { toast(t("请等待配对码生成并等待地址出现"), true); return; }
   const done = () => toast(t("已复制，手机浏览器粘贴打开即可"));
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(u.url).then(done, () => fallbackCopy(u.url, done));

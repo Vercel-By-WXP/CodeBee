@@ -47,6 +47,7 @@ IDLE_POLL_S = _env_float("TUTTI_PUBLISH_IDLE_POLL_S", 0.5)
 IDLE_TIMEOUT_S = _env_float("TUTTI_PUBLISH_IDLE_TIMEOUT_S", 300.0)
 TRANSIENT_RETRY_S = 5        # 连接类瞬断的重试前静默（等浏览器缓过来）
 BOOK_PREP_TIMEOUT_S = 900    # 自动补资料/建书最长等待（含模型与平台跳转）
+RECLAIM_TIMEOUT_S = 8.0      # 重发前等待旧批次收尾的最长时间
 
 _CAP_DEFAULT = 10
 
@@ -69,6 +70,69 @@ def _cancelled(task_id):
     with _LOCK:
         event = _cancel_events.get(str(task_id))
         return bool(event and event.is_set())
+
+
+def _release_cancel_event(task_id, event):
+    """Drop a finished batch's cancellation handle without touching a newer run."""
+    with _LOCK:
+        if _cancel_events.get(str(task_id)) is event:
+            _cancel_events.pop(str(task_id), None)
+
+
+def _batch_sleep(task_id, seconds):
+    """Sleep while allowing a re-publish request to reclaim this batch."""
+    with _LOCK:
+        event = _cancel_events.get(str(task_id))
+    if event:
+        return not event.wait(max(0.0, float(seconds)))
+    time.sleep(max(0.0, float(seconds)))
+    return True
+
+
+def _reclaim_previous(task_id, platform, slot):
+    """回收同一任务/平台账号上的旧无人值守批次。
+
+    浏览器动作不能被硬切，否则旧线程可能在新批次开始后继续提交上一章。
+    先发取消信号，再等旧线程落终态；超时则保留旧批次并拒绝新批次，交给
+    用户等平台动作真正结束后重试。
+    """
+    tid = str(task_id)
+    with _LOCK:
+        cur = _running.get(tid)
+        if not cur or cur.get("status") not in (
+                "running", "preparing", "manual_pause", "reclaiming"):
+            return True, ""
+        if cur.get("status") == "reclaiming":
+            return False, "上一批发布正在回收，请稍后再点发布"
+        old_platform = str(cur.get("platform") or "")
+        old_slot = str(cur.get("slot") or old_platform)
+        if old_platform and old_platform != str(platform):
+            return False, "该任务已有其他平台发布批次进行中，请等本轮结束"
+        if old_slot != str(slot):
+            return False, "该任务已有另一账号发布批次进行中，请等本轮结束"
+        event = _cancel_events.get(tid)
+        if event:
+            event.set()
+        # manual_pause has no worker left to observe the event; reclaim it
+        # immediately so a confirmed/restarted automatic batch can proceed.
+        if cur.get("status") == "manual_pause":
+            cur["status"] = "reclaimed"
+            cur["message"] = "重新发布前已回收上一批次"
+            return True, ""
+        cur["status"] = "reclaiming"
+
+    deadline = time.monotonic() + max(0.0, float(RECLAIM_TIMEOUT_S))
+    while time.monotonic() < deadline:
+        with _LOCK:
+            current = _running.get(tid)
+            if current is not cur or current.get("status") not in ("reclaiming", "running", "preparing"):
+                return True, ""
+        time.sleep(min(IDLE_POLL_S, 0.1))
+    with _LOCK:
+        if _running.get(tid) is cur and cur.get("status") == "reclaiming":
+            cur["status"] = "error"
+            cur["error"] = "旧发布批次仍在收尾，暂未启动新批次"
+    return False, "上一批发布仍在收尾，请稍后再点发布"
 
 
 def _isdir(p):
@@ -100,6 +164,16 @@ def _prepare_book(task_id, platform):
     if _book_ready(existing):
         return True, ""
 
+    # A preparation run has no confirmed book yet, so route it through the
+    # account selected for the task.  If an older/partial binding already
+    # exists, its account is authoritative; otherwise use auto_publish.account.
+    acc = str((existing or {}).get("account") or
+              ((task.get("auto_publish") or {}).get("account") or "")).strip()
+    try:
+        slot = manager.slot_of(platform, acc)
+    except (TypeError, ValueError) as exc:
+        return False, str(exc)
+
     chain = store.serial_chain_ids(task_id)
     root = (store.get_task(chain[0]) if chain else None) or task
     root_id = str(root.get("id") or task_id)
@@ -114,6 +188,8 @@ def _prepare_book(task_id, platform):
                                 author_agent=bookmeta._resolve_author(root))
         deadline = time.time() + BOOK_PREP_TIMEOUT_S
         while time.time() < deadline:
+            if _cancelled(task_id):
+                return False, "自动准备作品已取消"
             task = store.get_task(task_id) or task
             meta = store.inherited_book_meta(task, platform)
             if meta.get("status") == "done" and meta.get("data"):
@@ -126,7 +202,6 @@ def _prepare_book(task_id, platform):
         else:
             return False, "自动生成%s作品信息超时" % platform
 
-    acc = str((task.get("auto_publish") or {}).get("account") or "").strip()
     ok, err = manager.create_book_async(task_id, platform, auto_submit=True,
                                         account=acc)
     if not ok and "未登录" in str(err or ""):
@@ -134,10 +209,12 @@ def _prepare_book(task_id, platform):
         # fabricated. Open the persistent platform profile automatically and
         # keep the batch alive while the login session is restored; no publish
         # click or book id is recorded until the real session is connected.
-        manager.connect(platform)
+        manager.connect(platform, account=acc)
         deadline = time.time() + BOOK_PREP_TIMEOUT_S
         while time.time() < deadline:
-            state = (manager.view().get("platforms") or {}).get(platform) or {}
+            if _cancelled(task_id):
+                return False, "自动准备作品已取消"
+            state = manager._st(slot)
             if state.get("status") == "connected":
                 ok, err = manager.create_book_async(task_id, platform,
                                                     auto_submit=True,
@@ -148,10 +225,12 @@ def _prepare_book(task_id, platform):
         return False, err or "自动创建作品失败"
     deadline = time.time() + BOOK_PREP_TIMEOUT_S
     while time.time() < deadline:
+        if _cancelled(task_id):
+            return False, "自动准备作品已取消"
         found = ledger.book_for(task_id, platform)
         if _book_ready(found):
             return True, ""
-        state = (manager.view().get("platforms") or {}).get(platform) or {}
+        state = manager._st(slot)
         if state.get("status") == "error":
             return False, state.get("error") or "自动创建作品失败"
         time.sleep(1.0)
@@ -219,14 +298,30 @@ def _is_idempotent_reject(err):
     return any(m in e for m in _IDEMPOTENT_MARKS)
 
 
-def other_batch_running(task_id):
-    """除本任务外是否还有别的自动发布/存草稿批次在跑。命中返回对方
-    task_id，否则空串——草稿链与之互斥（共用平台浏览器会互踩页签，
-    2026-10-10 实案：连载发章占着浏览器，草稿流 fill 被掐断连接）。"""
+def other_batch_running(task_id, platform=None, slot=None):
+    """返回同一浏览器槽上正在运行的另一批次。
+
+    不同作品只要绑定了不同账号/profile，就可以并行发布；旧实现只按
+    ``task_id`` 全局互斥，导致一个作品的草稿批次把另一作品也拦住。未传
+    platform/slot 时保留旧的全局查询语义，兼容历史调用和测试桩。
+    """
     with _LOCK:
         for tid, ent in _running.items():
-            if tid != str(task_id) and ent.get("status") == "running":
-                return str(tid)
+            if tid == str(task_id) or ent.get("status") not in (
+                    "running", "preparing", "manual_pause", "reclaiming"):
+                continue
+            if platform and ent.get("platform") != str(platform):
+                continue
+            if slot:
+                ent_slot = ent.get("slot")
+                # Legacy running entries predate per-account slot metadata;
+                # treat them as the default platform slot only. They must not
+                # block a named account's independent browser.
+                if ent_slot and ent_slot != str(slot):
+                    continue
+                if not ent_slot and str(slot) != str(platform or ""):
+                    continue
+            return str(tid)
     return ""
 
 
@@ -449,16 +544,21 @@ def status(task_id):
 
 
 # ---------------------------------------------------------------- 顺序发布
-def _wait_idle(platform, timeout=None):
+def _wait_idle(platform, account="", slot=None, timeout=None):
     """等 manager 的平台动作结束（busy → 其他）。人工确认模式下用户在
     浏览器里点提交的时间也算在内，超时给足。"""
     from . import manager
     if timeout is None:
         timeout = IDLE_TIMEOUT_S
+    if slot is None:
+        try:
+            slot = manager.slot_of(platform, account)
+        except (TypeError, ValueError):
+            slot = platform
     deadline = time.monotonic() + max(0.0, float(timeout))
     while time.monotonic() < deadline:
         try:
-            st = (manager.view().get("platforms") or {}).get(platform) or {}
+            st = manager._st(slot)
             if st.get("status") != "busy":
                 return True
         except Exception:
@@ -537,15 +637,6 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
         return False, ("自动提交模式需要先校准该平台发布流程：用「探测」按钮 dump "
                        "表单后把真实步骤写进 data/publish/flows-%s.json（缺省选择器"
                        "只是推测，未校准不许无人值守直发）" % platform)
-    with _LOCK:
-        cur = _running.get(task_id) or {}
-        if cur.get("status") == "running":
-            return False, "该任务已有自动发布进行中，请等本轮结束"
-    if as_draft:
-        other = other_batch_running(task_id)
-        if other:
-            return False, ("检测到另一批自动发布/存草稿进行中（任务 %s）——两边"
-                           "共用平台浏览器会互踩，请等它跑完再存草稿" % other)
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
@@ -555,6 +646,27 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
             and not contracts.release_allowed(task_id):
         return False, "任务需要先完成审批，才能发布产物"
     book = ledger.book_for(task_id, platform)
+    account = str((book or {}).get("account") or
+                  ((task.get("auto_publish") or {}).get("account") or "")).strip()
+    try:
+        slot = manager.slot_of(platform, account)
+    except (TypeError, ValueError) as exc:
+        return False, str(exc)
+    with _LOCK:
+        cur = _running.get(task_id) or {}
+        active = cur.get("status") in ("running", "preparing", "reclaiming")
+        paused = cur.get("status") == "manual_pause"
+    if (active or paused) and (auto_submit or as_draft):
+        reclaimed, reclaim_reason = _reclaim_previous(task_id, platform, slot)
+        if not reclaimed:
+            return False, reclaim_reason
+    elif active:
+        return False, "该任务已有自动发布进行中，请等本轮结束"
+    if as_draft:
+        other = other_batch_running(task_id, platform, slot)
+        if other:
+            return False, ("检测到同一平台账号的另一批自动发布/存草稿进行中（任务 %s）——"
+                           "该账号浏览器会互踩，请等它跑完再存草稿" % other)
     if auto_prepare_book and not _book_ready(book):
         # Preparation is itself a single-flight batch.  Keep the HTTP request
         # responsive while metadata/model work and platform navigation run in
@@ -564,14 +676,15 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
             cur = _running.get(task_id) or {}
             if cur.get("status") in ("running", "preparing"):
                 return False, "该任务已有自动发布进行中，请等本轮结束"
-            prep = {"platform": platform,
+            prep = {"platform": platform, "account": account, "slot": slot,
                     "at": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "done": 0, "total": 0, "status": "preparing",
                     "error": "", "auto_submit": bool(auto_submit),
                     "as_draft": bool(as_draft), "last_chapter": 0,
                     "skipped": 0, "notes": []}
             _running[task_id] = prep
-            _cancel_events[task_id] = threading.Event()
+            prep_event = threading.Event()
+            _cancel_events[task_id] = prep_event
 
         def prepare_then_publish():
             try:
@@ -594,6 +707,8 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
             except Exception as exc:
                 prep["status"] = "error"
                 prep["error"] = "自动准备作品失败：%s" % exc
+            finally:
+                _release_cancel_event(task_id, prep_event)
 
         threading.Thread(target=prepare_then_publish, daemon=True,
                          name="pub-prepare-%s" % platform).start()
@@ -635,13 +750,18 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
 
     from pathlib import Path
     wd = task.get("workdir") or ""
-    st = {"platform": platform, "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    st = {"platform": platform, "account": account, "slot": slot,
+          "at": time.strftime("%Y-%m-%d %H:%M:%S"),
           "done": 0, "total": len(pend), "status": "running", "error": "",
           "auto_submit": bool(auto_submit), "as_draft": bool(as_draft),
           "last_chapter": 0, "skipped": 0, "notes": []}
     with _LOCK:
+        cur = _running.get(task_id) or {}
+        if cur.get("status") in ("running", "preparing", "reclaiming"):
+            return False, "该任务已有自动发布进行中，请等本轮结束"
         _running[task_id] = st
-        _cancel_events[task_id] = threading.Event()
+        batch_event = threading.Event()
+        _cancel_events[task_id] = batch_event
 
     def run():
         try:
@@ -687,7 +807,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["message"] = "已暂停后续章节发布"
                     return
                 if as_draft:
-                    other = other_batch_running(task_id)
+                    other = other_batch_running(task_id, platform, slot)
                     if other:
                         st["status"] = "error"
                         st["error"] = ("检测到另一批自动发布已启动（任务 %s），"
@@ -729,7 +849,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["notes"].append("第 %d 章连接中断，%d 秒后重试一次"
                                        % (item["chapter_no"],
                                           TRANSIENT_RETRY_S))
-                    time.sleep(TRANSIENT_RETRY_S)
+                    if not _batch_sleep(task_id, TRANSIENT_RETRY_S):
+                        st["status"] = "cancelled"
+                        st["message"] = "已回收旧发布批次"
+                        return
                     ok2, err2 = manager.upload_chapter_async(
                         task_id, platform, str(Path(wd) / item["file"]),
                         **upload_kwargs)
@@ -737,7 +860,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["status"] = "error"
                     st["error"] = "第 %d 章发起失败：%s" % (item["chapter_no"], err2)
                     return
-                if not _wait_idle(platform):
+                if not _wait_idle(platform, account=account, slot=slot):
                     st["status"] = "error"
                     if as_draft:
                         st["error"] = ("第 %d 章存草稿等待超时（%.0f 分钟），后续"
@@ -764,7 +887,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                         st["notes"].append("第 %d 章连接中断，%d 秒后自动重试"
                                            % (item["chapter_no"],
                                               TRANSIENT_RETRY_S))
-                        time.sleep(TRANSIENT_RETRY_S)
+                        if not _batch_sleep(task_id, TRANSIENT_RETRY_S):
+                            st["status"] = "cancelled"
+                            st["message"] = "已回收旧发布批次"
+                            return
                         ok_retry, err_retry = manager.upload_chapter_async(
                             task_id, platform, str(Path(wd) / item["file"]),
                             **upload_kwargs)
@@ -773,7 +899,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                             st["error"] = "第 %d 章重试发起失败：%s" % (
                                 item["chapter_no"], err_retry)
                             return
-                        if not _wait_idle(platform):
+                        if not _wait_idle(platform, account=account, slot=slot):
                             st["status"] = "error"
                             st["error"] = "第 %d 章重试等待超时" % item["chapter_no"]
                             return
@@ -796,7 +922,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     st["done"] += 1
                     st["last_chapter"] = item["chapter_no"]
                     if st["done"] + st["skipped"] < st["total"]:
-                        time.sleep(PACE_S)
+                        if not _batch_sleep(task_id, PACE_S):
+                            st["status"] = "cancelled"
+                            st["message"] = "已回收旧发布批次"
+                            return
                     continue
                 if not auto_submit:
                     # The manager stopped before the submit step. There is no
@@ -819,7 +948,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                 st["done"] += 1
                 st["last_chapter"] = item["chapter_no"]
                 if st["done"] < st["total"]:
-                    time.sleep(PACE_S)
+                    if not _batch_sleep(task_id, PACE_S):
+                        st["status"] = "cancelled"
+                        st["message"] = "已回收旧发布批次"
+                        return
             st["status"] = "done"
             if as_draft:
                 st["message"] = ("已存草稿 %d 章%s（未发布，不受质量闸拦不代表可"
@@ -834,6 +966,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
             st["error"] = "自动发布异常：%s" % e
         finally:
             st["at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _release_cancel_event(task_id, batch_event)
 
     threading.Thread(target=run, daemon=True,
                      name="pub-auto-%s" % platform).start()

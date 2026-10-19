@@ -194,6 +194,23 @@ class ConnectorPolicyTest(unittest.TestCase):
                 self.assertEqual(config, phone_relay._config())
                 self.assertEqual(len(config["secret"]), 64)
 
+    def test_configured_marker_preserves_disabled_opt_out(self):
+        with tempfile.TemporaryDirectory(prefix="codebee-relay-policy-") as directory:
+            with patch.object(phone_relay.paths, "DATA_DIR", Path(directory)):
+                self.assertFalse(phone_relay.view()["configured"])
+                config = phone_relay._config()
+                config["configured"] = True
+                phone_relay._save(config)
+                self.assertTrue(phone_relay.view()["configured"])
+
+    def test_legacy_config_is_treated_as_configured(self):
+        with tempfile.TemporaryDirectory(prefix="codebee-relay-policy-") as directory:
+            with patch.object(phone_relay.paths, "DATA_DIR", Path(directory)):
+                file = Path(directory) / "phone-relay.json"
+                file.write_text(json.dumps({"secret": secrets.token_hex(32), "enabled": False}),
+                                encoding="utf-8")
+                self.assertTrue(phone_relay.view()["configured"])
+
     def test_pair_code_survives_connector_reconnect(self):
         config = {"secret": secrets.token_hex(32), "enabled": True}
         with patch.dict(os.environ, {"CODEBEE_RELAY_URL": "http://127.0.0.1:18791"}):

@@ -50,8 +50,11 @@ def _config():
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not re.fullmatch(r"[a-f0-9]{64}", data.get("secret", "")):
             raise ValueError("手机连接凭据损坏，请先备份 phone-relay.json 再重新配对")
+        # Older files were only written after pairing, so their presence means
+        # the user has already configured the feature, including a prior disable.
+        data.setdefault("configured", True)
         return data
-    return {"secret": secrets.token_hex(32), "enabled": False}
+    return {"secret": secrets.token_hex(32), "enabled": False, "configured": False}
 
 
 def _save(config):
@@ -386,7 +389,15 @@ class Connector:
 
 def view():
     with _INSTANCE_LOCK:
-        return _INSTANCE.view() if _INSTANCE else {"enabled": False, "connected": False, "entry": relay_url()}
+        if _INSTANCE:
+            result = _INSTANCE.view()
+            result["configured"] = True
+            return result
+        try:
+            configured = bool(_config().get("configured"))
+        except ValueError:
+            configured = True
+        return {"enabled": False, "connected": False, "configured": configured, "entry": relay_url()}
 
 
 def start_saved(port):
@@ -405,6 +416,7 @@ def operate(port, action):
             if not _INSTANCE:
                 config = _config()
                 config["enabled"] = True
+                config["configured"] = True
                 connector = Connector(port, config)
                 _save(config)
                 _INSTANCE = connector
@@ -417,7 +429,7 @@ def operate(port, action):
                 if action == "disable":
                     # Rotate the identity as well: offline disabling cannot
                     # obtain a cloud ACK, but old sessions can never reconnect.
-                    config = {"secret": secrets.token_hex(32), "enabled": False}
+                    config = {"secret": secrets.token_hex(32), "enabled": False, "configured": True}
                     _save(config)
                     _INSTANCE.stop()
                     _INSTANCE = None

@@ -59,6 +59,26 @@ def automatic_release_kwargs(auto_submit, force=False, force_confirmed=False,
 _state = {"platforms": {}}      # {plat: {status, port, at, error, last_login, last_action}}
 _browsers = {}                  # plat → Browser（进程内缓存，alive 校验兜底）
 
+# A platform account slot owns one browser profile.  The persisted ``busy``
+# flag is useful for the UI, but it is not an atomic reservation: two HTTP
+# requests can both observe ``connected`` before either worker sets ``busy``.
+# Keep an in-process single-flight lock per slot so create/upload/probe/sync
+# cannot navigate the same profile concurrently, while different accounts
+# retain independent locks and can run in parallel.
+_ACTION_LOCKS = {}
+_ACTION_LOCKS_GUARD = threading.Lock()
+
+
+def _action_lock(slot):
+    key = str(slot)
+    with _ACTION_LOCKS_GUARD:
+        return _ACTION_LOCKS.setdefault(key, threading.Lock())
+
+
+def _try_action_lock(slot):
+    lock = _action_lock(slot)
+    return lock if lock.acquire(blocking=False) else None
+
 
 def _wait_chapter_rows_ready(page, mod, timeout=4.0):
     """Wait until a chapter table has rendered, without paying a fixed delay.
@@ -613,31 +633,41 @@ def disconnect(plat, account=""):
 
 
 # ---------------------------------------------------------------- 动作：探测
-def probe_form_async(plat):
+def probe_form_async(plat, account=""):
     """「探测表单」：跑 probe 流程把页面真实可交互元素 dump 进台账 log。"""
     if plat not in PLATFORMS:
         return False, "未知平台"
-    if _st(plat).get("status") not in ("connected", "error"):
+    try:
+        slot = slot_of(plat, account)
+    except ValueError as e:
+        return False, str(e)
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False, "该账号有操作正在进行中"
+    if _st(slot).get("status") not in ("connected", "error"):
+        action_lock.release()
         return False, "请先连接并登录平台"
-    _set(plat, status="busy", last_action="probe", error="")
+    _set(slot, status="busy", last_action="probe", error="")
 
     logs = []
 
     def run():
         try:
-            b, page = _open_page(plat)
+            b, page = _open_page(slot)
             flow.run_flow(page, load_flow(plat, "probe_form"),
                           values={}, config=PLATFORMS[plat].CONFIG,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, "probe", n)),
                           log=logs.append)
-            _set(plat, status="connected")
-            ledger.record(plat, "probe", ok=True,
+            _set(slot, status="connected")
+            ledger.record(plat, "probe", ok=True, account=str(account or "").strip(),
                           error="\n".join(logs)[:2000])
         except Exception as e:
-            _set(plat, status="error", error="探测失败：%s" % e)
-            ledger.record(plat, "probe", ok=False, error=str(e)[:300])
+            _set(slot, status="error", error="探测失败：%s" % e)
+            ledger.record(plat, "probe", ok=False, error=str(e)[:300],
+                          account=str(account or "").strip())
         finally:
             _save()
+            action_lock.release()
 
     threading.Thread(target=run, daemon=True, name="pub-probe-%s" % plat).start()
     return True, ""
@@ -823,8 +853,18 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
         return False, "质量门禁拦截：%s" % "；".join(quality.get("blockers") or [])
     quality_forced = bool(quality.get("forced") or release_flags.get("force"))
     quality_reason = str(release_flags.get("force_reason") or "")
+    # Reserve the account profile before the login recheck.  The persisted
+    # status check above is only advisory; this lock closes the check-then-set
+    # race when two works share one account.
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False, "该账号有操作正在进行中"
+    if _st(slot).get("status") == "busy":
+        action_lock.release()
+        return False, "该平台有操作正在进行中"
     ok_login, why = _login_guard(slot)
     if not ok_login:
+        action_lock.release()
         return False, why
     _set(slot, status="busy", last_action="create_book", error="")
 
@@ -832,10 +872,15 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
     mod = PLATFORMS[plat]
     logs = []
     book_name = (data.get("book_name") or "").strip()
-    operation_id = operations.begin(
-        "publish:%s:create_book" % plat,
-        {"task_id": task_id, "title": book_name}, task_id=task_id,
-        metadata={"platform": plat, "action": "create_book"})
+    try:
+        operation_id = operations.begin(
+            "publish:%s:create_book" % plat,
+            {"task_id": task_id, "title": book_name}, task_id=task_id,
+            metadata={"platform": plat, "action": "create_book"})
+    except Exception as exc:
+        _set(slot, status="error", error="建书操作登记失败：%s" % exc)
+        action_lock.release()
+        return False, "建书操作登记失败：%s" % exc
 
     def run():
         started_at = time.monotonic()
@@ -845,7 +890,7 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
 
         final_name = book_name
         try:
-            b, page = _open_page(plat)
+            b, page = _open_page(slot)
             # 书名全平台唯一（2026-09-30 马甲案）：撞名是建书常见死法，撞了
             # 原样报「疑似未建成」会白烧几万字稿费。试名队列=原名+自动候选
             # （编排者重出→机械变体兜底）；同名书恰在本账号下时对账复用不换
@@ -963,11 +1008,11 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                 ledger.save_book(task_id, plat, {"book_id": book_id, "title": final_name,
                                                  "source": "create"},
                                   account=acc)
-            _set(plat, status="connected", error="")
+            _set(slot, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
             operation_status = (operations.get(operation_id) or {}).get("status") or "failed"
-            _set(plat, status="error", error="建书失败：%s" % e)
+            _set(slot, status="error", error="建书失败：%s" % e)
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
                           ok=False, error=str(e)[:300],
                           shot=str(ledger.shot_path(plat, task_id, "")),
@@ -975,6 +1020,7 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                           duration_s=elapsed_s())
         finally:
             _save()
+            action_lock.release()
 
     threading.Thread(target=run, daemon=True,
                      name="pub-book-%s" % plat).start()
@@ -982,7 +1028,7 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
 
 
 # ---------------------------------------------------------------- 动作：登记已有作品
-def register_book(task_id, plat, title, book_id=""):
+def register_book(task_id, plat, title, book_id="", account=None):
     """人工登记平台已有作品：建书流程没走通、或用户纯手工在平台上建的
     书，补进台账让卡片翻到「已建书·发一章」，避免再点「创建作品」造出
     重复书。只动本地台账不碰浏览器；发章按书名找书，title 必填，
@@ -992,6 +1038,11 @@ def register_book(task_id, plat, title, book_id=""):
         return False, "未知平台"
     if not store.get_task(task_id):
         return False, "任务不存在"
+    if account is not None:
+        try:
+            slot_of(plat, account)
+        except ValueError as e:
+            return False, str(e)
     title = (title or "").strip()
     if not title:
         return False, "作品名必填（发章按作品名在平台找书）"
@@ -1013,7 +1064,8 @@ def register_book(task_id, plat, title, book_id=""):
                            confirmed_published_through=None,
                            confirmed_published_at=None)
     ledger.save_book(task_id, plat, {"book_id": book_id,
-                                     "title": title[:120], "source": "manual"})
+                                     "title": title[:120], "source": "manual"},
+                     account=account)
     return True, ""
 
 
@@ -1028,9 +1080,20 @@ def unbind_book(task_id, plat):
         return False, "未知平台"
     if not store.get_task(task_id):
         return False, "任务不存在"
-    if _st(plat).get("status") == "busy":
+    book = ledger.book_for(task_id, plat) or {}
+    try:
+        slot = slot_of(plat, book.get("account") or "")
+    except (TypeError, ValueError):
+        slot = plat
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False, "该账号有操作正在进行中"
+    if _st(slot).get("status") == "busy":
+        action_lock.release()
         return False, "该平台有操作正在进行中"
-    if not ledger.remove_book(task_id, plat):
+    removed = ledger.remove_book(task_id, plat)
+    action_lock.release()
+    if not removed:
         return False, "该平台没有已登记的作品绑定"
     return True, ""
 
@@ -1218,7 +1281,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
         # 草稿与别的自动发布批次互斥（2026-10-10 实案：连载发章占着浏览器，
         # 草稿流 fill 被掐断连接）——单章草稿同样不让起
         from . import auto as _auto
-        other = _auto.other_batch_running(task_id)
+        other = _auto.other_batch_running(task_id, plat, slot)
         if other:
             return False, ("检测到另一批自动发布进行中（任务 %s），平台浏览器会"
                            "被互踩；等它跑完再存草稿" % other)
@@ -1265,8 +1328,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     if as_draft and ch_no and ch_no in ledger.drafted_chapters(task_id, plat):
         return False, ("第 %d 章已存过草稿（台账幂等拦截）；请到平台草稿箱检查后"
                        "提交发布，确需重存请先在平台删旧稿" % ch_no)
+    # Reserve the account profile before the login recheck and keep the lock
+    # until the worker finishes.  A persisted ``busy`` flag alone is subject
+    # to a check-then-set race when two works share one account.
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False, "该账号有操作正在进行中"
+    if _st(slot).get("status") == "busy":
+        action_lock.release()
+        return False, "该平台有操作正在进行中"
     ok_login, why = _login_guard(slot)
     if not ok_login:
+        action_lock.release()
         return False, why
     flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
     # A scheduled fallback uses the same editor fill chain unless a platform
@@ -1278,6 +1351,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             load_flow(plat, flow_action)
             flow_key = flow_action
         except Exception:
+            action_lock.release()
             return False, "该平台未配置定时发布流程"
     if scheduled:
         auto_submit = True
@@ -1319,10 +1393,15 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     values["_volumes"] = list(book_ref.get("volumes") or [])
     values.update(_url_values(mod, book_ref))   # verify/draft/editor 页 URL（流程占位）
     logs = []
-    operation_id = operations.begin(
-        "publish:%s:upload_chapter" % plat,
-        {"task_id": task_id, "chapter_no": ch_no, "title": title}, task_id=task_id,
-        metadata={"platform": plat, "action": flow_key})
+    try:
+        operation_id = operations.begin(
+            "publish:%s:upload_chapter" % plat,
+            {"task_id": task_id, "chapter_no": ch_no, "title": title}, task_id=task_id,
+            metadata={"platform": plat, "action": flow_key})
+    except Exception as exc:
+        _set(slot, status="error", error="发章操作登记失败：%s" % exc)
+        action_lock.release()
+        return False, "发章操作登记失败：%s" % exc
 
     def run():
         started_at = time.monotonic()
@@ -1331,7 +1410,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             return round(max(0.0, time.monotonic() - started_at), 3)
 
         try:
-            b, page = _open_page(plat)
+            b, page = _open_page(slot)
             bid = _resolve_book_id(plat, page, book_ref)
             if bid:                          # 建书时没提上 id 的书，发章前补账
                 book_ref.update(book_id=bid)
@@ -1384,11 +1463,11 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               title=title, ok=False, error="等待人工提交",
                               operation_id=operation_id, operation_status="pending", account=acc,
                               duration_s=elapsed_s())
-            _set(plat, status="connected", error="")
+            _set(slot, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
             operation_status = (operations.get(operation_id) or {}).get("status") or "failed"
-            _set(plat, status="error", error="发章失败：%s" % e)
+            _set(slot, status="error", error="发章失败：%s" % e)
             ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
                           book_id=book_ref.get("book_id") or "", title=title,
                           ok=False, error=str(e)[:300], operation_id=operation_id,
@@ -1398,6 +1477,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                           duration_s=elapsed_s())
         finally:
             _save()
+            action_lock.release()
 
     threading.Thread(target=run, daemon=True,
                      name="pub-ch-%s" % plat).start()
@@ -1553,6 +1633,24 @@ from .chaprows import bucket_chapter_rows, collect_all_volumes  # noqa: E402
 
 
 def sync_published(task_id, plat, manual=False):
+    """Run calibration under the same per-account browser lock as publishing."""
+    book = ledger.book_for(task_id, plat)
+    if not book:
+        return False, "该任务未在此平台登记作品"
+    try:
+        slot = slot_of(plat, book.get("account") or "")
+    except (TypeError, ValueError):
+        slot = plat
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False, "该账号有操作正在进行中"
+    try:
+        return _sync_published_impl(task_id, plat, manual=manual)
+    finally:
+        action_lock.release()
+
+
+def _sync_published_impl(task_id, plat, manual=False):
     """同步执行一次校准（manager.sync_published_async 的线程体）。
 
     manual=False（打开作品页自动触发）只 attach 在跑的浏览器实例，绝不
@@ -1564,7 +1662,11 @@ def sync_published(task_id, plat, manual=False):
     book = ledger.book_for(task_id, plat)
     if not book:
         return False, "该任务未在此平台登记作品"
-    if _st(plat).get("status") == "busy":
+    try:
+        slot = slot_of(plat, book.get("account") or "")
+    except (TypeError, ValueError):
+        slot = plat
+    if _st(slot).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     mod = PLATFORMS[plat]
     js = mod.CONFIG.get("count_rows_js")
@@ -1572,9 +1674,9 @@ def sync_published(task_id, plat, manual=False):
         return False, "该平台未配置章节计数"
     try:
         if manual:
-            b, page = _open_page(plat)
+            b, page = _open_page(slot)
         else:
-            port = _st(plat).get("port") or 0
+            port = _st(slot).get("port") or 0
             b = Browser.attach(int(port))       # 实例已死 → 异常 → 只记原因
             page = b.first_page(create=True)
     except Exception as e:
@@ -1638,14 +1740,27 @@ def _sync_preflight(task_id, plat, manual):
     from .browser import Browser
     if plat not in PLATFORMS:
         return False, "未知平台"
-    if not ledger.book_for(task_id, plat):
+    book = ledger.book_for(task_id, plat)
+    if not book:
         return False, "该任务未在此平台登记作品"
-    if _st(plat).get("status") == "busy":
+    try:
+        slot = slot_of(plat, book.get("account") or "")
+    except (TypeError, ValueError):
+        slot = plat
+    # The persisted status can still be ``connected`` while a calibration
+    # worker owns the in-process reservation.  Check the same reservation used
+    # by publishing so an async calibration request fails immediately instead
+    # of opening a competing browser page.
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False, "该账号有操作正在进行中"
+    action_lock.release()
+    if _st(slot).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     if not PLATFORMS[plat].CONFIG.get("count_rows_js"):
         return False, "该平台未配置章节计数"
     if not manual:
-        port = _st(plat).get("port") or 0
+        port = _st(slot).get("port") or 0
         try:
             Browser.attach(int(port))
         except Exception:
