@@ -182,6 +182,22 @@ async function main() {
       s1.btns[0].includes("发一章（已发 1）") && s1.fqHasBook, JSON.stringify(s1));
     check("未建书平台显示「创建作品」", s1.btns[1].includes("创建作品"), JSON.stringify(s1));
 
+    /* 3b) 多账号回归：作品绑定 a2 时，默认 fanqie 账号已连接也不能
+     * 把发布卡误显示成已连接；卡片必须跟随作品绑定账号的状态。 */
+    const accountView = JSON.parse(await evalJs(`(() => {
+      const task = S.state.tasks.find(x => x.id === "pub-t1");
+      S.pubTaskInfo.books.fanqie.account = "a2";
+      S.pubState.platforms.fanqie.accounts = [{ id: "a2", label: "出售", status: "none" }];
+      renderBookMetaPanel(task);
+      const row = [...document.querySelectorAll(".bm-pub")][0];
+      return JSON.stringify({
+        badge: row.querySelector(".pb-badge")?.textContent.trim() || "",
+        hasAccountLogin: [...row.querySelectorAll("button")].some(b => b.textContent.includes("登录")),
+      });
+    })()`));
+    check("作品绑定账号未连接时不继承默认账号已连接状态",
+      accountView.badge === "未连接" && accountView.hasAccountLogin, JSON.stringify(accountView));
+
     /* 4) 点「发一章」→ 应用内预检确认（开始填稿）→ 章稿列表（过滤作品信息归档） */
     const s2 = JSON.parse(await evalJs(`(async () => {
       const rows = [...document.querySelectorAll(".bm-pub")];

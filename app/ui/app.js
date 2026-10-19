@@ -7975,12 +7975,21 @@ const PB_ST = {
 function pbBlock(task, platform, selectionOnly = false) {
   const ps = (S.pubState && S.pubState.platforms && S.pubState.platforms[platform]) || {};
   const st = ps.status || "none";
-  const [label, cls] = PB_ST[st] || PB_ST.none;
   const books = (S.pubTaskInfo && S.pubTaskInfo.books) || {};
   const book = books[platform];
   // A create-book flow can finish without a remote id. Keep that binding
   // retryable instead of presenting it as a ready-to-publish book.
   const bookReady = !!(book && (book.book_id || book.source === "manual"));
+  // A named book binding uses its own browser profile. The platform-level
+  // status describes the default profile and can otherwise report "connected"
+  // while the actual publishing account is offline.
+  const boundAccount = String((book && book.account) || "").trim();
+  const boundAccountState = boundAccount
+    ? (ps.accounts || []).find((a) => String(a.id || "") === boundAccount)
+    : null;
+  const displayStatus = boundAccount
+    ? ((boundAccountState && boundAccountState.status) || "none") : st;
+  const [label, cls] = PB_ST[displayStatus] || PB_ST.none;
   const hist = (S.pubTaskInfo && S.pubTaskInfo.history) || [];
   const pubCnt = (S.pubTaskInfo && S.pubTaskInfo.published) || {};
   // 已发口径：平台实况（点过校准）优先；否则本地台账去重章号数
@@ -8017,16 +8026,25 @@ function pbBlock(task, platform, selectionOnly = false) {
   } else {
     chTitle = t("本地台账口径，点「校准」按平台实况纠正");
   }
-  const busy = st === "busy";
+  const busy = displayStatus === "busy";
   let btns = "";
   let pendHtml = "";   // 批量选择 chips（bookReady 分支里填充，extra 段落拼接）
-  if (st === "none" || st === "error" || st === "waiting_login") {
-    btns += '<button class="ghost" onclick="pbConnect(\'' + platform + '\')">' +
-      (st === "error" ? t("重连") : t("连接平台")) + "</button>";
-  } else if (st === "connected") {
-    btns += '<button class="ghost" onclick="pbDisconnect(\'' + platform + '\')" title="' + esc(t("关掉该平台的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
+  if (displayStatus === "none" || displayStatus === "error" || displayStatus === "waiting_login") {
+    if (boundAccount) {
+      btns += '<button class="ghost" onclick="pbConnectAcc(\'' + platform + '\',\'' + esc(boundAccount) + '\')">' +
+        (displayStatus === "error" ? t("重连") : t("登录")) + "</button>";
+    } else {
+      btns += '<button class="ghost" onclick="pbConnect(\'' + platform + '\')">' +
+        (displayStatus === "error" ? t("重连") : t("连接平台")) + "</button>";
+    }
+  } else if (displayStatus === "connected") {
+    if (boundAccount) {
+      btns += '<button class="ghost" onclick="pbDisconnectAcc(\'' + platform + '\',\'' + esc(boundAccount) + '\')" title="' + esc(t("关掉该平台账号的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
+    } else {
+      btns += '<button class="ghost" onclick="pbDisconnect(\'' + platform + '\')" title="' + esc(t("关掉该平台的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
+    }
   }
-  btns += '<button class="ghost pb-tool" onclick="pbProbe(\'' + platform + '\')" title="' +
+  btns += '<button class="ghost pb-tool" onclick="' + (boundAccount ? "pbProbeAcc('" + platform + "','" + esc(boundAccount) + "')" : "pbProbe('" + platform + "')") + '" title="' +
     esc(t("dump 平台表单结构（校准自动填表用）")) + '">' + t("探测") + "</button>";
   // 多账号（2026-10-18）：每台账号独立浏览器/独立配额，chips 带各自登录/断开
   const accList = ps.accounts || [];
@@ -8422,6 +8440,15 @@ window.pbDisconnect = async function (platform) {
 window.pbProbe = async function (platform) {
   try {
     await api("/api/publish/" + platform + "/probe", { method: "POST", body: "{}" });
+    toast(t("已开始探测，结果记录在发布台账（data/publish）里"));
+  } catch (e) { toast(t("探测失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+window.pbProbeAcc = async function (platform, accId) {
+  try {
+    await api("/api/publish/" + platform + "/probe", { method: "POST",
+      body: JSON.stringify({ account: accId }) });
     toast(t("已开始探测，结果记录在发布台账（data/publish）里"));
   } catch (e) { toast(t("探测失败：") + e.message, true); }
   S._pbSig = ""; pbKick();

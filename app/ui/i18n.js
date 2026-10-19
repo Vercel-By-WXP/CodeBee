@@ -3029,6 +3029,7 @@
     "连接失败：": "Connect failed: ",
     "断开失败：": "Disconnect failed: ",
     "关掉该平台的浏览器窗口（登录态保留）": "Close the platform's browser window (login state is kept)",
+    "关掉该平台账号的浏览器窗口（登录态保留）": "Close this platform account's browser window (login state is kept)",
     "已打开浏览器——请在窗口里登录平台，登录后这里自动变为「已连接」": "Browser opened — log in to the platform in that window; this panel switches to \"Connected\" automatically once you're in",
     "探测": "Probe",
     "探测失败：": "Probe failed: ",
