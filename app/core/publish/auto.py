@@ -651,6 +651,12 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     # 仍接受「定时到明日」——直发/定时开关消失只是直发被禁，
                     # 显式走 upload_chapter_scheduled 校准流程。
                     upload_kwargs["scheduled"] = True
+                else:
+                    # 直发优先（2026-10-19 用户指令：当天写的当天发完）：账号
+                    # 定时队列有积压时平台弹「建议本章定时发布」横幅并隐藏定时
+                    # 开关，但直发本身可用——force_direct 让流程点否拒绝横幅、
+                    # 直接确认发布；超直发额度时由上限弹窗分支自动转定时。
+                    upload_kwargs["direct_today"] = True
                 upload_kwargs.update(manager.automatic_release_kwargs(
                     auto_submit, force=force, force_confirmed=force_confirmed,
                     force_reason=force_reason, as_draft=as_draft))
