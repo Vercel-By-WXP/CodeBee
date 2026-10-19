@@ -4081,18 +4081,23 @@ function applyTaskTemplate(template, start) {
   S.templateBudget = template.max_calls ? { max_calls: Number(template.max_calls) || 0 } : null;
   if ($("f-goal")) $("f-goal").value = template.goal || "";
   if ($("f-title") && !$("f-title").value) $("f-title").value = template.name || "";
-  if ($("f-rubric") && Array.isArray(template.rubric)) $("f-rubric").value = template.rubric.join(", ");
   if ($("f-type") && template.type) {
     const type = flowById(template.type) ? template.type : (template.type === "doc" ? "document" : template.type);
     if (flowById(type)) { $("f-type").value = type; $("f-type").dispatchEvent(new Event("change")); }
   }
+  // Changing the type loads its default rubric, so keep the template rubric.
+  if ($("f-rubric") && Array.isArray(template.rubric)) $("f-rubric").value = template.rubric.join(", ");
   if (start) createTask();
 }
 
 function selectTaskTemplate(start) {
   const id = ($("f-template") || {}).value;
   const template = (UI_FEATURES.templates || []).find((item) => item.id === id);
-  if (!template) { if (start) toast(t("请选择任务模板"), true); return; }
+  if (!template) {
+    S.templateBudget = null;
+    if (start) toast(t("请选择任务模板"), true);
+    return;
+  }
   applyTaskTemplate(template, start);
 }
 
@@ -20212,8 +20217,6 @@ document.addEventListener("DOMContentLoaded", () => {
     b.addEventListener("click", () => loadAnalytics(b.dataset.days)));
   const templateSelect = $("f-template");
   if (templateSelect) templateSelect.addEventListener("change", () => selectTaskTemplate(false));
-  const templateApply = $("btn-template-start");
-  if (templateApply) templateApply.addEventListener("click", () => selectTaskTemplate(true));
   const templateSave = $("btn-template-save");
   if (templateSave) templateSave.addEventListener("click", saveCurrentAsTemplate);
   $("set-browser-notify") && $("set-browser-notify").addEventListener("change", saveBrowserNotifyPreference);
