@@ -60,6 +60,7 @@ def token() -> str:
 _TRUST_PROXY = False
 PUBLIC_URL = ""  # --public-url / 快速隧道：扫码弹框优先展示的公网地址
 PUBLIC_URL_KIND = ""  # quick（trycloudflare 临时，重启变）| fixed（自有域名）
+_BIND_HOST = "127.0.0.1"  # 默认只监听本机，禁止生成不可达的局域网直连码
 
 
 def set_trusted_proxy(on: bool, public_url: str = ""):
@@ -69,6 +70,12 @@ def set_trusted_proxy(on: bool, public_url: str = ""):
         PUBLIC_URL = str(public_url).rstrip("/")
 
 
+def set_bind_host(host: str):
+    """Record the HTTP bind address so direct URLs only advertise reachable hops."""
+    global _BIND_HOST
+    _BIND_HOST = str(host or "").strip().lower()
+
+
 # ---------------------------------------------------------------- 快速隧道（trycloudflare）
 # 安装即公网：本机装了 cloudflared 就自动开一条 Cloudflare 快速隧道，
 # 拿到随机 *.trycloudflare.com 地址——零账号、零域名、零配置。
@@ -76,6 +83,8 @@ def set_trusted_proxy(on: bool, public_url: str = ""):
 # 代价：每次重启地址会变（手机重新扫码即可）；要固定域名见 README 公网章节。
 _QUICK_PROC = None  # cloudflared 子进程，随主服务退出
 _QUICK_ON_DEMAND = None  # (port, on_url, enabled)：手机配对时按需拉隧道的参数
+_QUICK_INSTALLING = False
+_QUICK_INSTALL_RETRY_AT = 0.0
 
 
 def setup_quick_tunnel(port: int, on_url, enabled: bool):
@@ -98,7 +107,44 @@ def ensure_quick_tunnel() -> bool:
     port, on_url, enabled = _QUICK_ON_DEMAND
     if not enabled or has_local_creds():
         return False
+    global _QUICK_INSTALLING, _QUICK_INSTALL_RETRY_AT
+    if not cloudflared_exe():
+        now = time.time()
+        if _QUICK_INSTALLING or now < _QUICK_INSTALL_RETRY_AT:
+            return False
+        _QUICK_INSTALLING = True
+
+        def _install_then_start():
+            global _QUICK_INSTALLING, _QUICK_INSTALL_RETRY_AT
+            try:
+                if ensure_cloudflared():
+                    current = _QUICK_ON_DEMAND
+                    if current and _QUICK_PROC is None and not PUBLIC_URL and current[2]:
+                        start_quick_tunnel(current[0], current[1])
+                else:
+                    _QUICK_INSTALL_RETRY_AT = time.time() + 60
+            finally:
+                _QUICK_INSTALLING = False
+
+        threading.Thread(target=_install_then_start, daemon=True,
+                         name="codebee-cloudflared-install").start()
+        return True
     return start_quick_tunnel(port, on_url)
+
+
+def quick_tunnel_pending() -> bool:
+    """Whether a quick tunnel is being established but has no public URL yet."""
+    if PUBLIC_URL:
+        return False
+    if _QUICK_INSTALLING:
+        return True
+    if _QUICK_PROC is None:
+        return False
+    try:
+        return _QUICK_PROC.poll() is None
+    except AttributeError:
+        # Unit-test fakes and older process wrappers may not expose poll().
+        return True
 
 
 def cloudflared_exe() -> str:
@@ -179,7 +225,7 @@ def start_quick_tunnel(port: int, on_url) -> bool:
     import subprocess
     flags = 0x08000000 if hasattr(subprocess, "CREATE_NO_WINDOW") else 0  # CREATE_NO_WINDOW
     try:
-        _QUICK_PROC = subprocess.Popen(
+        proc = subprocess.Popen(
             # 127.0.0.1 而非 localhost：Windows 上 localhost 会先解析成 IPv6
             # [::1]，服务只监听 IPv4 时回源全部被拒（2026-10-16 实案，手机
             # 经隧道访问整页报错）。
@@ -189,16 +235,17 @@ def start_quick_tunnel(port: int, on_url) -> bool:
     except Exception:
         _QUICK_PROC = None
         return False
+    _QUICK_PROC = proc
     from . import beekeeper
-    beekeeper.adopt(_QUICK_PROC)   # 挂巢：服务死（含硬杀）隧道一起带走，防孤儿 cloudflared
+    beekeeper.adopt(proc)   # 挂巢：服务死（含硬杀）隧道一起带走，防孤儿 cloudflared
     import threading
 
     def _watch():
-        global PUBLIC_URL, PUBLIC_URL_KIND
+        global PUBLIC_URL, PUBLIC_URL_KIND, _QUICK_PROC
         deadline = time.time() + 25
         found = False
         try:
-            for line in _QUICK_PROC.stdout:
+            for line in proc.stdout:
                 if not found:
                     m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line or "")
                     if m:
@@ -210,6 +257,12 @@ def start_quick_tunnel(port: int, on_url) -> bool:
                         # 不 break：必须继续消费日志，否则 cloudflared 写满管道
                         # 缓冲后会整体阻塞，边缘连接注册无法完成（实测 530）
                 if time.time() > deadline and not found:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                    if _QUICK_PROC is proc:
+                        _QUICK_PROC = None
                     break
         except Exception:
             pass
@@ -365,12 +418,18 @@ def build_connect_urls(port: int) -> list:
         label = ("公网 · 任何网络（重启会变，连不上重新扫码）" if PUBLIC_URL_KIND == "quick"
                  else "公网 · 任何网络")
         urls.append({"label": label, "url": "%s/?token=%s" % (PUBLIC_URL, token())})
-    ts = tailscale_ip()
-    if ts:
-        urls.append({"label": "Tailscale · 外网随时随地",
-                     "url": "http://%s:%d/?token=%s" % (ts, port, token())})
-    lan = lan_ip()
-    if lan:
-        urls.append({"label": "局域网 · 同一 WiFi",
-                     "url": "http://%s:%d/?token=%s" % (lan, port, token())})
+    # The default server binds 127.0.0.1. Advertising its LAN address in that
+    # mode produces a QR code that opens a page but can never reach the service.
+    # Direct interface URLs are only valid when the listener was explicitly
+    # exposed (for example --host 0.0.0.0).
+    loopback_only = _BIND_HOST in ("127.0.0.1", "localhost", "::1")
+    if not loopback_only:
+        ts = tailscale_ip()
+        if ts:
+            urls.append({"label": "Tailscale · 外网随时随地",
+                         "url": "http://%s:%d/?token=%s" % (ts, port, token())})
+        lan = lan_ip()
+        if lan:
+            urls.append({"label": "局域网 · 同一 WiFi",
+                         "url": "http://%s:%d/?token=%s" % (lan, port, token())})
     return urls

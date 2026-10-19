@@ -397,9 +397,18 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
                 from core import phone_relay
+                # 打开手机连接弹框本身就表示用户要从另一台设备访问。
+                # 默认服务监听 127.0.0.1，启动阶段不会预先建立隧道；这里补做一次
+                # 按需启动，避免弹框首屏永远只显示局域网地址。隧道地址是异步拿到的，
+                # 前端会继续轮询本接口直到公网地址出现。
+                local_phone = self._phone_admin_local()
+                if local_phone:
+                    remote.ensure_quick_tunnel()
                 return self._json(200, {"urls": remote.build_connect_urls(PORT),
                                         "port": PORT,
-                                        "relay": phone_relay.view() if self._phone_admin_local() else None})
+                                        "public_tunnel_pending": bool(local_phone and
+                                                                         remote.quick_tunnel_pending()),
+                                        "relay": phone_relay.view() if local_phone else None})
             if path == "/api/models":
                 from core import modelhub
                 return self._json(200, {"providers": modelhub.provider_view(),
@@ -4483,7 +4492,7 @@ def main():
     parser.add_argument("--public-url", default="",
                         help="固定公网地址（如 https://codebee.example.com），扫码弹框优先展示")
     parser.add_argument("--no-public-tunnel", action="store_true",
-                        help="不自动开 Cloudflare 快速隧道（默认：检测到 cloudflared 就自动开，"
+                        help="不自动开 Cloudflare 快速隧道（默认：打开手机连接时按需建立，"
                              "获得随机 *.trycloudflare.com 公网地址，重启会变）")
     parser.add_argument("--no-phone-relay", action="store_true",
                         help="本次启动不恢复已启用的统一手机连接；已配对手机不会因此被撤销")
@@ -4880,6 +4889,7 @@ def main():
         pass
     tok = remote.token()
     import os as _os
+    remote.set_bind_host(args.host)
     remote.set_trusted_proxy(args.trusted_proxy or _os.environ.get("TUTTI_TRUST_PROXY") == "1",
                              args.public_url)
 
