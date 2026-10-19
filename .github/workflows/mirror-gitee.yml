@@ -17,5 +17,5 @@ jobs:
       - uses: yesolutions/mirror-action@master
         with:
           remote: "https://gitee.com/${{ secrets.GITEE_OWNER }}/${{ secrets.GITEE_REPO }}.git"
-          git_push_username: ${{ secrets.GITEE_USERNAME }}
-          git_push_password: ${{ secrets.GITEE_TOKEN }}
+          GIT_USERNAME: ${{ secrets.GITEE_USERNAME }}
+          GIT_PASSWORD: ${{ secrets.GITEE_TOKEN }}
