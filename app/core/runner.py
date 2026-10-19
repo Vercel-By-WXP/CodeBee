@@ -2319,7 +2319,24 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
     skipped_upstreams = set()
     forbidden_upstreams = set()
     auth_failed_credentials = set()
+    unavailable_models = set()
     for ai, att in enumerate(attempts):
+        model_key = (str(att.get("provider_id") or ""),
+                     str(att.get("model") or "").strip())
+        if model_key in unavailable_models:
+            attempt_history.append({
+                "model": att.get("model") or "",
+                "provider_id": att.get("provider_id") or "",
+                "provider": ((att.get("provider") or {}).get("name", "")
+                             if isinstance(att.get("provider"), dict) else ""),
+                "kind": kind, "key_id": att.get("key_id") or "",
+                "protocol": _attempt_protocol(att), "ok": False,
+                "skipped": True, "error_code": ErrorCode.MODEL_UNAVAILABLE,
+                "error": "同一供应商的该模型已确认不可用，跳过重复候选",
+            })
+            if out is not None:
+                out["attempts"] = list(attempt_history)
+            continue
         credential = _attempt_credential(att)
         if credential in auth_failed_credentials:
             attempt_history.append({
@@ -2705,6 +2722,29 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         })
         out["attempts"] = list(attempt_history)
         out["forbidden_upstreams"] = sorted(forbidden_upstreams)
+        if (not out["ok"]
+                and error_code_value(out.get("error_code"))
+                == ErrorCode.MODEL_UNAVAILABLE.value):
+            unavailable_models.add(model_key)
+            provider = att.get("provider") or {}
+            provider_name = provider.get("name") if isinstance(provider, dict) else ""
+            if provider_name and model_key[1]:
+                try:
+                    from . import health
+                    health.report_failure(
+                        provider_name, out.get("error") or "",
+                        model=model_key[1], provider_id=model_key[0],
+                        error_code=ErrorCode.MODEL_UNAVAILABLE,
+                    )
+                except Exception:
+                    log.debug("模型级健康状态记录失败", exc_info=True)
+            # The same provider/model pair cannot be rescued by another key;
+            # allow a different model or provider in the chain to take over.
+            if any((str(candidate.get("provider_id") or ""),
+                    str(candidate.get("model") or "").strip()) != model_key
+                   for candidate in attempts[ai + 1:]):
+                continue
+            return out
         if out["ok"] or ai == len(attempts) - 1:
             remaining = model_deadline - time.monotonic()
             if (not out["ok"] and grace_left > 0 and _rate_limited(out.get("error"))

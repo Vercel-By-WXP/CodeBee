@@ -332,6 +332,76 @@ class TestAuthCredentialFallback(BaseTest):
         self.assertEqual(attempted, ["a-key-1"])
 
 
+class TestUnavailableModelFallback(BaseTest):
+    """确定性模型配置错误应熔断该模型并继续尝试后备候选。"""
+
+    @staticmethod
+    def _entry(provider_id, key_id, model, host, key):
+        return {
+            "provider_id": provider_id, "key_id": key_id, "model": model,
+            "env": {"TEST_ROUTE_KEY": key},
+            "provider": {"id": provider_id, "name": provider_id,
+                         "base_url": "https://%s/v1" % host},
+        }
+
+    def test_model_unavailable_skips_duplicate_keys_and_falls_back(self):
+        from app.core import health, runner
+
+        health.init(data_dir=str(self.data_dir), start_probe=False)
+        with health._LOCK:
+            health._PROVIDERS.clear()
+        chain = [
+            self._entry("prov-a", "k1", "missing-model", "a.test", "a-key-1"),
+            self._entry("prov-a", "k2", "missing-model", "a.test", "a-key-2"),
+            self._entry("prov-a", "k2", "working-model", "a.test", "a-key-2"),
+        ]
+        attempted = []
+
+        def fake_run_process(**kwargs):
+            key = kwargs["env"].get("TEST_ROUTE_KEY")
+            attempted.append(key)
+            if key == "a-key-1":
+                return {"ok": False, "exit_code": 1, "stdout": "",
+                        "stderr": "unknown model id: missing-model",
+                        "duration": 0.01, "cancelled": False,
+                        "timed_out": False}
+            return {"ok": True, "exit_code": 0, "stdout": "fallback ok",
+                    "stderr": "", "duration": 0.01,
+                    "cancelled": False, "timed_out": False}
+
+        agent = {"id": "cli-x", "kind": "generic", "mode": "real",
+                 "command": "echo", "env": {}, "call_chain": chain}
+        with mock.patch.object(runner, "run_process", side_effect=fake_run_process):
+            result = runner.run_agent(agent, "hi", workdir=str(self.workdir))
+
+        self.assertTrue(result["ok"], result.get("error"))
+        self.assertEqual(result["model"], "working-model")
+        self.assertEqual(attempted, ["a-key-1", "a-key-2"])
+        self.assertTrue(health.is_model_down("prov-a", "missing-model"))
+        self.assertFalse(health.is_down("prov-a"))
+        self.assertTrue(any(item.get("skipped") for item in result["attempts"]))
+
+    def test_single_unavailable_candidate_still_opens_model_circuit(self):
+        from app.core import health, runner
+
+        health.init(data_dir=str(self.data_dir), start_probe=False)
+        with health._LOCK:
+            health._PROVIDERS.clear()
+        chain = [self._entry(
+            "prov-a", "k1", "missing-model", "a.test", "a-key-1")]
+        agent = {"id": "cli-x", "kind": "generic", "mode": "real",
+                 "command": "echo", "env": {}, "call_chain": chain}
+        with mock.patch.object(runner, "run_process", return_value={
+                "ok": False, "exit_code": 1, "stdout": "",
+                "stderr": "unknown model id: missing-model",
+                "duration": 0.01, "cancelled": False, "timed_out": False}):
+            result = runner.run_agent(agent, "hi", workdir=str(self.workdir))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(health.is_model_down("prov-a", "missing-model"))
+        self.assertFalse(health.is_down("prov-a"))
+
+
 class TestQwenProtocolGate(BaseTest):
     """Qwen Code owns its local credentials; injected chains must not look usable."""
 
