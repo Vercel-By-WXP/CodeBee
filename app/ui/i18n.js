@@ -221,7 +221,7 @@
     "正在执行": "In progress",
     "更早": "Earlier",
     "全部已读": "Mark all read",
-    "将完成任务标为已读": "Mark completed runs as read",
+    "将活动标为已读": "Mark activity as read",
     "{0} 项待处理 · {1} 项完成未读": "{0} need attention · {1} completed unread",
     "暂无活动，开始一个任务后会在这里显示进展。": "No activity yet. Start a task to see its progress here.",
     "蜂巢视图控制": "Hive view controls",

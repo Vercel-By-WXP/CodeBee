@@ -13,10 +13,13 @@ assert.equal(data.unread, 0);
 assert.equal(build({ tasks: [task("t")], task_latest: { t: { ...finished, id: "rerun" } } }, { done: fingerprint(finished) }, now).unread, 1);
 assert.equal(build({ tasks: [task("t")], task_latest: { t: { ...finished, ended_at: "2026-10-12 11:01:00" } } }, { done: fingerprint(finished) }, now).unread, 1);
 
-data = build({ tasks: [task("t", { git_state: "isolated" })], task_latest: { t: finished }, task_attention: { t: { approval_pending: true } } }, { done: fingerprint(finished) }, now);
-assert.equal(data.pending, 1, "read markers must never clear unresolved verdicts");
+data = build({ tasks: [task("t", { git_state: "isolated" })], task_latest: { t: finished }, task_attention: { t: { approval_pending: true } } }, {}, now);
+assert.equal(data.pending, 1, "unread unresolved verdicts remain pending");
 assert.deepEqual(data.rows[0].reasons, ["待裁决", "待审批"]);
 assert.equal(data.rows[0].target, "git");
+data = build({ tasks: [task("t", { git_state: "isolated" })], task_latest: { t: finished }, task_attention: { t: { approval_pending: true } } }, { done: fingerprint(finished) }, now);
+assert.equal(data.rows[0].read, true);
+assert.equal(data.pending, 0, "read unresolved verdicts no longer count toward reminders");
 data = build({ tasks: [task("t", { git_state: "isolated" })], task_latest: { t: run("live", "t", "running", { current_step: { n: 2, role: "实现", agent: "codex", summary: "Working" } }) } }, {}, now);
 assert.equal(data.pending, 0, "an active isolated branch is not ready for a merge decision");
 assert.match(data.rows[0].summary, /codex/);
@@ -30,6 +33,8 @@ data = build({ tasks: [task("t")], task_latest: { t: failure } }, {}, now);
 assert.equal(data.rows[0].target, "steps");
 assert.equal(data.rows[0].step, 7);
 assert.equal(data.rows[0].summary, "Broken");
+assert.equal(build({ tasks: [task("t")], task_latest: { t: run("cancelled", "t", "cancelled") } }, {}, now).rows.length, 0,
+  "user-cancelled runs do not stay in the pending activity list");
 data = build({ tasks: [task("t")], task_latest: { t: finished }, runs: [failure, finished] }, {}, now);
 assert.equal(data.pending, 0, "successful retry resolves old failure attention");
 assert.equal(data.rows.length, 1, "duplicate latest run should only appear once");

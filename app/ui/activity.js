@@ -4,7 +4,10 @@
   const READ_KEY = "orch.activity.read.v1";
   const VIEW_KEY = "orch.activity.view.v1";
   const activeStatuses = new Set(["running", "queued"]);
-  const failures = new Set(["failed", "timeout", "cancelled"]);
+  // A cancelled run is already resolved and does not require a verdict.
+  // Keep only runs that need follow-up in the attention bucket; otherwise a
+  // cancelled latest run can keep the activity badge alive indefinitely.
+  const failures = new Set(["failed", "timeout"]);
   const compact = (value) => String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
   const fingerprint = (run) => [run.id, run.status, run.ended_at || ""].join("|");
 
@@ -44,7 +47,7 @@
       if (isLatest && task.git_state === "isolated" && !active) reasons.push("待裁决");
       if (isLatest && attention.approval_pending) reasons.push("待审批");
       if (isLatest && active && run.paused) reasons.push("已暂停");
-      if (isLatest && failures.has(run.status)) reasons.push(run.status === "timeout" ? "超时" : run.status === "cancelled" ? "已取消" : "执行失败");
+      if (isLatest && failures.has(run.status)) reasons.push(run.status === "timeout" ? "超时" : "执行失败");
       const needs = reasons.length > 0;
       if (!needs && !active && run.status !== "done") return;
       const step = run.current_step || {};
@@ -53,17 +56,18 @@
       const summary = compact(needs ? (run.error || run.summary || failedStep.summary || step.summary) :
         active ? [stepText, step.summary].filter(Boolean).join(" — ") : (run.summary || step.summary));
       const time = run.ended_at || run.started_at || run.created_at || task.created_at || "";
-      const unread = run.status === "done" && reads[run.id] !== fingerprint(run);
+      const read = reads[run.id] === fingerprint(run);
+      const unread = run.status === "done" && !read;
       rows.push({ id: run.id, taskId: task.id || "", title: task.title || run.title || run.id,
         status: run.status, time, workdir: task.workdir || "", summary,
-        reasons, needs, unread, fingerprint: fingerprint(run),
+        reasons, needs, read, unread, fingerprint: fingerprint(run),
         step: Number(failedStep.n) || 0,
         target: failures.has(run.status) ? "steps" : reasons.includes("待裁决") ? "git" :
           reasons.includes("待审批") ? "approval" : active ? "hive" : "result",
         group: needs ? "需要你处理" : active ? "正在执行" : dayGroup(time, now) });
     });
     rows.sort((a, b) => (parseTime(b.time).getTime() || 0) - (parseTime(a.time).getTime() || 0) || a.id.localeCompare(b.id));
-    return { rows, pending: rows.filter((row) => row.needs).length,
+    return { rows, pending: rows.filter((row) => row.needs && !row.read).length,
       unread: rows.filter((row) => row.unread && !row.needs).length };
   }
 
@@ -128,7 +132,7 @@
     badge.classList.toggle("hidden", !count);
     badge.title = t("{0} 项待处理 · {1} 项完成未读", data.pending, data.unread);
     $("activity-count").textContent = badge.title;
-    $("activity-read-all").disabled = !data.rows.some((row) => row.unread);
+    $("activity-read-all").disabled = !data.rows.some((row) => !row.read);
     paintToggle();
     if (!enabled) return;
     const sig = JSON.stringify([data, S.detailRunId, S.detailTaskKey, document.documentElement.dataset.lang]);
@@ -172,7 +176,7 @@
     $("btn-notify-toggle").addEventListener("click", toggle);
     $("activity-sound").addEventListener("click", toggleNotifySound);
     $("activity-read-all").addEventListener("click", () => {
-      build(S.state, reads).rows.filter((row) => row.unread).forEach((row) => {
+      build(S.state, reads).rows.filter((row) => !row.read).forEach((row) => {
         delete reads[row.id]; reads[row.id] = row.fingerprint;
       });
       saveReads(); render();
