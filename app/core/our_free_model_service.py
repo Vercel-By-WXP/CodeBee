@@ -196,6 +196,33 @@ class OurFreeModelServiceManager:
         except (OSError, ValueError, TypeError, urllib.error.URLError):
             return False
 
+    def _probe_authenticated(self, data_dir, port):
+        """Confirm that *this* data directory owns the listener on ``port``.
+
+        A health response is intentionally unauthenticated and therefore cannot
+        distinguish our standalone from another CodeBee instance on the same
+        default port.  Requiring the forward key on ``/v1/models`` closes that
+        race before the manager publishes a ready port to modelhub.
+        """
+        try:
+            settings = json.loads((data_dir / "settings.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return False
+        key = settings.get("forwardKey") if isinstance(settings, dict) else ""
+        if not isinstance(key, str) or not key.strip():
+            return False
+        url = "http://127.0.0.1:%d/v1/models" % int(port)
+        try:
+            req = urllib.request.Request(
+                url, method="GET",
+                headers={"Authorization": "Bearer " + key.strip(),
+                         "User-Agent": "codebee-orchestrator/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=0.5) as response:
+                return 200 <= int(getattr(response, "status", 200)) < 300
+        except (OSError, ValueError, TypeError, urllib.error.URLError):
+            return False
+
     def _probe_existing(self):
         data_dir = self._data_dir()
         # A health response on the shared default port is insufficient: another
@@ -206,7 +233,7 @@ class OurFreeModelServiceManager:
         configured = self._read_port(data_dir)
         ports = [configured] if configured == _DEFAULT_PORT else [configured, _DEFAULT_PORT]
         for port in ports:
-            if self._probe_health(port):
+            if self._probe_health(port) and self._probe_authenticated(data_dir, port):
                 return True, port
         return False, None
 
@@ -216,7 +243,8 @@ class OurFreeModelServiceManager:
             port = self._read_port(data_dir)
             owner_pid = self._live_lock_pid(data_dir)
             if (self._proc is not None and owner_pid == getattr(self._proc, "pid", None)
-                    and self._probe_health(port)):
+                    and self._probe_health(port)
+                    and self._probe_authenticated(data_dir, port)):
                 return port
             if self._proc is not None and self._proc.poll() is not None:
                 return None

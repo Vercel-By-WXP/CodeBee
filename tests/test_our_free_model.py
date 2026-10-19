@@ -34,11 +34,13 @@ class TestOurFreeModelProvider(BaseTest):
         from app.core import modelhub
 
         self._write_standalone_settings("ofm-test-key-123")
-        with mock.patch.object(modelhub, "_probe_our_free_model", return_value=(True, "")), \
+        with mock.patch.object(modelhub, "_probe_our_free_model", return_value=(True, "")) as probe, \
                 mock.patch.object(modelhub, "refresh_models", return_value=(0, "")), \
                 mock.patch.object(modelhub.threading, "Thread"):
             first = modelhub.ensure_builtin_free_provider()
             second = modelhub.ensure_builtin_free_provider()
+
+        probe.assert_called_with("http://127.0.0.1:18900/v1", api_key="ofm-test-key-123")
 
         self.assertTrue(first["created"])
         self.assertFalse(second["created"])
@@ -95,6 +97,17 @@ class TestOurFreeModelProvider(BaseTest):
         provider = next(p for p in modelhub.providers()
                         if p.get("source") == modelhub.OUR_FREE_MODEL_SOURCE)
         self.assertEqual(provider["base_url"], "http://127.0.0.1:19001/v1")
+
+    def test_auth_mismatch_is_reported_as_key_mismatch(self):
+        from app.core import modelhub
+
+        self._write_standalone_settings("ofm-wrong-key")
+        with mock.patch.object(modelhub, "_probe_our_free_model",
+                               return_value=(False, "http://127.0.0.1:18900/v1/models → HTTPError 401")):
+            modelhub.ensure_builtin_free_provider()
+        provider = next(p for p in modelhub.provider_view()
+                        if p.get("source") == modelhub.OUR_FREE_MODEL_SOURCE)
+        self.assertIn("forwardKey", provider["builtin_status_message"])
 
     def test_local_standalone_fixture_is_probed_and_models_are_refreshed(self):
         from app.core import modelhub

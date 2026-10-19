@@ -86,6 +86,21 @@ class TestOurFreeModelService(unittest.TestCase):
             self.assertEqual(manager._probe_existing(), (False, None))
         probe.assert_not_called()
 
+    def test_shared_port_requires_this_instances_forward_key(self):
+        manager = self._manager()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "settings.json").write_text(
+            json.dumps({"forwardKey": "instance-key", "standalonePort": 18900}),
+            encoding="utf-8")
+        (self.data_dir / "service.lock").write_text(
+            json.dumps({"product": "our-free-model-standalone", "pid": 4242}),
+            encoding="utf-8")
+        with mock.patch.object(manager, "_live_lock_pid", return_value=4242), \
+                mock.patch.object(manager, "_probe_health", return_value=True), \
+                mock.patch.object(manager, "_probe_authenticated", return_value=False) as auth:
+            self.assertEqual(manager._probe_existing(), (False, None))
+        auth.assert_called_once_with(self.data_dir, 18900)
+
     def test_lock_probe_treats_windows_kill_system_error_as_dead(self):
         manager = self._manager()
         self.data_dir.mkdir(parents=True, exist_ok=True)

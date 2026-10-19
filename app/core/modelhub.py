@@ -160,12 +160,20 @@ def _strip_our_free_model_keys(data):
     return out
 
 
-def _probe_our_free_model(base_url=OUR_FREE_MODEL_BASE_URL, timeout=1.2):
-    """Check the loopback standalone health endpoint without sending inference."""
+def _probe_our_free_model(base_url=OUR_FREE_MODEL_BASE_URL, timeout=1.2, api_key=""):
+    """Check liveness and authenticate against the loopback standalone gateway.
+
+    ``/health`` is deliberately public, so it only proves that *some* local
+    process owns the port.  A second, cheap ``/v1/models`` request with the
+    standalone forward key proves that the endpoint and credentials belong to
+    the same instance; this avoids showing a false-ready provider when another
+    isolated CodeBee instance has claimed port 18900.
+    """
     base = str(base_url or OUR_FREE_MODEL_BASE_URL).rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
     url = base + "/health"
+    probe_url = url
     try:
         host, err = _validate_host(url, allow_private=True)
         if host is None:
@@ -176,9 +184,25 @@ def _probe_our_free_model(base_url=OUR_FREE_MODEL_BASE_URL, timeout=1.2):
             if int(getattr(resp, "status", 200)) >= 400:
                 return False, "HTTP %s" % getattr(resp, "status", "?")
             payload = json.loads(resp.read(256 * 1024).decode("utf-8", "replace"))
-        return (bool(payload.get("ok", True)) if isinstance(payload, dict) else True), ""
+        if not (bool(payload.get("ok", True)) if isinstance(payload, dict) else True):
+            return False, "健康检查未通过"
+        key = str(api_key or "").strip()
+        if not key:
+            return False, "未读取到 standalone forwardKey"
+        models_url = str(base_url or OUR_FREE_MODEL_BASE_URL).rstrip("/") + "/models"
+        probe_url = models_url
+        models_req = urllib.request.Request(
+            models_url,
+            headers={"Authorization": "Bearer " + key,
+                     "User-Agent": "codebee-orchestrator/1.0"},
+            method="GET",
+        )
+        with _opener().open(models_req, timeout=timeout) as models_resp:
+            if not 200 <= int(getattr(models_resp, "status", 200)) < 300:
+                return False, "模型列表鉴权失败：HTTP %s" % getattr(models_resp, "status", "?")
+        return True, ""
     except Exception as exc:
-        return False, tlsctx.humanize("%s → %r" % (url, exc))
+        return False, tlsctx.humanize("%s → %r" % (probe_url, exc))
 
 
 def _load():
@@ -927,7 +951,7 @@ def ensure_builtin_free_provider():
         auto_enable = bool(prov.get("builtin_auto_enable", True))
         alive, probe_error = (False, "未读取到 standalone forwardKey")
         if key and auto_enable:
-            alive, probe_error = _probe_our_free_model(prov.get("base_url"))
+            alive, probe_error = _probe_our_free_model(prov.get("base_url"), api_key=key)
         if auto_enable:
             prov["enabled"] = bool(alive and key)
         if not auto_enable:
@@ -935,11 +959,17 @@ def ensure_builtin_free_provider():
             prov["builtin_status_message"] = "已按用户操作停用"
         else:
             prov["builtin_status"] = "ready" if alive and key else "not_started"
-            prov["builtin_status_message"] = (
-                "已连接，正在获取模型列表" if alive and key else
-                ("免费模型服务未启动或 Key 不可读；请先运行 standalone 服务" if not key else
-                 "免费模型服务未启动：%s；请先运行 standalone 服务"
-                 % (probe_error or "无法访问本地网关")))
+            if alive and key:
+                prov["builtin_status_message"] = "已连接，正在获取模型列表"
+            elif not key:
+                prov["builtin_status_message"] = "免费模型服务未启动或 Key 不可读；请先运行 standalone 服务"
+            elif re.search(r"\b401\b", str(probe_error or "")) or "鉴权失败" in str(probe_error or ""):
+                prov["builtin_status_message"] = (
+                    "免费模型服务已运行，但 forwardKey 不匹配；请让 CodeBee 与 standalone 使用同一数据目录")
+            else:
+                prov["builtin_status_message"] = (
+                    "免费模型服务未启动：%s；请先运行 standalone 服务"
+                    % (probe_error or "无法访问本地网关"))
         _save(data)
         provider_id = prov["id"]
     if alive and key and prov.get("enabled", False) and prov.get("builtin_auto_enable", True):
