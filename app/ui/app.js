@@ -2433,11 +2433,44 @@ function applyState(d) {
    静默本次告警 / 手动标记恢复 / 一键禁用厂商。 */
 let _healthBeeped = false;
 
+/* 账号类告警（CLI 探活）后端没有静默通道——探活不恢复横幅就永远红着。
+   前端给「隐藏」：agent_id→到期时间戳存 localStorage，12小时内不再计入横幅，
+   到期或探活恢复后自然回归。 */
+const ACCT_DISMISS_KEY = "health.acct.dismissUntil";
+const ACCT_DISMISS_MS = 12 * 3600 * 1000;
+let _visibleAcctIds = [];
+
+function acctDismissMap() {
+  try { return JSON.parse(localStorage.getItem(ACCT_DISMISS_KEY) || "{}") || {}; }
+  catch (e) { return {}; }
+}
+
+function visibleAccountAlerts(health) {
+  const now = Date.now();
+  const dm = acctDismissMap();
+  return ((health && health.account_alerts) || [])
+    .filter((a) => (dm[a.agent_id || ""] || 0) <= now);
+}
+
+function dismissVisibleAccountAlerts() {
+  if (!_visibleAcctIds.length) return;
+  const dm = acctDismissMap();
+  const until = Date.now() + ACCT_DISMISS_MS;
+  _visibleAcctIds.forEach((id) => { dm[id] = until; });
+  const now = Date.now();
+  Object.keys(dm).forEach((k) => { if (dm[k] <= now) delete dm[k]; });
+  try { localStorage.setItem(ACCT_DISMISS_KEY, JSON.stringify(dm)); } catch (e) {}
+  closeModal();
+  renderHealthBanner(S.state && S.state.health);
+  toast(t("已隐藏账号告警，12小时内不再提示"));
+}
+
 function renderHealthBanner(health) {
   const el = $("health-banner");
   if (!el) return;
   const alerts = (health && health.alerts) || [];
-  const accountAlerts = (health && health.account_alerts) || [];
+  const accountAlerts = visibleAccountAlerts(health);
+  _visibleAcctIds = accountAlerts.map((a) => a.agent_id || "");
   const allAlerts = alerts.concat(accountAlerts.map((a) => ({
     account: true, provider: a.agent_id || "账号", provider_id: "",
     last_error: a.last_error || a.summary || a.code || ""
@@ -2458,7 +2491,20 @@ function renderHealthBanner(health) {
     }
     return;
   }
-  el.textContent = healthBannerText(health);
+  el.textContent = "";
+  const txt = document.createElement("span");
+  txt.className = "health-txt";
+  txt.textContent = healthBannerText(health);
+  el.appendChild(txt);
+  if (_visibleAcctIds.length) {
+    const x = document.createElement("span");
+    x.className = "health-x";
+    x.setAttribute("role", "button");
+    x.title = t("隐藏账号告警");
+    x.textContent = "✕";
+    x.onclick = (ev) => { ev.stopPropagation(); dismissVisibleAccountAlerts(); };
+    el.appendChild(x);
+  }
   el.className = "health-banner alerting";
   el.title = allAlerts.map((p) => p.account
     ? p.provider + t("：") + (p.last_error || t("账号失效，正在定时探活"))
@@ -2482,7 +2528,7 @@ function healthBannerText(health) {
 
 function healthBannerClick() {
   const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
-  const accountAlerts = (S.state && S.state.health && S.state.health.account_alerts) || [];
+  const accountAlerts = visibleAccountAlerts(S.state && S.state.health);
   if (!alerts.length && !accountAlerts.length) return;
   const rows = alerts.map((p) => {
     const model = p.model ? " · " + p.model : "";
@@ -2508,6 +2554,7 @@ function healthBannerClick() {
     (pid0 ? "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" : "") +
     (alerts.length ? "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
       "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" : "") +
+    (_visibleAcctIds.length ? "<button class='btn ghost' onclick='dismissVisibleAccountAlerts()'>" + t("隐藏账号告警") + "</button>" : "") +
     "<button class='primary' onclick='closeModal()'>" + t("关闭") + "</button>";
   openModal(t("供应商健康告警"), rows, foot);
 }

@@ -644,7 +644,7 @@ body.side-resizing iframe { pointer-events: none; }
   padding: 12px 24px; border-bottom: 1px solid var(--border);
   background: var(--bg); position: sticky; top: 0; z-index: 10;
 }
-.page-title { font-size: 15.5px; font-weight: 700; letter-spacing: .01em; }
+.page-title { font-size: 15.5px; font-weight: 700; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon-btn {
   background: none; border: none; color: var(--muted); font-size: 16px;
   width: 32px; height: 32px; border-radius: 8px; cursor: pointer; line-height: 1;
@@ -2884,12 +2884,15 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 40vw;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 32vw;
   user-select: none;
 }
+/* 省略号由内层文本 span 承担，尾部 × 才不会被裁掉 */
+.health-banner .health-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .health-banner.alerting {
   background: color-mix(in srgb, var(--bad) 14%, transparent);
   color: var(--bad);
@@ -2901,6 +2904,9 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   color: var(--ok);
   border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
 }
+/* 横幅尾部的 × ：只隐藏账号类告警（localStorage TTL），点击不弹详情框 */
+.health-x { padding: 0 3px; opacity: .65; flex: none; }
+.health-x:hover { opacity: 1; }
 @keyframes health-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
