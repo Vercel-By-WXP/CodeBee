@@ -651,6 +651,11 @@ def test_upload_chapter_draft_flow_and_ledger():
                "台账应记 upload_chapter_draft：%s"
                % [(x.get("action"), x.get("chapter_no"), x.get("ok"))
                   for x in ledger.recent(task_id=t["id"], limit=6)])
+        duration_row = next((x for x in ledger.recent(task_id=t["id"], limit=6)
+                             if x.get("action") == "upload_chapter_draft"
+                             and x.get("chapter_no") == 7), None)
+        expect(duration_row and float(duration_row.get("duration_s") or 0) >= 0,
+               "草稿台账应记录单章耗时：%s" % duration_row)
         expect(7 not in ledger.published_chapters(t["id"], "fanqie"),
                "存草稿不冒充已发布（已发口径干净）")
     finally:

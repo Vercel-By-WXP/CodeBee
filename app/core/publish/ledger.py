@@ -26,7 +26,14 @@ LOCK = threading.RLock()
 FIELDS = ("ts", "day", "platform", "action", "task_id", "chapter_no",
           "book_id", "title", "ok", "error", "shot", "operation_id",
           "operation_status", "remote_receipt", "quality_forced",
-          "quality_reason", "scheduled_date", "scheduled_time")
+          "quality_reason", "scheduled_date", "scheduled_time", "duration_s")
+
+
+def _duration_value(value):
+    try:
+        return round(max(0.0, float(value or 0.0)), 3)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _month_file(day):
@@ -37,7 +44,7 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
            title="", ok=True, error="", shot="", operation_id="",
            operation_status="", remote_receipt="", quality_forced=False,
            quality_reason="", scheduled_date="", scheduled_time="",
-           account=""):
+           account="", duration_s=0.0):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
     try:
         rec = {
@@ -62,6 +69,9 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             # new default date/time.  Older ledger rows simply have blanks.
             "scheduled_date": str(scheduled_date or "")[:10],
             "scheduled_time": str(scheduled_time or "")[:5],
+            # Keep a numeric duration for diagnosing slow browser flows and
+            # failures. Older callers may omit it and remain compatible.
+            "duration_s": _duration_value(duration_s),
             # 多账号：这单落在哪台账号（空=默认账号）
             "account": str(account or "")[:16],
         }

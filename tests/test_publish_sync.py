@@ -66,6 +66,23 @@ def test_bucket_rows():
     expect(manager.bucket_chapter_rows([])["total"] == 0, "空行清单")
 
 
+def test_sync_waits_only_until_rows_are_ready():
+    """章节表提前渲染时不再无条件支付 4 秒初始等待。"""
+    class EventuallyReadyPage:
+        def __init__(self):
+            self.calls = 0
+
+        def call(self, js, *args):
+            self.calls += 1
+            return [] if self.calls < 3 else ["第1章 测试 100 0 已发布"]
+
+    page = EventuallyReadyPage()
+    ok = manager._wait_chapter_rows_ready(
+        page, manager.PLATFORMS["fanqie"], timeout=1.0)
+    expect(ok and page.calls == 3,
+           "章节表出现后应立即继续：ok=%s calls=%s" % (ok, page.calls))
+
+
 class VolumePagerPage:
     """章节管理页状态桩：按 JS 特征分派——数行 / 翻页 / 分卷 open+options+pick。
 
@@ -571,6 +588,8 @@ def test_sync_empty_id_resolves_first():
 if __name__ == "__main__":
     print("== test_publish_sync")
     check("bucket_rows", test_bucket_rows)
+    check("sync_waits_only_until_rows_are_ready",
+          test_sync_waits_only_until_rows_are_ready)
     check("update_book_merge", test_update_book_merge)
     check("published_local_distinct", test_published_local_distinct)
     check("sync_preflight", test_sync_preflight)

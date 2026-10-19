@@ -54,6 +54,28 @@ def _reset_ledger():
     settings.save({"publish_daily_cap": 10, "publish_fail_streak": 3})
 
 
+class TestPublishTimingConfig(unittest.TestCase):
+    def test_timing_override_is_safe_for_bad_environment_values(self):
+        self.assertEqual(auto._env_float("__missing_publish_timing__", 1.25), 1.25)
+        self.assertEqual(auto._env_float("__bad_publish_timing__", 2.0), 2.0)
+        self.assertEqual(auto._env_float("__negative_publish_timing__", 2.0), 2.0)
+
+    def test_timing_override_accepts_fractional_values(self):
+        old = dict(os.environ)
+        try:
+            os.environ["__publish_timing_test__"] = "0.25"
+            self.assertEqual(auto._env_float("__publish_timing_test__", 2.0), 0.25)
+            os.environ["__publish_timing_test__"] = "-3"
+            self.assertEqual(auto._env_float("__publish_timing_test__", 2.0), 0.0)
+            os.environ["__publish_timing_test__"] = "not-a-number"
+            self.assertEqual(auto._env_float("__publish_timing_test__", 2.0), 2.0)
+            os.environ["__publish_timing_test__"] = "nan"
+            self.assertEqual(auto._env_float("__publish_timing_test__", 2.0), 2.0)
+        finally:
+            os.environ.clear()
+            os.environ.update(old)
+
+
 class TestLedgerGuards(unittest.TestCase):
     def setUp(self):
         _reset_ledger()

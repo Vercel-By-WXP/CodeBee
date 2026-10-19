@@ -60,6 +60,41 @@ _state = {"platforms": {}}      # {plat: {status, port, at, error, last_login, l
 _browsers = {}                  # plat → Browser（进程内缓存，alive 校验兜底）
 
 
+def _wait_chapter_rows_ready(page, mod, timeout=4.0):
+    """Wait until a chapter table has rendered, without paying a fixed delay.
+
+    Chapter management pages are SPAs: a fixed sleep is long on a warm page
+    and still insufficient on a cold one. Poll the platform's own row probe at
+    a short cadence, returning as soon as rows (or an explicit empty-state
+    marker) are visible. The caller still performs the full collection and
+    validation afterwards, so this only removes unnecessary idle time.
+    """
+    rows_js = mod.CONFIG.get("count_rows_js")
+    if not rows_js:
+        return False
+    markers = [str(x) for x in (mod.CONFIG.get("empty_chapter_markers") or [])
+               if str(x)]
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    while True:
+        try:
+            rows = page.call(rows_js) or []
+            if rows:
+                return True
+            if markers:
+                body = str(page.evaluate(
+                    "document.body && document.body.innerText || ''") or "")
+                if any(marker in body for marker in markers):
+                    return True
+        except Exception:
+            # Rendering can briefly detach the table; let the normal collector
+            # surface a useful platform-specific error if it never recovers.
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.25, remaining))
+
+
 # ---------------------------------------------------------------- 状态
 def _load():
     global _state
@@ -803,6 +838,11 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
         metadata={"platform": plat, "action": "create_book"})
 
     def run():
+        started_at = time.monotonic()
+
+        def elapsed_s():
+            return round(max(0.0, time.monotonic() - started_at), 3)
+
         final_name = book_name
         try:
             b, page = _open_page(plat)
@@ -916,7 +956,7 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                                   + "\n".join(logs))[:2000] or None),
                           shot=str(ledger.shot_path(plat, task_id, "")),
                           operation_id=operation_id, operation_status=operation_status,
-                          remote_receipt=book_id)
+                          remote_receipt=book_id, duration_s=elapsed_s())
             if book_id:
                 # 未取得 id 不落台账：空条目会让界面亮「已建书」、校准盲跑，
                 # 而发章/下次建书各自有按书名对账的兜底，空条目只剩害处。
@@ -931,7 +971,8 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
             ledger.record(plat, "create_book", task_id=task_id, title=book_name,
                           ok=False, error=str(e)[:300],
                           shot=str(ledger.shot_path(plat, task_id, "")),
-                          operation_id=operation_id, operation_status=operation_status)
+                          operation_id=operation_id, operation_status=operation_status,
+                          duration_s=elapsed_s())
         finally:
             _save()
 
@@ -1284,6 +1325,11 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
         metadata={"platform": plat, "action": flow_key})
 
     def run():
+        started_at = time.monotonic()
+
+        def elapsed_s():
+            return round(max(0.0, time.monotonic() - started_at), 3)
+
         try:
             b, page = _open_page(plat)
             bid = _resolve_book_id(plat, page, book_ref)
@@ -1313,7 +1359,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
                               title=title, ok=True, operation_id=operation_id,
                               operation_status="confirmed",
-                              remote_receipt="platform-draft", account=acc)
+                              remote_receipt="platform-draft", account=acc,
+                              duration_s=elapsed_s())
             elif auto_submit:
                 recorded_action = ("upload_chapter_scheduled"
                                     if scheduled or values.get("_scheduled_by_platform")
@@ -1327,14 +1374,16 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                               scheduled_date=values.get("scheduled_date") if recorded_action == "upload_chapter_scheduled" else "",
                               scheduled_time=values.get("scheduled_time") if recorded_action == "upload_chapter_scheduled" else "",
                               quality_forced=quality_forced,
-                              quality_reason=quality_reason, account=acc)
+                              quality_reason=quality_reason, account=acc,
+                              duration_s=elapsed_s())
             else:
                 # run_flow stops immediately before the submit step. Keep the
                 # operation pending and never count the filled form as published.
                 ledger.record(plat, "upload_chapter_pending", task_id=task_id,
                               chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
                               title=title, ok=False, error="等待人工提交",
-                              operation_id=operation_id, operation_status="pending", account=acc)
+                              operation_id=operation_id, operation_status="pending", account=acc,
+                              duration_s=elapsed_s())
             _set(plat, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -1345,7 +1394,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                           ok=False, error=str(e)[:300], operation_id=operation_id,
                           operation_status=operation_status,
                           quality_forced=quality_forced,
-                          quality_reason=quality_reason, account=acc)
+                          quality_reason=quality_reason, account=acc,
+                          duration_s=elapsed_s())
         finally:
             _save()
 
@@ -1543,11 +1593,11 @@ def sync_published(task_id, plat, manual=False):
                            % (book.get("title") or ""))
     try:
         page.navigate(mod.chapter_manage_url(book), timeout=40)
-        time.sleep(4.0)                         # SPA 表格慢渲染
         url = str(page.url() or "")
         if any(m in url for m in mod.CONFIG["login_url_marks"]) \
                 or url.startswith("chrome-error://"):
             return False, "平台登录态已失效，请重连后校准"
+        _wait_chapter_rows_ready(page, mod, timeout=4.0)
         rows, vols = collect_all_volumes(page, mod)
         st = bucket_chapter_rows(rows)
         if st["total"] <= 0:

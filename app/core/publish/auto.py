@@ -15,13 +15,36 @@ auto_submit=True 时按校准流程自动提交；质量门禁决策带固定审
 """
 from __future__ import annotations
 
+import math
 import os
 import threading
 import time
 
-PACE_S = 45                  # 章间间隔（防风控节奏），测试里可置 0
-IDLE_POLL_S = 2              # 等 manager busy 结束的轮询步长
-IDLE_TIMEOUT_S = 420         # 单章最长等待（含浏览器操作与人工确认窗口）
+
+def _env_float(name, default, minimum=0.0):
+    """Read a non-negative timing override without making startup fragile.
+
+    Publishing runs in a long-lived desktop process, so a malformed environment
+    variable must fall back to the safe default rather than preventing the
+    service from starting.  The constants remain module globals so tests and
+    operators can tune a running batch explicitly.
+    """
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    if not math.isfinite(value):
+        value = float(default)
+    return max(float(minimum), value)
+
+
+# The old 45-second fixed gap made a ten-chapter batch spend at least 6m45s
+# waiting between browser actions.  Keep a conservative anti-abuse gap while
+# making it practical for normal serial publishing; operators can restore the
+# old pace with TUTTI_PUBLISH_PACE_S=45 when a platform needs it.
+PACE_S = _env_float("TUTTI_PUBLISH_PACE_S", 15.0)       # 章间间隔（秒）
+IDLE_POLL_S = _env_float("TUTTI_PUBLISH_IDLE_POLL_S", 0.5)
+IDLE_TIMEOUT_S = _env_float("TUTTI_PUBLISH_IDLE_TIMEOUT_S", 300.0)
 TRANSIENT_RETRY_S = 5        # 连接类瞬断的重试前静默（等浏览器缓过来）
 BOOK_PREP_TIMEOUT_S = 900    # 自动补资料/建书最长等待（含模型与平台跳转）
 
@@ -426,12 +449,14 @@ def status(task_id):
 
 
 # ---------------------------------------------------------------- 顺序发布
-def _wait_idle(platform, timeout=IDLE_TIMEOUT_S):
+def _wait_idle(platform, timeout=None):
     """等 manager 的平台动作结束（busy → 其他）。人工确认模式下用户在
     浏览器里点提交的时间也算在内，超时给足。"""
     from . import manager
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    if timeout is None:
+        timeout = IDLE_TIMEOUT_S
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    while time.monotonic() < deadline:
         try:
             st = (manager.view().get("platforms") or {}).get(platform) or {}
             if st.get("status") != "busy":
