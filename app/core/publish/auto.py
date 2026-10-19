@@ -28,7 +28,24 @@ BOOK_PREP_TIMEOUT_S = 900    # 自动补资料/建书最长等待（含模型与
 _CAP_DEFAULT = 10
 
 _running = {}                # task_id → {platform, at, done, total, status, error}
+_cancel_events = {}          # task_id → current batch cancellation event
 _LOCK = threading.Lock()
+
+
+def cancel_pending(task_id):
+    """Stop an active batch after its current platform action settles."""
+    with _LOCK:
+        event = _cancel_events.get(str(task_id))
+        if not event:
+            return False
+        event.set()
+        return True
+
+
+def _cancelled(task_id):
+    with _LOCK:
+        event = _cancel_events.get(str(task_id))
+        return bool(event and event.is_set())
 
 
 def _isdir(p):
@@ -529,6 +546,7 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                     "as_draft": bool(as_draft), "last_chapter": 0,
                     "skipped": 0, "notes": []}
             _running[task_id] = prep
+            _cancel_events[task_id] = threading.Event()
 
         def prepare_then_publish():
             try:
@@ -536,6 +554,9 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                 if not ok_p:
                     prep["status"] = "error"
                     prep["error"] = why_p
+                    return
+                if _cancelled(task_id):
+                    prep["status"] = "cancelled"
                     return
                 ok_next, why_next = publish_pending_async(
                     task_id, platform, auto_submit=auto_submit, only=only,
@@ -595,9 +616,13 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
           "last_chapter": 0, "skipped": 0, "notes": []}
     with _LOCK:
         _running[task_id] = st
+        _cancel_events[task_id] = threading.Event()
 
     def run():
         try:
+            if _cancelled(task_id):
+                st["status"] = "cancelled"
+                return
             items = pend
             if as_draft or auto_submit:
                 # 自动操作前对账：台账只记得自己发的章，
@@ -632,6 +657,10 @@ def publish_pending_async(task_id, platform, auto_submit=False, only=None,
                 st["total"] = len(fresh)
                 items = fresh
             for item in items:
+                if _cancelled(task_id):
+                    st["status"] = "cancelled"
+                    st["message"] = "已暂停后续章节发布"
+                    return
                 if as_draft:
                     other = other_batch_running(task_id)
                     if other:

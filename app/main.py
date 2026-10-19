@@ -1041,8 +1041,15 @@ class Handler(BaseHTTPRequestHandler):
                     data = _utf8_bytes(data)
                 return self._send(200, data, ctype)
             if path == "/api/automation":
+                from core import serial_daily
                 return self._json(200, {"tasks": automation.list_tasks(),
-                                        "templates": automation.templates()})
+                                        "templates": automation.templates(),
+                                        "serial_daily": serial_daily.list_jobs(),
+                                        "serial_tasks": serial_daily.serial_tasks()})
+            if path == "/api/serial-daily":
+                from core import serial_daily
+                return self._json(200, {"jobs": serial_daily.list_jobs(),
+                                        "tasks": serial_daily.serial_tasks()})
             if path == "/api/zentao":
                 from core import zentao
                 return self._json(200, zentao.view())
@@ -2525,6 +2532,19 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
             return self._json(200, {"ok": True, "task": t})
+        if path == "/api/serial-daily":
+            from core import serial_daily
+            try:
+                job = serial_daily.create(self._body())
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            return self._json(200, {"ok": True, "job": job})
+        m = re.match(r"^/api/serial-daily/([^/]+)/(pause|resume|cancel)$", path)
+        if m:
+            from core import serial_daily
+            job_id, op = m.group(1), m.group(2)
+            job = getattr(serial_daily, op)(job_id)
+            return self._json(200, {"ok": True, "job": job}) if job else self._json(404, {"error": "not found"})
         m = re.match(r"^/api/automation/([^/]+)$", path)
         if m:
             try:

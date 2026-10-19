@@ -61,6 +61,22 @@ class HttpContractRouteTests(unittest.TestCase):
         self.assertEqual(payload, {"ok": True, "paused": True, "count": 3})
         pause_all.assert_called_once_with(True)
 
+    def test_serial_daily_create_and_pause_routes(self):
+        job = {"id": "serial-daily-1", "status": "active"}
+        create = self.handler("/api/serial-daily", {"task_id": "t1"})
+        with patch("core.serial_daily.create", return_value=job) as create_job:
+            status, payload = create._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, {"ok": True, "job": job})
+        create_job.assert_called_once_with({"task_id": "t1"})
+
+        pause = self.handler("/api/serial-daily/serial-daily-1/pause", {})
+        with patch("core.serial_daily.pause", return_value={**job, "status": "paused"}) as pause_job:
+            status, payload = pause._route_post()
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["job"]["status"], "paused")
+        pause_job.assert_called_once_with("serial-daily-1")
+
     def test_single_pause_route_returns_observable_phase(self):
         h = self.handler("/api/runs/run-1/pause", {"paused": True})
         with patch.object(main.store, "set_paused", return_value=True) as set_paused, \

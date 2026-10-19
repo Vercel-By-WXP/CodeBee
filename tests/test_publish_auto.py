@@ -467,6 +467,30 @@ class TestPublishPending(unittest.TestCase):
         finally:
             self.manager.upload_chapter_async = orig
 
+    def test_cancel_pending_stops_after_current_chapter(self):
+        self._calibrate()
+        tid = self.task["id"]
+        fake = _FakeUpload()
+        orig = self.manager.upload_chapter_async
+
+        def upload_then_cancel(*args, **kwargs):
+            result = fake(*args, **kwargs)
+            auto.cancel_pending(tid)
+            return result
+
+        self.manager.upload_chapter_async = upload_then_cancel
+        try:
+            ok, err = auto.publish_pending_async(tid, "fanqie", auto_submit=True)
+            self.assertTrue(ok, err)
+            st = self._wait_status(tid)
+            self.assertEqual(st.get("status"), "cancelled")
+            self.assertEqual(st.get("done"), 1)
+            self.assertEqual(len(fake.calls), 1)
+        finally:
+            self.manager.upload_chapter_async = orig
+            with auto._LOCK:
+                auto._cancel_events.pop(tid, None)
+
     def test_single_flight_while_running(self):
         fake = _FakeUpload(slow_s=0.4)
         orig = self.manager.upload_chapter_async

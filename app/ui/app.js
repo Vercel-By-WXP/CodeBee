@@ -15297,6 +15297,8 @@ function kbEditOpen(id) {
 /* 进页拉一次 + 每次操作后重拉 + 页面可见时每 8s 轮询（离页停表）。
  * 后端 /api/automation → {tasks, templates}；任务/模板操作走子路径。 */
 let AUTO_TIMER = null;   // 自动化页轮询句柄
+let SERIAL_DAILY_JOBS = [];
+let SERIAL_DAILY_TASKS = [];
 
 const AUTO_WD = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];   // 0=周一
 
@@ -15305,6 +15307,8 @@ async function loadAutomation() {
     const r = await api("/api/automation");
     S.autoTasks = r.tasks || [];
     S.autoTpl = r.templates || [];
+    SERIAL_DAILY_JOBS = r.serial_daily || [];
+    SERIAL_DAILY_TASKS = r.serial_tasks || [];
   } catch (e) {
     S.autoTasks = null;
   }
@@ -15478,6 +15482,7 @@ function autoDiscardDraft() {
 }
 
 function renderAutomation() {
+  renderSerialDaily();
   const box = $("auto-list");
   if (!box) return;
   if (!S.autoTasks) {
@@ -15499,6 +15504,64 @@ function renderAutomation() {
       '<button class="ghost small" onclick="autoTemplate(\'' + esc(tp.id) + '\')">' + t("用此模板") + "</button></div></div>"
     ).join("") || '<div class="empty">' + t("暂无模板") + "</div>";
   }
+}
+
+function renderSerialDaily() {
+  const box = $("serial-daily-list");
+  if (!box) return;
+  const status = { active: "运行中", paused: "已暂停", cancelled: "已取消" };
+  box.innerHTML = (SERIAL_DAILY_JOBS || []).map((job) => {
+    const result = job.last_day_status === "done" ? t("今日已完成")
+      : job.last_day_status === "alerted" ? t("今日未完成，已告警") : t("今日执行中");
+    const controls = job.status === "active"
+      ? '<button class="ghost small" onclick="serialDailyAction(\'' + esc(job.id) + '\',\'pause\')">' + t("暂停") + "</button>"
+      : job.status === "paused"
+        ? '<button class="ghost small" onclick="serialDailyAction(\'' + esc(job.id) + '\',\'resume\')">' + t("恢复") + "</button>" : "";
+    return '<div class="card"><div class="head"><span class="name">' + esc(job.task_title) + "</span>" +
+      '<span class="tag">' + t(status[job.status] || job.status) + "</span></div>" +
+      '<div class="auto-kind">' + t("每天") + " " + job.chapters_per_day + " " + t("章 ·") + " " +
+      job.publish_time + " " + t("发布") + ' <span class="tag">' + esc(job.platform) + "</span></div>" +
+      '<div class="auto-meta"><span>' + esc(result) + (job.day ? " · " + esc(job.day) : "") + "</span>" +
+      (job.last_error ? '<span class="auto-tag-err">' + esc(job.last_error) + "</span>" : "") + "</div>" +
+      '<div class="ops">' + controls +
+      (job.status !== "cancelled" ? '<button class="danger small" onclick="serialDailyAction(\'' + esc(job.id) + '\',\'cancel\')">' + t("取消计划") + "</button>" : "") +
+      "</div></div>";
+  }).join("");
+}
+
+async function serialDailyForm() {
+  if (!SERIAL_DAILY_TASKS.length) { toast(t("没有可用的连载小说任务"), true); return; }
+  const taskOptions = SERIAL_DAILY_TASKS.map((task) => '<option value="' + esc(task.id) + '">' +
+    esc(task.title || task.goal || task.id) + "</option>").join("");
+  const body = '<div class="form">' +
+    '<div class="field"><label>' + t("连载任务") + '</label><select id="sd-task">' + taskOptions + "</select></div>" +
+    '<div class="grid-2"><div class="field"><label>' + t("发布平台") + '</label><select id="sd-platform"><option value="fanqie">' + t("番茄") + '</option><option value="qimao">' + t("七猫") + "</option></select></div>" +
+    '<div class="field"><label>' + t("每天章节数") + '</label><input id="sd-count" type="number" min="1" max="20" value="1"></div></div>' +
+    '<div class="field"><label>' + t("每天发布时间") + '</label><input id="sd-time" type="time" value="21:00"></div>' +
+    '<p class="hint">' + t("系统会在每天开始续写，按设定时间发布；当天未完成会持续重试并告警。") + "</p></div>";
+  openModal(t("一键设置连载日更"), body, "");
+  const foot = $("modal-foot");
+  if (foot) foot.innerHTML = '<button class="primary" onclick="saveSerialDaily()">' + t("创建日更任务") + "</button>" +
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>";
+}
+
+async function saveSerialDaily() {
+  const payload = { task_id: $("sd-task").value, platform: $("sd-platform").value,
+    chapters_per_day: Number($("sd-count").value), publish_time: $("sd-time").value,
+    auto_submit: true };
+  try { await api("/api/serial-daily", { method: "POST", body: JSON.stringify(payload) }); }
+  catch (e) { toast(t("创建失败：") + e.message, true); return; }
+  closeModal();
+  toast(t("连载日更任务已创建"));
+  loadAutomation();
+}
+
+async function serialDailyAction(id, action) {
+  if (action === "cancel" && !window.confirm(t("取消后将停止后续写作和发布，确定取消吗？"))) return;
+  try { await api("/api/serial-daily/" + encodeURIComponent(id) + "/" + action,
+    { method: "POST", body: "{}" }); }
+  catch (e) { toast(e.message, true); return; }
+  loadAutomation();
 }
 
 /* 创建 / 编辑表单（通用弹框）：task 空 = 新建；tpl = 模板预填 */
@@ -20606,6 +20669,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 自动化页：刷新 / 新建 / 三段筛选（本地过滤）
   $("btn-auto-refresh").addEventListener("click", loadAutomation);
   $("btn-auto-new").addEventListener("click", () => autoForm());
+  $("btn-serial-daily-new").addEventListener("click", serialDailyForm);
   // 禅道页：测试连接 / 立即扫描 / 保存配置
   $("btn-zentao-test").addEventListener("click", testZentao);
   $("btn-zentao-fetchcat").addEventListener("click", () => ztFetchCatalog(false));
