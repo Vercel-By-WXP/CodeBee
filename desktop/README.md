@@ -16,13 +16,12 @@
 cd desktop
 npm ci
 npm run prepare:runtime
-npm test
 npm start
 ```
 
 `prepare:runtime` 下载固定版本 python-build-standalone，验证官方资产 SHA256 后解包，执行 ssl/sqlite3/ctypes 与平台架构自检。Python 不放进 asar，内部调用 `sys.executable` 保持正常工作。macOS Finder 启动时读取登录 shell 的 PATH，并补齐 Homebrew、用户 npm、cargo 和 local bin 路径。
 
-测试不会启动用户的现有服务：
+smoke 不会启动用户的现有服务：
 
 ```sh
 npm run smoke

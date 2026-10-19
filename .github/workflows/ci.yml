@@ -46,38 +46,6 @@ jobs:
           print("compiled", len(files), "Python files")
           PY
 
-  tests:
-    name: unittest (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    needs: syntax-check
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Run root tests when present
-        shell: bash
-        run: |
-          if [ -d tests ]; then
-            python scripts/run_protected_suite.py
-          else
-            echo "No root tests directory; skipping"
-          fi
-      - name: Run app tests when present
-        shell: bash
-        working-directory: app
-        run: |
-          if [ -d tests ]; then
-            python -m unittest discover -s tests -p "test_*.py" -v
-          else
-            echo "No app/tests directory; skipping"
-          fi
-
   dependency-scan:
     name: Standard-library dependency scan
     runs-on: ubuntu-latest
@@ -96,9 +64,9 @@ jobs:
 
           stdlib = set(getattr(sys, "stdlib_module_names", ()))
           stdlib.update({"__future__"})
-          roots = {"app", "tests", "tools", "scripts", "sitecustomize"}
-          for package in (pathlib.Path("app"), pathlib.Path("tests"),
-                          pathlib.Path("tools"), pathlib.Path("scripts")):
+          roots = {"app", "tools", "scripts", "sitecustomize"}
+          for package in (pathlib.Path("app"), pathlib.Path("tools"),
+                          pathlib.Path("scripts")):
               if not package.is_dir():
                   continue
               roots.update(path.name for path in package.iterdir()

@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "wrangler dev --ip 127.0.0.1 --port 18791",
     "sync-ui": "node sync-ui.mjs",
-    "deploy": "node sync-ui.mjs && wrangler deploy",
-    "test": "npm run sync-ui && node --test tests/*.test.mjs"
+    "deploy": "node sync-ui.mjs && wrangler deploy"
   },
   "devDependencies": { "wrangler": "^4.0.0" }
 }

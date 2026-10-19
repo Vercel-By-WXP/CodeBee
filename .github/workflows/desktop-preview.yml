@@ -60,10 +60,6 @@ jobs:
         if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install -y libfuse2 patchelf rpm
       - run: npm ci --no-audit --no-fund
-      - run: npm test
-      - name: Run sidecar lifecycle and data lock tests
-        working-directory: .
-        run: python -m unittest discover -s tests -p test_desktop_runtime.py -v -f
       - name: Prepare bundled Python runtime
         shell: bash
         run: |

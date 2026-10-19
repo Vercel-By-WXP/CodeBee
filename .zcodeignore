@@ -13,10 +13,6 @@ tmp_wm_*.png
 tmp_*
 /.playwright-cli/
 /output/
-/tests/
-!/tests/
-/tests/*
-!/tests/test_state_payload.py
 .playwright-cli/
 
 # ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====

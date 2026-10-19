@@ -17,7 +17,6 @@ extraResources:
     to: codebee/app
     filter:
       - '**/*'
-      - '!tests/**'
       - '!**/__pycache__/**'
       - '!**/*.pyc'
       - '!output/**'

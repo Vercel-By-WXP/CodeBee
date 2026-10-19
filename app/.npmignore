@@ -1,5 +1,4 @@
 # This nested ignore applies even though package.json explicitly includes app/.
-tests/
 **/__pycache__/
 **/*.pyc
 **/data/

@@ -30,24 +30,10 @@ Cloudflare 账号、域名或入站端口。
 ```powershell
 cd cloud/phone-relay
 npm ci
-npm test
 npm run dev
 ```
 
-另一个终端在仓库根目录运行：
-
-```powershell
-$env:CODEBEE_RELAY_TEST_URL='http://127.0.0.1:18791'
-python -m unittest tests.test_phone_relay tests.test_remote -v
-node cloud/phone-relay/tests/browser.mjs
-```
-
-测试只使用独立临时数据目录与 18891/18892/18893 端口，不连接真实本机用户数据。
-集成检查包括两台电脑隔离、一次性码并发、cookie 设备调包、Origin、控制权冲突、
-SSE 流、电脑重启、离线落地页、撤销和注销。浏览器检查在 Windows Edge 中验证
-390px 页面、配对跳转、HttpOnly、远程管理拒绝、本机弹窗。
-
-临时连接器测试可设置 `CODEBEE_RELAY_URL=http://127.0.0.1:18791`；正式默认地址
+临时连接器可设置 `CODEBEE_RELAY_URL=http://127.0.0.1:18791`；正式默认地址
 固定为 HTTPS。`--no-phone-relay` 仅停止本次启动的自动恢复，不撤销已配对手机。
 远程连接默认关闭，只有本机生成配对码后才启用；下次启动自动恢复。
 

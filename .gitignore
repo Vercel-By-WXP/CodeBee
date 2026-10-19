@@ -69,6 +69,7 @@ tmp_*
 outputs/
 output/
 tests/_shots/
+tests/_out/
 app/output/
 /Microsoft/
 app/browser-*.png

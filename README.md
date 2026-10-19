@@ -88,15 +88,6 @@ python app\main.py --port 8765
 python app\main.py --host 0.0.0.0 --port 8765
 ~~~
 
-## 测试
-
-~~~bat
-python -m unittest discover -s tests -p "test_*.py" -v
-python -m unittest discover -s app\tests -p "test_*.py" -v
-~~~
-
-测试应使用临时数据目录和独立端口，不要连接生产服务。
-
 ## 贡献
 
 请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。

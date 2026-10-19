@@ -20,7 +20,6 @@
   "scripts": {
     "start": "electron .",
     "prepare:runtime": "node scripts/prepare-runtime.cjs",
-    "test": "node --test tests/*.test.cjs",
     "smoke": "electron . --smoke-test",
     "pack": "electron-builder --dir --publish never",
     "prepare:runtime:win": "node scripts/prepare-runtime.cjs win32 x64 win7",

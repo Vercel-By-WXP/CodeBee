@@ -23,7 +23,6 @@
   },
   "files": [
     "app",
-    "!app/tests",
     "bin",
     "tools/wx_reader.py",
     "tools/run_end_autocommit.py",
