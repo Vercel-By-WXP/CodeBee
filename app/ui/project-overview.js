@@ -159,7 +159,7 @@
     const id = selectedProjectId(); if (!id) { toast(t("请先选择项目"), true); return; }
     try { const result = await api("/api/projects/" + encodeURIComponent(id) + "/permissions");
       const rows = Object.entries(result.members || {}).map(([member, role]) => '<div class="item"><span class="name">' + esc(member) + '</span><span class="tag">' + esc(role) + '</span></div>').join("");
-      openModal(t("成员权限"), '<div class="list">' + (rows || '<p class="hint">' + esc(t("当前只有本机 owner")) + '</p>') + '</div><div class="input-row"><input id="project-member-name" placeholder="成员 ID"><select id="project-member-role"><option value="viewer">viewer</option><option value="editor">editor</option></select><button class="primary" onclick="projectPermissionSave()">' + esc(t("保存成员")) + '</button></div>', '');
+      openModal(t("成员权限"), '<div class="list">' + (rows || '<p class="hint">' + esc(t("当前只有本机 owner")) + '</p>') + '</div><div class="input-row"><input id="project-member-name" placeholder="' + esc(t("成员 ID")) + '"><select id="project-member-role"><option value="viewer">viewer</option><option value="editor">editor</option></select><button class="primary" onclick="projectPermissionSave()">' + esc(t("保存成员")) + '</button></div>', '');
       window._projectPermissionId = id;
     } catch (error) { toast(t("读取权限失败：") + error.message, true); }
   };

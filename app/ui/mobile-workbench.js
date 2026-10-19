@@ -117,19 +117,20 @@
 
 /* Phone control surface: expert launch and a compact activity count. */
 (() => {
+  const label = (zh, en) => document.documentElement.dataset.lang === "en" ? en : zh;
   const setup = () => {
     const head = document.querySelector(".mobile-workspaces-head");
     if (!head || typeof api !== "function" || head.querySelector(".mobile-expert-controls")) return;
     const box = document.createElement("div");
     box.className = "mobile-expert-controls";
-    box.innerHTML = '<label><span>专家</span><select aria-label="专家"></select></label>' +
-      '<button type="button" class="ghost">启动专家</button><small aria-live="polite"></small>';
+    box.innerHTML = '<label><span>' + label("专家", "Expert") + '</span><select aria-label="' + label("专家", "Expert") + '"></select></label>' +
+      '<button type="button" class="ghost">' + label("启动专家", "Launch expert") + '</button><small aria-live="polite"></small>';
     head.insertBefore(box, head.firstChild);
     const select = box.querySelector("select"), button = box.querySelector("button"), status = box.querySelector("small");
     const refresh = () => api("/api/mobile/status", { timeout: 8000, busy: false, operation: false }).then(data => {
       const runs = data.runs || [];
       const active = runs.filter(run => ["queued", "running"].includes(run.status));
-      status.textContent = "活动运行：" + active.length;
+      status.textContent = label("活动运行：", "Active runs: ") + active.length;
       box.querySelectorAll(".mobile-run-decision").forEach(node => node.remove());
       runs.filter(run => run.status === "done" && run.task_id).slice(0, 3).forEach(run => {
         const row = document.createElement("span");
@@ -141,7 +142,7 @@
           actionButton.addEventListener("click", async () => {
             actionButton.disabled = true;
             try { await api("/api/mobile/runs/" + encodeURIComponent(run.id) + "/decision", { method: "POST", body: { action, note: action === "reject" ? "手机端裁决" : "" } }); await refresh(); }
-            catch (error) { status.textContent = error && error.message ? error.message : "裁决失败"; actionButton.disabled = false; }
+            catch (error) { status.textContent = error && error.message ? error.message : label("裁决失败", "Decision failed"); actionButton.disabled = false; }
           });
           row.append(actionButton);
         });
@@ -153,7 +154,7 @@
     }).catch(() => {});
     button.addEventListener("click", async () => {
       const goal = typeof window.uiPrompt === "function"
-        ? await window.uiPrompt("告诉专家要完成什么", "")
+        ? await window.uiPrompt(label("告诉专家要完成什么", "Tell the expert what to do"), "")
         : null;
       if (!goal || !goal.trim() || !select.value) return;
       button.disabled = true;
@@ -162,7 +163,7 @@
           method: "POST", body: { goal: goal.trim(), title: goal.trim().slice(0, 80) }, timeout: 15000
         });
         await refresh();
-      } catch (error) { status.textContent = error && error.message ? error.message : "启动失败"; }
+      } catch (error) { status.textContent = error && error.message ? error.message : label("启动失败", "Launch failed"); }
       finally { button.disabled = false; }
     });
     refresh();

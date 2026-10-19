@@ -240,18 +240,18 @@ function browserRenderTaskContext() {
     (run && run.verify_pass != null ? run.verify_pass : null);
   const verifyClass = verifyPass === true ? "ok" : (verifyPass === false ? "bad" : "");
   const verifyIcon = verifyPass === true ? "i-check" : (verifyPass === false ? "i-x" : "i-gauge");
-  const verifyText = verifyPass === true ? "验证通过" : (verifyPass === false ? "验证未通过" : "等待验证");
+  const verifyText = verifyPass === true ? "验证通过" : (verifyPass === false ? "验证未通过" : t("等待验证"));
   const command = task.verify_command || "";
-  const qualityLabels = { continue_only: "继续打磨（暂不可发布）",
-    publish_ready: "可发布，签约检查点待完成", signing_ready: "可申请签约" };
+  const qualityLabels = { continue_only: t("继续打磨（暂不可发布）"),
+    publish_ready: t("可发布，签约检查点待完成"), signing_ready: t("可申请签约") };
   const qualityStatus = verdict.quality_status && qualityLabels[verdict.quality_status];
   verify.innerHTML = '<div class="browser-verify-line ' + verifyClass + '"><svg class="ico" aria-hidden="true"><use href="#' + verifyIcon + '"></use></svg><span>' + esc(t(verifyText)) + "</span></div>" +
     (qualityStatus ? '<div class="browser-verify-command quality-status">' + esc(t(qualityStatus)) + "</div>" : "") +
     (command ? '<div class="browser-verify-command" title="' + esc(command) + '">' + esc(command) + "</div>" : '<span>' + esc(t("未配置验证命令")) + "</span>");
   const platforms = ["fanqie", "qimao"], ps = (S.pubState && S.pubState.platforms) || {};
   publish.innerHTML = '<div class="browser-publish-platforms">' + platforms.map((platform) => {
-    const state = ps[platform] || {}, label = platform === "fanqie" ? "番茄" : "七猫";
-    const statusText = state.status === "connected" ? "已连接" : (state.status === "busy" ? "操作中" : "未连接");
+    const state = ps[platform] || {}, label = platform === "fanqie" ? "番茄" : t("七猫");
+    const statusText = state.status === "connected" ? t("已连接") : (state.status === "busy" ? "操作中" : t("未连接"));
     return '<div class="browser-publish-platform"><b>' + esc(t(label)) + '</b><span>' + esc(t(statusText)) + "</span></div>";
   }).join("") + "</div>";
   browserRenderHomeTask(task, run, status, verifyPass);
@@ -704,7 +704,7 @@ function browserBind() {
   $("browser-reload").addEventListener("click", () => { const f = $("browser-frame"); if (f && !f.classList.contains("hidden")) f.src = f.src; });
   $("browser-home").addEventListener("click", () => browserNavigate(BROWSER_HOME));
   $("browser-new-tab").addEventListener("click", () => {
-    browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 });
+    browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 });
     browserState.active = browserState.tabs.length - 1;
     browserDraw();
     $("browser-address").focus();
@@ -727,7 +727,7 @@ function browserBind() {
   $("browser-clear-confirm-yes").addEventListener("click", () => {
     browserState.history = [];
     browserState.permissions = {};
-    browserState.tabs = [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }];
+    browserState.tabs = [{ id: "home", url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 }];
     browserState.active = 0;
     browserSaveState();
     $("browser-clear-confirm").close();
@@ -1403,7 +1403,7 @@ function deviceName() {
   if (/iPad/.test(ua)) return "iPad";
   if (/Android/.test(ua)) return "Android";
   if (/Macintosh/.test(ua)) return "Mac";
-  if (/Edg\//.test(ua)) return "Edge·电脑";
+  if (/Edg\//.test(ua)) return t("Edge·电脑");
   if (/Chrome/.test(ua)) return t("Chrome·电脑");
   return t("电脑");
 }
@@ -1455,33 +1455,33 @@ function operationLabel(path, opts) {
       (!_lastActionAt || performance.now() - _lastActionAt >= 2000)) return "";
   const clean = String(path || "").split("?")[0];
   const rules = [
-    [/^\/api\/tasks$/, "创建任务"],
-    [/\/tasks\/[^/]+\/delete$/, "删除任务"],
-    [/\/tasks\/[^/]+\/archive$/, "归档任务"],
-    [/\/tasks\/[^/]+\/retry$/, "重试任务"],
-    [/\/tasks\/[^/]+\/continue$/, "创建续写任务"],
-    [/\/tasks\/[^/]+\/rename$/, "重命名任务"],
-    [/\/runs\/[^/]+\/cancel$/, "取消运行"],
-    [/\/runs\/[^/]+\/delete$/, "删除运行"],
-    [/\/runs\/(delete-batch|clear)$/, "清理运行记录"],
-    [/\/attachments(?:\/[^/]+)?$/, "上传附件"],
-    [/\/selfupdate\/apply$/, "升级 CodeBee"],
-    [/\/market\//, "更新插件"],
-    [/\/models\/binding$/, "更新智能体绑定"],
-    [/\/models\//, "更新模型配置"],
-    [/\/zentao\/test$/, "测试禅道连接"],
-    [/\/zentao\/products$/, "拉取禅道产品"],
-    [/\/zentao\/users$/, "拉取禅道账号"],
-    [/\/zentao\/modules$/, "拉取模块清单"],
-    [/\/zentao\/scan$/, "禅道扫描 Bug"],
-    [/\/zentao\/config$/, "保存禅道配置"],
-    [/\/wxdigest\/groups$/, "刷新群列表"],
-    [/\/wxdigest\/scan$/, "扫描群摘要"],
-    [/\/wxdigest\/config$/, "保存群摘要设置"],
-    [/\/ports\/close$/, "关闭端口进程"],
+    [/^\/api\/tasks$/, t("创建任务")],
+    [/\/tasks\/[^/]+\/delete$/, t("删除任务")],
+    [/\/tasks\/[^/]+\/archive$/, t("归档任务")],
+    [/\/tasks\/[^/]+\/retry$/, t("重试任务")],
+    [/\/tasks\/[^/]+\/continue$/, t("创建续写任务")],
+    [/\/tasks\/[^/]+\/rename$/, t("重命名任务")],
+    [/\/runs\/[^/]+\/cancel$/, t("取消运行")],
+    [/\/runs\/[^/]+\/delete$/, t("删除运行")],
+    [/\/runs\/(delete-batch|clear)$/, t("清理运行记录")],
+    [/\/attachments(?:\/[^/]+)?$/, t("上传附件")],
+    [/\/selfupdate\/apply$/, t("升级 CodeBee")],
+    [/\/market\//, t("更新插件")],
+    [/\/models\/binding$/, t("更新智能体绑定")],
+    [/\/models\//, t("更新模型配置")],
+    [/\/zentao\/test$/, t("测试禅道连接")],
+    [/\/zentao\/products$/, t("拉取禅道产品")],
+    [/\/zentao\/users$/, t("拉取禅道账号")],
+    [/\/zentao\/modules$/, t("拉取模块清单")],
+    [/\/zentao\/scan$/, t("禅道扫描 Bug")],
+    [/\/zentao\/config$/, t("保存禅道配置")],
+    [/\/wxdigest\/groups$/, t("刷新群列表")],
+    [/\/wxdigest\/scan$/, t("扫描群摘要")],
+    [/\/wxdigest\/config$/, t("保存群摘要设置")],
+    [/\/ports\/close$/, t("关闭端口进程")],
   ];
   const hit = rules.find((it) => it[0].test(clean));
-  return t(hit ? hit[1] : "提交操作");
+  return t(hit ? hit[1] : t("提交操作"));
 }
 
 function operationStart(path, opts) {
@@ -1987,8 +1987,8 @@ function closeModal() {
 
 /* ---------------------------------------------------------- 人工评审队列 */
 const REVIEW_QUEUE = { rows: [], loaded: false, loading: 0, saving: false };
-const REVIEW_LABELS = { requested: "待分配", assigned: "评审中", approved: "已批准",
-  changes_requested: "要求修改", dismissed: "已关闭", expired: "已过期" };
+const REVIEW_LABELS = { requested: t("待分配"), assigned: t("评审中"), approved: t("已批准"),
+  changes_requested: t("要求修改"), dismissed: t("已关闭"), expired: t("已过期") };
 
 function reviewActions(status) {
   if (status === "requested") return ["assign", "dismiss", "expire"];
@@ -1998,8 +1998,8 @@ function reviewActions(status) {
 }
 
 function reviewActionLabel(action) {
-  return t(({ assign: "分配评审人", approve: "批准评审", changes_requested: "要求修改",
-    dismiss: "关闭请求", expire: "标记过期" })[action] || action);
+  return t(({ assign: t("分配评审人"), approve: t("批准评审"), changes_requested: t("要求修改"),
+    dismiss: t("关闭请求"), expire: t("标记过期") })[action] || action);
 }
 
 function renderReviewQueue() {
@@ -2028,7 +2028,7 @@ function renderReviewQueue() {
         '<button type="button" class="ghost small" data-review-id="' + esc(row.id) +
         '" data-review-action="' + action + '">' + esc(reviewActionLabel(action)) + '</button>').join("") +
       '</div></article>';
-  }).join("") || '<p class="hint">' + esc(t(REVIEW_QUEUE.loaded ? "暂无匹配的评审请求" : "正在加载评审请求…")) + '</p>';
+  }).join("") || '<p class="hint">' + esc(t(REVIEW_QUEUE.loaded ? t("暂无匹配的评审请求") : t("正在加载评审请求…"))) + '</p>';
   list.onclick = (event) => {
     const button = event.target.closest("[data-review-action]");
     if (button && list.contains(button)) openReviewTransition(button.dataset.reviewId, button.dataset.reviewAction);
@@ -2349,7 +2349,7 @@ function runSettleNotice(taskId, title, run) {
   const st = String((run && run.status) || "");
   const unqualified = st === "done" && run && run.verdict && run.verdict.pass === false;
   const tone = st === "done" ? (unqualified ? "warn" : "good") : "bad";
-  const head = t({ done: "任务已完成", failed: "任务失败", timeout: "任务超时" }[st]
+  const head = t({ done: t("任务已完成"), failed: t("任务失败"), timeout: t("任务超时") }[st]
     || String(runStatusText(run))) + (unqualified ? t("·未达标") : "");
   sendBrowserRunNotification(taskId, title, run, head);
   const card = document.createElement("div");
@@ -2480,7 +2480,7 @@ function renderHealthBanner(health) {
   const accountAlerts = visibleAccountAlerts(health);
   _visibleAcctIds = accountAlerts.map((a) => a.agent_id || "");
   const allAlerts = alerts.concat(accountAlerts.map((a) => ({
-    account: true, provider: a.agent_id || "账号", provider_id: "",
+    account: true, provider: a.agent_id || t("账号"), provider_id: "",
     last_error: a.last_error || a.summary || a.code || ""
   })));
   if (!allAlerts.length) {
@@ -3833,7 +3833,7 @@ async function doAddProvider() {
     model_hard: $("np-hard").value.trim(),
   };
   if (!body.name) { res.textContent = t("请填写名称"); return; }
-  if (!/^https?:\/\//.test(body.base_url)) { res.textContent = "API 地址必须以 http:// 或 https:// 开头"; return; }
+  if (!/^https?:\/\//.test(body.base_url)) { res.textContent = t("API 地址必须以 http:// 或 https:// 开头"); return; }
   const btn = $("btn-do-add");
   btn.disabled = true; btn.textContent = t("保存中…");
   try {
@@ -4334,7 +4334,7 @@ function cmpSyncPlanMode() {
   const item = document.querySelector('[data-add-action="plan"]');
   const hint = $("cmp-plan-hint");
   if (item) item.classList.toggle("is-on", cmpPlanMode);
-  if (hint) hint.textContent = t(cmpPlanMode ? "计划模式已开启" : "开启计划模式");
+  if (hint) hint.textContent = t(cmpPlanMode ? t("计划模式已开启") : t("开启计划模式"));
 }
 
 function cmpAddAction(action) {
@@ -4368,7 +4368,7 @@ function cmpAddAction(action) {
   } else if (action === "plan") {
     cmpPlanMode = !cmpPlanMode;
     cmpSyncPlanMode();
-    toast(t(cmpPlanMode ? "计划模式已开启：将先生成详细计划，再按计划执行。" : "计划模式已关闭。"));
+    toast(t(cmpPlanMode ? t("计划模式已开启：将先生成详细计划，再按计划执行。") : t("计划模式已关闭。")));
   } else if (action === "draw") {
     cmpOpenDrawing();
   }
@@ -4417,7 +4417,7 @@ function cmpRenderCapabilityMenu() {
   const match = row => !query || [row.display_name, row.name, row.description, row.short_description]
     .join(" ").toLowerCase().includes(query);
   const allRows = cmpCapabilityRows();
-  const groups = [["plugin", "插件"], ["skill", "技能"], ["agent", "智能体"]];
+  const groups = [["plugin", t("插件")], ["skill", t("技能")], ["agent", t("智能体")]];
   let html = groups.map(([kind, title]) => {
     if (!["all", kind].includes(cmpCapabilityFilter)) return "";
     const rows = allRows.filter(x => x.kind === kind && match(x));
@@ -4574,7 +4574,7 @@ function cmpOpenDrawing() {
     dialog = document.createElement("dialog");
     dialog.id = "cmp-draw-dialog";
     dialog.className = "cmp-draw-dialog";
-    dialog.innerHTML = '<div class="cmp-draw-head"><div><b>' + esc(t("绘图")) + '</b><small>' + esc(t("画一张草图，完成后作为任务附件添加。")) + '</small></div><button type="button" class="ghost small" data-draw-close aria-label="关闭">×</button></div><div class="cmp-draw-tools"><button type="button" class="ghost small is-active" data-draw-tool="pen">' + esc(t("画笔")) + '</button><button type="button" class="ghost small" data-draw-tool="eraser">' + esc(t("橡皮擦")) + '</button><input type="color" value="#202123" aria-label="' + esc(t("画笔颜色")) + '"><input type="range" min="1" max="24" value="4" aria-label="' + esc(t("画笔粗细")) + '"><button type="button" class="ghost small" data-draw-clear>' + esc(t("清空")) + '</button><span class="spacer"></span><button type="button" class="primary small" data-draw-add>' + esc(t("添加到任务")) + '</button></div><canvas class="cmp-draw-canvas" width="1200" height="620" aria-label="' + esc(t("绘图画布")) + '"></canvas>';
+    dialog.innerHTML = '<div class="cmp-draw-head"><div><b>' + esc(t("绘图")) + '</b><small>' + esc(t("画一张草图，完成后作为任务附件添加。")) + '</small></div><button type="button" class="ghost small" data-draw-close aria-label="' + esc(t("关闭")) + '">×</button></div><div class="cmp-draw-tools"><button type="button" class="ghost small is-active" data-draw-tool="pen">' + esc(t("画笔")) + '</button><button type="button" class="ghost small" data-draw-tool="eraser">' + esc(t("橡皮擦")) + '</button><input type="color" value="#202123" aria-label="' + esc(t("画笔颜色")) + '"><input type="range" min="1" max="24" value="4" aria-label="' + esc(t("画笔粗细")) + '"><button type="button" class="ghost small" data-draw-clear>' + esc(t("清空")) + '</button><span class="spacer"></span><button type="button" class="primary small" data-draw-add>' + esc(t("添加到任务")) + '</button></div><canvas class="cmp-draw-canvas" width="1200" height="620" aria-label="' + esc(t("绘图画布")) + '"></canvas>';
     document.body.appendChild(dialog);
     const canvas = dialog.querySelector("canvas"), ctx = canvas.getContext("2d");
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -4669,7 +4669,7 @@ async function addAttachFiles(files, opts) {
   }
   if (quiet && skipped.length) {
     const names = skipped.slice(0, 3).join("、") + (skipped.length > 3 ? " …" : "");
-    toast(t("已跳过大文件或不支持的类型：") + names + "（共" + skipped.length + "个）");
+    toast(t("已跳过大文件或不支持的类型：") + names + t("（共") + skipped.length + t("个）"));
   }
 }
 window.addAttachFiles = addAttachFiles;
@@ -5683,11 +5683,11 @@ function renderPauseAllButton() {
   const control = (S.state && S.state.pause_control) || { active: 0, paused: 0 };
   const shouldPause = control.paused < control.active;
   btn.classList.toggle("hidden", control.active === 0);
-  btn.dataset.i18n = shouldPause ? "全部暂停" : "全部放行";
+  btn.dataset.i18n = shouldPause ? t("全部暂停") : t("全部放行");
   btn.textContent = t(btn.dataset.i18n);
   btn.dataset.i18nTitle = shouldPause
-    ? "暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响"
-    : "放行所有已暂停的编排任务";
+    ? t("暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响")
+    : t("放行所有已暂停的编排任务");
   btn.title = t(btn.dataset.i18nTitle);
 }
 
@@ -5862,7 +5862,7 @@ function syncSideExpandBtn() {
   const dlist = Array.from($("side-tasks").querySelectorAll("details.sdir"));
   const allOpen = dlist.length > 0 && !dlist.some((d) => !d.open);
   b.classList.toggle("up", allOpen);
-  b.title = t(allOpen ? "收起全部" : "展开全部");
+  b.title = t(allOpen ? t("收起全部") : t("展开全部"));
   b.setAttribute("aria-label", b.title);
 }
 
@@ -5871,7 +5871,7 @@ function paintArchToggle() {
   const b = $("btn-side-arch");
   if (!b) return;
   b.classList.toggle("on", S.showArchived);
-  const tip = t(S.showArchived ? "隐藏已归档" : "显示已归档");
+  const tip = t(S.showArchived ? t("隐藏已归档") : t("显示已归档"));
   b.title = tip;
   b.setAttribute("aria-label", tip);
 }
@@ -6405,7 +6405,7 @@ window.decideProjectMemory = async function (taskId, id, action, version) {
       body: JSON.stringify({ id, action, expected_version: version }),
     });
     await loadProjectMemory(taskId);
-    const labels = { approve: "批准", reject: "拒绝", archive: "归档", restore: "恢复" };
+    const labels = { approve: t("批准"), reject: t("拒绝"), archive: t("归档"), restore: t("恢复") };
     toast(t("项目记忆已更新") + (labels[action] ? "：" + t(labels[action]) : ""));
   } catch (error) {
     toast(error && error.status === 423 ? error.message : t("项目记忆操作失败：") + error.message, true);
@@ -6419,7 +6419,7 @@ window.feedbackProjectMemory = async function (taskId, id, useful, version) {
       body: JSON.stringify({ id, action: "feedback", useful, expected_version: version }),
     });
     await loadProjectMemory(taskId);
-    toast(t("项目记忆反馈已记录") + "：" + t(useful ? "有用" : "无用"));
+    toast(t("项目记忆反馈已记录") + "：" + t(useful ? t("有用") : t("无用")));
   } catch (error) {
     toast(error && error.status === 423 ? error.message : t("项目记忆反馈失败：") + error.message, true);
   }
@@ -6906,7 +6906,7 @@ async function pauseAllRuns() {
     const d = await api("/api/runs/pause_all", {
       method: "POST", body: JSON.stringify({ paused: to }), timeout: 30000,
     });
-    toast(t(to ? "已为 {0} 个任务设置步骤间暂停" : "已放行 {0} 个任务", (d && d.count) || 0));
+    toast(t(to ? t("已为 {0} 个任务设置步骤间暂停") : t("已放行 {0} 个任务"), (d && d.count) || 0));
   } catch (e) {
     toast(t("批量操作失败：") + e.message, true);
   } finally {
@@ -7092,12 +7092,12 @@ function executionConfigHtml(run) {
   const parameters = config.parameters || {};
   const steps = (run.steps || []).filter(step => step.configuration);
   if (!Object.keys(parameters).length && !steps.length) return "";
-  const labels = { "task.request": "任务指定", "task.params": "任务修改", flow: "流程", default: "默认",
-    "default.workload": "按工作量默认", environment: "环境配置", "task.implementer": "手动执行者",
-    "task.direct_agent": "指定 CLI", "task.direct_provider": "指定厂商", "task.resume": "续接会话",
-    "binding.explicit": "显式模型绑定", "binding.automatic": "自动模型推荐", "cli.default": "CLI 默认",
-    orchestrator: "编排者配置", "provider.default": "厂商默认", automatic: "自动选择", unknown: "未知", mock: "演示" };
-  const label = source => t(labels[source] || source || "未知");
+  const labels = { "task.request": t("任务指定"), "task.params": t("任务修改"), flow: t("流程"), default: t("默认"),
+    "default.workload": t("按工作量默认"), environment: t("环境配置"), "task.implementer": t("手动执行者"),
+    "task.direct_agent": t("指定 CLI"), "task.direct_provider": t("指定厂商"), "task.resume": t("续接会话"),
+    "binding.explicit": t("显式模型绑定"), "binding.automatic": t("自动模型推荐"), "cli.default": t("CLI 默认"),
+    orchestrator: t("编排者配置"), "provider.default": t("厂商默认"), automatic: t("自动选择"), unknown: t("未知"), mock: t("演示") };
+  const label = source => t(labels[source] || source || t("未知"));
   const rows = Object.entries(parameters).map(([key, item]) => '<div class="rd-context-row"><span>' + esc(key) +
     '</span><span>' + esc(typeof item.value === "object" ? JSON.stringify(item.value) : String(item.value ?? "")) +
     ' · ' + esc(label(item.source)) + '</span></div>').join("");
@@ -7580,7 +7580,7 @@ async function renderRunDetail() {
  * 数据源两路：任务级 side（详情页自拉，运行中实时 numstat、结束后最新 run 快照，
  * 续跑/重试的新 run 没带 git 字段也能从任务带出分支）优先；side 不可用
  * （无主运行/任务已删）退回本 run 自带快照。两路都没有分支时整块隐藏。 */
-const GIT_STATUS_LABEL = { M: "改", A: "新", D: "删", R: "移", C: "新", "?": "新" };
+const GIT_STATUS_LABEL = { M: t("改"), A: t("新"), D: t("删"), R: t("移"), C: t("新"), "?": t("新") };
 /* 状态徽章文案：新数据后端已归一成单字符；旧 run 快照里可能还存着 "??"/"MM"
  * 这类原始 XY，取首字符兜底查表，查不到再退原文，绝不把 "??" 当文案渲染。 */
 function gitStatusLabel(s) {
@@ -7589,9 +7589,9 @@ function gitStatusLabel(s) {
   return t(GIT_STATUS_LABEL[key] || key) || key;
 }
 const GIT_STATE_CHIP = {
-  isolated: ["isolated", "待裁决"],
-  merged: ["merged", "已合并"],
-  discarded: ["discarded", "已丢弃"],
+  isolated: ["isolated", t("待裁决")],
+  merged: ["merged", t("已合并")],
+  discarded: ["discarded", t("已丢弃")],
 };
 
 /* 故事圣经面板：查看/编辑工作目录里的 story-bible.md（每章起草与评审
@@ -7667,18 +7667,18 @@ function findTask(taskId) {
  * 每个字段带复制按钮——用户的目的就是往番茄/七猫建书表单里逐格粘贴。 */
 const BOOKMETA_PLATFORMS = [
   { id: "fanqie", label: "番茄" },
-  { id: "qimao", label: "七猫" },
+  { id: "qimao", label: t("七猫") },
 ];
 const BOOKMETA_FIELDS = {
-  fanqie: [["book_name", "作品名"], ["signing_mode", "签约模式"], ["target_reader", "目标读者"],
-    ["category", "主分类"], ["tags_theme", "主题标签"], ["tags_role", "角色标签"],
-    ["tags_plot", "情节标签"], ["content_plot", "内容·情节"], ["content_emotion", "内容·情感"],
-    ["content_character", "内容·人设"], ["content_world", "内容·世界观"],
-    ["protagonist_1", "主角名1"], ["protagonist_2", "主角名2"], ["summary", "作品简介"]],
-  qimao: [["book_name", "作品名称"], ["target_reader", "目标读者"], ["category_main", "一级分类"],
-    ["category_sub", "二级分类"], ["tags_style", "风格标签"], ["tags_role", "角色标签"],
-    ["tags_plot", "情节标签"], ["tags_bg", "背景标签"], ["protagonist_1", "主角名1"],
-    ["protagonist_2", "主角名2"], ["status", "作品状态"], ["summary", "作品简介"]],
+  fanqie: [["book_name", t("作品名")], ["signing_mode", t("签约模式")], ["target_reader", t("目标读者")],
+    ["category", t("主分类")], ["tags_theme", t("主题标签")], ["tags_role", t("角色标签")],
+    ["tags_plot", t("情节标签")], ["content_plot", t("内容·情节")], ["content_emotion", t("内容·情感")],
+    ["content_character", t("内容·人设")], ["content_world", t("内容·世界观")],
+    ["protagonist_1", t("主角名1")], ["protagonist_2", t("主角名2")], ["summary", t("作品简介")]],
+  qimao: [["book_name", t("作品名称")], ["target_reader", t("目标读者")], ["category_main", t("一级分类")],
+    ["category_sub", t("二级分类")], ["tags_style", t("风格标签")], ["tags_role", t("角色标签")],
+    ["tags_plot", t("情节标签")], ["tags_bg", t("背景标签")], ["protagonist_1", t("主角名1")],
+    ["protagonist_2", t("主角名2")], ["status", t("作品状态")], ["summary", t("作品简介")]],
 };
 
 function bmFieldValue(v) {
@@ -7688,7 +7688,7 @@ function bmFieldValue(v) {
 }
 
 function bmStatusChip(st) {
-  const map = { done: ["ok", "已生成"], running: ["run", "生成中"], failed: ["bad", "生成失败"] };
+  const map = { done: ["ok", t("已生成")], running: ["run", "生成中"], failed: ["bad", t("生成失败")] };
   const m = map[st];
   return m ? '<span class="bm-st ' + m[0] + '">' + (m[1] === "生成中" ? "● " : "") + t(m[1]) + "</span>" : "";
 }
@@ -7967,9 +7967,9 @@ window.bmCopyBtn = function (btn) {
  * 自然刷新）。Phase 1 纪律：所有提交动作 auto_submit=false——表单填好后停，
  * 提交权留给用户在浏览器窗口里人工确认（建书/发章皆是）。 */
 const PB_ST = {
-  none: ["未连接", "pb-st-none"], waiting_login: ["等扫码…", "pb-st-wait"],
-  connected: ["已连接", "pb-st-ok"], busy: ["操作中…", "pb-st-busy"],
-  error: ["出错", "pb-st-err"],
+  none: [t("未连接"), "pb-st-none"], waiting_login: [t("等扫码…"), "pb-st-wait"],
+  connected: [t("已连接"), "pb-st-ok"], busy: [t("操作中…"), "pb-st-busy"],
+  error: [t("出错"), "pb-st-err"],
 };
 
 function pbBlock(task, platform, selectionOnly = false) {
@@ -8130,8 +8130,8 @@ function pbBlock(task, platform, selectionOnly = false) {
         chips += '<div class="pb-chapter-grid">';
         for (const n of g.ns) {
           const item = its.find((x) => x.n === n);
-          const states = { ready: "已过审 · 可直发", passed_blocked: "已过审 · 发布受限",
-            failed: "审稿未通过", stale: "已修改 · 需重审", pending: "待审或评审不足" };
+          const states = { ready: t("已过审 · 可直发"), passed_blocked: t("已过审 · 发布受限"),
+            failed: t("审稿未通过"), stale: t("已修改 · 需重审"), pending: t("待审或评审不足") };
           const review = Object.hasOwn(states, item.review) ? item.review : "pending";
           chips += '<label class="pb-chip review-' + review + (sel.has(n) ? " on" : "") + '" data-chapter="' + n + '" title="' +
             esc(t("第 {0} 章", n) + (item.reason ? " · " + item.reason : "")) + '">' +
@@ -8256,7 +8256,7 @@ function pbBlock(task, platform, selectionOnly = false) {
       '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) +
       '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'id\',this.value)">' +
       '<button class="ghost" onclick="pbRegister(\'' + esc(task.id) + "', '" + platform + '\'' + (bookReady ? ", true" : "") + ')">' +
-      t(bookReady ? "确认修改" : "确认登记") + "</button>" +
+      t(bookReady ? t("确认修改") : t("确认登记")) + "</button>" +
       "</div>";
   }
   return '<div class="bm-pub">' +
@@ -8295,7 +8295,7 @@ window.pbOpenSelection = async function (taskId, platform) {
   }
   const html = pbBlock(task, platform, true);
   if (!html) { toast(t("当前没有可选择的待发章节")); return; }
-  const title = t("选择章节并发布") + " · " + t(platform === "fanqie" ? "番茄" : "七猫");
+  const title = t("选择章节并发布") + " · " + t(platform === "fanqie" ? "番茄" : t("七猫"));
   const returnFocus = document.activeElement;
   openModal(title, "", "");
   _pbReturnFocus = returnFocus;
@@ -8484,7 +8484,7 @@ window.pbCreateBook = async function (taskId, platform) {
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/create-book",
-      { platform, auto_submit: autoSubmit, account }, "创建作品前的质量门禁未通过", taskId);
+      { platform, auto_submit: autoSubmit, account }, t("创建作品前的质量门禁未通过"), taskId);
     if (!(r && r.gate_reviewed))
       toast(t("正在自动填写并提交建书表单，随后核对作品创建结果…"));
   } catch (e) { toast(t("建书失败：") + e.message, true); }
@@ -8597,7 +8597,7 @@ window.pbSendChapter = async function (taskId, platform, relName) {
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
-      { platform, file: relName }, "发章前的质量门禁未通过", taskId);
+      { platform, file: relName }, t("发章前的质量门禁未通过"), taskId);
     if (!(r && r.gate_reviewed)) {
       toast(t("正在自动填写并提交章节…"));
       const box = $("pb-ch-" + platform);
@@ -8618,7 +8618,7 @@ window.pbConfirmChapter = async function (taskId, platform, chapterNo) {
       { method: "POST", body: JSON.stringify({ platform, chapter_no: chapterNo }) });
     toast(r && r.continued
       ? t("已确认提交，正在自动处理下一章")
-      : t((r && r.message) || "已确认提交，台账已更新"));
+      : t((r && r.message) || t("已确认提交，台账已更新")));
   } catch (e) { toast(t("确认提交失败：") + e.message, true); }
   // The confirmation endpoint records the chapter and starts the next batch;
   // invalidate both cached views so CodeBee's published/pending counters
@@ -8641,8 +8641,8 @@ function pbSelCountSync(key) {
   if (count) count.textContent = t("已选 {0}/{1} 章", ent.sel.size, ent.sig.split(",").length);
   for (const b of box.querySelectorAll("[data-selection-action]")) {
     const action = b.getAttribute("onclick") || "";
-    const label = action.includes("pbDraftSelected") ? "存草稿所选"
-      : action.includes(",true)") ? "直发所选" : "发布所选";
+    const label = action.includes("pbDraftSelected") ? t("存草稿所选")
+      : action.includes(",true)") ? t("直发所选") : t("发布所选");
     b.textContent = t(label) + t("（") + ent.sel.size + t("）");
     b.disabled = ent.sel.size === 0 || b.dataset.locked === "true";
     if (!b.hasAttribute("data-ready-title")) b.dataset.readyTitle = b.title;
@@ -8714,7 +8714,7 @@ window.pbPublishSelected = async function (taskId, platform, autoSubmit) {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
       { platform, chapters, auto_submit: true },
-      "批量发布前的质量门禁未通过", taskId);
+      t("批量发布前的质量门禁未通过"), taskId);
     if (r && r.started && $("modal").dataset.pbKey === key) closeModal();
     if (!(r && r.gate_reviewed))
       toast(autoSubmit ? t("直发已启动，进度见发布台")
@@ -8729,7 +8729,7 @@ window.pbPublishAll = async function (taskId, platform) {  const au = (((S.pubAu
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/publish-all",
-      { platform, auto_submit: true }, "批量发布前的质量门禁未通过", taskId);
+      { platform, auto_submit: true }, t("批量发布前的质量门禁未通过"), taskId);
     if (!(r && r.gate_reviewed))
       toast(t("正在自动提交第一章，进度见发布台"));
   } catch (e) { toast(t("自动发布失败：") + e.message, true); }
@@ -8874,7 +8874,7 @@ window.toggleBrowserSplit = function () {
   if (button) {
     button.classList.toggle("active", open);
     button.setAttribute("aria-pressed", open ? "true" : "false");
-    const label = t(open ? "关闭并排浏览器" : "并排打开浏览器");
+    const label = t(open ? t("关闭并排浏览器") : t("并排打开浏览器"));
     button.title = label;
     button.setAttribute("aria-label", label);
   }
@@ -8994,7 +8994,7 @@ function _renderGitSnapshot(run, task) {
         esc(t("双击弹窗查看该文件的变更")) + '"><i class="gs ' + (f.status === "M" ? "m" : f.status === "D" ? "d" : "n") + '">' +
         esc(gitStatusLabel(f.status)) + "</i>" + esc(f.path) + "</button>").join("") +
       (files.length > 40 ? '<span class="gm">+' + (files.length - 40) + " " + esc(t("个文件")) + "</span>" : "")
-    : '<span class="hint">' + esc(t(active ? "运行中：工作区变更会实时出现在这里。" : "本次运行没有产生工作区变更。")) + "</span>") +
+    : '<span class="hint">' + esc(t(active ? t("运行中：工作区变更会实时出现在这里。") : t("本次运行没有产生工作区变更。"))) + "</span>") +
     "</div>";
   // 裁决是任务级动作：只在待裁决且任务空闲时给出（运行/排队中合并会踩正在写的分支）
   if (state === "isolated" && tid && !active) {
@@ -9706,7 +9706,7 @@ function _loadDocxLibs() {
     load("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"),
     load("https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js"),
   ]).then(() => {
-    if (!window.docx || !window.JSZip) throw new Error("docx 渲染器未就绪");
+    if (!window.docx || !window.JSZip) throw new Error(t("docx 渲染器未就绪"));
   });
   _docxLibs.catch(() => { _docxLibs = null; });   // 失败不缓存，下次打开可重试
   return _docxLibs;
@@ -9745,7 +9745,7 @@ function _loadPdfLib() {
     document.head.appendChild(s);
   });
   _pdfLib = load(base + "pdf.min.js").then(() => {
-    if (!window.pdfjsLib) throw new Error("pdf 渲染器未就绪");
+    if (!window.pdfjsLib) throw new Error(t("pdf 渲染器未就绪"));
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js";
   });
   _pdfLib.catch(() => { _pdfLib = null; });   // 失败不缓存，下次打开可重试
@@ -9799,7 +9799,7 @@ function _loadXlsxLib() {
     document.head.appendChild(s);
   });
   _xlsxLib = load("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js")
-    .then(() => { if (!window.XLSX) throw new Error("xlsx 渲染器未就绪"); });
+    .then(() => { if (!window.XLSX) throw new Error(t("xlsx 渲染器未就绪")); });
   _xlsxLib.catch(() => { _xlsxLib = null; });
   return _xlsxLib;
 }
@@ -10543,12 +10543,12 @@ function renderRouting(run) {
   const dimension = spec.dimension || "reasoning";
   const caps = Array.isArray(spec.capabilities) ? spec.capabilities.filter(Boolean) : [];
   const typeLabel = ((flowById(type) || {}).name) || type;
-  const difficultyLabel = t(({ easy: "简单", default: "标准", hard: "困难" })[difficulty] || difficulty);
-  const dimensionLabel = t(({ coding: "编码", writing: "写作", reasoning: "推理", vision: "视觉" })[dimension] || dimension);
+  const difficultyLabel = t(({ easy: t("简单"), default: t("标准"), hard: t("困难") })[difficulty] || difficulty);
+  const dimensionLabel = t(({ coding: t("编码"), writing: t("写作"), reasoning: t("推理"), vision: t("视觉") })[dimension] || dimension);
   const capLabels = {
-    coding: "编码", writing: "写作", reasoning: "推理", vision: "视觉",
-    filesystem: "文件读写", verification: "验证", long_context: "长上下文",
-    continuity: "连续性", attachments: "附件",
+    coding: t("编码"), writing: t("写作"), reasoning: t("推理"), vision: t("视觉"),
+    filesystem: t("文件读写"), verification: t("验证"), long_context: t("长上下文"),
+    continuity: t("连续性"), attachments: t("附件"),
   };
   const capsText = caps.length ? caps.map((x) => t(capLabels[x] || x)).join(t("、")) : t("通用能力");
   const selectedLabel = (entry) => entry && (entry.label || entry.agent_id || "") || t("未选定");
@@ -10838,7 +10838,7 @@ async function openHiveMonitorLog(runId, rel, cell) {
   if (hiveDialogPoll) { clearInterval(hiveDialogPoll); hiveDialogPoll = null; }
   hiveDialogKey = runId + "|" + rel;
   title.textContent = cell && cell.role ? t(cell.role) : rdLogStepLabel(runId, rel);
-  const status = cell && cell.status ? t({ running: "运行中", done: "完成", queued: "排队中", failed: "失败", timeout: "超时", cancelled: "已取消" }[cell.status] || cell.status) : "";
+  const status = cell && cell.status ? t({ running: t("运行中"), done: t("完成"), queued: t("排队中"), failed: "失败", timeout: t("超时"), cancelled: t("已取消") }[cell.status] || cell.status) : "";
   meta.textContent = [status, cell && cell.displayAgent, cell && (cell.displayElapsed || cell.started_at)].filter(Boolean).join(" · ");
   pre.textContent = t("加载日志中…");
   if (error) error.textContent = "";
@@ -10894,9 +10894,9 @@ function setHiveSceneMode(mode, opts) {
   const hint = document.querySelector(".hive-scene-hint");
   if (hint) {
     const hintKey = selected === "live3d"
-      ? "拖动旋转 · Shift+拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志"
-      : selected === "2d" ? "点击格子看日志"
-      : "拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志";
+      ? t("拖动旋转 · Shift+拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志")
+      : selected === "2d" ? t("点击格子看日志")
+      : t("拖动平移 · 滚轮缩放 · 双击复位 · 点击屏幕看日志");
     hint.dataset.i18n = hintKey;
     hint.textContent = t(hintKey);
   }
@@ -10916,8 +10916,8 @@ function syncHiveFullscreenButton() {
   if (stage) stage.classList.toggle("is-fullscreen", active);
   document.body.classList.toggle("hive-fallback-fullscreen", active && hiveFullscreenFallback);
   if (!button) return;
-  const textKey = active ? "退出全屏" : "全屏";
-  const labelKey = active ? "退出全屏" : "进入全屏";
+  const textKey = active ? t("退出全屏") : t("全屏");
+  const labelKey = active ? t("退出全屏") : t("进入全屏");
   button.dataset.i18n = textKey;
   button.dataset.i18nTitle = labelKey;
   button.dataset.i18nAria = labelKey;
@@ -11571,7 +11571,7 @@ function syncChatSendControls(run = S.lastRun || {}) {
     send.title = active ? t("排队（默认）") + " · Enter" : t("发送") + " · Enter";
     send.setAttribute("aria-label", active ? t("排队（默认）") : t("发送"));
   }
-  if ($("rd-chat-send-label")) $("rd-chat-send-label").textContent = t(active ? "排队" : "发送");
+  if ($("rd-chat-send-label")) $("rd-chat-send-label").textContent = t(active ? t("排队") : t("发送"));
   if (options) { options.classList.toggle("hidden", !active || !ready); options.disabled = chatSending; }
   if (send) send.classList.toggle("hidden", active && !ready);
   const stop = $("rd-chat-stop");
@@ -11843,7 +11843,7 @@ function chatEngineIsDirect(run) {
  * 只能在渲染时翻：前缀命中「请求工具: 」就换字典词条，其余原样放行。 */
 function chatActLine(a) {
   const s = String(a || "");
-  const PRE = "请求工具: ";
+  const PRE = t("请求工具: ");
   if (s.startsWith(PRE)) {
     return t("请求工具") + ": " + s.slice(PRE.length).replace(/、/g, t("、"));
   }
@@ -12252,7 +12252,7 @@ function renderChatRunStatus(run, active) {
   if (expand) {
     const expanded = $("run-detail").classList.contains("rd-chat-expanded");
     expand.textContent = expanded ? "⤢" : "⛶";
-    expand.title = t(expanded ? "收起对话" : "展开对话");
+    expand.title = t(expanded ? t("收起对话") : t("展开对话"));
     expand.setAttribute("aria-label", expand.title);
   }
   bar.classList.remove("hidden");
@@ -12394,7 +12394,7 @@ function drawChatFlow(run, data, active) {
       chatExecutionHTML(it, idx, latestLogIndex) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-      (metaBad ? " · " + t(it.status === "failed" ? "失败" : "已取消") : "") + actsA + "</div>" +
+      (metaBad ? " · " + t(it.status === "failed" ? "失败" : t("已取消")) : "") + actsA + "</div>" +
       chatLogHTML(it, idx, latestLogIndex) +
       (Array.isArray(it.followups) && it.followups.length
         ? '<div class="chat-fups">' + it.followups.map((f) =>
@@ -13159,15 +13159,15 @@ window.toggleRdModelMenu = toggleRdModelMenu;
 // 任务总时限（秒）选项：任务信息弹层里的空闲可改项（2026-09-24 戍边骑奴案：
 // 12 章连载默认 1 小时在慢链天跑不完）。值不入轮询重建的 rd-meta，防 select 弹回。
 const TASK_TIMEOUT_CHOICES = [
-  [1800, "30 分钟"], [3600, "1 小时"], [7200, "2 小时"], [10800, "3 小时"],
-  [14400, "4 小时"], [21600, "6 小时"], [43200, "12 小时"], [86400, "24 小时"],
+  [1800, t("30 分钟")], [3600, t("1 小时")], [7200, t("2 小时")], [10800, t("3 小时")],
+  [14400, t("4 小时")], [21600, t("6 小时")], [43200, t("12 小时")], [86400, t("24 小时")],
 ];
 
 function timeoutLabel(s) {
   const hit = TASK_TIMEOUT_CHOICES.find((c) => c[0] === Number(s));
   if (hit) return hit[1];
   const m = Math.round(Number(s) / 60);
-  return (m >= 60 ? (Math.round(m / 60 * 10) / 10) + " 小时" : m + " 分钟");
+  return (m >= 60 ? (Math.round(m / 60 * 10) / 10) + t(" 小时") : m + t(" 分钟"));
 }
 
 function renderTimeoutRow(rcTask, run) {
@@ -13201,7 +13201,7 @@ function renderTimeoutRow(rcTask, run) {
           method: "POST", operation: false, body: JSON.stringify(patch) });
         if (data && data.rev != null) task.rev = data.rev;
         task.timeout_s = patch.timeout_s;   // 即时回显，不等轮询
-      } catch (e) { toast(e && e.message ? e.message : "保存失败", true); }
+      } catch (e) { toast(e && e.message ? e.message : t("保存失败"), true); }
     });
   }
 }
@@ -13349,7 +13349,7 @@ async function chatPendingAction(event) {
     if (steering && (!result.run_id || result.delivery !== "now" && result.delivery !== "sent")) {
       throw new Error(t("后端尚未支持消息引导，请更新并重启服务"));
     }
-    toast(t(steering ? "已立即发送，正在按新消息继续" : "已撤回排队消息"));
+    toast(t(steering ? "已立即发送，正在按新消息继续" : t("已撤回排队消息")));
     if (chatRunId !== viewedRun) return;
     chatSig = ""; chatLiveSig = "";
     if (result.run_id) {
@@ -13395,9 +13395,9 @@ window.chatSend = async function (delivery = "queue") {
     if (delivery === "now" && (!r.run_id || r.delivery !== "now" && r.delivery !== "sent")) {
       throw new Error(t("后端尚未支持消息引导，请更新并重启服务"));
     }
-    toast(t(r.created_task ? "已新建 CodeBee 任务，开始执行"
+    toast(t(r.created_task ? t("已新建 CodeBee 任务，开始执行")
       : r.delivery === "now" ? "已立即发送，正在按新消息继续"
-      : r.run_id ? "已开新一轮，接着做…" : "已排队：当前步骤结束后送达"));
+      : r.run_id ? t("已开新一轮，接着做…") : t("已排队：当前步骤结束后送达")));
     if (chatRunId !== submittedRun) return;
     // Preserve any new draft/attachments composed while this request was in flight.
     if (ta.value === draft) { ta.value = ""; ta.style.height = ""; }
@@ -13708,15 +13708,15 @@ function voiceFixup(text) {
  * 与文案。卡片预览色块用 skinPalette 从 CSS 变量实时取值，不在 JS 里重复写色值——
  * 皮肤改色只需要动 style.css，预览与真实界面不会各自漂移。 */
 const SKINS = [
-  { id: "ocean", name: "深海", desc: "藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）" },
-  { id: "apple", name: "苹果", desc: "System Blue + 毛玻璃纵深 + 大圆角，Apple HIG 风格" },
-  { id: "hermes", name: "墨金", desc: "暖墨底色 + 金色发丝线，Hermes 式古典优雅" },
-  { id: "classic", name: "经典", desc: "黑白灰 + 蓝色强调，ChatGPT 式清爽配色" },
-  { id: "paper", name: "简白", desc: "纯白画布 + 浅灰分区 + 克制蓝强调，Codex 式极简明亮" },
-  { id: "forest", name: "森野", desc: "墨绿底色 + 青翠强调，偏自然的护眼配色" },
-  { id: "amber", name: "暖阳", desc: "暖棕底色 + 琥珀强调，纸感暖调" },
-  { id: "violet", name: "霓虹", desc: "暗紫底色 + 品红强调，霓虹感强" },
-  { id: "contrast", name: "高对比", desc: "纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰" },
+  { id: "ocean", name: t("深海"), desc: t("藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）") },
+  { id: "apple", name: t("苹果"), desc: t("System Blue + 毛玻璃纵深 + 大圆角，Apple HIG 风格") },
+  { id: "hermes", name: t("墨金"), desc: t("暖墨底色 + 金色发丝线，Hermes 式古典优雅") },
+  { id: "classic", name: t("经典"), desc: t("黑白灰 + 蓝色强调，ChatGPT 式清爽配色") },
+  { id: "paper", name: t("简白"), desc: t("纯白画布 + 浅灰分区 + 克制蓝强调，Codex 式极简明亮") },
+  { id: "forest", name: t("森野"), desc: t("墨绿底色 + 青翠强调，偏自然的护眼配色") },
+  { id: "amber", name: t("暖阳"), desc: t("暖棕底色 + 琥珀强调，纸感暖调") },
+  { id: "violet", name: t("霓虹"), desc: t("暗紫底色 + 品红强调，霓虹感强") },
+  { id: "contrast", name: t("高对比"), desc: t("纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰") },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 const SKIN_KEY = "orch.skin";
@@ -13815,14 +13815,14 @@ function renderAppearance() {
  * [data-ctheme-mode][data-codetheme]：html 上由 applyCodeTheme 落当前生效主题，
  * 预览卡同名属性拨到另一套即可同屏双色，无需 iframe。 */
 const CODE_THEMES = [
-  { id: "github", name: "GitHub Light", dark: false, desc: "经典浅色，清爽不抢眼，日间界面首选" },
-  { id: "vs", name: "Visual Studio Light", dark: false, desc: "VS 家族浅色，蓝紫关键词配色" },
-  { id: "xcode", name: "Xcode Light", dark: false, desc: "苹果开发工具同款浅色，冷色克制" },
-  { id: "solarized", name: "Solarized Light", dark: false, desc: "米黄纸感底色，长时间阅读更柔和" },
-  { id: "github-dark", name: "GitHub Dark", dark: true, desc: "经典深色，夜间界面首选" },
-  { id: "vs2015", name: "Visual Studio Dark", dark: true, desc: "VS 家族深色，灰蓝底更沉稳" },
-  { id: "monokai", name: "Monokai", dark: true, desc: "高饱和黄紫粉，老牌编辑器名主题" },
-  { id: "one-dark", name: "One Dark", dark: true, desc: "Atom 出品的均衡深色，蓝灰底不刺眼" },
+  { id: "github", name: "GitHub Light", dark: false, desc: t("经典浅色，清爽不抢眼，日间界面首选") },
+  { id: "vs", name: "Visual Studio Light", dark: false, desc: t("VS 家族浅色，蓝紫关键词配色") },
+  { id: "xcode", name: "Xcode Light", dark: false, desc: t("苹果开发工具同款浅色，冷色克制") },
+  { id: "solarized", name: "Solarized Light", dark: false, desc: t("米黄纸感底色，长时间阅读更柔和") },
+  { id: "github-dark", name: "GitHub Dark", dark: true, desc: t("经典深色，夜间界面首选") },
+  { id: "vs2015", name: "Visual Studio Dark", dark: true, desc: t("VS 家族深色，灰蓝底更沉稳") },
+  { id: "monokai", name: "Monokai", dark: true, desc: t("高饱和黄紫粉，老牌编辑器名主题") },
+  { id: "one-dark", name: "One Dark", dark: true, desc: t("Atom 出品的均衡深色，蓝灰底不刺眼") },
 ];
 const CT_LIGHT_KEY = "orch.codeTheme.light";
 const CT_DARK_KEY = "orch.codeTheme.dark";
@@ -14865,7 +14865,7 @@ async function flowExport(fid) {
 
 /* 版本历史（Langfuse prompt management 借鉴）：当前版 + 历史版清单，每版带
  * 实测战绩；恢复前弹确认——被顶下来的当前版会进历史，错了还能翻回来。 */
-const FLOW_SOURCE_TXT = { manual: "手动修改", import: "分享码导入", restore: "恢复顶下" };
+const FLOW_SOURCE_TXT = { manual: t("手动修改"), import: t("分享码导入"), restore: t("恢复顶下") };
 
 async function flowHistory(fid) {
   let versions;
@@ -14926,7 +14926,7 @@ async function flowImportPreview() {
   view.innerHTML = '<div class="item"><div class="t"><span class="name">' + esc(p.name || p.id) +
     "</span>" + '<span class="tag">' + esc(p.id) + "</span>" +
     '<span class="tag">' + esc(t(p.engine === "code" ? "代码引擎"
-      : p.engine === "direct" ? "直连引擎" : "评审引擎")) + "</span>" +
+      : p.engine === "direct" ? "直连引擎" : t("评审引擎"))) + "</span>" +
     (p.serial ? '<span class="tag">' + t("连载") + "</span>" : "") +
     (p.has_prompts ? '<span class="tag ok">' + t("含自定义提示词") + "</span>" : "") + "</div>" +
     '<div class="desc">' + (p.rubric || []).map((d) => esc(t(d))).join(" / ") +
@@ -15248,7 +15248,7 @@ function renderMemoryCenter() {
       const canApprove = entry.status === "pending" && !entry.expired && entry.verified;
       const canRestore = entry.status === "archived" && !entry.expired && entry.verified;
       const action = (name, label) => '<button type="button" class="ghost small" onclick="memoryCenterAction(\'' + jsq(taskId) + '\',\'' + jsq(entry.id) + '\',\'' + name + '\',' + ver + ')">' + esc(t(label)) + '</button>';
-      return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(memoryStatusLabel(entry.status)) + (entry.expired ? ' · ' + esc(t("已过期")) : '') + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + (canApprove ? action("approve", "批准") + action("reject", "拒绝") : "") + (entry.status === "approved" ? action("archive", "归档") : "") + (canRestore ? action("restore", "恢复") : "") + (entry.status === "approved" ? action("preview", "查看注入预览") : "") + '</div></article>';
+      return '<article class="rd-memory-row"><div><strong>' + esc(entry.title || t("项目记忆")) + '</strong><span class="chip">' + esc(memoryStatusLabel(entry.status)) + (entry.expired ? ' · ' + esc(t("已过期")) : '') + '</span></div><pre>' + esc(entry.content || "") + '</pre><div class="rd-memory-actions">' + (canApprove ? action("approve", t("批准")) + action("reject", t("拒绝")) : "") + (entry.status === "approved" ? action("archive", t("归档")) : "") + (canRestore ? action("restore", t("恢复")) : "") + (entry.status === "approved" ? action("preview", t("查看注入预览")) : "") + '</div></article>';
     }).join("");
     const bulk = eligiblePending ? '<button type="button" class="ghost small" onclick="memoryCenterAction(\'' + jsq(taskId) + '\',\'\',\'approve_all\',0)">' + esc(t("一键批准全部待批准 ({0})", eligiblePending)) + '</button>' : '';
     return '<section class="memory-project-card"><div class="memory-project-head"><div><h4>' + esc(project.name || t("项目记忆")) + '</h4><span class="hint">' + esc(t("{0} 条记忆", entries.length)) + '</span></div><div class="memory-project-actions">' + bulk + '<span class="tag">' + esc(t("按工作区隔离")) + '</span></div></div>' + (rows || '<div class="empty">' + esc(t("暂无项目记忆")) + '</div>') + '</section>';
@@ -15297,7 +15297,7 @@ function renderKnowledge() {
   const stBox = $("kb-status-chips");
   if (stBox) {
     const cnt = (s) => s ? entries.filter((x) => (x.status || "draft") === s).length : entries.length;
-    stBox.innerHTML = drafts ? [["", "全部"], ["draft", "草稿"], ["approved", "已转正"]].map((p) =>
+    stBox.innerHTML = drafts ? [["", t("全部")], ["draft", t("草稿")], ["approved", t("已转正")]].map((p) =>
       '<button class="cat-chip' + (KB.status === p[0] ? " active" : "") + '" onclick="kbSetFilter(\'status\',\'' + p[0] + '\')">' +
       esc(t(p[1])) + "<b>" + cnt(p[0]) + "</b></button>").join("") : "";
   }
@@ -15417,7 +15417,7 @@ let AUTO_TIMER = null;   // 自动化页轮询句柄
 let SERIAL_DAILY_JOBS = [];
 let SERIAL_DAILY_TASKS = [];
 
-const AUTO_WD = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];   // 0=周一
+const AUTO_WD = [t("周一"), t("周二"), t("周三"), t("周四"), t("周五"), t("周六"), t("周日")];   // 0=周一
 
 async function loadAutomation() {
   try {
@@ -15479,8 +15479,8 @@ function autoStatusTag(tsk) {
 /* 运行偏好标签：只显示「偏离默认」的那些（编排默认 auto、思考默认 standard），
  * 否则每张卡都挂两颗没有信息量的胶囊，反而盖住真正要看的节奏与流程 */
 function autoPrefTags(tsk) {
-  const MODE = { auto: "自动", fast: "快速", expert: "专家", manual: "手动" };
-  const TH = { auto: "自动", low: "快速", standard: "标准", high: "深度" };
+  const MODE = { auto: t("自动"), fast: t("快速"), expert: t("专家"), manual: t("手动") };
+  const TH = { auto: t("自动"), low: t("快速"), standard: t("标准"), high: t("深度") };
   const out = [];
   if (tsk.mode && tsk.mode !== "auto" && MODE[tsk.mode]) {
     out.push(t("编排模式") + t("：") + t(MODE[tsk.mode]));
@@ -15626,7 +15626,7 @@ function renderAutomation() {
 function renderSerialDaily() {
   const box = $("serial-daily-list");
   if (!box) return;
-  const status = { active: "运行中", paused: "已暂停", cancelled: "已取消" };
+  const status = { active: t("运行中"), paused: t("已暂停"), cancelled: t("已取消") };
   box.innerHTML = (SERIAL_DAILY_JOBS || []).map((job) => {
     const result = job.last_day_status === "done" ? t("今日已完成")
       : job.last_day_status === "alerted" ? t("今日未完成，已告警") : t("今日执行中");
@@ -15768,16 +15768,16 @@ async function autoForm(task, tpl) {
 
 /* 运行偏好取值（真源 = automation.py 的 MODES/THINKINGS，选项文案与 Composer 共用） */
 const AUTO_MODES = [
-  { v: "auto", label: "自动（推荐）：按任务类型与风险动态决定步骤" },
-  { v: "fast", label: "快速：少步骤优先，先做确定性验收" },
-  { v: "expert", label: "专家：完整规划、多评审、失败修复与换将" },
-  { v: "manual", label: "手动：自行指定实现者与评审组" },
+  { v: "auto", label: t("自动（推荐）：按任务类型与风险动态决定步骤") },
+  { v: "fast", label: t("快速：少步骤优先，先做确定性验收") },
+  { v: "expert", label: t("专家：完整规划、多评审、失败修复与换将") },
+  { v: "manual", label: t("手动：自行指定实现者与评审组") },
 ];
 const AUTO_THINKINGS = [
-  { v: "standard", label: "标准：平衡质量与速度" },
-  { v: "auto", label: "自动：随任务难度调整" },
-  { v: "low", label: "快速：少推理、优先响应" },
-  { v: "high", label: "深度：更多推理与检查" },
+  { v: "standard", label: t("标准：平衡质量与速度") },
+  { v: "auto", label: t("自动：随任务难度调整") },
+  { v: "low", label: t("快速：少推理、优先响应") },
+  { v: "high", label: t("深度：更多推理与检查") },
 ];
 
 /* 偏好胶囊：外观与 Composer 同款（透明原生 select 铺满整颗，短名由
@@ -16039,7 +16039,7 @@ function ztRepoHtml(i, side) {
 function ztProfCardHtml(p, i) {
   const ours = p.our_sides || [];
   const routes = p.module_routes || [];
-  const SIDE_OPTS = [["backend", "后端"], ["frontend", "前端"], ["both", "双端"], ["not_ours", "非我方"]];
+  const SIDE_OPTS = [["backend", t("后端")], ["frontend", t("前端")], ["both", t("双端")], ["not_ours", t("非我方")]];
   const rows = routes.map((r, j) =>
     '<div class="zt-mr-row" data-j="' + j + '">' +
     ztModuleField(p, r) +
@@ -16130,7 +16130,7 @@ async function ztProfAdd() {
   const used = new Set(S.ztProfiles.map((p) => String(p.product || "")));
   const next = (S.ztProducts || []).find((p) => p.id && !used.has(String(p.id)));
   if (!next) {
-    toast(t((S.ztProducts || []).length ? "禅道产品均已添加" : "未拉到可用产品，请先测试连接"), true);
+    toast(t((S.ztProducts || []).length ? t("禅道产品均已添加") : t("未拉到可用产品，请先测试连接")), true);
     return;
   }
   S.ztProfiles.push({ product: Number(next.id), assigned_to: "", severity_cap: 0, our_sides: ["backend"],
@@ -16270,8 +16270,8 @@ function hookDiagnosticHtml(hook, diagnostics) {
   const match = row => row.hook_id === hook.id && row.event === hook.event;
   const recent = ((diagnostics || {}).recent || []).find(match);
   const failure = ((diagnostics || {}).last_errors || []).find(match);
-  const labels = { succeeded: "成功", failed: "执行失败", timeout: "超时",
-    spawn_failed: "启动失败", invalid_command: "命令无效" };
+  const labels = { succeeded: t("成功"), failed: t("执行失败"), timeout: t("超时"),
+    spawn_failed: t("启动失败"), invalid_command: t("命令无效") };
   return (recent ? esc(t("最近调用：") + t(labels[recent.status] || recent.status) +
     " · " + recent.duration_ms + " ms" + (recent.exit_code != null ? " · exit " + recent.exit_code : "")) : "") +
     (failure ? '<br><span class="warn">' + esc(t("最近错误：") + (failure.error || t(labels[failure.status] || failure.status))) + '</span>' : "");
@@ -16328,18 +16328,18 @@ bindHooksPanel();
 
 function zentaoStateTag(st) {
   const MAP = {
-    fixing: ["修复中", "zt-tag-fix"],
-    retry: ["待重试", "zt-tag-warn"],
-    resolved: ["已解决", "zt-tag-ok"],
-    transferred: ["已转派", "zt-tag-fix"],
-    escalated: ["已升级转派", "zt-tag-warn"],
-    merge_failed: ["合并失败", "zt-tag-warn"],
-    commented: ["已评论留人工", "zt-tag-warn"],
-    resolve_failed: ["回写失败", "zt-tag-warn"],
-    done_manual: ["待人工确认", "zt-tag-warn"],
-    need_manual: ["需人工", "zt-tag-warn"],
-    failed: ["修复失败", "zt-tag-err"],
-    lost: ["记录丢失", "zt-tag-err"],
+    fixing: [t("修复中"), "zt-tag-fix"],
+    retry: [t("待重试"), "zt-tag-warn"],
+    resolved: [t("已解决"), "zt-tag-ok"],
+    transferred: [t("已转派"), "zt-tag-fix"],
+    escalated: [t("已升级转派"), "zt-tag-warn"],
+    merge_failed: [t("合并失败"), "zt-tag-warn"],
+    commented: [t("已评论留人工"), "zt-tag-warn"],
+    resolve_failed: [t("回写失败"), "zt-tag-warn"],
+    done_manual: [t("待人工确认"), "zt-tag-warn"],
+    need_manual: [t("需人工"), "zt-tag-warn"],
+    failed: [t("修复失败"), "zt-tag-err"],
+    lost: [t("记录丢失"), "zt-tag-err"],
   };
   const m = MAP[st] || [st || "?", ""];
   return '<span class="tag ' + m[1] + '">' + t(m[0]) + "</span>";
@@ -16348,7 +16348,7 @@ function zentaoStateTag(st) {
 function zentaoTriText(c) {
   const tri = c.triage || {};
   if (!tri.side) return "";
-  const NAME = { backend: "后端问题", frontend: "前端问题", both: "双端问题", not_ours: "非我方", unknown: "待人工" };
+  const NAME = { backend: t("后端问题"), frontend: t("前端问题"), both: t("双端问题"), not_ours: t("非我方"), unknown: t("待人工") };
   const by = tri.by === "rule" ? t("模块路由") : tri.by === "ai" ? "AI" : "";
   return t("排查：") + t(NAME[tri.side] || tri.side) + (by ? "（" + by + "）" : "");
 }
@@ -16578,7 +16578,7 @@ function pluginCardHtml(p) {
   const state = p.state || (p.installed ? (p.enabled ? "enabled" : "disabled") : "available");
   let ops = "";
   if (state === "blocked" || state === "broken") {
-    ops = '<span class="tag warn">' + esc(t(state === "blocked" ? "不适配" : "损坏")) + "</span>";
+    ops = '<span class="tag warn">' + esc(t(state === "blocked" ? "不适配" : t("损坏"))) + "</span>";
   } else if (p.installed) {
     ops = '<label class="switch" title="' + esc(p.enabled ? t("已启用") : t("已停用")) + '">' +
       '<input type="checkbox"' + (p.enabled ? " checked" : "") +
@@ -17816,7 +17816,7 @@ let SU = null;          // 最近一次 check() 结果
 let SU_TIMER = null;    // 升级 run 轮询句柄
 let SU_RESTART_TIMER = null;
 
-const SU_MODE_TXT = { npm: "npm 全局安装", repo: "开发仓库（git clone）", source: "源码拷贝", desktop: "桌面版（随包 Python）", other: "未知安装方式" };
+const SU_MODE_TXT = { npm: t("npm 全局安装"), repo: t("开发仓库（git clone）"), source: t("源码拷贝"), desktop: t("桌面版（随包 Python）"), other: t("未知安装方式") };
 
 async function loadSelfupdate(force) {
   try {
@@ -17846,14 +17846,14 @@ function maybeWhatsnew() {
  * 手动开（设置导航/关于页/Ctrl+K）徽章「帮助中心」。加新章 = HELP_CHAPTERS
  * 追加一条 + helpChapterBody 加一个分支；todo:true 的章自动渲染「整理中」占位。 */
 var HELP_CHAPTERS = [
-  { id: "quickstart", icon: "i-rocket",        label: "快速上手" },
-  { id: "models",     icon: "i-blocks",        label: "模型接入与绑定" },
-  { id: "features",   icon: "i-bee",           label: "功能一览" },
-  { id: "serial",     icon: "i-book-open",     label: "连载创作流程" },
-  { id: "publish",    icon: "i-clapper",       label: "发布上架" },
-  { id: "code",       icon: "i-git-branch",    label: "代码任务与版本" },
-  { id: "auto",       icon: "i-calendar-days", label: "自动化与技能市场" },
-  { id: "faq",        icon: "i-search",        label: "常见问题" },
+  { id: "quickstart", icon: "i-rocket",        label: t("快速上手") },
+  { id: "models",     icon: "i-blocks",        label: t("模型接入与绑定") },
+  { id: "features",   icon: "i-bee",           label: t("功能一览") },
+  { id: "serial",     icon: "i-book-open",     label: t("连载创作流程") },
+  { id: "publish",    icon: "i-clapper",       label: t("发布上架") },
+  { id: "code",       icon: "i-git-branch",    label: t("代码任务与版本") },
+  { id: "auto",       icon: "i-calendar-days", label: t("自动化与技能市场") },
+  { id: "faq",        icon: "i-search",        label: t("常见问题") },
 ];
 var helpCur = "quickstart";
 var helpFirst = false;   // 本次打开是否首启自动弹（决定徽章文案；语言切换时也要用）
@@ -17983,9 +17983,9 @@ function setHelpChapter(id) {
 function helpGo(id) { setHelpChapter(id); }
 function paintHelpChrome() {
   const badge = $("welcome-badge");
-  if (badge) badge.textContent = t(helpFirst ? "首次启动" : "帮助中心");
+  if (badge) badge.textContent = t(helpFirst ? t("首次启动") : t("帮助中心"));
   const title = $("welcome-title");
-  if (title) title.textContent = t(helpFirst ? "欢迎使用 CodeBee" : "帮助中心");
+  if (title) title.textContent = t(helpFirst ? t("欢迎使用 CodeBee") : t("帮助中心"));
 }
 function welcomeOpen(opts) {
   const w = $("welcome");
@@ -18037,7 +18037,7 @@ function renderSu() {
   // 真实内容就绪后摘掉「空状态」皮肤：.empty 是居中+虚线框的加载占位样式，
   // 版本信息与更新说明都应该左对齐阅读（用户反馈「能不能左对齐」）
   info.classList.remove("empty");
-  const modeTxt = t(SU_MODE_TXT[SU.mode] || "未知安装方式");
+  const modeTxt = t(SU_MODE_TXT[SU.mode] || t("未知安装方式"));
   const cur = SU.current ? "v" + SU.current : t("（未同步版本号）");
   let html = "<p class=\"hint\">" + t("当前版本") + t("：") + "<b>" + cur + "</b>" + t("　·　") + t("安装方式") + t("：") + modeTxt + "</p>";
   if (SU.has_update) {
@@ -18414,7 +18414,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { overview: "概览", tasks: "任务", runs: "运行记录", automation: "自动化", browser: "浏览器", zentao: "禅道 Bug 自动修复", __wxdigest: "群摘要", usage: "用量统计", agents: "本机智能体", models: "模型接入", bindings: "模型调度（可选）", memory: "记忆中心", skills: "经验库", knowledge: "知识库", market: "插件市场", orch: "编排设置", evalbench: "模型评测", data: "数据与备份", appearance: "皮肤", about: "关于与更新" };
+const TAB_TITLES = { overview: t("概览"), tasks: t("任务"), runs: t("运行记录"), automation: t("自动化"), browser: t("浏览器"), zentao: t("禅道 Bug 自动修复"), __wxdigest: t("群摘要"), usage: t("用量统计"), agents: t("本机智能体"), models: t("模型接入"), bindings: t("模型调度（可选）"), memory: t("记忆中心"), skills: t("经验库"), knowledge: t("知识库"), market: t("插件市场"), orch: t("编排设置"), evalbench: t("模型评测"), data: t("数据与备份"), appearance: t("皮肤"), about: t("关于与更新") };
 
 function tabTitle(name) {
   return t(TAB_TITLES[name]) || t("设置");
@@ -19256,10 +19256,10 @@ function goalRender() {
   const percent = Math.min(100, Math.round(rounds * 100 / maximum));
   $("ov-goal-name").textContent = current.title || "";
   $("ov-goal-description-text").textContent = current.description || "";
-  $("ov-goal-progress").textContent = t(paused ? "已暂停" : "目标进度");
+  $("ov-goal-progress").textContent = t(paused ? t("已暂停") : t("目标进度"));
   $("ov-goal-rounds").textContent = rounds + " / " + maximum + t(" 轮");
   $("ov-goal-progress-fill").style.width = percent + "%";
-  phase.textContent = t(paused ? "已暂停" : "进行中");
+  phase.textContent = t(paused ? t("已暂停") : t("进行中"));
   phase.className = "chip " + (paused ? "warn" : "running");
   $("ov-goal-error").textContent = "";
   let actions;
