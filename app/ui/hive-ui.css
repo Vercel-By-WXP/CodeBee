@@ -5,6 +5,9 @@
   color-scheme: light;
   --cb-bg-0: #f4f6f8;
   --cb-bg-nav: #edf1f4;
+  --cb-bg-rail: #e8edf1;
+  --cb-bg-sidebar: #f1f5f7;
+  --cb-bg-nav-hover: #e6edf1;
   --cb-bg-1: #fff;
   --cb-bg-2: #f8fafb;
   --cb-bg-inset: #eef2f5;
@@ -47,6 +50,9 @@ html[data-theme="dark"] {
   color-scheme: dark;
   --cb-bg-0: #11171d;
   --cb-bg-nav: #151d24;
+  --cb-bg-rail: #121a20;
+  --cb-bg-sidebar: #18222a;
+  --cb-bg-nav-hover: #202c35;
   --cb-bg-1: #171f27;
   --cb-bg-2: #202a33;
   --cb-bg-inset: #1c252d;
@@ -209,6 +215,38 @@ body {
 #sub-overview .ov-row > .ov-trend { min-width: 0; }
 #sub-overview .ov-row > .ov-quick { min-width: 0; }
 
+/* All settings subpages share one centered content axis. The browser workspace
+ * opts out through .browser-page-active because its canvas must fill the view. */
+body.settings-mode main:not(.browser-page-active) > #page-settings {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1280px;
+  flex: 0 1 1280px;
+  margin-inline: auto;
+}
+body.settings-mode main:has(> #page-settings > #sub-tasks:not(.hidden)) > #page-settings {
+  flex: 0 1 1280px;
+}
+body.settings-mode main.browser-page-active > #page-settings {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* The legacy reference layer pins model settings to an 822px editorial card.
+ * Keep the two-column provider editor on the same content axis as every other
+ * settings page, while letting it use the full available desktop width. */
+body.settings-mode #mainwrap > main > #page-settings:has(> #sub-models:not(.hidden)) {
+  box-sizing: border-box;
+  width: min(1280px, 100%);
+  max-width: 1280px;
+  flex: 0 1 1280px;
+  left: auto;
+  margin-inline: auto;
+}
+
 /* Usage layout uses a 12-column grid without changing data ownership or order. */
 #sub-usage > .panel.wide {
   display: grid;
@@ -237,19 +275,6 @@ body {
 #sub-usage .usage-heat-head { margin-bottom: 0; }
 #sub-usage #usage-recent { max-height: 460px; overflow: auto; }
 #sub-usage .analytics-panel { grid-column: 1 / -1; min-width: 0; }
-
-/* The legacy settings shell defaults to a narrow reading column. Usage is a
- * dashboard with parallel charts, so let its own content use the workbench
- * width while preserving the ordinary settings column elsewhere. */
-body.settings-mode #page-settings:has(> #sub-usage:not(.hidden)) {
-  width: min(1440px, 100%);
-  margin-inline: auto;
-}
-@media (min-width: 901px) {
-  body.settings-mode #mainwrap > main:has(> #page-settings > #sub-usage:not(.hidden)) {
-    padding-inline: 32px;
-  }
-}
 
 /* The agent catalog is a resource grid; each entry keeps its installation
  * state, capabilities, version, and local actions grouped as one surface. */
@@ -342,51 +367,164 @@ body:has(#board) {
   --t3: var(--cb-text-3);
 }
 
-/* Replace the dark-only settings overrides with the shared surfaces. */
-html[data-theme="dark"] body.settings-mode #sidebar,
-html[data-theme="dark"] body.settings-mode .side-rail { background: var(--cb-bg-nav); }
-html[data-theme="dark"] body.settings-mode #mainwrap,
-html[data-theme="dark"] body.settings-mode #mainwrap > main { background: var(--cb-bg-0); }
-html[data-theme="dark"] body.settings-mode .settings-search-wrap,
-html[data-theme="dark"] body.settings-mode #page-settings .card,
-html[data-theme="dark"] body.settings-mode #page-settings .prow,
-html[data-theme="dark"] body.settings-mode #page-settings .prov-batch,
-html[data-theme="dark"] body.settings-mode #page-settings .mrow-batch,
-html[data-theme="dark"] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-html[data-theme="dark"] body.settings-mode #page-settings select,
-html[data-theme="dark"] body.settings-mode #page-settings textarea,
-html[data-theme="dark"] body.settings-mode #page-settings button.ghost,
-html[data-theme="dark"] body.settings-mode #page-settings a.button.ghost,
-html[data-theme="dark"] body.settings-mode #sub-models .prov-side,
-html[data-theme="dark"] body.settings-mode #sub-models .pd-config,
-html[data-theme="dark"] body.settings-mode #sub-models .prow,
-html[data-theme="dark"] body.settings-mode #sub-models .keys-box .krow {
+/* Settings reference styles contain fixed light surfaces. Remap the complete
+ * settings shell to semantic tokens in both modes so the theme toggle changes
+ * the page rather than only its navigation chrome. */
+html[data-theme] body.settings-mode #sidebar,
+html[data-theme] body.settings-mode .side-rail { background: var(--cb-bg-nav); }
+html[data-theme] body.settings-mode #mainwrap,
+html[data-theme] body.settings-mode #mainwrap > main { background: var(--cb-bg-0); }
+html[data-theme] body.settings-mode .settings-search-wrap,
+html[data-theme] body.settings-mode #page-settings .card,
+html[data-theme] body.settings-mode #page-settings .prow,
+html[data-theme] body.settings-mode #page-settings .prov-batch,
+html[data-theme] body.settings-mode #page-settings .mrow-batch,
+html[data-theme] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-theme] body.settings-mode #page-settings select,
+html[data-theme] body.settings-mode #page-settings textarea,
+html[data-theme] body.settings-mode #page-settings button.ghost,
+html[data-theme] body.settings-mode #page-settings a.button.ghost,
+html[data-theme] body.settings-mode #sub-models .prov-side,
+html[data-theme] body.settings-mode #sub-models .pd-config,
+html[data-theme] body.settings-mode #sub-models .prow,
+html[data-theme] body.settings-mode #sub-models .keys-box .krow {
   border-color: var(--cb-line);
   background: var(--cb-bg-1);
   color: var(--cb-text-1);
 }
-html[data-theme="dark"] body.settings-mode .settings-search-wrap:focus-within,
-html[data-theme="dark"] body.settings-mode #page-settings button.ghost:hover,
-html[data-theme="dark"] body.settings-mode #page-settings a.button.ghost:hover {
+html[data-theme] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-theme] body.settings-mode #page-settings select,
+html[data-theme] body.settings-mode #page-settings textarea {
+  background: var(--cb-bg-inset);
+}
+html[data-theme] body.settings-mode .settings-search-wrap:focus-within,
+html[data-theme] body.settings-mode #page-settings button.ghost:hover,
+html[data-theme] body.settings-mode #page-settings a.button.ghost:hover {
   background: var(--cb-bg-2);
   border-color: var(--cb-line-strong);
 }
-html[data-theme="dark"] body.settings-mode .side-settings .set-group,
-html[data-theme="dark"] body.settings-mode .side-settings .set-item,
-html[data-theme="dark"] body.settings-mode #page-settings .panel-head h2,
-html[data-theme="dark"] body.settings-mode #page-settings label,
-html[data-theme="dark"] body.settings-mode #page-settings .field label,
-html[data-theme="dark"] body.settings-mode #page-settings .settings-subhead {
+html[data-theme] body.settings-mode .side-settings .set-group,
+html[data-theme] body.settings-mode .side-settings .set-item,
+html[data-theme] body.settings-mode #page-settings .panel-head h2,
+html[data-theme] body.settings-mode #page-settings label,
+html[data-theme] body.settings-mode #page-settings .field label,
+html[data-theme] body.settings-mode #page-settings .settings-subhead {
   color: var(--cb-text-2);
 }
-html[data-theme="dark"] body.settings-mode .side-settings .set-item.active {
+html[data-theme] body.settings-mode .side-settings .set-item.active {
   color: var(--cb-text-1);
   background: color-mix(in srgb, var(--cb-brand) 12%, var(--cb-bg-nav));
   box-shadow: inset 2px 0 var(--cb-brand);
 }
-html[data-theme="dark"] body.settings-mode #sub-models .prov-item.active {
+html[data-theme] body.settings-mode #page-settings > .subpage:not(#sub-models) > .panel > .panel-head h2,
+html[data-theme] body.settings-mode #sub-models .prov-side-head,
+html[data-theme] body.settings-mode #sub-models .prov-detail,
+html[data-theme] body.settings-mode #sub-models .pd-title .tag,
+html[data-theme] body.settings-mode #sub-models .cat-chip,
+html[data-theme] body.settings-mode #sub-models .cat-chip b {
+  color: var(--cb-text-1);
+}
+html[data-theme] body.settings-mode #sub-models .pd-title .tag,
+html[data-theme] body.settings-mode #sub-models .keys-box {
+  border-color: var(--cb-line);
+  background: var(--cb-bg-2);
+}
+html[data-theme] body.settings-mode #page-settings .tag,
+html[data-theme] body.settings-mode #page-settings .badge {
+  border-color: var(--cb-line);
+  background: var(--cb-bg-2);
+  color: var(--cb-text-2);
+}
+html[data-theme] body.settings-mode #page-settings :is(.badge, .tag).ok,
+html[data-theme] body.settings-mode #page-settings .badge.done,
+html[data-theme] body.settings-mode #page-settings .tag.success {
+  border-color: color-mix(in srgb, var(--cb-success) 36%, var(--cb-line));
+  background: color-mix(in srgb, var(--cb-success) 12%, var(--cb-bg-1));
+  color: var(--cb-success);
+}
+html[data-theme] body.settings-mode #page-settings :is(.badge, .tag).bad,
+html[data-theme] body.settings-mode #page-settings .badge.failed,
+html[data-theme] body.settings-mode #page-settings .tag.danger,
+html[data-theme] body.settings-mode #page-settings .tag.error {
+  border-color: color-mix(in srgb, var(--cb-danger) 36%, var(--cb-line));
+  background: color-mix(in srgb, var(--cb-danger) 12%, var(--cb-bg-1));
+  color: var(--cb-danger);
+}
+html[data-theme] body.settings-mode #page-settings :is(.badge, .tag).warn,
+html[data-theme] body.settings-mode #page-settings .badge.warning {
+  border-color: color-mix(in srgb, var(--cb-warning) 36%, var(--cb-line));
+  background: color-mix(in srgb, var(--cb-warning) 12%, var(--cb-bg-1));
+  color: var(--cb-warning);
+}
+html[data-theme] body.settings-mode #page-settings .tag.upd,
+html[data-theme] body.settings-mode #page-settings :is(.badge, .tag).info {
+  border-color: color-mix(in srgb, var(--cb-info) 36%, var(--cb-line));
+  background: color-mix(in srgb, var(--cb-info) 12%, var(--cb-bg-1));
+  color: var(--cb-info);
+}
+html[data-theme] body.settings-mode #sub-models .prov-item.active {
   border-color: color-mix(in srgb, var(--cb-brand) 40%, var(--cb-line));
   background: color-mix(in srgb, var(--cb-brand) 10%, var(--cb-bg-1));
+}
+html[data-theme] body.settings-mode #sub-models .cat-chip.active {
+  border-color: color-mix(in srgb, var(--cb-brand) 40%, var(--cb-line));
+  background: color-mix(in srgb, var(--cb-brand) 10%, var(--cb-bg-1));
+  color: var(--cb-brand-strong);
+}
+html[data-theme] body.settings-mode #sub-models .cat-chip.active b,
+html[data-theme] body.settings-mode #sub-models .tog-mini input:checked + i {
+  color: var(--cb-brand-strong);
+  background: var(--cb-brand);
+}
+html[data-theme] body.settings-mode #page-settings > #sub-models > .panel.wide {
+  border-color: var(--cb-line) !important;
+  background: var(--cb-bg-1) !important;
+  color: var(--cb-text-1);
+  box-shadow: var(--cb-shadow-card) !important;
+}
+html[data-theme] body.settings-mode #sub-usage > .panel.wide {
+  border-color: var(--cb-line);
+  background: var(--cb-bg-1);
+  color: var(--cb-text-1);
+}
+html[data-theme] body.settings-mode #page-settings button.primary,
+html[data-theme] body.settings-mode #page-settings a.button.primary,
+html[data-theme] body.settings-mode #sub-models .pd-ops button.primary.small {
+  border-color: var(--cb-brand);
+  background: var(--cb-brand);
+  color: #fff;
+}
+
+/* Project and task navigation follows the reference's cool, quiet hierarchy:
+ * the icon rail is deepest, the project tree is slightly raised, and row
+ * states use semantic hover/selection surfaces in both themes. */
+html[data-skin][data-theme] .side-rail {
+  background: var(--cb-bg-rail);
+  border-right-color: var(--cb-line);
+}
+html[data-skin][data-theme] #sidebar {
+  background: var(--cb-bg-sidebar);
+  border-right-color: var(--cb-line);
+}
+html[data-skin][data-theme] .side-rail .rail-btn:hover,
+html[data-skin][data-theme] .side-rail .rail-btn.active {
+  background: var(--cb-bg-1);
+}
+html[data-skin][data-theme] #sidebar .new-task:hover,
+html[data-skin][data-theme] #sidebar .side-search:hover,
+html[data-skin][data-theme] #sidebar .stask:not(.active):hover,
+html[data-skin][data-theme] #sidebar .sdir > summary:hover {
+  background: var(--cb-bg-nav-hover);
+}
+html[data-skin][data-theme] #sidebar .stask.active {
+  color: var(--cb-text-1);
+  background: color-mix(in srgb, var(--cb-brand) 9%, var(--cb-bg-sidebar));
+  box-shadow: inset 2px 0 var(--cb-brand);
+}
+html[data-skin][data-theme] #sidebar .side-section.tasks,
+html[data-skin][data-theme] #sidebar .side-usage,
+html[data-skin][data-theme] #sidebar .side-foot {
+  border-color: var(--cb-line);
 }
 
 @media (max-width: 1080px) {
@@ -397,7 +535,6 @@ html[data-theme="dark"] body.settings-mode #sub-models .prov-item.active {
 }
 
 @media (max-width: 900px) {
-  body.settings-mode #page-settings:has(> #sub-usage:not(.hidden)) { width: 100%; margin: 0; }
   #sub-overview .ov-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #sub-overview .ov-kpis > .kpi { grid-column: span 1; }
   #sub-usage > .panel.wide { display: block; }
@@ -409,6 +546,13 @@ html[data-theme="dark"] body.settings-mode #sub-models .prov-item.active {
   #sub-models .prov-layout { grid-template-columns: minmax(0, 1fr); }
   #sub-models .prov-side { position: static; max-height: min(42vh, 360px); }
   #run-list .item { min-height: 56px; }
+  body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  body.settings-mode #page-settings select,
+  body.settings-mode #page-settings textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  body.settings-mode #page-settings :is(button, a.button) { min-height: 44px; }
   body:has(#board) #board {
     grid-template-columns: minmax(0, 1fr);
     padding: 12px 16px max(16px, env(safe-area-inset-bottom));
@@ -428,7 +572,9 @@ html[data-theme="dark"] body.settings-mode #sub-models .prov-item.active {
   #sub-usage #usage-recent,
   #sub-usage #usage-dims,
   #sub-usage #analytics-cli { overflow-x: auto; }
-  #sub-usage .usage-table { min-width: 620px; }
+  #sub-usage #usage-recent .usage-table,
+  #sub-usage #usage-dims .usage-table,
+  #sub-usage #analytics-cli .usage-table { min-width: 620px; }
   :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px; }
   :where(button, .button, .icon-btn, .seg-btn) { min-height: 44px; }
 }
