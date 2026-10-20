@@ -19,6 +19,35 @@ from . import paths
 _LOCK = threading.RLock()
 
 
+def record_decision(action, decision, zone, reason, *, status="returned",
+                    run_id="", args=None, result=None):
+    """Record one model-tool adjudication without persisting raw arguments.
+
+    The action result is represented only by a digest and size; callers should
+    use the normal run log for human-readable output.  This event is the
+    compact, hash-chained provenance record used to answer whether a tool was
+    allowed.
+    """
+    raw = json.dumps(args if isinstance(args, dict) else {}, ensure_ascii=False,
+                     sort_keys=True, separators=(",", ":"), default=str)
+    # Tool output can contain file contents, command output, tokens, or other
+    # user data.  Do not copy even a short prefix into the durable audit log;
+    # retain only a digest and size so the receipt can still be correlated
+    # without turning the audit trail into a secret/PII sink.
+    result_text = str(result or "")
+    record("tool_decision", {
+        "run_id": str(run_id or "")[:120],
+        "action": str(action or "")[:120],
+        "decision": str(decision or "")[:32],
+        "zone": str(zone or "")[:16],
+        "reason": str(reason or "")[:240],
+        "status": str(status or "returned")[:32],
+        "args_sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        "result_sha256": hashlib.sha256(result_text.encode("utf-8")).hexdigest(),
+        "result_chars": len(result_text),
+    })
+
+
 def _canonical(row: dict) -> str:
     """Return the stable bytes covered by an audit hash.
 

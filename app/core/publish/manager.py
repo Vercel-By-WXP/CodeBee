@@ -3,7 +3,7 @@
 
 状态机（data/publish/state.json 的 platforms.<id>.status）：
   none           从未连接
-  waiting_login  浏览器已开等用户扫码（connect 后，轮询 15 分钟）
+  waiting_login  平台要求登录或验证；保留页面，后续自动复核登录状态
   connected      登录检测通过
   busy           发布动作进行中（结束回 connected / error）
   error          最后一次动作失败（error 字段带人话原因，可重试）
@@ -19,9 +19,13 @@ view()（SSE/轮询）看进度；线程内任何异常都落终态，绝不悬�
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
+from pathlib import Path
+from typing import Any, Dict
+from urllib.parse import urlsplit
 
 from .. import operations, paths, quality_gate
 from . import fanqie, flow, ledger, qimao
@@ -30,6 +34,19 @@ from .browser import Browser, BrowserError, Page
 PLATFORMS = {"fanqie": fanqie, "qimao": qimao}
 LOGIN_WAIT_S = 15 * 60          # 扫码等待窗口
 STATUS_FILE = paths.PUBLISH_DIR / "state.json"
+# A login/challenge can outlive the interactive connect request (or the
+# service can be restarted while the tab is still open).  Keep a small,
+# passive watchdog so a completed verification is noticed without requiring
+# another click on “连接平台”.  It never navigates a non-empty challenge tab
+# and never attempts to solve credentials or CAPTCHA controls.
+AUTH_WATCH_INTERVAL_S = 30.0
+# Optional, already-issued browser auth state for unattended deployments.
+# The default directory is outside the repository and is intentionally not
+# created by the app.  A state file is a secret-bearing artifact: callers
+# must provision it explicitly (or point CODEBEE_PUBLISH_AUTH_STATE at it).
+AUTH_STATE_DIR_ENV = "CODEBEE_PUBLISH_AUTH_DIR"
+AUTH_STATE_FILE_ENV = "CODEBEE_PUBLISH_AUTH_STATE"
+AUTH_STATE_DEFAULT_DIR = Path.home() / ".codebee" / "publish_auth"
 
 LOCK = threading.RLock()
 AUTOMATIC_RELEASE_REASON = (
@@ -40,24 +57,28 @@ AUTOMATIC_RELEASE_REASON = (
 
 def automatic_release_kwargs(auto_submit, force=False, force_confirmed=False,
                              force_reason="", as_draft=False):
-    """Return audited release override flags for an explicitly automatic run.
+    """Return explicit release override flags without granting auto bypasses.
 
-    The user-facing automatic mode must not pause for a quality-gate prompt.
-    Keep hard platform checks, login checks, approval contracts, content length,
-    and browser completion verification intact; only convert the quality gate's
-    second-confirmation requirement into a deterministic audit record.
+    An unattended schedule requests the workflow; it does not replace task
+    contract approval or prove that content passed review. A forced release
+    remains an explicit operator action and must carry its audited confirmation
+    and reason through unchanged.
     """
-    if auto_submit and not as_draft:
-        return {
-            "force": True,
-            "force_confirmed": True,
-            "force_reason": str(force_reason or AUTOMATIC_RELEASE_REASON),
-        }
     return {"force": bool(force),
             "force_confirmed": bool(force_confirmed),
             "force_reason": str(force_reason or "")}
 _state = {"platforms": {}}      # {plat: {status, port, at, error, last_login, last_action}}
 _browsers = {}                  # plat → Browser（进程内缓存，alive 校验兜底）
+_AUTH_WATCH_LOCK = threading.Lock()
+_AUTH_WATCH_STOP = threading.Event()
+_AUTH_WATCH_THREAD = None
+_LOGIN_WAITERS_GUARD = threading.Lock()
+_LOGIN_WAITERS = set()
+_LOGIN_CANCEL_EVENTS = {}
+_AUTH_STATE_CACHE = {}
+_AUTH_STATE_CACHE_LOCK = threading.Lock()
+_AUTH_PROBE_CONNECTIONS = {}
+_AUTH_PROBE_CONNECTIONS_LOCK = threading.Lock()
 
 # A platform account slot owns one browser profile.  The persisted ``busy``
 # flag is useful for the UI, but it is not an atomic reservation: two HTTP
@@ -67,6 +88,353 @@ _browsers = {}                  # plat → Browser（进程内缓存，alive 校
 # retain independent locks and can run in parallel.
 _ACTION_LOCKS = {}
 _ACTION_LOCKS_GUARD = threading.Lock()
+_LOGIN_CHALLENGE_MARKS = (
+    "安全验证", "安全校验", "人机验证", "验证码", "请完成验证",
+    "访问过于频繁", "异常请求", "拖动滑块", "captcha", "verify you are human",
+)
+# Some providers render the actual challenge in a cross-origin iframe. In
+# that case the top-level document can expose neither the iframe text nor a
+# useful title, while its URL still identifies the verification route.
+_LOGIN_CHALLENGE_URL_MARKS = (
+    "captcha", "challenge", "verify", "verification", "slider", "human-check",
+    "security-check", "secverify", "geetest", "hcaptcha", "recaptcha",
+)
+
+
+def _auth_state_path(slot):
+    """Return the optional auth-state path for a platform account slot.
+
+    ``CODEBEE_PUBLISH_AUTH_STATE`` may name one JSON file or a directory.  A
+    ``{slot}`` placeholder is expanded for multi-account deployments.  The
+    default is ``~/.codebee/publish_auth/<slot>.json`` so browser cookies and
+    storage state never enter the repository or its backups.
+    """
+    raw = str(os.environ.get(AUTH_STATE_FILE_ENV) or "").strip()
+    if raw:
+        raw = raw.replace("{slot}", str(slot))
+        p = Path(raw).expanduser()
+        if p.is_dir() or raw.endswith(("/", "\\")):
+            return p / (str(slot) + ".json")
+        return p
+    base = str(os.environ.get(AUTH_STATE_DIR_ENV) or "").strip()
+    return (Path(base).expanduser() if base else AUTH_STATE_DEFAULT_DIR) / (
+        str(slot) + ".json")
+
+
+def _platform_host(plat):
+    try:
+        host = (urlsplit(str(PLATFORMS[plat].CONFIG.get("home") or ""))
+                .hostname or "")
+    except Exception:
+        host = ""
+    return host.lower().lstrip(".")
+
+
+def _platform_origin(plat):
+    host = _platform_host(plat)
+    return ("https://" + host) if host else ""
+
+
+def _host_allowed_for_platform(plat, host):
+    base = _platform_host(plat)
+    value = str(host or "").lower().split(":", 1)[0].lstrip(".")
+    # Exporters commonly store a parent cookie domain (``.qimao.com``)
+    # while the configured home is a writer subdomain.  Permit that parent
+    # by at most one label; this covers qimao.com while avoiding broad
+    # public-suffix-like values such as ``com`` or ``co.uk``.
+    base_labels = base.split(".") if base else []
+    value_labels = value.split(".") if value else []
+    parent = (len(value_labels) >= 2 and len(base_labels) - len(value_labels) == 1
+              and base.endswith("." + value))
+    return bool(base and value and
+                (value == base or value.endswith("." + base) or parent))
+
+
+def _auth_cookie_items(plat, state):
+    """Normalize Playwright/Chromium cookie exports for CDP setCookies."""
+    raw = state if isinstance(state, list) else (state or {}).get("cookies")
+    if not isinstance(raw, list):
+        return []
+    out = []
+    allowed = {"name", "value", "url", "domain", "path", "secure",
+               "httpOnly", "sameSite", "expires", "priority",
+               "sourceScheme", "sourcePort", "partitionKey"}
+    same_site = {"no_restriction": "None", "unspecified": "None",
+                 "lax": "Lax", "strict": "Strict", "none": "None"}
+    for item in raw:
+        if not isinstance(item, dict) or not str(item.get("name") or ""):
+            continue
+        cookie = {k: v for k, v in item.items() if k in allowed}
+        url = str(cookie.get("url") or "")
+        domain = str(cookie.get("domain") or "")
+        host = domain or (urlsplit(url).hostname if url else "")
+        if not host and not url:
+            cookie["domain"] = _platform_host(plat)
+            host = cookie["domain"]
+        if not _host_allowed_for_platform(plat, host):
+            continue
+        if "expirationDate" in item and "expires" not in cookie:
+            try:
+                cookie["expires"] = float(item["expirationDate"])
+            except (TypeError, ValueError):
+                pass
+        if "sameSite" in cookie:
+            value = str(cookie["sameSite"] or "").lower()
+            cookie["sameSite"] = same_site.get(value, cookie["sameSite"])
+        out.append(cookie)
+    return out
+
+
+def _auth_storage_origins(plat, state):
+    """Return safe ``origin -> localStorage`` entries from a storage export."""
+    raw = (state or {}).get("origins") if isinstance(state, dict) else None
+    if not isinstance(raw, list):
+        return {}
+    out = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        origin = str(item.get("origin") or "").strip().rstrip("/")
+        parsed = urlsplit(origin)
+        host = parsed.hostname or ""
+        if (not origin or parsed.scheme.lower() != "https" or
+                not parsed.netloc or parsed.path not in ("", "/") or
+                parsed.query or parsed.fragment or parsed.username or
+                parsed.password or not _host_allowed_for_platform(plat, host)):
+            continue
+        scheme = parsed.scheme.lower()
+        hostname = (parsed.hostname or "").lower()
+        try:
+            port = parsed.port
+        except ValueError:
+            continue
+        netloc = hostname
+        if port is not None and not (scheme == "https" and port == 443):
+            netloc += ":%d" % port
+        canonical = "%s://%s" % (scheme, netloc)
+        entries = item.get("localStorage")
+        if not isinstance(entries, list):
+            continue
+        values = {}
+        for pair in entries:
+            if not isinstance(pair, dict) or "name" not in pair:
+                continue
+            values[str(pair["name"])] = str(pair.get("value") or "")
+        if values:
+            out[canonical] = values
+    return out
+
+
+def _read_auth_state(slot):
+    path = _auth_state_path(slot)
+    try:
+        stat = path.stat()
+        if not path.is_file() or stat.st_size > 8 * 1024 * 1024:
+            return None, path, None
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(state, (dict, list)):
+            return None, path, None
+        fingerprint = (int(stat.st_mtime_ns), int(stat.st_size))
+        return state, path, fingerprint
+    except (OSError, ValueError, TypeError):
+        return None, path, None
+
+
+def _auth_storage_script(origins, remove_keys=None):
+    payload = json.dumps(origins, ensure_ascii=False, separators=(",", ":"))
+    removals = json.dumps(remove_keys or {}, ensure_ascii=False,
+                          separators=(",", ":"))
+    return ("(() => { const stores = %s, old = %s; "
+            "const origin = location.origin, values = stores[origin]; "
+            "try { (old[origin] || []).forEach(k => localStorage.removeItem(k)); "
+            "if (values !== undefined) Object.keys(values).forEach(k => "
+            "localStorage.setItem(k, String(values[k]))); } catch (_) {} })();"
+            % (payload, removals))
+
+
+def _auth_script_entries(slot):
+    """Return target -> imported init-script metadata, including legacy state."""
+    with _AUTH_STATE_CACHE_LOCK:
+        cached = _AUTH_STATE_CACHE.get(slot)
+    raw = (cached or {}).get("scripts") if isinstance(cached, dict) else None
+    if not isinstance(raw, dict):
+        raw = _st(slot).get("auth_scripts")
+    entries = {}
+    if isinstance(raw, dict):
+        for target, item in raw.items():
+            if not isinstance(item, dict):
+                continue
+            script_id = str(item.get("script_id") or "")
+            if script_id:
+                entries[str(target)] = {
+                    "script_id": script_id,
+                    "storage_keys": item.get("storage_keys") or {},
+                }
+    if not entries:
+        target = str((cached or {}).get("target_id") or
+                     _st(slot).get("auth_script_target_id") or "")
+        script_id = str((cached or {}).get("script_id") or
+                        _st(slot).get("auth_script_id") or "")
+        if target and script_id:
+            entries[target] = {
+                "script_id": script_id,
+                "storage_keys": ((cached or {}).get("storage_keys") or
+                                  _st(slot).get("auth_storage_keys") or {}),
+            }
+    return entries
+
+
+def _auth_page_for_target(slot, target, current_page):
+    if str(getattr(current_page, "_target_id", "") or "") == str(target):
+        return current_page
+    browser = _browsers.get(slot)
+    finder = getattr(browser, "page_for_target", None) if browser else None
+    if callable(finder):
+        try:
+            return finder(target)
+        except Exception:
+            return None
+    return None
+
+
+def _remove_auth_scripts(slot, page, entries):
+    """Remove imported scripts and keys from every still-live target."""
+    for target, item in (entries or {}).items():
+        target_page = _auth_page_for_target(slot, target, page)
+        if target_page is None:
+            continue
+        try:
+            target_page.remove_init_script(item.get("script_id") or "")
+        except Exception:
+            pass
+        keys = item.get("storage_keys") or {}
+        if keys:
+            try:
+                target_page.evaluate(_auth_storage_script({}, keys))
+            except Exception:
+                pass
+
+
+def _seed_auth_state(plat, slot, page):
+    """Inject a provisioned auth state into this page, if one is configured.
+
+    Only cookies/localStorage belonging to the platform's own host (including
+    its subdomains) are accepted.  Invalid or expired state is harmless: the
+    regular login detector records ``waiting_login`` and keeps its recovery
+    behavior.  Cookie values are never logged.  A target->script map is kept
+    so rotating state while a challenge uses multiple tabs cannot leave an
+    old init script behind on a tab that is revisited later.
+    """
+    state, path, fingerprint = _read_auth_state(slot)
+    target = str(getattr(page, "_target_id", "") or "")
+    entries = _auth_script_entries(slot)
+    if state is None or fingerprint is None:
+        _remove_auth_scripts(slot, page, entries)
+        with _AUTH_STATE_CACHE_LOCK:
+            _AUTH_STATE_CACHE.pop(slot, None)
+        _set(slot, auth_script_id="", auth_script_target_id="",
+             auth_storage_keys={}, auth_scripts={}, auth_state_fingerprint="")
+        return False
+    cache_key = (str(path), fingerprint, target)
+    with _AUTH_STATE_CACHE_LOCK:
+        cached = _AUTH_STATE_CACHE.get(slot)
+    if isinstance(cached, dict) and cached.get("cache_key") == cache_key:
+        # Older state files did not persist the fingerprint.  The in-process
+        # cache still proves this exact payload was imported; backfill the
+        # durable marker once so the auth watchdog does not retry forever.
+        if (_st(slot).get("auth_state_fingerprint") != list(fingerprint)
+                or _st(slot).get("auth_scripts") != entries):
+            current = entries.get(target) or {}
+            _set(slot, auth_script_id=current.get("script_id", ""),
+                 auth_script_target_id=target if current else "",
+                 auth_storage_keys=current.get("storage_keys", {}),
+                 auth_scripts=entries,
+                 auth_state_fingerprint=list(fingerprint))
+        return True
+    # A new state payload (or a new target) invalidates every old script.  Do
+    # this before installing the replacement so removed localStorage keys are
+    # not reintroduced by a stale script on another tab.
+    old_keys = {}
+    for item in entries.values():
+        for origin, names in (item.get("storage_keys") or {}).items():
+            merged = old_keys.setdefault(origin, [])
+            for name in names or []:
+                if name not in merged:
+                    merged.append(name)
+    _remove_auth_scripts(slot, page, entries)
+    try:
+        cookies = _auth_cookie_items(plat, state)
+        setter = getattr(page, "set_cookies", None)
+        if cookies and callable(setter):
+            setter(cookies)
+        origins = _auth_storage_origins(plat, state)
+        # A supplied state with cookies but no localStorage must also clear a
+        # previously imported token when an old init script survives a
+        # browser/page restart.  The current platform origin is the only
+        # fallback target; unrelated site storage is never touched.
+        if not origins and isinstance(state, dict) and state.get("cookies"):
+            origin = _platform_origin(plat)
+            if origin:
+                origins = {origin: {}}
+        storage_keys = {origin: list(values.keys())
+                        for origin, values in origins.items()}
+        script_id = ""
+        if origins:
+            script = _auth_storage_script(origins, old_keys)
+            add_script = getattr(page, "add_init_script", None)
+            if callable(add_script):
+                script_id = str(add_script(script) or "")
+            # Apply to an already-loaded first-party page as well.  The init
+            # script covers the next navigation (including about:blank ->
+            # home), while this path avoids an unnecessary refresh.
+            try:
+                current_url = str(page.url() or "")
+                parsed = urlsplit(current_url)
+                current = ("%s://%s" % (parsed.scheme.lower(), parsed.netloc.lower())
+                           if parsed.scheme and parsed.netloc else
+                           current_url.rstrip("/"))
+                values = origins.get(current)
+                if values is not None:
+                    page.evaluate(_auth_storage_script(
+                        {current: values}, {current: old_keys.get(current, [])}))
+            except Exception:
+                pass
+    except Exception:
+        # A stale browser/CDP session must still go through the normal auth
+        # detector; importing state is an optimization, never a hard failure.
+        return False
+    new_entries = ({target: {"script_id": script_id,
+                             "storage_keys": storage_keys}}
+                   if target and script_id else {})
+    with _AUTH_STATE_CACHE_LOCK:
+        _AUTH_STATE_CACHE[slot] = {"cache_key": cache_key,
+                                   "scripts": new_entries}
+    _set(slot, auth_script_id=script_id,
+         auth_script_target_id=target if script_id else "",
+         auth_storage_keys=storage_keys,
+         auth_scripts=new_entries,
+         auth_state_fingerprint=list(fingerprint))
+    return True
+
+
+def _auth_state_changed(slot):
+    """Return whether a newly provisioned auth-state file needs importing.
+
+    A deployment may refresh a Playwright/Chromium state file out of process
+    (for example, after an operator completes a platform re-authentication in
+    a separate browser).  Keep the publishing worker passive, but let the
+    watchdog notice that durable input changed even when the account was left
+    in ``error`` after the previous session expired.
+    """
+    _state_data, _path, fingerprint = _read_auth_state(slot)
+    if fingerprint is None:
+        return False
+    previous = _st(slot).get("auth_state_fingerprint")
+    try:
+        previous = tuple(int(value) for value in previous)
+    except (TypeError, ValueError):
+        previous = ()
+    return tuple(fingerprint) != previous
 
 
 def _action_lock(slot):
@@ -118,14 +486,15 @@ def _wait_chapter_rows_ready(page, mod, timeout=4.0):
 # ---------------------------------------------------------------- 状态
 def _load():
     global _state
-    try:
-        d = json.loads(STATUS_FILE.read_text(encoding="utf-8"))
-        if isinstance(d, dict) and isinstance(d.get("platforms"), dict):
-            _state = d
-            return
-    except Exception:
-        pass
-    _state = {"platforms": {}}
+    with LOCK:
+        try:
+            d = json.loads(STATUS_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and isinstance(d.get("platforms"), dict):
+                _state = d
+                return
+        except Exception:
+            pass
+        _state = {"platforms": {}}
 
 
 def _save():
@@ -165,8 +534,11 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
                 "warnings": [], "forced": False}
     from .. import store
     verdict = None
-    for run in sorted(store.task_runs(task.get("id")) or [],
-                      key=lambda item: str(item.get("id") or ""), reverse=True):
+    # store.task_runs already returns newest-first by created_at_ns (with
+    # legacy timestamp/id fallbacks). Run IDs include a random suffix, so
+    # sorting them lexically can select an older verdict created in the same
+    # second and publish against stale review evidence.
+    for run in store.task_runs(task.get("id")) or []:
         candidate = run.get("verdict")
         # 答疑、通知等 run 也可能是 done，但它们没有质量结论，不能
         # 覆盖最近一条 publishable verdict，避免发布时误报“未评审”。
@@ -175,13 +547,38 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
                 and run.get("op") != "qa"):
             verdict = candidate
             break
+    version_args = {}
+    if (isinstance(verdict, dict) and verdict.get("serial") is True and
+            isinstance(verdict.get("start_chapter"), int) and
+            not isinstance(verdict.get("start_chapter"), bool) and
+            isinstance(verdict.get("end_chapter"), int) and
+            not isinstance(verdict.get("end_chapter"), bool)):
+        version_args = {
+            "start_chapter": verdict["start_chapter"],
+            "end_chapter": verdict["end_chapter"],
+            "include_archive": (verdict["start_chapter"] > 1 and
+                                not quality_gate.has_complete_local_prefix(
+                                    task.get("workdir") or "",
+                                    verdict["start_chapter"])),
+        }
+    manuscript = (None if isinstance(verdict, dict) and verdict.get("serial") is True
+                  else task.get("manuscript"))
+    version_snapshot = quality_gate.local_version(
+        task.get("workdir") or "", manuscript, **version_args)
+    current_fingerprint = version_snapshot.get("fingerprint")
+    if version_args:
+        from .. import pipeline
+        current_fingerprint = pipeline._serial_review_fingerprint(
+            task.get("workdir") or "", version_args["start_chapter"],
+            version_args["end_chapter"])
     decision = quality_gate.evaluate_release(
         verdict or {}, action=action, target_chapter=target_chapter,
         platform_version=ledger.book_for(task.get("id"), plat) or {},
         force=force, force_confirmed=force_confirmed, force_reason=force_reason,
         serial=bool(task.get("serial")) or
-        str(task.get("type") or "").lower() == "serial_novel")
-    decision["version_snapshot"] = quality_gate.local_version(task.get("workdir") or "")
+        str(task.get("type") or "").lower() == "serial_novel",
+        current_manuscript_fingerprint=current_fingerprint)
+    decision["version_snapshot"] = version_snapshot
     decision["platform_snapshot"] = ledger.book_for(task.get("id"), plat) or {}
     if verdict:
         decision["reviewed_through"] = verdict.get("end_chapter") or 0
@@ -218,55 +615,230 @@ def view():
 
 
 def recover_orphans():
-    """启动收尸：waiting_login / busy 的线程随进程重启死掉，统一改判 error。
+    """启动收尸：busy 的工作线程随重启中断，改判 error。
+
+    waiting_login 保留：验证页面仍可能在浏览器中，启动会话恢复与持久批次
+    会被动复核它；改成 error 会让恢复代码重新导航并打断已有验证。
 
     升级自愈：旧版「等扫码窗口一关就冤判超时」留下的 error（error 文案带
-    「等待登录超时」）排队后台复核——profile 登录态还在的直接翻 connected，
-    别让升级完还挂着旧冤案；attach 不到活实例就维持原样（用户点重连时
-    新终审逻辑自会兜住）。"""
+    「等待登录超时」）由 resume_saved_sessions 统一重开并复核。不要在这里
+    单独起复核线程，否则它会与启动恢复同时导航同一账号的浏览器。"""
     _load()
     n = 0
-    stale = []
     # 多账号：状态槽含 fanqie@a2 形态，全量扫（基础平台也在其中）
     for slot in list((_state.get("platforms") or {}).keys()) + list(PLATFORMS):
         s = _st(slot)
-        if s.get("status") in ("waiting_login", "busy"):
+        if s.get("status") == "busy":
             _set(slot, status="error", error="上次操作随服务重启中断，请重试")
             n += 1
-        elif s.get("status") == "error" and "等待登录超时" in (s.get("error") or ""):
-            stale.append(slot)
-    if stale:
-        threading.Thread(target=_recheck_stale_errors, args=(stale,),
-                         daemon=True, name="pub-stale-recheck").start()
     return n
 
 
-def _recheck_stale_errors(plats):
-    """旧版假超时的后台复核：只 attach 还活着的浏览器实例（绝不 launch——
-    升级重启时静默弹窗口吓人），登录态复核过了翻 connected；否则不动。"""
-    for plat in plats:
-        if _st(plat).get("status") != "error":
-            continue                  # 用户已先行操作（重连/断开），别覆盖
-        port = _st(plat).get("port") or 0
-        if not port:
+def saved_session_slots():
+    """Return publishing profiles whose persisted login may be reusable.
+
+    A configured book is enough to resume its profile even when an earlier
+    process died before the platform login state was written.  Existing CDP
+    ports and last-login timestamps also recover standalone platform sessions.
+    """
+    slots = set()
+    for slot, state in (_state.get("platforms") or {}).items():
+        base = str(slot).split("@", 1)[0]
+        if base in PLATFORMS and (state.get("port") or state.get("last_login")):
+            slots.add(str(slot))
+    try:
+        books = ledger.load_books() or {}
+    except Exception:
+        books = {}
+    for platform_books in books.values():
+        if not isinstance(platform_books, dict):
+            continue
+        for plat, book in platform_books.items():
+            if plat not in PLATFORMS or not isinstance(book, dict):
+                continue
+            try:
+                slots.add(slot_of(plat, book.get("account") or ""))
+            except ValueError:
+                continue
+    return sorted(slots, key=lambda value: (
+        value.split("@", 1)[0], value.split("@", 1)[1] if "@" in value else ""))
+
+
+def resume_saved_sessions():
+    """Reopen known publishing profiles and detect reusable login cookies.
+
+    This removes the manual reconnect step after a service restart.  A fresh
+    login, QR scan, or platform challenge still follows the normal waiting
+    login state and cannot be bypassed by this recovery path.
+    """
+    slots = saved_session_slots()
+    for slot in slots:
+        plat, sep, account = slot.partition("@")
+        thread = threading.Thread(
+            target=connect, kwargs={"plat": plat,
+                                    "account": account if sep else "",
+                                    "unattended": True},
+            daemon=True, name="pub-resume-%s" % slot)
+        thread.start()
+    return len(slots)
+
+
+def _auth_watch_once():
+    """Passively recover waiting login slots that became valid.
+
+    The interactive ``connect`` waiter is intentionally finite so a request
+    thread cannot live forever.  A platform challenge, however, may remain
+    open for hours.  This one-shot pass is safe to call from a daemon loop:
+    each profile has the same action lock as publishing, and
+    ``_connect_unattended`` preserves active challenge tabs.
+    """
+    _load()
+    slots = []
+    for slot, state in (_state.get("platforms") or {}).items():
+        if not isinstance(state, dict) or base_plat(slot) not in PLATFORMS:
+            continue
+        status = state.get("status")
+        # waiting_login is the normal passive recovery state.  An expired
+        # session can also be left in error by an older worker; if the
+        # provisioned auth-state file has since changed, retry that slot
+        # without waiting for another publish request.  Other error states
+        # remain untouched so content/configuration failures are not turned
+        # into browser churn.
+        if status == "waiting_login":
+            slots.append(str(slot))
+        elif (status == "error"
+              and (_authentication_required(base_plat(slot), state.get("error"))
+                   or _auth_state_changed(str(slot)))):
+            slots.append(str(slot))
+    recovered = 0
+    for slot in slots:
+        # All paths acquire the per-slot action lock before inspecting or
+        # registering a login waiter. This keeps the lock order stable and
+        # prevents an interactive connect from racing this probe.
+        lock = _try_action_lock(slot)
+        if lock is None:
             continue
         try:
-            b = Browser.attach(int(port))
+            with _LOGIN_WAITERS_GUARD:
+                if slot in _LOGIN_WAITERS:
+                    # The interactive connect request is already passively
+                    # checking this profile; do not run a second probe.
+                    continue
+            plat, sep, account = slot.partition("@")
+            ok, _error = _connect_unattended(
+                plat, account if sep else "", slot)
+            recovered += int(bool(ok))
         except Exception:
-            continue                  # 实例已死：不 launch，维持原错误
-        with LOCK:
-            _browsers[plat] = b
-        page = b.first_page(create=False)
-        if page is None:
+            # A closed browser or a transient CDP failure is retried on the
+            # next tick; publishing state remains durable in ``waiting_login``.
+            pass
+        finally:
+            lock.release()
+    return recovered
+
+
+def _connected_session_probe_once():
+    """Passively detect an expired session before the next publish.
+
+    Only already-running browser objects are inspected, so this probe never
+    launches a new window or navigates an author's active page.  If the
+    platform has redirected an existing tab to login or a security challenge,
+    the slot enters the same durable ``waiting_login`` recovery path used by
+    publishing.  A later successful probe then returns it to ``connected``.
+    """
+    _load()
+    slots = [str(slot) for slot, state in
+             (_state.get("platforms") or {}).items()
+             if isinstance(state, dict)
+             and state.get("status") == "connected"
+             and base_plat(slot) in PLATFORMS]
+    changed = 0
+    for slot in slots:
+        lock = _try_action_lock(slot)
+        if lock is None:
             continue
         try:
-            ok, _u = _check_login(plat, page)
+            with _LOGIN_WAITERS_GUARD:
+                if slot in _LOGIN_WAITERS:
+                    continue
+            browser = _browsers.get(slot)
+            if browser is None or not browser.alive():
+                continue
+            target_id = str(_st(slot).get("auth_target_id") or "").strip()
+            page = None
+            if target_id:
+                page_for_target = getattr(browser, "page_for_target", None)
+                if callable(page_for_target):
+                    page = page_for_target(target_id)
+            if page is None:
+                page = browser.first_page(create=False)
+            if page is None:
+                continue
+            plat, sep, account = slot.partition("@")
+            ok, detail, _checked_page = _probe_login_pages(
+                slot, browser, page)
+            if (not ok and _authentication_required(plat, detail)
+                    and _challenge_page_is_relevant(plat, _checked_page)):
+                _set(
+                    slot,
+                    status="waiting_login",
+                    error=("平台等待登录或安全验证，验证完成后自动重试：%s"
+                           % str(detail or "登录态失效")[:160]),
+                )
+                changed += 1
         except Exception:
-            continue
-        if ok and _st(plat).get("status") == "error":
-            _set(plat, status="connected", error="",
-                 last_login=time.strftime("%m-%d %H:%M"))
-            ledger.record(plat, "connect", ok=True)
+            # A transient CDP failure is left for the next tick and for
+            # the normal publish preflight to classify more precisely.
+            pass
+        finally:
+            lock.release()
+    return changed
+
+
+def _auth_watch_loop():
+    while not _AUTH_WATCH_STOP.is_set():
+        try:
+            _auth_watch_once()
+            _connected_session_probe_once()
+        except Exception:
+            pass
+        _AUTH_WATCH_STOP.wait(AUTH_WATCH_INTERVAL_S)
+
+
+def start_auth_watchdog():
+    """Start the process-wide passive login recovery loop once.
+
+    This closes the gap after the 15-minute interactive waiter expires: once
+    the user or platform finishes an already-open verification, pending
+    durable batches resume on their own and idle sessions become ``connected``
+    without a second UI action.
+    """
+    global _AUTH_WATCH_THREAD
+    with _AUTH_WATCH_LOCK:
+        if (_AUTH_WATCH_THREAD is not None and
+                _AUTH_WATCH_THREAD.is_alive()):
+            return False
+        _AUTH_WATCH_STOP.clear()
+        _AUTH_WATCH_THREAD = threading.Thread(
+            target=_auth_watch_loop, daemon=True, name="pub-auth-watchdog")
+        _AUTH_WATCH_THREAD.start()
+        return True
+
+
+def stop_auth_watchdog():
+    """Stop the passive watchdog (primarily for clean shutdown and tests)."""
+    global _AUTH_WATCH_THREAD
+    with _AUTH_WATCH_LOCK:
+        _AUTH_WATCH_STOP.set()
+        thread = _AUTH_WATCH_THREAD
+    if thread is not None and thread is not threading.current_thread():
+        thread.join(timeout=max(1.0, AUTH_WATCH_INTERVAL_S + 1.0))
+    with _AUTH_WATCH_LOCK:
+        # Keep the reference while a slow probe is still unwinding.  A new
+        # start then cannot clear the stop event and create a second watcher.
+        if _AUTH_WATCH_THREAD is thread and (thread is None or
+                                             not thread.is_alive()):
+            _AUTH_WATCH_THREAD = None
 
 
 # ---------------------------------------------------------------- 浏览器会话
@@ -427,40 +999,283 @@ def _ensure_browser(plat):
         return b
 
 
-def _open_page(plat):
+def _open_page(plat, preserve_tabs=False):
     b = _ensure_browser(plat)
+    if preserve_tabs:
+        # A platform challenge may live in a tab other than the first one.
+        # Reuse the persisted target when it is still alive; falling back to
+        # the first page keeps compatibility with old state files and mocks.
+        target_id = str(_st(plat).get("auth_target_id") or "").strip()
+        page_for_target = getattr(b, "page_for_target", None)
+        if target_id and callable(page_for_target):
+            try:
+                page = page_for_target(target_id)
+                if page is not None:
+                    _seed_auth_state(base_plat(plat), plat, page)
+                    return b, page
+            except Exception:
+                pass
     # 单标签纪律：平台点击（如「上传章节」）会开新 tab，流程引擎的 page
     # 对象可能留在旧 tab 上填错页面（0 字草稿案的乱源）。每次动作前收拢
     # 到一个 tab——发布是串行作业，多 tab 只会串台。
+    if not preserve_tabs:
+        try:
+            browser_pages = b.pages()
+            retained_target = str((browser_pages[0] if browser_pages else {}).get(
+                "id") or "")
+            for t in browser_pages[1:]:
+                try:
+                    from .browser import _http_json
+                    _http_json("http://127.0.0.1:%d/json/close/%s" % (b.port, t["id"]))
+                except Exception:
+                    pass
+            # Any persisted auth init script attached to a tab we just closed
+            # can no longer be removed through CDP. Drop its bookkeeping so a
+            # later seed cannot mistake that stale target for the live page.
+            if (_st(plat).get("auth_script_target_id") and
+                    _st(plat).get("auth_script_target_id") != retained_target):
+                with _AUTH_STATE_CACHE_LOCK:
+                    _AUTH_STATE_CACHE.pop(plat, None)
+                _set(plat, auth_script_id="", auth_script_target_id="",
+                     auth_storage_keys={})
+        except Exception:
+            pass
+    page = b.first_page(create=True)
+    _seed_auth_state(base_plat(plat), plat, page)
+    return b, page
+
+
+def _page_is_empty(page):
+    """Whether a recovered tab has no page worth preserving.
+
+    A blank tab can be safely initialized after a service restart. Login pages
+    and challenge pages must stay where they are so a human or platform flow
+    can finish without being interrupted by another navigation.
+    """
     try:
-        for t in b.pages()[1:]:
+        url = str(page.url() or "").strip().lower()
+    except Exception:
+        return True
+    return not url or url.startswith("about:blank") or url.startswith("chrome-error://")
+
+
+def _remember_auth_page(plat, page):
+    """Persist the tab that currently contains a login/challenge page."""
+    target_id = str(getattr(page, "_target_id", "") or "").strip()
+    if target_id:
+        _set(plat, auth_target_id=target_id)
+
+
+def _clear_auth_page(plat):
+    """Forget a challenge tab after the saved session becomes valid."""
+    if _st(plat).get("auth_target_id"):
+        _set(plat, auth_target_id="")
+
+
+def _live_pages(browser, primary):
+    """Return the current browser tabs, keeping *primary* as a fallback.
+
+    A login provider may open a separate tab for a challenge.  The normal
+    publish path intentionally collapses tabs, but authentication recovery
+    must inspect every live page before it decides that the session is valid.
+    """
+    pages = [primary] if primary is not None else []
+    seen = {str(getattr(primary, "_target_id", "") or "")} if primary else set()
+    try:
+        targets = browser.pages()
+    except Exception:
+        return pages
+    if not isinstance(targets, (list, tuple)):
+        return pages
+    for target in targets or []:
+        if not isinstance(target, dict):
+            continue
+        target_id = str(target.get("id") or "").strip()
+        ws_url = target.get("webSocketDebuggerUrl")
+        if not ws_url or target_id in seen:
+            continue
+        try:
+            pages.append(Page(ws_url))
+            seen.add(target_id)
+        except Exception:
+            continue
+    return pages
+
+
+def _probe_login_pages(plat, browser, primary):
+    """Passively inspect every tab and prioritize any auth challenge.
+
+    Returns ``(ok, detail, page)``.  A challenge takes precedence over an
+    otherwise valid author-console tab so an untouched second tab can never
+    be mistaken for a completed login.
+    """
+    # Release wrappers created by the previous pass before opening new CDP
+    # sockets.  This closes transports only; the underlying tabs remain open
+    # for the user/platform challenge.
+    with _AUTH_PROBE_CONNECTIONS_LOCK:
+        previous = _AUTH_PROBE_CONNECTIONS.pop(str(plat), [])
+    for old_page in previous:
+        closer = getattr(old_page, "close_connection", None)
+        if callable(closer):
+            closer()
+        else:
             try:
-                from .browser import _http_json
-                _http_json("http://127.0.0.1:%d/json/close/%s" % (b.port, t["id"]))
+                old_page.ws.close()
             except Exception:
                 pass
-    except Exception:
-        pass
-    return b, b.first_page(create=True)
+    pages = _live_pages(browser, primary)
+    temporary = [candidate for candidate in pages if candidate is not primary]
+    with _AUTH_PROBE_CONNECTIONS_LOCK:
+        _AUTH_PROBE_CONNECTIONS[str(plat)] = temporary
+    successes = []
+    last_detail = ""
+    for page in pages:
+        try:
+            ok, detail = _check_login(plat, page, navigate=False)
+        except Exception as exc:
+            ok, detail = False, str(exc)
+        last_detail = detail or last_detail
+        if ok:
+            successes.append((page, detail))
+        elif _authentication_required(plat, detail):
+            return False, detail, page
+    if successes:
+        page, detail = successes[0]
+        return True, detail, page
+    return False, last_detail, primary
 
 
-def _check_login(plat, page):
+def _check_login(plat, page, navigate=True):
     """打开后台首页看 URL 是否被踢到登录页。返回 (ok, 当前url)。
 
     plat 可以是槽名（fanqie@a2）：状态写槽、平台配置取基础平台。
     导航失败页（chrome-error://）不含登录标记，曾把「域名打不开」误判成
-    已登录——假 connected 的来源，先排除。"""
+    已登录——假 connected 的来源，先排除。navigate=False 只读当前页面，
+    用于等待验证期间的被动检查。"""
     mod = PLATFORMS[base_plat(plat)]
     try:
-        page.navigate(mod.CONFIG["home"], timeout=30)
+        if navigate:
+            page.navigate(mod.CONFIG["home"], timeout=30)
+        url = str(page.url() or "")
     except BrowserError as e:
         return False, str(e)
-    url = str(page.url() or "")
+    # CAPTCHA providers sometimes host the challenge on a third-party origin.
+    # Inspect visible text before the platform-host check so that tab is
+    # retained and the batch waits instead of accepting the author tab beside it.
+    try:
+        body_text = str(page.call(
+            "()=>document.body?(document.body.innerText||'').slice(0,5000):''",
+            timeout=8) or "").lower()
+    except BrowserError as e:
+        return False, "无法确认平台登录页面：%s" % str(e)[:120]
+    # A normal author page may mention a single word such as “验证码” in a
+    # help link or form description.  Treat body text as a challenge only when
+    # the tab is cross-origin, the URL identifies an auth/challenge route, or
+    # multiple independent challenge markers agree.  This keeps passive
+    # probes from logging out a healthy platform page while retaining the
+    # cross-origin CAPTCHA-provider path.
+    try:
+        parsed_for_body = urlsplit(url)
+        home_host_for_body = urlsplit(mod.CONFIG["home"]).hostname or ""
+        labels_for_body = home_host_for_body.lower().rstrip(".").split(".")
+        root_for_body = (".".join(labels_for_body[-2:])
+                         if len(labels_for_body) >= 2 else home_host_for_body)
+        host_for_body = (parsed_for_body.hostname or "").lower().rstrip(".")
+        same_platform_for_body = bool(
+            host_for_body and (host_for_body == root_for_body or
+                               host_for_body.endswith("." + root_for_body)))
+        route_for_body = ((parsed_for_body.path or "") + "?" +
+                          (parsed_for_body.query or "")).lower()
+    except (TypeError, ValueError):
+        same_platform_for_body = False
+        route_for_body = ""
+    body_challenges = [mark for mark in _LOGIN_CHALLENGE_MARKS
+                       if mark.lower() in body_text]
+    route_hint_for_body = any(mark.lower() in route_for_body
+                              for mark in _LOGIN_CHALLENGE_URL_MARKS)
+    strong_overlay_hint = any(phrase in body_text for phrase in (
+        "请完成安全验证", "请完成人机验证", "拖动滑块",
+        "verify you are human"))
+    challenge = body_challenges[0] if body_challenges else ""
+    if challenge and (not same_platform_for_body or route_hint_for_body
+                      or len(body_challenges) >= 2 or strong_overlay_hint):
+        _remember_auth_page(plat, page)
+        return False, "平台要求安全验证：%s" % challenge
+    # Some providers render the challenge inside a cross-origin iframe and
+    # leave the top-level body empty. Treat a challenge-looking URL as an
+    # auth gate only when it is outside the platform's own origin; ordinary
+    # author-console URLs containing ``verify`` remain subject to host checks.
+    try:
+        parsed = urlsplit(url)
+        home_host = urlsplit(mod.CONFIG["home"]).hostname or ""
+        labels = home_host.lower().rstrip(".").split(".")
+        platform_root = ".".join(labels[-2:]) if len(labels) >= 2 else home_host
+        current_host = (parsed.hostname or "").lower().rstrip(".")
+        same_platform = (current_host == platform_root or
+                         current_host.endswith("." + platform_root))
+        challenge_url = ((not same_platform) and
+                         any(mark in (current_host + parsed.path).lower()
+                             for mark in _LOGIN_CHALLENGE_URL_MARKS))
+    except ValueError:
+        challenge_url = False
+    if challenge_url:
+        _remember_auth_page(plat, page)
+        return False, "平台要求安全验证：挑战页 URL"
     if url.startswith("chrome-error://") or url.startswith("about:"):
         return False, url                      # 页面没打开：网络/域名问题，不是登录态
     if any(m in url for m in mod.CONFIG["login_url_marks"]):
+        _remember_auth_page(plat, page)
         return False, url
+    # Passive checks must never accept an unrelated tab or a redirect outside
+    # the author site merely because its URL lacks a login marker.
+    try:
+        parsed = urlsplit(url)
+        home_host = urlsplit(mod.CONFIG["home"]).hostname or ""
+        labels = home_host.lower().rstrip(".").split(".")
+        platform_root = ".".join(labels[-2:]) if len(labels) >= 2 else home_host
+        current_host = (parsed.hostname or "").lower().rstrip(".")
+        same_platform = (current_host == platform_root or
+                         current_host.endswith("." + platform_root))
+        if (parsed.scheme != "https" or not same_platform or
+                parsed.port not in (None, 443) or parsed.username or parsed.password):
+            return False, url
+    except ValueError:
+        return False, url
+    _clear_auth_page(plat)
     return True, url
+
+
+def _authentication_required(plat, detail):
+    text = str(detail or "").lower()
+    return any(mark.lower() in text for mark in (
+        *PLATFORMS[base_plat(plat)].CONFIG["login_url_marks"],
+        *_LOGIN_CHALLENGE_MARKS))
+
+
+def _challenge_page_is_relevant(plat, page):
+    """Whether a challenge-looking tab belongs to platform auth recovery.
+
+    The general login probe intentionally inspects cross-origin challenge tabs.
+    A connected-session monitor is more conservative because authors may keep
+    unrelated pages open in the same profile; a help page mentioning
+    “验证码” must not log the publishing account out.  Platform-host pages or
+    URLs carrying a known challenge marker remain eligible.
+    """
+    try:
+        url = str(page.url() or "")
+        parsed = urlsplit(url)
+        current = ((parsed.hostname or "") + parsed.path + "?" +
+                   (parsed.query or "")).lower()
+        if any(mark.lower() in current for mark in _LOGIN_CHALLENGE_URL_MARKS):
+            return True
+        home = urlsplit(PLATFORMS[base_plat(plat)].CONFIG["home"])
+        home_host = (home.hostname or "").lower().rstrip(".")
+        labels = home_host.split(".")
+        root = ".".join(labels[-2:]) if len(labels) >= 2 else home_host
+        host = (parsed.hostname or "").lower().rstrip(".")
+        return bool(host and (host == root or host.endswith("." + root)))
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------- 流程加载
@@ -525,8 +1340,20 @@ def _flow_contract_ok(plat, action, steps):
                    and (text is None or s.get("text") == text)
                    for s in steps)
     if plat == "fanqie":
+        if action == "create_book":
+            return (has("submit") and any(
+                isinstance(s, dict) and s.get("do") == "url_any"
+                and any(mark in (s.get("any") or [])
+                        for mark in ("book-info", "chapter-manage"))
+                for s in steps))
+        if action == "upload_chapter_draft":
+            return (has("submit") and has("expect_text") and any(
+                isinstance(s, dict) and s.get("do") == "verify"
+                and "chapter_manage_url" in str(s.get("url") or "")
+                for s in steps))
         if action == "upload_chapter":
-            return has("fanqie_publish") and has("verify_chapter_status")
+            return (has("submit") and has("fanqie_publish")
+                    and has("verify_chapter_status"))
         if action == "upload_chapter_scheduled":
             return (any(isinstance(s, dict)
                         and s.get("do") == "fanqie_publish"
@@ -554,67 +1381,182 @@ def _flow_contract_ok(plat, action, steps):
 
 
 # ---------------------------------------------------------------- 动作：连接
-def connect(plat, account=""):
-    """开浏览器到平台首页，起后台线程轮询登录态（等扫码）。
+def connect(plat, account="", unattended=False):
+    """Open the saved platform profile and verify its login session.
 
-    account 非空时用该账号的独立 profile/状态槽（多账号）。"""
+    Interactive callers wait for a user login/QR scan. Unattended callers only
+    reuse an already valid saved session and fail immediately when the platform
+    requires a new login or challenge.
+    """
     if plat not in PLATFORMS:
         return False, "未知平台"
     try:
         slot = slot_of(plat, account)
     except ValueError as e:
         return False, str(e)
+    if unattended:
+        action_lock = _try_action_lock(slot)
+        if action_lock is None:
+            return False, "该平台账号浏览器正在执行其他操作，自动恢复稍后重试"
+        try:
+            return _connect_unattended(plat, account, slot)
+        finally:
+            action_lock.release()
+
+    # Register before touching the browser so the passive watchdog cannot
+    # begin a second probe in the small window between navigation and waiter
+    # thread creation. Acquire the action lock first to keep the lock order
+    # identical to both watchdog probes.
+    registration_lock = _try_action_lock(slot)
+    if registration_lock is None:
+        return False, "该平台账号浏览器正在执行其他操作，请稍后重试"
+    cancel_event = threading.Event()
+    waiter_started = False
     try:
-        b, page = _open_page(slot)
+        with _LOGIN_WAITERS_GUARD:
+            if slot in _LOGIN_WAITERS:
+                return True, ""
+            _LOGIN_WAITERS.add(slot)
+            _LOGIN_CANCEL_EVENTS[slot] = cancel_event
+        waiting = _st(slot).get("status") == "waiting_login"
+        # Keep the action lock through browser setup and waiter registration.
+        # Without this, a concurrent disconnect/upload can close or navigate
+        # the profile between _open_page() and the durable waiting_login mark.
+        b, page = _open_page(slot, preserve_tabs=waiting)
+        if cancel_event.is_set():
+            return False, "登录连接已取消"
+        if not waiting or _page_is_empty(page):
+            page.navigate(PLATFORMS[plat].CONFIG["home"])
+        if cancel_event.is_set():
+            return False, "登录连接已取消"
+        _set(slot, status="waiting_login", error="")
+        acc = str(account or "").strip()
+
+        def wait_login():
+            try:
+                deadline = time.time() + LOGIN_WAIT_S
+                while time.time() < deadline:
+                    if cancel_event.is_set():
+                        return
+                    try:
+                        ok, _u, checked_page = _probe_login_pages(slot, b, page)
+                        if ok and not cancel_event.is_set():
+                            _clear_auth_page(slot)
+                            _set(slot, status="connected",
+                                 last_login=time.strftime("%m-%d %H:%M"))
+                            ledger.record(plat, "connect", ok=True, account=acc)
+                            return
+                    except (BrowserError, Exception):
+                        pass                # 页面被用户关掉等：继续等到超时
+                    time.sleep(5)
+                if not cancel_event.is_set():
+                    _finalize_login_wait(slot, plat, acc,
+                                         cancel_event=cancel_event)
+            finally:
+                with _LOGIN_WAITERS_GUARD:
+                    if _LOGIN_CANCEL_EVENTS.get(slot) is cancel_event:
+                        _LOGIN_CANCEL_EVENTS.pop(slot, None)
+                        _LOGIN_WAITERS.discard(slot)
+
+        threading.Thread(target=wait_login, daemon=True,
+                         name="pub-login-%s" % slot).start()
+        waiter_started = True
+        return True, ""
     except BrowserError as e:
         _set(slot, status="error", error=str(e))
         return False, str(e)
-    page.navigate(PLATFORMS[plat].CONFIG["home"])
-    _set(slot, status="waiting_login", error="")
+    except Exception as exc:
+        error = "无法打开平台作者后台：%s" % str(exc)[:160]
+        _set(slot, status="error", error=error)
+        ledger.record(plat, "connect", ok=False, account=str(account or "").strip(),
+                      error=error[:300])
+        return False, error
+    finally:
+        if not waiter_started:
+            with _LOGIN_WAITERS_GUARD:
+                if _LOGIN_CANCEL_EVENTS.get(slot) is cancel_event:
+                    _LOGIN_CANCEL_EVENTS.pop(slot, None)
+                    _LOGIN_WAITERS.discard(slot)
+        registration_lock.release()
+
+
+def _connect_unattended(plat, account, slot):
+    """Verify a saved session while holding the profile's action lock."""
     acc = str(account or "").strip()
+    try:
+        _b, page = _open_page(slot, preserve_tabs=True)
+        # A login/challenge can span several retries. Observe its current page
+        # without refreshing it, so recovery never invalidates an in-progress
+        # verification. Once it clears, the normal batch reconciles and resumes.
+        status = _st(slot).get("status")
+        ok, url, checked_page = _probe_login_pages(slot, _b, page)
+        auth_required = (not ok and _authentication_required(plat, url))
+        if (not ok and (not auth_required or _page_is_empty(page)
+                        or status in (None, ""))
+                and (status != "waiting_login" or _page_is_empty(page))
+                and checked_page is page):
+            # A fresh/previously connected session gets one active probe so a
+            # blank or stale page is initialized. A waiting profile may also
+            # have lost its challenge tab during a browser restart; when the
+            # recovered page is truly empty, re-open the platform home to
+            # verify whether the persistent cookie already completed login.
+            # A brand-new slot has no persisted verification state, so perform
+            # the same one-time initialization even if the provider already
+            # rendered its challenge at the configured home URL. Once the slot
+            # is marked waiting_login, later probes remain passive.
+            # Non-empty challenge pages remain passive so a human/platform
+            # verification in progress is never navigated away.
+            ok, url = _check_login(slot, page, navigate=True)
+            auth_required = (not ok and _authentication_required(plat, url))
+        elif not ok and not auth_required and status != "waiting_login":
+            ok, url = _check_login(slot, page, navigate=True)
+    except Exception as exc:
+        ok, url = False, str(exc)
+    if ok:
+        _clear_auth_page(slot)
+        _set(slot, status="connected",
+             last_login=time.strftime("%m-%d %H:%M"), error="")
+        ledger.record(plat, "connect", ok=True, account=acc)
+        return True, ""
+    waiting = _authentication_required(plat, url)
+    error = ("平台等待登录或安全验证，验证完成后自动重试：%s" if waiting else
+             "保存的平台登录态不可用，自动发布未等待人工登录：%s") % str(url or "unknown")[:160]
+    _set(slot, status="waiting_login" if waiting else "error", error=error)
+    ledger.record(plat, "connect", ok=False, account=acc, error=error[:300])
+    return False, error
 
-    def wait_login():
-        mod = PLATFORMS[plat]
-        deadline = time.time() + LOGIN_WAIT_S
-        while time.time() < deadline:
-            try:
-                url = str(page.url() or "")
-                if url and not any(m in url for m in mod.CONFIG["login_url_marks"]) \
-                        and "about:blank" not in url and "chrome-error" not in url:
-                    # 用户登录完成（离开登录页）。再主动开一次首页做复核，
-                    # 复核被踢回登录页说明只是中间跳转，继续等。
-                    ok, _u = _check_login(slot, page)
-                    if ok:
-                        _set(slot, status="connected",
-                             last_login=time.strftime("%m-%d %H:%M"))
-                        ledger.record(plat, "connect", ok=True, account=acc)
-                        return
-            except (BrowserError, Exception):
-                pass                        # 页面被用户关掉等：继续等到超时
-            time.sleep(5)
-        _finalize_login_wait(slot, plat, acc)
 
-    threading.Thread(target=wait_login, daemon=True,
-                     name="pub-login-%s" % slot).start()
-    return True, ""
+def _finalize_login_wait(slot, plat=None, acc="", cancel_event=None):
+    """等扫码超时后的终审：复用 profile 复核，验证未完成时保留页面。
 
-
-def _finalize_login_wait(slot, plat=None, acc=""):
-    """等扫码超时后的终审：用户可能已在本窗口登录后把窗口关了（profile
-    里登录态还在），attach-or-launch 重拉页面再复核一次，别急着冤判
-    超时——「明明登录着却报超时」是发布卡死感的最大来源。复核也过不了
-    才落超时错误。返回 True 表示复核通过（已判 connected）。
+    waiting_login 不再强制导航或改判超时；持久批次会继续被动检查。
+    返回 True 表示复核通过（已判 connected）。
     slot 兼容旧调用（只传 plat）：平台名即默认槽。"""
+    if cancel_event is not None and cancel_event.is_set():
+        return False
     if plat is None:
         plat = base_plat(slot)
+    login_state = ""
+    probe_error = ""
     try:
-        _b, page = _open_page(slot)
-        ok, _u = _check_login(slot, page)
-    except Exception:
+        _b, page = _open_page(slot, preserve_tabs=True)
+        ok, login_state, checked_page = _probe_login_pages(slot, _b, page)
+    except Exception as exc:
         ok = False
+        probe_error = str(exc)[:160]
+    if cancel_event is not None and cancel_event.is_set():
+        return False
     if ok:
+        _clear_auth_page(slot)
         _set(slot, status="connected", last_login=time.strftime("%m-%d %H:%M"))
         ledger.record(plat, "connect", ok=True, account=acc)
+    elif _authentication_required(plat, login_state):
+        _set(slot, status="waiting_login",
+             error="平台等待登录或安全验证，验证完成后自动重试：%s" % str(login_state)[:160])
+    elif probe_error and (_st(slot).get("auth_target_id") or
+                          _st(slot).get("status") == "waiting_login"):
+        _set(slot, status="waiting_login",
+             error="登录页面暂时不可用，认证看门狗将自动重试：%s" % probe_error)
     else:
         _set(slot, status="error", error="等待登录超时（15 分钟），请重新点连接")
     return ok
@@ -625,11 +1567,26 @@ def disconnect(plat, account=""):
         slot = slot_of(plat, account)
     except ValueError as e:
         return False, str(e)
-    b = _browsers.pop(slot, None)
-    if b:
-        b.close()
-    _set(slot, status="none", error="")
-    return True
+    action_lock = _try_action_lock(slot)
+    if action_lock is None:
+        return False
+    try:
+        with _LOGIN_WAITERS_GUARD:
+            cancel_event = _LOGIN_CANCEL_EVENTS.get(slot)
+            if cancel_event is not None:
+                cancel_event.set()
+                _LOGIN_CANCEL_EVENTS.pop(slot, None)
+                _LOGIN_WAITERS.discard(slot)
+        b = _browsers.pop(slot, None)
+        if b:
+            b.close()
+        with _AUTH_STATE_CACHE_LOCK:
+            _AUTH_STATE_CACHE.pop(slot, None)
+        _set(slot, status="none", error="", auth_script_id="",
+             auth_script_target_id="")
+        return True
+    finally:
+        action_lock.release()
 
 
 # ---------------------------------------------------------------- 动作：探测
@@ -806,15 +1763,19 @@ def _create_preflight(plat, data):
     return ""
 
 
-def create_book_async(task_id, plat, auto_submit=False, force=False,
+def create_book_async(task_id, plat, auto_submit=True, force=False,
                       force_confirmed=False, force_reason="", account=""):
     """按任务 book_meta 的资料在平台建书。返回 (ok, err)。
 
     account 非空=用该账号的独立 profile/状态槽建书（多账号），建成的
     绑定记 account 字段，发章自动路由到同一账号。"""
-    from .. import store
+    from .. import contracts, store
     if plat not in PLATFORMS:
         return False, "未知平台"
+    # Creating a platform work is part of the unattended publishing contract.
+    # Keep the legacy argument for callers that still send it, but never let a
+    # false value restore the old fill-and-wait-for-human-submit flow.
+    auto_submit = True
     try:
         slot = slot_of(plat, account)
     except ValueError as e:
@@ -823,6 +1784,8 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
+    if not contracts.publish_allowed(task_id, unattended=True):
+        return False, "任务需要先完成审批，才能发布产物"
     # 连载链沿链继承（都是用第一个）：续写批次从自己身上建书也用首批生成的资料
     meta = store.inherited_book_meta(task, plat)
     if meta.get("status") != "done" or not meta.get("data"):
@@ -894,13 +1857,25 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
             # 书名全平台唯一（2026-09-30 马甲案）：撞名是建书常见死法，撞了
             # 原样报「疑似未建成」会白烧几万字稿费。试名队列=原名+自动候选
             # （编排者重出→机械变体兜底）；同名书恰在本账号下时对账复用不换
-            # 名。人工提交模式（auto_submit=false）不自动换名——用户在页面
-            # 上自己点提交，撞名他自己看得见。
+            # 名。自动提交模式会自动换名并对账，避免把撞名问题交给人工。
             names = [book_name]
             cands_ready = False
-            book_id = ""
+            # A previous process may have submitted this exact work and died
+            # before save_book wrote its receipt. Reconcile the same account's
+            # work list before opening a new-book form so a retry adopts the
+            # platform-created work instead of creating a duplicate.
+            reconcile = getattr(mod, "reconcile_book_id", None)
+            if not callable(reconcile):
+                raise RuntimeError("平台不支持建书前可靠对账，已停止以避免重复建书")
+            found, book_id, detail = reconcile(page, {"title": book_name})
+            if not found and detail:
+                raise RuntimeError("建书前作品对账失败：%s" % detail)
+            if book_id:
+                logs.append("建书前按作品名找到已有作品，自动复用 book_id=%s" %
+                            book_id)
             i = 0
-            while i < len(names) and i < 1 + _ALT_COUNT + 2:
+            while (not book_id and i < len(names) and
+                   i < 1 + _ALT_COUNT + 2):
                 name = names[i]
                 i += 1
                 final_name = name
@@ -947,13 +1922,6 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
                 except Exception:
                     pass
                 if book_id:
-                    break
-                if not auto_submit:
-                    # 人工提交模式：按书名对账兜底即止，不自动换名
-                    bid = _resolve_book_id(plat, page, {"title": name})
-                    if bid:
-                        book_id = bid
-                        logs.append("book_id 提取落空，已按书名在平台对账找回 %s" % bid)
                     break
                 # 自动提交被平台静默拒绝（不跳转）时，toast 常喊重名——抓
                 # 回来判定，别落进「疑似未建成」的糊涂账
@@ -1022,8 +1990,13 @@ def create_book_async(task_id, plat, auto_submit=False, force=False,
             _save()
             action_lock.release()
 
-    threading.Thread(target=run, daemon=True,
-                     name="pub-book-%s" % plat).start()
+    try:
+        threading.Thread(target=run, daemon=True,
+                         name="pub-book-%s" % plat).start()
+    except Exception as exc:
+        action_lock.release()
+        _set(slot, status="connected", error="建书任务启动失败，可自动重试：%s" % exc)
+        return False, "建书任务启动失败：%s" % exc
     return True, ""
 
 
@@ -1060,6 +2033,7 @@ def register_book(task_id, plat, title, book_id="", account=None):
                            remote_rejected=None,
                            remote_synced_at=None, remote_error=None,
                            remote_published_nos=None, remote_scheduled_nos=None,
+                           remote_review_nos=None,
                            remote_last_publish_at=None, remote_last_schedule_at=None,
                            confirmed_published_through=None,
                            confirmed_published_at=None)
@@ -1133,11 +2107,28 @@ def _with_tag_steps(steps, groups, values, mod=None):
 def _login_guard(plat):
     """动作前的登录前置，现场复核浏览器页面，避免 stale connected。"""
     try:
-        _b, page = _open_page(plat)
-        ok, url = _check_login(plat, page)
+        _b, page = _open_page(plat, preserve_tabs=True)
+        status = _st(plat).get("status")
+        ok, url, checked_page = _probe_login_pages(plat, _b, page)
+        auth_required = (not ok and _authentication_required(plat, url))
+        if (not ok and (not auth_required or _page_is_empty(page)
+                        or status in (None, ""))
+                and (status != "waiting_login" or _page_is_empty(page))
+                and checked_page is page):
+            # Re-open an empty recovered tab once, including when the prior
+            # challenge marker has disappeared. Keep non-empty challenge tabs
+            # untouched while waiting for platform verification.
+            ok, url = _check_login(plat, page, navigate=True)
+            auth_required = (not ok and _authentication_required(plat, url))
+        elif not ok and not auth_required and status != "waiting_login":
+            ok, url = _check_login(plat, page, navigate=True)
         if ok:
             _set(plat, status="connected")
             return True, ""
+        if _authentication_required(plat, url):
+            error = "平台等待登录或安全验证，验证完成后自动重试：%s" % url[:160]
+            _set(plat, status="waiting_login", error=error)
+            return False, error
         return False, "平台未登录（当前页面 %s），请先点「连接平台」扫码" % url[:80]
     except BrowserError as e:
         return False, "浏览器不可用：%s" % e
@@ -1188,7 +2179,7 @@ def split_chapter_name(title):
     return rest or title
 
 
-def chapter_fill_values(ch_no, title, body, book_name):
+def chapter_fill_values(ch_no, title, body, book_name) -> Dict[str, Any]:
     """发章流程的 values 字典。chapter_title=完整标题行（台账留痕/七猫流程
     锚点口径不变）；chapter_no=阿拉伯数字串（番茄「第 _ 章」序号框只认数字，
     2026-10-08 实案：流程有 fill 步骤但 values 从没给过这个键，序号永远
@@ -1241,21 +2232,28 @@ def read_chapter(fp):
     return ch_no, title, body, ""
 
 
-def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
+def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                          force=False, force_confirmed=False, force_reason="",
                          as_draft=False, scheduled=False, direct_today=False):
-    """把一章发到平台（或填好待人工确认/as_draft 只存草稿）。
+    """把一章自动发布到平台，或通过 as_draft 只保存草稿。
 
     幂等：已成功发布**或已存草稿**的章号拒绝重做——重复发会平台上出双章，
     重复存草稿会攒一箱重复稿。as_draft=True 走「存草稿」流程表
     （upload_chapter_draft）：内容落平台草稿箱不上线，不构成发布动作，
     质量闸不拦（发布时照拦）；存稿动作无需人工确认，适合批量连跑。"""
-    from .. import store
+    from .. import contracts, store
     if plat not in PLATFORMS:
         return False, "未知平台"
+    # Direct platform publication is always unattended. Keep accepting the
+    # legacy argument so older clients remain compatible, but never let it
+    # turn a single-chapter upload into a filled-form/manual-submit workflow.
+    if not as_draft:
+        auto_submit = True
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
+    if not as_draft and not contracts.publish_allowed(task_id, unattended=True):
+        return False, "任务需要先完成审批，才能发布产物"
     book = ledger.book_for(task_id, plat)
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
@@ -1372,9 +2370,20 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
     except Exception:
         prior_slot = None
     if prior_slot:
-        values["scheduled_date"] = prior_slot["date"]
+        # The local slot is the last chapter already in the queue.  The next
+        # chapter must start on the following day; using the same date makes
+        # Fanqie's daily quota reject the submission even when a later slot is
+        # available.  Keep the platform prefill as a fallback only when it is
+        # newer than this calculated cadence.
+        try:
+            import datetime as _dt
+            _next_day = (_dt.datetime.strptime(prior_slot["date"], "%Y-%m-%d")
+                         + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        except Exception:
+            _next_day = prior_slot["date"]
+        values["scheduled_date"] = _next_day
         values["scheduled_time"] = prior_slot["time"]
-        values["publish_date"] = prior_slot["date"]
+        values["publish_date"] = _next_day
         values["publish_time"] = prior_slot["time"]
     # Qimao renders the numeric prefix itself in the chapter editor.  Passing
     # the source heading ("第1章 标题") would therefore produce
@@ -1450,18 +2459,12 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
                 ledger.record(plat, recorded_action, task_id=task_id, chapter_no=ch_no,
                               book_id=book_ref.get("book_id") or "", title=title, ok=True,
                               operation_id=operation_id, operation_status="confirmed",
-                              scheduled_date=values.get("scheduled_date") if recorded_action == "upload_chapter_scheduled" else "",
-                              scheduled_time=values.get("scheduled_time") if recorded_action == "upload_chapter_scheduled" else "",
+                              scheduled_date=(str(values.get("scheduled_date") or "")
+                                              if recorded_action == "upload_chapter_scheduled" else ""),
+                              scheduled_time=(str(values.get("scheduled_time") or "")
+                                              if recorded_action == "upload_chapter_scheduled" else ""),
                               quality_forced=quality_forced,
                               quality_reason=quality_reason, account=acc,
-                              duration_s=elapsed_s())
-            else:
-                # run_flow stops immediately before the submit step. Keep the
-                # operation pending and never count the filled form as published.
-                ledger.record(plat, "upload_chapter_pending", task_id=task_id,
-                              chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
-                              title=title, ok=False, error="等待人工提交",
-                              operation_id=operation_id, operation_status="pending", account=acc,
                               duration_s=elapsed_s())
             _set(slot, status="connected", error="")
         except Exception as e:
@@ -1479,8 +2482,23 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=False,
             _save()
             action_lock.release()
 
-    threading.Thread(target=run, daemon=True,
-                     name="pub-ch-%s" % plat).start()
+    try:
+        threading.Thread(target=run, daemon=True,
+                         name="pub-ch-%s" % plat).start()
+    except Exception as exc:
+        error = "发章任务启动失败：%s" % str(exc)[:180]
+        operations.finish_exception(operation_id, exc)
+        operation_status = (operations.get(operation_id) or {}).get("status") or "failed"
+        _set(slot, status="connected", error=error)
+        ledger.record(plat, flow_key, task_id=task_id, chapter_no=ch_no,
+                      book_id=book_ref.get("book_id") or "", title=title,
+                      ok=False, error=error[:300], operation_id=operation_id,
+                      operation_status=operation_status,
+                      quality_forced=quality_forced,
+                      quality_reason=quality_reason, account=acc)
+        _save()
+        action_lock.release()
+        return False, error
     return True, ""
 
 
@@ -1674,13 +2692,27 @@ def _sync_published_impl(task_id, plat, manual=False):
         return False, "该平台未配置章节计数"
     try:
         if manual:
-            b, page = _open_page(slot)
+            b, page = _open_page(slot, preserve_tabs=True)
         else:
             port = _st(slot).get("port") or 0
             b = Browser.attach(int(port))       # 实例已死 → 异常 → 只记原因
             page = b.first_page(create=True)
     except Exception as e:
         return False, "浏览器未连接，点「连接平台」后再校准"
+    waiting_login = _st(slot).get("status") == "waiting_login"
+    # While a challenge is already being shown, inspect all tabs passively and
+    # leave the verification page in place. A connected/stale session follows
+    # the normal reconciliation navigation once, then probes every tab so a
+    # second-tab challenge cannot be hidden by the author page.
+    if waiting_login:
+        ok_login, login_state, checked_page = _probe_login_pages(slot, b, page)
+        if not ok_login:
+            if _authentication_required(plat, login_state):
+                _set(slot, status="waiting_login", error=str(login_state)[:160])
+            return False, "平台登录态等待恢复，验证完成后自动重试：%s" % str(login_state)[:160]
+        if checked_page is not None:
+            page = checked_page
+    _set(slot, status="connected", error="")
     if not str(book.get("book_id") or "").strip():
         # book_id 空的登记（人工登记/未验证建书结果）别拿去拼 URL 盲跑：
         # 空 id 会落到作品列表页，数章节必然 0 行，报一句误导人的「可能改版」。
@@ -1695,10 +2727,13 @@ def _sync_published_impl(task_id, plat, manual=False):
                            % (book.get("title") or ""))
     try:
         page.navigate(mod.chapter_manage_url(book), timeout=40)
-        url = str(page.url() or "")
-        if any(m in url for m in mod.CONFIG["login_url_marks"]) \
-                or url.startswith("chrome-error://"):
-            return False, "平台登录态已失效，请重连后校准"
+        ok_login, login_state, checked_page = _probe_login_pages(slot, b, page)
+        if not ok_login:
+            if _authentication_required(plat, login_state):
+                _set(slot, status="waiting_login", error=str(login_state)[:160])
+            return False, "平台登录态待恢复，验证完成后自动重试：%s" % str(login_state)[:160]
+        if checked_page is not None:
+            page = checked_page
         _wait_chapter_rows_ready(page, mod, timeout=4.0)
         rows, vols = collect_all_volumes(page, mod)
         st = bucket_chapter_rows(rows)
@@ -1725,6 +2760,7 @@ def _sync_published_impl(task_id, plat, manual=False):
                            remote_rejected=st["rejected"],
                            remote_published_nos=st["published_nos"],
                            remote_scheduled_nos=st["scheduled_nos"],
+                           remote_review_nos=st["review_nos"],
                            remote_last_publish_at=st["last_publish_at"],
                            remote_last_schedule_at=st["last_schedule_at"],
                            remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"),

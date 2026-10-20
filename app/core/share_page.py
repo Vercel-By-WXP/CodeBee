@@ -9,6 +9,8 @@ from __future__ import annotations
 import html as _html
 import time
 
+from . import prompt_templates
+
 
 def _esc(s):
     return _html.escape(str(s if s is not None else ""), quote=True)
@@ -103,12 +105,13 @@ def render_share_html(run, task, report_text):
     overall_note = ("综合 %.1f 分" % float(verdict.get("overall"))
                     if verdict.get("overall") is not None else "")
 
-    return (_SHARE_TPL
-            .replace("__TITLE__", _esc(task.get("title") or run.get("title") or "任务报告"))
-            .replace("__META__", _esc(task.get("goal") or ""))
-            .replace("__ST__", _esc(st_label))
-            .replace("__STCLS__", st_cls)
-            .replace("__NOW__", _esc(time.strftime("%Y-%m-%d %H:%M")))
-            .replace("__OVERALL__", _esc(overall_note))
-            .replace("__STEPS__", steps_rows or "<p class='mut'>（无步骤）</p>")
-            .replace("__REPORT__", report_html))
+    return prompt_templates.render_values(_SHARE_TPL, {
+        "__TITLE__": _esc(task.get("title") or run.get("title") or "任务报告"),
+        "__META__": _esc(task.get("goal") or ""),
+        "__ST__": _esc(st_label),
+        "__STCLS__": st_cls,
+        "__NOW__": _esc(time.strftime("%Y-%m-%d %H:%M")),
+        "__OVERALL__": _esc(overall_note),
+        "__STEPS__": steps_rows or "<p class='mut'>（无步骤）</p>",
+        "__REPORT__": report_html,
+    })

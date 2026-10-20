@@ -13,6 +13,8 @@ import re
 import time
 from pathlib import Path
 
+from . import prompt_templates
+
 PLATFORMS = {
     "fanqie": {"label": "番茄", "file": "作品信息-番茄.md"},
     "qimao": {"label": "七猫", "file": "作品信息-七猫.md"},
@@ -734,11 +736,12 @@ def make_book_meta(task, platform, author_agent=None, log_path=None):
     goal = task.get("goal") or ""
     # 真实选项注入：分类/标签表按平台与读者频段给全（模型只能从表里选）
     options = (_fq_options_block(goal) if platform == "fanqie" else _qm_options_block(goal))
-    prompt = (PROMPT_HEAD.replace("__PLATFORM__", plat_label)
-              .replace("__SKILLS__", sk_block)
-              .replace("__SCHEMA__", schema)
-              .replace("__OPTIONS_RULE__", options + "\n" + summary_rule)
-              + "\n\n## 小说素材\n" + material)
+    prompt = (prompt_templates.render_values(PROMPT_HEAD, {
+        "__PLATFORM__": plat_label,
+        "__SKILLS__": sk_block,
+        "__SCHEMA__": schema,
+        "__OPTIONS_RULE__": options + "\n" + summary_rule,
+    }) + "\n\n## 小说素材\n" + material)
 
     orch = None
     if not template_only():
@@ -864,9 +867,11 @@ def rename_book(task, platform, old_name, exclude_names=()):
     last = ""
     for _ in range(2):                           # 首轮撞名单 → 带撞名项重试一次
         ex_block = "\n".join("- " + n for n in sorted(exclude)[:RENAME_EXCLUDE_LIMIT])
-        prompt = (RENAME_PROMPT.replace("__OLD__", old_name)
-                  .replace("__MATERIAL__", material)
-                  .replace("__EXCLUDE__", ex_block or "（暂无）"))
+        prompt = prompt_templates.render_values(RENAME_PROMPT, {
+            "__OLD__": old_name,
+            "__MATERIAL__": material,
+            "__EXCLUDE__": ex_block or "（暂无）",
+        })
         # max_tokens 4000 对齐主生成（2026-10-03 实案：glm-5.3 思考计入
         # max_tokens，给 400 三次全被思考烧穿 output 打满，JSON 没成形）
         res = modelhub.chat(prov["id"], model, prompt, max_tokens=4000,

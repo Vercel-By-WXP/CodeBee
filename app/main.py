@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -394,6 +395,12 @@ class Handler(BaseHTTPRequestHandler):
                 from core import intervention
                 query = parse_qs(urlparse(self.path).query)
                 return self._json(200, {"requests": intervention.list_pending((query.get("run_id") or [""])[0])})
+            if path == "/api/tool-approvals":
+                from core import agent_approval
+                query = parse_qs(urlparse(self.path).query)
+                task = (query.get("task") or [""])[0]
+                run_id = (query.get("run_id") or [""])[0]
+                return self._json(200, {"approvals": agent_approval.view(task, run_id)})
             if path == "/api/connect":
                 # 供设置页「手机连接」弹框生成二维码；远程打开需令牌，天然受保护
                 from core import phone_relay
@@ -1517,6 +1524,32 @@ class Handler(BaseHTTPRequestHandler):
                                            payload=body.get("payload"), timeout_s=body.get("timeout_s", 0),
                                            timeout_action=body.get("timeout_action", "continue"))
                 return self._json(200, {"ok": True, "request": row})
+            except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/tool-approvals":
+            from core import agent_approval, audit
+            body = self._body() or {}
+            try:
+                task = str(body.get("task") or "").strip()
+                run_id = str(body.get("run_id") or "").strip()
+                row = agent_approval.approve(task, run_id,
+                                             tools=body.get("tools"),
+                                             groups=body.get("groups"))
+                raw_tools = body.get("tools")
+                raw_groups = body.get("groups")
+                if isinstance(raw_tools, str):
+                    raw_tools = [raw_tools]
+                if isinstance(raw_groups, str):
+                    raw_groups = [raw_groups]
+                audit.record("tool_approval", {
+                    "run_id": run_id[:120],
+                    "task_hash": hashlib.sha256(
+                        agent_approval.normalize_task(task).encode("utf-8")).hexdigest()[:16],
+                    "actor": self._client_name()[:120],
+                    "tools": [str(x)[:120] for x in (raw_tools or [])][:50],
+                    "groups": [str(x)[:120] for x in (raw_groups or [])][:50],
+                })
+                return self._json(200, {"ok": True, "approval": row})
             except (TypeError, ValueError, OSError) as exc:
                 return self._json(400, {"error": str(exc)})
         m = re.match(r"^/api/interventions/([^/]+)/decide$", path)
@@ -2918,7 +2951,9 @@ class Handler(BaseHTTPRequestHandler):
         task = store.get_task(task_id)
         if not task:
             return self._json(404, {"error": "任务不存在"})
-        body = self._body() or {}
+        body = self._body()
+        if not isinstance(body, dict):
+            body = {}
         platform = (body.get("platform") or "").strip()
         if platform not in bookmeta.PLATFORMS:
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
@@ -2953,7 +2988,9 @@ class Handler(BaseHTTPRequestHandler):
         task = store.get_task(task_id)
         if not task:
             return self._json(404, {"error": "任务不存在"})
-        body = self._body() or {}
+        body = self._body()
+        if not isinstance(body, dict):
+            body = {}
         platform = (body.get("platform") or "").strip()
         if platform not in bookmeta.PLATFORMS:
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
@@ -3012,7 +3049,7 @@ class Handler(BaseHTTPRequestHandler):
         """发布动作：create-book（按作品信息建书）/ chapter（发一章）。
 
         章节文件必须在任务工作目录内（防穿越，同 /api/dir/file 口径）；
-        auto_submit=false 时流程填好表单即停，提交权留给用户人工确认。"""
+        建书、发章和定时发布均走无人值守提交；草稿使用独立接口。"""
         from pathlib import Path as _P
         from core import store
         from core.publish import manager as pub
@@ -3023,18 +3060,12 @@ class Handler(BaseHTTPRequestHandler):
         platform = (body.get("platform") or "").strip()
         if platform not in ("fanqie", "qimao"):
             return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
-        # Publishing actions are unattended by default.  Callers may still
-        # explicitly request the legacy fill-only mode with auto_submit=false.
-        auto_submit = body.get("auto_submit", True) is not False
+        # Publishing actions are unattended; draft-only uses publish-all's
+        # separate as_draft option and never reaches this endpoint.
+        auto_submit = True
         force = bool(body.get("force"))
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
-        from core import contracts
-        contract = contracts.get(task_id)
-        if ((contract and contract.get("approval_required")) or task.get("approval_required")) \
-                and not contracts.release_allowed(task_id):
-            return self._json(409, {"error": "任务需要先完成审批，才能发布产物",
-                                    "contract": contract})
         if op == "create-book":
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
                        "force_reason": force_reason}
@@ -3047,10 +3078,9 @@ class Handler(BaseHTTPRequestHandler):
             # 校验/归一在 auto.norm_auto_publish，语义见 auto.py 头注
             from core.publish import auto as pub_auto
             body["platform"] = platform
-            # Scheduled publishing is an unattended action too.  Unless the
-            # caller explicitly opts into fill-only mode, persist auto-submit
-            # so the automation tick can resume the same fully automatic path.
-            body["auto_submit"] = body.get("auto_submit", True) is not False
+            # Scheduled publishing is unattended. Persist auto-submit so the
+            # automation tick always resumes the release path.
+            body["auto_submit"] = True
             if body.get("enabled"):
                 ap, ap_err = pub_auto.norm_auto_publish(body)
                 if not ap:
@@ -3060,13 +3090,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not ap:
                     return self._json(400, {"error": ap_err})
                 ap["enabled"] = False
-            if ap.get("enabled") and ap.get("auto_submit"):
+            if ap.get("enabled"):
                 from core import contracts
-                contract = contracts.get(task_id)
-                if ((contract and contract.get("approval_required")) or
-                        task.get("approval_required")) and not contracts.release_allowed(task_id):
-                    return self._json(409, {"error": "任务需要先完成审批，才能启用自动提交",
-                                            "contract": contract})
+                if not contracts.publish_allowed(task_id, unattended=True):
+                    return self._json(409, {
+                        "error": "任务需要先完成审批，才能启用自动发布",
+                        "contract": contracts.get(task_id),
+                    })
             ok, err = store.set_auto_publish(task_id, ap), ""
             if ok:
                 return self._json(200, {"ok": True, "auto_publish": ap})
@@ -3081,22 +3111,30 @@ class Handler(BaseHTTPRequestHandler):
                 fp.relative_to(_P(wd).resolve())
             except (OSError, ValueError):
                 return self._json(400, {"error": "章节文件必须在任务工作目录内"})
-            # 单章入口不能信任页面刚才列出的旧待发清单：用户可能在别处
-            # 手工提交过本章，或平台队列已经变化。真正打开编辑器前再做一
-            # 次平台实况校准；校准失败就拒绝发起，避免把已发布章再次送出。
-            sync_ok, sync_err = pub.sync_published(task_id, platform, manual=False)
-            if not sync_ok:
-                return self._json(409, {
-                    "error": "发章前必须先完成平台校准：%s" % (sync_err or "未知原因"),
-                    "calibration_required": True,
-                })
+            # Run one selected chapter through the automatic batch worker. It
+            # performs a fresh platform reconciliation before submitting and
+            # can reopen a saved browser profile if the service restarted or
+            # CDP disconnected. Doing sync inline here made this one-chapter
+            # UI action the only publishing path that required a manual retry.
+            chapter_no, _title, _body, chapter_error = pub.read_chapter(str(fp))
+            if chapter_error:
+                return self._json(400, {"error": chapter_error})
+            from core.publish import auto as pub_auto
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
                        "force_reason": force_reason}
                       if force or force_confirmed or force_reason else {})
             if body.get("scheduled"):
                 kwargs["scheduled"] = True
-            ok, err = pub.upload_chapter_async(task_id, platform, str(fp), auto_submit,
-                                               **kwargs, direct_today=bool(body.get("direct_today")))
+            # Every single-chapter request uses the automatic batch worker,
+            # including legacy files whose chapter number appears only in the
+            # document heading. This keeps platform reconciliation, saved
+            # session recovery, retries, optional book preparation, and exact
+            # file matching consistent with bulk and scheduled publishing.
+            relative_file = fp.relative_to(_P(wd).resolve()).as_posix()
+            ok, err = pub_auto.publish_pending_async(
+                task_id, platform, auto_submit=True,
+                only=[int(chapter_no)], auto_prepare_book=True,
+                _only_file=relative_file, **kwargs)
         if not ok:
             payload = {"error": err or "操作失败"}
             if str(err or "").startswith("质量门禁拦截："):
@@ -3110,7 +3148,9 @@ class Handler(BaseHTTPRequestHandler):
         from core.publish import manager as pub
         if not store.get_task(task_id):
             return self._json(404, {"error": "任务不存在"})
-        body = self._body() or {}
+        body = self._body()
+        if not isinstance(body, dict):
+            body = {}
         ok, err = pub.register_book(task_id, (body.get("platform") or "").strip(),
                                     str(body.get("title") or ""),
                                      book_id=str(body.get("book_id") or ""),
@@ -3160,7 +3200,7 @@ class Handler(BaseHTTPRequestHandler):
         if force or force_confirmed or force_reason:
             kwargs.update(force=force, force_confirmed=force_confirmed,
                           force_reason=force_reason)
-        auto_submit = body.get("auto_submit", True) is not False
+        auto_submit = True
         ok, err = pub_auto.publish_pending_async(
             task_id, platform, auto_submit=auto_submit,
             auto_prepare_book=bool(body.get("auto_prepare_book", True)),
@@ -4773,6 +4813,8 @@ def main():
     flows.set_runs_provider(store.list_runs)  # 版本战绩对账用 run 遍历器（防 flows→store 静态环）
     from core import evalbench as _evalbench
     automation.register_tick_hook(_evalbench.fire_due)  # 评测台定时回归挂自动化 tick
+    from core.publish import auto as _publish_auto
+    automation.register_tick_hook(_publish_auto.resume_interrupted_batches)
     from core import notify as _notify
     usage_ledger.set_alert_push(_notify.push_text)  # 花费预警推送注入（防 usage→notify 静态环）
     from core import mcp_client as _mcp
@@ -4843,9 +4885,16 @@ def main():
         pass
     try:
         from core.publish import manager as publish_mgr
-        n_pb = publish_mgr.recover_orphans()  # 发布线程同款收尸：waiting_login/busy 改判 error
+        n_pb = publish_mgr.recover_orphans()  # 只收尸 busy；waiting_login 保留验证页供自动复核
         if n_pb:
             print("[CodeBee] 崩溃恢复：%d 条平台发布中断标记为可重试" % n_pb)
+        n_sessions = publish_mgr.resume_saved_sessions()
+        if n_sessions:
+            print("[CodeBee] 自动恢复：正在检查 %d 个已登记平台账号的持久登录态" % n_sessions)
+        # Keep watching verification tabs after the finite interactive waiter
+        # ends.  The watcher is passive: it only recognizes a session that
+        # the platform already accepts and never solves a login challenge.
+        publish_mgr.start_auth_watchdog()
     except Exception:
         pass
     try:

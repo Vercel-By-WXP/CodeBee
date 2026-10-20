@@ -268,6 +268,23 @@ class Browser:
             return Page(ps[0]["webSocketDebuggerUrl"])
         return self.new_page() if create else None
 
+    def page_for_target(self, target_id):
+        """Return a live page for a previously persisted target id.
+
+        Authentication challenges can open a second tab. The publishing
+        manager persists that target while waiting so a service restart can
+        reconnect to the challenge instead of blindly inspecting the first
+        tab and navigating it away.
+        """
+        wanted = str(target_id or "").strip()
+        if not wanted:
+            return None
+        for target in self.pages():
+            if (str(target.get("id") or "") == wanted and
+                    target.get("webSocketDebuggerUrl")):
+                return Page(target["webSocketDebuggerUrl"])
+        return None
+
     @staticmethod
     def attach(port):
         """不启动进程、直接接管已存活浏览器（服务重启后重连同 profile 的实例）。"""
@@ -355,6 +372,31 @@ class Page:
             self.evaluate(stub, timeout=5.0)
         except BrowserError:
             pass
+
+    def set_cookies(self, cookies):
+        """Install an already-issued authentication cookie set for this page.
+
+        The publishing manager uses this only for a user-supplied auth-state
+        file.  It deliberately does not accept credentials or attempt a
+        login; the browser remains responsible for enforcing the platform's
+        session and challenge checks.
+        """
+        items = [dict(c) for c in (cookies or []) if isinstance(c, dict)]
+        if not items:
+            return
+        self.send("Network.setCookies", {"cookies": items}, timeout=15.0)
+
+    def add_init_script(self, source):
+        """Run *source* in future documents and return its CDP identifier."""
+        result = self.send("Page.addScriptToEvaluateOnNewDocument",
+                           {"source": str(source or "")}, timeout=10.0)
+        return str(result.get("identifier") or "")
+
+    def remove_init_script(self, identifier):
+        """Remove an init script previously returned by add_init_script."""
+        if identifier:
+            self.send("Page.removeScriptToEvaluateOnNewDocument",
+                      {"identifier": str(identifier)}, timeout=10.0)
 
     def open_new_tab(self, url="about:blank"):
         """开新页签并返回新 Page（本页签原地不动）。
@@ -691,6 +733,18 @@ class Page:
         except Exception:
             pass
         self.ws.close()
+
+    def close_connection(self):
+        """Close only this CDP websocket, leaving the browser tab alive.
+
+        Authentication probing creates short-lived Page wrappers for extra
+        tabs.  Those wrappers must release their transport without closing a
+        user's challenge tab.
+        """
+        try:
+            self.ws.close()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ 表单探测
     def probe(self):

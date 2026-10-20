@@ -951,7 +951,8 @@ def ensure_builtin_free_provider():
         auto_enable = bool(prov.get("builtin_auto_enable", True))
         alive, probe_error = (False, "未读取到 standalone forwardKey")
         if key and auto_enable:
-            alive, probe_error = _probe_our_free_model(prov.get("base_url"), api_key=key)
+            alive, probe_error = _probe_our_free_model(
+                str(prov.get("base_url") or ""), api_key=key)
         if auto_enable:
             prov["enabled"] = bool(alive and key)
         if not auto_enable:
@@ -2752,8 +2753,8 @@ def _collect(fn):
 def sources():
     """本机所有支持的导入来源及探测结果（配置文件是否存在、可导入几条）。"""
     rows = []
-    for sid, name, desc, fn, paths in _SOURCES:
-        ps = [p for p in paths() if p]
+    for sid, name, desc, fn, get_paths in _SOURCES:
+        ps = [p for p in get_paths() if p]
         found = any(os.path.isfile(p) for p in ps)
         row = {"id": sid, "name": name, "desc": desc, "paths": ps,
                "found": found, "count": 0, "note": "", "note_args": [], "error": ""}
@@ -3569,6 +3570,8 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         # 候选阶段不能先截前三个：便宜档往往排在供应商列表后面，easy 任务
         # 需要看到完整启用列表后再按成本与档位评分。最终调用链仍受上限约束。
         for model in names:
+            if not isinstance(model, str) or not model:
+                continue
             try:
                 from . import health as _health
                 if _health.is_model_down(prov.get("name") or pid, model):

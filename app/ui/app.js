@@ -18,12 +18,12 @@ const UI_FEATURES = { reviewPolicy: null, templates: null, analytics: null, anal
 /* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
 const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
 const WORKSPACE_MODES = {
-  work: { label: "工作", defaultType: "direct", quick: ["direct", "doc", "research", "translation"],
-    greeting: "把想法变成成果", hint: "写作、调研、文档与翻译，从这里开始。" },
-  develop: { label: "开发", defaultType: "code", quick: ["code", "defect_retro", "tech_proposal", "direct"],
-    greeting: "今天想构建什么？", hint: "编写代码、调试问题、运行测试与评审变更。" },
-  chat: { label: "聊天", defaultType: "direct", quick: ["direct"],
-    greeting: "想聊点什么？", hint: "直接问答、头脑风暴与日常对话，从这里开始。" },
+  work: { label: t("工作"), defaultType: "direct", quick: ["direct", "doc", "research", "translation"],
+    greeting: t("把想法变成成果"), hint: t("写作、调研、文档与翻译，从这里开始。") },
+  develop: { label: t("开发"), defaultType: "code", quick: ["code", "defect_retro", "tech_proposal", "direct"],
+    greeting: t("今天想构建什么？"), hint: t("编写代码、调试问题、运行测试与评审变更。") },
+  chat: { label: t("聊天"), defaultType: "direct", quick: ["direct"],
+    greeting: t("想聊点什么？"), hint: t("直接问答、头脑风暴与日常对话，从这里开始。") },
 };
 let workspaceChoice = { mode: "chat", types: {} };
 let workspaceHasChoice = false;
@@ -59,7 +59,7 @@ try { browserTaskId = localStorage.getItem(BROWSER_TASK_STORAGE_KEY) || ""; } ca
 function browserLoadState() {
   try {
     const raw = JSON.parse(localStorage.getItem(BROWSER_STORAGE_KEY) || "{}");
-    const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs : [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }];
+    const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs : [{ id: "home", url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 }];
     const kept = tabs.slice(0, 20).map(browserNormalizeTab);
     const migratedHistory = kept.flatMap((tab) => tab.history.slice(0, tab.index + 1).map((url, index) => ({
       url, title: browserTitle(url), visitedAt: Date.now() - (tab.history.length - index),
@@ -73,7 +73,7 @@ function browserLoadState() {
       updatedAt: Number(raw.updatedAt) || 0,
     };
   } catch (e) {
-    return { tabs: [{ id: "home", url: BROWSER_HOME, title: "CodeBee 浏览器", history: [BROWSER_HOME], index: 0 }], active: 0, history: [], permissions: {}, updatedAt: 0 };
+    return { tabs: [{ id: "home", url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 }], active: 0, history: [], permissions: {}, updatedAt: 0 };
   }
 }
 
@@ -85,7 +85,7 @@ function browserValidHistoryEntry(entry) {
 function browserNormalizeTab(tab, i) {
   const history = Array.isArray(tab.history) && tab.history.length ? tab.history.slice(-20) : [tab.url || BROWSER_HOME];
   const index = Math.max(0, Math.min(Number(tab.index) || history.length - 1, history.length - 1));
-  return { id: String(tab.id || ("tab-" + i)), url: history[index], title: String(tab.title || "CodeBee 浏览器").slice(0, 80), history, index };
+  return { id: String(tab.id || ("tab-" + i)), url: history[index], title: String(tab.title || t("CodeBee 浏览器")).slice(0, 80), history, index };
 }
 
 function browserSaveState() {
@@ -153,9 +153,9 @@ function browserLatestRun(task) {
 }
 
 function browserStatusLabel(status) {
-  const map = { running: "运行中", queued: "排队中", done: "已完成", failed: "失败",
-    cancelled: "已取消", timeout: "超时", waiting: "等待中" };
-  return t(map[status] || status || "未开始");
+  const map = { running: t("运行中"), queued: t("排队中"), done: t("已完成"), failed: "失败",
+    cancelled: t("已取消"), timeout: t("超时"), waiting: t("等待中") };
+  return t(map[status] || status || t("未开始"));
 }
 
 function browserRenderHomeTask(task, run, status, verifyPass) {
@@ -300,8 +300,8 @@ function normalizeBrowserUrl(value) {
 function browserActiveTab() { return browserState.tabs[browserState.active] || browserState.tabs[0]; }
 
 function browserTitle(url) {
-  if (url === BROWSER_HOME) return "CodeBee 浏览器";
-  try { return new URL(url, location.origin).hostname.replace(/^www\./, "") || "浏览器"; } catch (e) { return "浏览器"; }
+  if (url === BROWSER_HOME) return t("CodeBee 浏览器");
+  try { return new URL(url, location.origin).hostname.replace(/^www\./, "") || t("浏览器"); } catch (e) { return t("浏览器"); }
 }
 
 // Google sends X-Frame-Options on its normal entry/search URLs. The documented
@@ -545,7 +545,7 @@ function browserRenderHistory() {
   const entries = (browserState.history || []).slice().reverse().filter((item) =>
     !query || (item.title + " " + item.url).toLocaleLowerCase().includes(query));
   if (!entries.length) {
-    list.innerHTML = '<div class="browser-dialog-empty">' + esc(t(query ? "没有匹配的浏览记录" : "暂无浏览记录")) + "</div>";
+    list.innerHTML = '<div class="browser-dialog-empty">' + esc(t(query ? t("没有匹配的浏览记录") : t("暂无浏览记录"))) + "</div>";
     return;
   }
   list.innerHTML = entries.map((item) => '<button type="button" class="browser-history-entry" data-browser-history-url="' + esc(item.url) + '">' +
@@ -591,7 +591,7 @@ function browserDrawTabs() {
     const b = document.createElement("button");
     b.type = "button"; b.className = "browser-tab" + (i === browserState.active ? " active" : "");
     b.dataset.browserTab = tab.id; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", i === browserState.active ? "true" : "false");
-    b.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>' + esc(tab.title || browserTitle(tab.url)) + '</span><span class="browser-tab-close" aria-label="关闭标签页">×</span>';
+    b.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>' + esc(tab.title || browserTitle(tab.url)) + '</span><span class="browser-tab-close" aria-label="' + esc(t("关闭标签页")) + '">×</span>';
     tabs.insertBefore(b, add);
   });
 }
@@ -7964,10 +7964,10 @@ window.bmCopyBtn = function (btn) {
 
 /* ---------------- 一键发布（bookmeta 分区内每平台卡的发布行） ----------------
  * 状态独立于 SSE（/api/publish 轮询，5s 节流；waiting_login/busy 靠主轮询周期
- * 自然刷新）。Phase 1 纪律：所有提交动作 auto_submit=false——表单填好后停，
- * 提交权留给用户在浏览器窗口里人工确认（建书/发章皆是）。 */
+ * 自然刷新）。正常建书、单章和批量发布请求统一走 auto_submit=true，由服务端
+ * 处理平台弹层、提交和回执校验；草稿模式仍明确不上线。 */
 const PB_ST = {
-  none: [t("未连接"), "pb-st-none"], waiting_login: [t("等扫码…"), "pb-st-wait"],
+  none: [t("未连接"), "pb-st-none"], waiting_login: [t("等登录/验证…"), "pb-st-wait"],
   connected: [t("已连接"), "pb-st-ok"], busy: [t("操作中…"), "pb-st-busy"],
   error: [t("出错"), "pb-st-err"],
 };
@@ -8086,8 +8086,22 @@ function pbBlock(task, platform, selectionOnly = false) {
       .find((b) => b.platform === platform)) || {};
     const run = (S.pubAuto && S.pubAuto.running &&
       S.pubAuto.running.platform === platform) ? S.pubAuto.running : null;
+    const retry = (S.pubAuto && S.pubAuto.retry &&
+      S.pubAuto.retry.platform === platform) ? S.pubAuto.retry : null;
     if (run && run.status === "running") {
       btns += '<span class="pb-book">' + esc((run.as_draft ? t("存草稿中 ") : t("自动发布中 ")) + run.done + "/" + run.total) + "</span>";
+    }
+    if (retry && retry.status === "retry_wait") {
+      const retryAt = retry.next_retry_at
+        ? new Date(retry.next_retry_at * 1000).toLocaleString() : t("稍后");
+      btns += '<span class="pb-book" title="' + esc(retry.error || "") + '">' +
+        esc(t("自动发布将在 {0} 重试", retryAt)) + "</span>";
+    }
+    if (au.quality_forced && Array.isArray(au.quality_warnings) &&
+        au.quality_warnings.length) {
+      btns += '<div class="pb-hint pb-quality-warning" title="' +
+        esc(au.quality_warnings.join("；")) + '">' +
+        esc(t("自动发布质量警告：") + au.quality_warnings.join("；")) + "</div>";
     }
     if (run && Array.isArray(run.notes) && run.notes.length) {
       // 对账剔除/跳过/重试的过程记录（auto 层 notes），最近三条
@@ -8097,7 +8111,7 @@ function pbBlock(task, platform, selectionOnly = false) {
       // 门禁不再禁用按钮：点了走 pbApiWithQualityOverride 的复审/强制对话，
       // 死按钮只会让用户无路可走（2026-10-08 实案：guard false 全灰点不了）
       btns += ' <button class="ghost" ' + (busy ? "disabled" : "") +
-        ' title="' + esc(au.guard_ok ? t("按章号顺序逐章填稿并自动提交；若停在人工确认，点确认后会自动继续下一章") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
+      ' title="' + esc(au.guard_ok ? t("按章号顺序逐章自动提交；成功后自动对账并继续下一章") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
         ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
       // 全部发草稿（2026-10-09）：质量闸拦发布不拦草稿——逐章自动填稿点
@@ -8108,7 +8122,7 @@ function pbBlock(task, platform, selectionOnly = false) {
         t("全部存草稿") + t("（") + au.pending + t("）") + "</button>";
     }
     // 批量选择：待发章号 chips 按卷分组（卷计划来自服务端 items[].volume），
-    // 「发布所选」人工模式 / 「直发所选」逐章自动提交（护栏照常生效）。
+    // 所选章节统一走逐章无人值守提交（护栏照常生效）。
     // 分卷由服务端按卷计划自动选/建（volumes.py），界面上不用管卷。
     const its = (au.items && au.items.length ? au.items : [])
       .map((x) => ({ n: Number(x.chapter_no), v: x.volume || "", review: x.review_status || "pending",
@@ -8187,10 +8201,6 @@ function pbBlock(task, platform, selectionOnly = false) {
         '<div class="pb-pend-foot"><span class="pb-pend-count" aria-live="polite">' + esc(t("已选 {0}/{1} 章", sel.size, its.length)) + '</span>' +
         '<span class="pb-pend-mode-hint">' + esc(t("批量发布自动提交；失败会停止并保留现场，草稿不上线。")) + '</span>' +
         '<div class="pb-pend-btns">' +
-        '<button class="primary" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
-        ' title="' + esc(au.guard_ok ? "" : t("护栏提示：") + (au.guard_reason || "")) + '"' +
-        ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
-        t("发布所选") + t("（") + sel.size + t("）") + "</button>" +
         '<button class="ghost" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效") +
           (au.guard_ok ? "" : "；" + t("护栏提示：") + (au.guard_reason || ""))) + '"' +
@@ -8401,7 +8411,8 @@ function pbSyncState(task) {
       // 批量发布视图（待发数/护栏/进度）——进行中时靠本节流轮询自然刷新
       const au = await api("/api/publish/task/" + encodeURIComponent(tk.id) + "/pending");
       S.pubAuto = au;
-      sig += "@" + JSON.stringify(au.books || {}) + "@" + JSON.stringify(au.running || {});
+      sig += "@" + JSON.stringify(au.books || {}) + "@" + JSON.stringify(au.running || {}) +
+        "@" + JSON.stringify(au.retry || null);
     } catch (e) { /* 视图缺失（老服务）不阻塞 */ }
     if (sig !== (S._pbSig || "")) {
       S._pbSig = sig;
@@ -8594,7 +8605,7 @@ window.pbUploadChapter = async function (taskId, platform) {
   const item = (f) =>
     '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + esc(taskId) + "', '" + platform +
     '\',\'' + esc(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>";
-  const hint = '<div class="pb-hint">' + esc(t("选一章发送（表单填好后停，人工确认提交）；已成功发过的章会被台账拦下：")) + "</div>";
+  const hint = '<div class="pb-hint">' + esc(t("选一章后自动提交并核验平台结果；已成功发布的章节会被台账拦下：")) + "</div>";
   // 最高章号：让卷规划表铺到最后一章（否则超出显式卷表的章节会掉进「其他」）
   let maxCh = 0;
   files.forEach((f) => {
@@ -8624,14 +8635,14 @@ window.pbSendChapter = async function (taskId, platform, relName) {
   try {
     const r = await pbApiWithQualityOverride(
       "/api/publish/task/" + encodeURIComponent(taskId) + "/chapter",
-      { platform, file: relName }, t("发章前的质量门禁未通过"), taskId);
+      { platform, file: relName, auto_submit: true }, t("发章前的质量门禁未通过"), taskId);
     if (!(r && r.gate_reviewed)) {
       toast(t("正在自动填写并提交章节…"));
       const box = $("pb-ch-" + platform);
       if (box) {
         const n = chapterNumOf(relName);
         box.classList.remove("hidden");
-        box.innerHTML = '<div class="pb-hint">' + esc(t("填稿已完成，请先在浏览器里提交，再点击确认")) +
+        box.innerHTML = '<div class="pb-hint">' + esc(t("章节已提交，正在核验平台结果")) +
           '</div>';
       }
     }
@@ -8668,8 +8679,7 @@ function pbSelCountSync(key) {
   if (count) count.textContent = t("已选 {0}/{1} 章", ent.sel.size, ent.sig.split(",").length);
   for (const b of box.querySelectorAll("[data-selection-action]")) {
     const action = b.getAttribute("onclick") || "";
-    const label = action.includes("pbDraftSelected") ? t("存草稿所选")
-      : action.includes(",true)") ? t("直发所选") : t("发布所选");
+    const label = action.includes("pbDraftSelected") ? t("存草稿所选") : t("直发所选");
     b.textContent = t(label) + t("（") + ent.sel.size + t("）");
     b.disabled = ent.sel.size === 0 || b.dataset.locked === "true";
     if (!b.hasAttribute("data-ready-title")) b.dataset.readyTitle = b.title;
@@ -11870,7 +11880,7 @@ function chatEngineIsDirect(run) {
  * 只能在渲染时翻：前缀命中「请求工具: 」就换字典词条，其余原样放行。 */
 function chatActLine(a) {
   const s = String(a || "");
-  const PRE = t("请求工具: ");
+  const PRE = "请求工具: ";
   if (s.startsWith(PRE)) {
     return t("请求工具") + ": " + s.slice(PRE.length).replace(/、/g, t("、"));
   }
@@ -17944,8 +17954,8 @@ function helpChapterBody(id) {
       '<p class="help-p">' + t("目前支持番茄小说与七猫。第一次发布会引导你在浏览器里登录平台账号（扫码或账密），登录态保存在本机，之后发布免登录；过期了重新登一次即可。") + '</p>' +
       '<h3 class="help-h3">' + t("建书：资料与封面") + '</h3>' +
       '<p class="help-p">' + t("连载任务的建书面板里，作品简介、分类标签可以按平台官方选项一键生成；封面点「生成封面」自动出竖版图（cover.png 落在任务运行目录）。") + '</p>' +
-      '<h3 class="help-h3">' + t("发章与确认") + '</h3>' +
-      '<p class="help-p">' + t("章稿定稿后一键发布：自动填标题正文、处理平台的各类弹层，但提交前会停下来让你确认——绝不静默替你上架。发布完成后任务详情里能看到结果与章节链接。") + '</p>' +
+      '<h3 class="help-h3">' + t("发章与校验") + '</h3>' +
+      '<p class="help-p">' + t("章稿定稿后一键发布：系统自动填标题正文、处理平台弹层并提交，随后按平台回执校验结果；登录态失效或安全验证由平台控制。发布完成后任务详情里能看到结果与章节链接。") + '</p>' +
       '<h3 class="help-h3">' + t("发布失败") + '</h3>' +
       '<p class="help-p">' + t("平台改版或登录态过期会导致失败，失败信息会写明原因。重新登录后再点重试即可；反复失败可以到 GitHub 提 Issue 附上失败截图。") + '</p>';
   }

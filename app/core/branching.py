@@ -49,15 +49,17 @@ def plan_branches(run_id, task, i, goal, outline_txt, prev, n, *, log_path=None)
     except Exception:
         pass
     from . import modelhub, runner
+    from . import prompt_templates
     orch = modelhub.resolve_orchestrator()
     if not orch:
         return None
     prov, model = orch
-    prompt = (BRANCH_PLAN_PROMPT
-              .replace("__N__", str(n))
-              .replace("__GOAL__", goal[:600])
-              .replace("__OUTLINE__", outline_txt[:3000])
-              .replace("__PREV__", (prev or "（开篇）")[-1200:]))
+    prompt = prompt_templates.render_values(BRANCH_PLAN_PROMPT, {
+        "__N__": str(n),
+        "__GOAL__": goal[:600],
+        "__OUTLINE__": outline_txt[:3000],
+        "__PREV__": (prev or "（开篇）")[-1200:],
+    })
     res = modelhub.chat(prov["id"], model, prompt, max_tokens=4000, timeout=300)
     if not res.get("ok"):
         return None

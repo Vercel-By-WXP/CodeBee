@@ -35,6 +35,14 @@ class ActionPolicyTests(unittest.TestCase):
                                     "approved_tools": ["write_file"]})
         self.assertEqual(approved["decision"], "autoExecute")
 
+    def test_discovered_mcp_catalog_closes_runtime_capability_surface(self):
+        unknown = action_policy.preflight(
+            "mcp__docs__write", sandbox={}, known_mcp=set())
+        self.assertEqual(unknown["decision"], "deny")
+        known = action_policy.preflight(
+            "mcp__docs__read", sandbox={}, known_mcp={"mcp__docs__read"})
+        self.assertEqual(known["decision"], "autoExecute")
+
     def test_delete_is_a_red_line_even_when_fs_manage_is_registered(self):
         result = action_policy.preflight("fs_manage", args={"action": "delete"}, sandbox={})
         self.assertEqual(result["decision"], "deny")

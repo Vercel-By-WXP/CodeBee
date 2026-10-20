@@ -168,6 +168,16 @@ def scheduled_chapters(task_id, platform):
     return out
 
 
+def review_chapters(task_id, platform):
+    """Chapter numbers accepted by the platform and awaiting review."""
+    try:
+        ent = book_for(task_id, platform) or {}
+        return {int(n) for n in (ent.get("remote_review_nos") or [])
+                if int(n) > 0}
+    except (TypeError, ValueError):
+        return set()
+
+
 def latest_scheduled_slot(task_id, platform):
     """Return the most recent locally recorded scheduled slot, if any."""
     from .. import store

@@ -324,10 +324,13 @@ def _tags_select_grouped(page, note, i, pairs):
     raise FlowError("标签对账未过：%s" % "；".join(bad))
 
 
-def run_flow(page, steps, values=None, config=None, auto_submit=False,
+def run_flow(page, steps, values=None, config=None, auto_submit=True,
              shot=None, log=None, dup_check=False):
     """跑一个流程。values：fill 取值字典；config：平台 URL 等占位符来源。
 
+    auto_submit=True → 普通发布流程自动完成最终提交；只有草稿流程或
+    明确的内部探测步骤才应传 False。普通发布入口会在更上层再次强制为 True，
+    防止旧客户端把上传停在人工确认页。
     shot(name) → 截图落盘函数（manager 注入，路径含任务/平台维度）；
     log(line)  → 步骤日志函数（进发布记录的 log 字段）。返回执行到的步数。
     dup_check  → 提交前探测页面重名提示（建书专用）：平台实时校验喊「已
@@ -778,6 +781,79 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     # （2026-10-08 深夜实案）。
                     note(i, "跳过点击（gate：动作由后续步骤单次执行）")
                     continue
+                # Fanqie can restore an autosaved draft from an earlier failed
+                # attempt and place a blocking modal over the editor.  The
+                # modal is unrelated to the chapter currently being filled;
+                # choosing "继续编辑" would restore stale content and then
+                # submit the wrong chapter.  Dismiss it before clicking
+                # 「下一步」 so the normal publish flow can proceed.
+                stale_draft = page.call(
+                    "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                    "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                    "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal,"
+                    ".byte-modal-wrapper')].filter(vis);"
+                    "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('有刚刚更新的草稿'));"
+                    "if(!d)return{ok:false};"
+                    "const b=[...d.querySelectorAll('button,[role=button]')].find(e=>"
+                    "(e.innerText||'').replace(/\\s+/g,'').trim()==='放弃');"
+                    "if(!b)return{ok:false,err:'button'};b.click();return{ok:true};}",
+                    timeout=10) or {}
+                # The editor can mount this prompt as a byte-modal wrapper
+                # before its text is available on the wrapper node.  In that
+                # short React render window the scoped lookup above returns
+                # false even though the visible overlay already blocks the
+                # trusted click on 「下一步」.  Detect the rendered prompt
+                # from the visible body and dismiss it through the same
+                # pointer path used for consequential buttons.
+                if not stale_draft.get("ok"):
+                    stale_point = page.call(
+                        "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                        "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                        "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
+                        "const ds=[...document.querySelectorAll('body *')].filter(e=>vis(e)&&"
+                        "norm(e.innerText).includes('有刚刚更新的草稿'));"
+                        "ds.sort((a,b)=>norm(a.innerText).length-norm(b.innerText).length);"
+                        "const d=ds[0];if(!d)return null;"
+                        "const b=[...d.querySelectorAll('button,[role=button],a')].find(e=>"
+                        "vis(e)&&norm(e.innerText)==='放弃');if(!b)return null;"
+                        "const r=b.getBoundingClientRect(),x=Math.round(r.x+r.width/2),"
+                        "y=Math.round(r.y+r.height/2),hit=document.elementFromPoint(x,y);"
+                        "if(!hit||(hit!==b&&!b.contains(hit)&&!hit.contains(b)))return null;"
+                        "return{x:x,y:y};}", timeout=10) or {}
+                    if stale_point.get("x"):
+                        page.send("Input.dispatchMouseEvent", {
+                            "type": "mousePressed", "x": stale_point["x"],
+                            "y": stale_point["y"], "button": "left", "clickCount": 1},
+                            timeout=8.0)
+                        page.send("Input.dispatchMouseEvent", {
+                            "type": "mouseReleased", "x": stale_point["x"],
+                            "y": stale_point["y"], "button": "left", "clickCount": 1},
+                            timeout=8.0)
+                        stale_draft = {"ok": True, "via": "scoped-pointer"}
+                if stale_draft.get("ok"):
+                    note(i, "已放弃旧草稿恢复提示")
+                    # A DOM click can return successfully while Arco's
+                    # transition/React handler has not closed the overlay.
+                    # Do not continue into the submit action with the modal
+                    # still covering the editor: that can click the wrong
+                    # action or leave the current chapter unsubmitted.
+                    deadline = time.time() + 3.0
+                    while time.time() < deadline:
+                        still_visible = page.call(
+                            "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                            "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                            "return [...document.querySelectorAll('[role=dialog],.arco-modal,.byte-modal-wrapper')]"
+                            ".filter(vis).some(e=>(e.innerText||'').replace(/\\s+/g,'').includes('有刚刚更新的草稿'))||"
+                            "[...document.querySelectorAll('body *')].some(e=>vis(e)&&"
+                            "(e.innerText||'').replace(/\\s+/g,'').includes('有刚刚更新的草稿'));}",
+                            timeout=10)
+                        if not still_visible:
+                            break
+                        time.sleep(0.2)
+                    else:
+                        raise FlowError("番茄旧草稿恢复提示点击后仍未关闭")
+                    time.sleep(0.2)
                 if dup_check:
                     # 事前预检：填表阶段平台实时校验（fill 派发过 change 事件，
                     # blur/输入即触发）喊了重名就别点了，点了也必被拒
@@ -841,8 +917,14 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                         "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
                         "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
-                        "if(gm){var g=[...document.querySelectorAll('.el-dialog,.modal,[role=dialog],[class*=modal]')]"
-                        ".find(vis);"
+                        # Match dialog containers only. A broad class substring
+                        # also catches ordinary descendants such as
+                        # .arco-modal-title, which made this skip the actual
+                        # editor click even though no blocking dialog existed.
+                        "if(gm){var g=[...document.querySelectorAll('.el-dialog,.modal,[role=dialog],"
+                        ".arco-modal,.byte-modal-wrapper')]"
+                        ".filter(e=>vis(e)&&e.querySelector('button,[role=button]')).find(e=>{"
+                        "const x=(e.innerText||'').trim();return x.length>0;});"
                         "if(g)return{ok:false,err:'modal-open'};}"
                         "const els=[...document.querySelectorAll(scope||'button')].filter(vis);"
                         "let cands=els.filter(e=>{const x=(e.innerText||'').trim();"
@@ -999,8 +1081,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
                         "const d=[...ds].reverse().find(e=>(e.innerText||'').includes(mark));"
                         "if(!d)return{ok:false,err:'dialog'};"
-                        "const es=[...d.querySelectorAll('button,label,[role=button]')].filter(vis);"
-                        "const e=es.find(x=>(x.innerText||'').trim()===label);"
+                        "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
+                        "const es=[...d.querySelectorAll('button,[role=button],label')].filter(vis);"
+                        "let e=es.find(x=>norm(x.innerText)===norm(label));"
+                        "if(!e)e=es.find(x=>norm(x.innerText).includes(norm(label)));"
+                        "if(!e&&norm(label)==='确认发布')e=d.querySelector('button.arco-btn-primary');"
                         "if(!e)return{ok:false,err:'action'};e.click();return{ok:true};}",
                         dialog_mark, label, timeout=15) or {}
 
@@ -1008,10 +1093,18 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     return bool(page.call(
                         "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                         "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                        # Do not include every node whose class contains "modal":
+                        # Fanqie's title itself is .arco-modal-title, which can
+                        # become the last text match and hide its switch children.
                         "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
-                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-                        "const ss=d?[...d.querySelectorAll('button[role=switch],[role=switch]')].filter(vis):[];"
-                        "const s=ss.at(-1);return !!(s&&s.getAttribute('aria-checked')==='true');}", timeout=10))
+                        "let d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                        "if(!d)d=document.body;const ss=[...d.querySelectorAll('button[role=switch],"
+                        "input[type=checkbox],.arco-switch')].filter(vis);"
+                        "const labeled=ss.filter(s=>(s.closest('label')?.innerText||s.parentElement?.innerText||'').includes('定时发布'));"
+                        "const s=(labeled.length?labeled:ss).at(-1);if(!s)return false;"
+                        "const c=String(s.className||'');return s.getAttribute('aria-checked')==='true'||"
+                        "s.checked===true||s.getAttribute('data-checked')==='true'||"
+                        "s.getAttribute('aria-pressed')==='true'||/(^|\\s)(is-checked|is-active|checked|active|arco-switch-checked|switch-checked)(\\s|$)/i.test(c)||c.includes('arco-switch-checked');}", timeout=10))
 
                 def fq_schedule_switch_point():
                     """Return the visible switch center in the current dialog.
@@ -1026,13 +1119,34 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                         "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                         "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
                         "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                        # Scope to actual dialog containers; matching generic
+                        # modal/dialog classes also catches the title node.
                         "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
                         "let d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
                         "if(!d)d=[...ds].reverse().find(e=>(e.innerText||'').includes('定时发布'));"
-                        "const s=d&&[...d.querySelectorAll('button[role=switch],[role=switch]')]"
-                        ".filter(vis).at(-1);if(!s)return null;const r=s.getBoundingClientRect();"
-                        "return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),"
-                        "checked:s.getAttribute('aria-checked')==='true'};}", timeout=10)
+                        # The live page has briefly rendered the modal without
+                        # its text node while React was committing the second
+                        # publish-settings render. In that window the dialog
+                        # is visible and the switch is usable, but text-based
+                        # scoping returns no container. Fall back to the
+                        # visible Arco switch itself instead of declaring the
+                        # timed control missing.
+                        "if(!d)d=document.body;const ss=[...d.querySelectorAll('button[role=switch],"
+                        "input[type=checkbox],.arco-switch')].filter(vis);"
+                        "const labeled=ss.filter(s=>(s.closest('label')?.innerText||s.parentElement?.innerText||'').includes('定时发布'));"
+                        "let s=(labeled.length?labeled:ss).at(-1);"
+                        "if(!s){const ts=[...d.querySelectorAll('*')].filter(e=>vis(e)&&"
+                        "(e.innerText||'').trim()==='定时发布');ts.sort((a,b)=>a.getBoundingClientRect().width-b.getBoundingClientRect().width);"
+                        "let e=ts[0];for(let n=0;e&&n<5;n++,e=e.parentElement){"
+                        "const r=e.getBoundingClientRect();const c=[...e.querySelectorAll('*')].filter(x=>vis(x)&&"
+                        "x.getBoundingClientRect().left>=r.left+r.width*.45);if(c.length){"
+                        "c.sort((a,b)=>(a.getBoundingClientRect().width*a.getBoundingClientRect().height)-"
+                        "(b.getBoundingClientRect().width*b.getBoundingClientRect().height));s=c[0];break;}}}"
+                        "if(!s)return null;const r=s.getBoundingClientRect();"
+                        "const c=String(s.className||'');return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),"
+                        "checked:s.getAttribute('aria-checked')==='true'||s.checked===true||"
+                        "s.getAttribute('data-checked')==='true'||s.getAttribute('aria-pressed')==='true'||"
+                        "/(^|\\s)(is-checked|is-active|checked|active|arco-switch-checked|switch-checked)(\\s|$)/i.test(c)||c.includes('arco-switch-checked')};}", timeout=10)
 
                 def fq_enable_schedule():
                     if fq_schedule_enabled():
@@ -1047,21 +1161,53 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             break
                         time.sleep(0.6)
                     if not point.get("x"):
+                        # Last-resort live control lookup. This is deliberately
+                        # still scoped to a visible switch and never clicks
+                        # the child .arco-switch-dot; the previous failure was
+                        # a transient modal text/render race, not absence of
+                        # the platform control.
+                        point = page.call(
+                            "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                            "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                            "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                            "const ss=[...document.querySelectorAll('button[role=switch],.arco-switch')]"
+                            ".filter(vis);const s=ss.at(-1);if(!s)return null;const r=s.getBoundingClientRect();"
+                            "return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),"
+                            "checked:s.getAttribute('aria-checked')==='true'||s.classList.contains('arco-switch-checked')};}",
+                            timeout=10) or {}
+                    if not point.get("x"):
                         raise FlowError("番茄发布设置里找不到定时发布开关")
-                    # Use the same trusted CDP input path as other platform
-                    # controls.  A synthetic DOM click leaves aria-checked
-                    # false on the current Fanqie React form.
-                    page.send("Input.dispatchMouseEvent", {
-                        "type": "mousePressed", "x": point["x"], "y": point["y"],
-                        "button": "left", "clickCount": 1}, timeout=8.0)
-                    page.send("Input.dispatchMouseEvent", {
-                        "type": "mouseReleased", "x": point["x"], "y": point["y"],
-                        "button": "left", "clickCount": 1}, timeout=8.0)
-                    deadline = time.time() + 2.0
-                    while time.time() < deadline:
-                        if fq_schedule_enabled():
-                            return
-                        time.sleep(0.15)
+                    # Newer Arco builds accept the semantic button click;
+                    # older builds need the trusted CDP pointer path below.
+                    dom_clicked = page.call(
+                        "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+                        "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'))"
+                        "||[...ds].reverse().find(e=>(e.innerText||'').includes('定时发布'));"
+                        "const s=d&&d.querySelector('button[role=switch]');"
+                        "if(!s)return{ok:false};s.click();return{ok:true};}", timeout=10) or {}
+                    if dom_clicked.get("ok"):
+                        deadline = time.time() + 1.2
+                        while time.time() < deadline:
+                            if fq_schedule_enabled():
+                                return
+                            time.sleep(0.12)
+                    # React occasionally drops the first CDP pointer sequence
+                    # while the publish dialog is finishing its transition.
+                    # Retry the real button center, never the switch-dot child,
+                    # and read the controlled state after each attempt.
+                    for _attempt in range(4):
+                        page.send("Input.dispatchMouseEvent", {
+                            "type": "mousePressed", "x": point["x"], "y": point["y"],
+                            "button": "left", "clickCount": 1}, timeout=8.0)
+                        page.send("Input.dispatchMouseEvent", {
+                            "type": "mouseReleased", "x": point["x"], "y": point["y"],
+                            "button": "left", "clickCount": 1}, timeout=8.0)
+                        deadline = time.time() + 1.0
+                        while time.time() < deadline:
+                            if fq_schedule_enabled():
+                                return
+                            time.sleep(0.12)
+                        point = fq_schedule_switch_point() or point
                     raise FlowError("番茄定时发布开关点击后仍未开启（页面未接受真实点击）")
 
                 def fq_pick_date(day):
@@ -1181,7 +1327,6 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                 except ValueError:
                     raise FlowError("定时发布时间格式应为 HH:MM：%s" % raw_time)
                 force_schedule = bool(st.get("force_schedule") or raw_date)
-                queued_hint_prev = False   # 上一轮弹窗是否带定时横幅（点否前预判用）
                 # force_direct：今天就要上线——平台弹「建议本章定时发布」
                 # 或「有定时待发布章节」横幅时一律点否拒绝、直接确认发布
                 # （2026-10-18 用户指令：新书首发今天可发，别全排到明天）
@@ -1193,6 +1338,17 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                     state = fq_state()
                     dialog_text = str(state.get("dialog") or "")
                     body_text = str(state.get("body") or "")
+                    # A page-level quota rejection can close the settings
+                    # dialog. Report the actual platform feedback instead of
+                    # trying to click a confirmation button that disappeared.
+                    # A submission quota does not prove a later date is usable.
+                    page_limit = any(mark in body_text for mark in (
+                        "提交字数超出每日上限", "提交字数超过每日上限",
+                        "投稿字数超过每日上限",
+                        "投稿字数超出每日上限"))
+                    if (page_limit and not dialog_text and
+                            "/publish/" in str(state.get("url") or "")):
+                        raise FlowError("番茄提示提交字数超出每日上限；本次未确认提交，请额度恢复后核对章节状态再续发")
                     if "发布提示" in dialog_text and "错别字" in dialog_text:
                         if not fq_click("发布提示", "提交").get("ok"):
                             raise FlowError("番茄错别字提示框没有提交按钮")
@@ -1224,7 +1380,6 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             or dialog_text
                         queued_hint = ("建议本章定时发布" in dialog_text or
                                        "有定时待发布章节" in dialog_text)
-                        queued_hint_prev = queued_hint
                         use_schedule = ((force_schedule or queued_hint)
                                         and not force_direct)
                         if use_schedule:
@@ -1243,6 +1398,23 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             # 选自己的日期撞队列顺序（被拒即「指定的定时发布
                             # 时间不符合要求」）。
                             prefill = fq_read_slot()
+                            # A stale client-side prefill can point back to the
+                            # first day of an existing queue (for example
+                            # 10/20 while the local ledger is already at
+                            # 11/11).  Never move a new chapter backwards;
+                            # use the cadence computed from the last confirmed
+                            # slot in that case.
+                            if prefill.get("date") and prefill.get("time"):
+                                try:
+                                    _prefill_dt = datetime.datetime.strptime(
+                                        prefill["date"] + " " + prefill["time"],
+                                        "%Y-%m-%d %H:%M")
+                                    _requested_dt = datetime.datetime.combine(
+                                        trial_day, trial_time)
+                                    if _prefill_dt < _requested_dt:
+                                        prefill = {}
+                                except Exception:
+                                    pass
                             if prefill.get("date") and prefill.get("time"):
                                 values["scheduled_date"] = prefill["date"]
                                 values["scheduled_time"] = prefill["time"]
@@ -1275,7 +1447,23 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                                 time.sleep(0.5)
                                 note(i, "已关闭平台预填的定时开关（今天直发）")
                         before_submit = fq_state()
-                        if not fq_click("发布设置", "确认发布").get("ok"):
+                        if "发布设置" not in str(before_submit.get("dialog") or ""):
+                            continue
+                        confirmed = fq_click("发布设置", "确认发布")
+                        if not confirmed.get("ok"):
+                            # The button is present in the live Arco dialog,
+                            # but a React re-render can briefly make text
+                            # matching stale.  Re-query the active dialog and
+                            # click its primary action directly before failing.
+                            confirmed = page.call(
+                                "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                                "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                                "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+                                "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
+                                "const e=d&&d.querySelector('button.arco-btn-primary');"
+                                "if(!e)return{ok:false,err:'primary'};e.click();return{ok:true};}",
+                                timeout=10) or {}
+                        if not confirmed.get("ok"):
                             raise FlowError("番茄发布设置没有确认发布按钮")
                         feedback_marks = ["每日上限", "半小时以后", "发布时间间隔",
                                           "同一时间", "请选择是否使用 AI"]
@@ -1411,6 +1599,37 @@ def run_flow(page, steps, values=None, config=None, auto_submit=False,
                             if moved.get("done"):
                                 break
                             time.sleep(float(st.get("page_settle") or 0.8))
+                    if not row:
+                        # Fanqie accepts the publish request before its
+                        # chapter-management list is updated.  A single
+                        # immediate read can therefore report a false
+                        # negative (the page still ends at the preceding
+                        # chapter).  Refresh the same management URL and
+                        # re-read the visible rows for a bounded period
+                        # before treating the receipt as a failure.
+                        for _verify_try in range(8):
+                            time.sleep(3.0)
+                            try:
+                                vpage.navigate(url, timeout=float(
+                                    st.get("nav_timeout") or 40))
+                                vpage.wait_for(st.get("sel") or
+                                               ".el-table__row, tr",
+                                               timeout=float(st.get("timeout") or 25))
+                                time.sleep(float(st.get("page_settle") or 1))
+                                rows = vpage.call(
+                                    "(sel)=>[...document.querySelectorAll(sel)]"
+                                    ".filter(e=>{const r=e.getBoundingClientRect();"
+                                    "return r.width>0&&r.height>0;})"
+                                    ".map(e=>(e.innerText||'').replace(/\\s+/g,' ').trim())"
+                                    ".filter(Boolean)",
+                                    st.get("row_sel") or ".el-table__row, tr",
+                                    timeout=15) or []
+                                row = next((str(r) for r in rows
+                                            if number_mark and number_mark in str(r)), "")
+                                if row:
+                                    break
+                            except Exception:
+                                continue
                     if not row:
                         raise FlowError("发布状态核验失败：章节管理页找不到本章「%s」"
                                         % (number_mark or title))

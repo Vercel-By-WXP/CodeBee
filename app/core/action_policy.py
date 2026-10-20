@@ -25,9 +25,11 @@ _SPECS.update({name: ActionSpec(name, "yellow", "write", ("workspace",))
                for name in _WRITE})
 
 
-def spec_for(name: str) -> ActionSpec | None:
+def spec_for(name: str, *, known_mcp=None) -> ActionSpec | None:
     name = str(name or "").strip()
     if name.startswith("mcp__") and name.count("__") >= 2:
+        if known_mcp is not None and name not in {str(x).strip() for x in known_mcp}:
+            return None
         return ActionSpec(name, "yellow", "mcp", ("external_process",))
     return _SPECS.get(name)
 
@@ -37,16 +39,21 @@ def catalog() -> tuple[ActionSpec, ...]:
 
 
 def preflight(name: str, *, args: dict | None = None,
-              sandbox: dict | None = None, known: bool = True) -> dict:
+              sandbox: dict | None = None, known: bool = True,
+              known_mcp=None) -> dict:
     """Return a pure decision envelope before a tool implementation runs."""
     sandbox = sandbox if isinstance(sandbox, dict) else {}
     name = str(name or "").strip()
-    spec = spec_for(name)
+    spec = spec_for(name, known_mcp=known_mcp)
     if not known or spec is None:
         return {"decision": "deny", "reason": "unknown_action", "zone": "yellow"}
     args = args if isinstance(args, dict) else {}
     if name == "fs_manage" and str(args.get("action") or "").strip().lower() == "delete":
         return {"decision": "deny", "reason": "red_line_delete", "zone": "red"}
+    from . import zone_policy
+    zone = zone_policy.resolve(name, spec.zone, args=args, sandbox=sandbox)
+    if zone == "red":
+        return {"decision": "deny", "reason": "red_line", "zone": "red"}
     disabled = {str(item).strip() for item in (sandbox.get("disabled_tools") or [])}
     if name in disabled:
         return {"decision": "deny", "reason": "disabled_action", "zone": spec.zone}
@@ -55,10 +62,8 @@ def preflight(name: str, *, args: dict | None = None,
     bare_name = name.split("__", 2)[2] if name.startswith("mcp__") and name.count("__") >= 2 else name
     if allowlist is not None and name not in allowed and bare_name not in allowed:
         return {"decision": "deny", "reason": "action_not_allowed", "zone": spec.zone}
-    if spec.zone == "red":
-        return {"decision": "deny", "reason": "red_line", "zone": "red"}
-    if spec.zone == "yellow" and sandbox.get("require_approval"):
+    if zone == "yellow" and sandbox.get("require_approval"):
         approved = {str(x).strip() for x in (sandbox.get("approved_tools") or [])}
         if name not in approved and bare_name not in approved:
             return {"decision": "needConfirm", "reason": "approval_required", "zone": "yellow"}
-    return {"decision": "autoExecute", "reason": "allowed", "zone": spec.zone}
+    return {"decision": "autoExecute", "reason": "allowed", "zone": zone}

@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -86,6 +87,16 @@ def run_tests() -> None:
         print(output, file=sys.stderr)
         raise GateError("全量测试未通过（退出码 %s；完整输出见上方日志）" %
                         result.returncode)
+    # TextTestRunner writes its authoritative summary to stderr. Do not allow
+    # unrelated stdout (including a child process's lookalike text) to satisfy
+    # the release gate, and require the summary to be the stream's final result.
+    output = result.stderr or ""
+    summary = re.search(
+        r"Ran\s+([1-9][0-9]*) tests? in [^\r\n]+\r?\n\r?\n"
+        r"OK(?: \([^\r\n]+\))?\s*\Z", output)
+    if not summary:
+        print(output.strip(), file=sys.stderr)
+        raise GateError("全量测试没有可验证的 unittest 成功汇总（需包含非零 Ran 和 OK）")
 
 
 def _pack_json(raw: str) -> dict:

@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import novel_feedback, paths, revisions
+from . import novel_feedback, paths, prompt_templates, revisions
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "skills.json"
@@ -1061,13 +1061,15 @@ def learn_from_run(run_id, use_orchestrator=True):
                     injected_txt = "\n".join(
                         "- [%s] %s" % (lid, (by_id.get(lid) or {}).get("title", ""))
                         for lid in registered) or "（本次未注入历史教训，violates 一律填 []）"
-                    prompt = (LEARN_PROMPT.replace("__CATEGORIES__", "、".join(LESSON_CATEGORIES))
-                              .replace("__TYPE__", str(task.get("type")))
-                              .replace("__GOAL__", (task.get("goal") or "")[:600])
-                              .replace("__INJECTED__", injected_txt)
-                              .replace("__VERDICT__", verdict_txt)
-                              .replace("__ISSUES__",
-                                       "\n".join("- %s" % i.get("note", "") for i in issues)[:3000] or "（无）"))
+                    prompt = prompt_templates.render_values(LEARN_PROMPT, {
+                        "__CATEGORIES__": "、".join(LESSON_CATEGORIES),
+                        "__TYPE__": str(task.get("type")),
+                        "__GOAL__": (task.get("goal") or "")[:600],
+                        "__INJECTED__": injected_txt,
+                        "__VERDICT__": verdict_txt,
+                        "__ISSUES__": "\n".join(
+                            "- %s" % i.get("note", "") for i in issues)[:3000] or "（无）",
+                    })
                     # 推理模型的思考会吞掉全部预算：max_tokens 给足才有正文可解析
                     res = modelhub.chat(prov["id"], model, prompt, max_tokens=8000, timeout=300)
                     if res.get("ok"):

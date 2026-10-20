@@ -45,8 +45,9 @@ def bucket_chapter_rows(rows):
     即定时队列排到的日期）。没有对应行时为空串。"""
     out = {"total": 0, "published": 0, "scheduled": 0, "review": 0,
            "rejected": 0, "published_nos": [], "scheduled_nos": [],
+           "review_nos": [],
            "last_publish_at": "", "last_schedule_at": ""}
-    nos, sched_nos = set(), set()
+    nos, sched_nos, review_nos = set(), set(), set()
     pub_ts, sched_ts = [], []
     for t in rows or []:
         t = str(t)
@@ -75,8 +76,11 @@ def bucket_chapter_rows(rows):
                 sched_ts.append(ts)
         elif any(k in t for k in _STATUS_REVIEW):
             out["review"] += 1
+            if m:
+                review_nos.add(int(m.group(1)))
     out["published_nos"] = sorted(nos)
     out["scheduled_nos"] = sorted(sched_nos)
+    out["review_nos"] = sorted(review_nos)
     out["last_publish_at"] = max(pub_ts) if pub_ts else ""
     out["last_schedule_at"] = max(sched_ts) if sched_ts else ""
     return out

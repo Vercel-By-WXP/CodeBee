@@ -367,7 +367,8 @@ def _safe_attachment_target(workdir, name):
     cursor = root
     for part in target.relative_to(root).parts:
         cursor = cursor / part
-        if cursor.is_symlink() or (hasattr(cursor, "is_junction") and cursor.is_junction()):
+        junction_check = getattr(cursor, "is_junction", None)
+        if cursor.is_symlink() or (callable(junction_check) and junction_check()):
             raise ValueError("附件目标路径包含不安全链接")
     resolved = target.resolve(strict=False)
     if resolved != root and root not in resolved.parents:

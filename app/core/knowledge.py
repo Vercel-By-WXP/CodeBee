@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths, platform_rules, revisions, skills
+from . import paths, platform_rules, prompt_templates, revisions, skills
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "knowledge.json"
@@ -467,11 +467,12 @@ def learn_from_run(run_id):
         if not orch:
             return 0
         prov, model = orch
-        prompt = (KNOWLEDGE_PROMPT
-                  .replace("__CATEGORIES__", "、".join(skills.LESSON_CATEGORIES))
-                  .replace("__TYPE__", str(task.get("type")))
-                  .replace("__GOAL__", (task.get("goal") or "")[:600])
-                  .replace("__MATERIAL__", material))
+        prompt = prompt_templates.render_values(KNOWLEDGE_PROMPT, {
+            "__CATEGORIES__": "、".join(skills.LESSON_CATEGORIES),
+            "__TYPE__": str(task.get("type")),
+            "__GOAL__": (task.get("goal") or "")[:600],
+            "__MATERIAL__": material,
+        })
         res = modelhub.chat(prov["id"], model, prompt, max_tokens=4000, timeout=300)
         if not res.get("ok"):
             return 0

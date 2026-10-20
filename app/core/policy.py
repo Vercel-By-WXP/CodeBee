@@ -58,6 +58,23 @@ def normalize_sandbox(spec=None, workdir=None):
         import re
         if not image or not re.match(r"^[A-Za-z0-9][A-Za-z0-9._/:@-]*$", image):
             raise ValueError("Docker 镜像名无效")
+    format_locks = []
+    raw_locks = spec.get("format_locks")
+    if isinstance(raw_locks, (list, tuple)):
+        for raw_lock in raw_locks[:32]:
+            if not isinstance(raw_lock, dict):
+                continue
+            extensions = [str(x).strip().lower()[:16]
+                          for x in (raw_lock.get("extensions") or [])
+                          if str(x).strip()][:32]
+            channel = str(raw_lock.get("channel") or "").strip()[:80]
+            if extensions and channel:
+                format_locks.append({
+                    "extensions": extensions,
+                    "channel": channel,
+                    "reason": str(raw_lock.get("reason") or "").strip()[:240],
+                })
+    internal_dir = str(spec.get("internal_dir") or ".codebee").strip()[:120]
     allowed_tools = None
     if "allowed_tools" in spec:
         raw_tools = spec.get("allowed_tools")
@@ -83,6 +100,7 @@ def normalize_sandbox(spec=None, workdir=None):
             "network": network, "timeout_s": timeout,
             "max_output_bytes": output,
             "backend": backend, "docker_image": image,
+            "format_locks": format_locks, "internal_dir": internal_dir,
             "disabled_tools": normalize_disabled_tools(spec.get("disabled_tools")),
             "allowed_tools": allowed_tools,
             "approved_tools": approved_tools,

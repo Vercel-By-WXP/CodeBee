@@ -285,6 +285,17 @@ def release_allowed(task_id):
     return approval.get("status") == "approved"
 
 
+def publish_allowed(task_id, unattended=False):
+    """Gate every live publication on the task's contract approval.
+
+    ``unattended`` is retained for callers and audit compatibility, but it is
+    not an approval source.  A scheduler or background worker must not be able
+    to turn a configured schedule into an external side effect when the task
+    contract still requires human approval.
+    """
+    return release_allowed(task_id)
+
+
 def complete(task_id, run):
     if not isinstance(run, dict) or run.get("status") not in ("done", "failed", "cancelled", "timeout"):
         return None, "完成回执只能关联终态运行"

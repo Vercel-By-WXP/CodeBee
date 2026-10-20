@@ -23,6 +23,8 @@ import threading
 import time
 import traceback
 
+from . import prompt_templates
+
 # 仅保留给旧测试/诊断代码观察；生产 enqueue 永远不向这里写入。
 _QUEUE = queue.Queue()
 CANCELS = {}
@@ -1272,11 +1274,13 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     ]
     if not is_win:
         env_lines.append("brew: %s" % (shutil.which("brew") or "缺失"))
-    prompt = (AI_REPAIR_PROMPT.replace("__CMD__", failed_cmd or "（未知）")
-              .replace("__LOG__", log_tail)
-              .replace("__ENV__", "\n".join(env_lines))
-              .replace("__OS__", _repair_os_label())
-              .replace("__ALLOW__", " / ".join(p.strip() for p in _repair_allow())))
+    prompt = prompt_templates.render_values(AI_REPAIR_PROMPT, {
+        "__CMD__": failed_cmd or "（未知）",
+        "__LOG__": log_tail,
+        "__ENV__": "\n".join(env_lines),
+        "__OS__": _repair_os_label(),
+        "__ALLOW__": " / ".join(p.strip() for p in _repair_allow()),
+    })
     step, log_abs = store.add_step(run_id, "ai-repair", agent["id"], agent.get("label"),
                                    note="自动诊断修复", model=agent.get("model") or "")
     res = runner.run_agent(agent, prompt, readonly=True, timeout=300,

@@ -614,7 +614,8 @@ def set_auto_publish(task_id, ap):
     return True
 
 
-def get_task(task_id):
+def get_task(task_id, *, strict=False):
+    """Read a task; strict callers distinguish unreadable files from deletion."""
     if not _valid_id(task_id):
         return None
     with LOCK:
@@ -626,7 +627,11 @@ def get_task(task_id):
             t = json.loads(p.read_text(encoding="utf-8"))
             _TASKS[task_id] = t
             return t
+        except FileNotFoundError:
+            return None
         except Exception:
+            if strict:
+                raise
             return None
     return None
 

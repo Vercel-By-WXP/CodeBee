@@ -13,6 +13,8 @@ fanqienovel.com/main/writer/create 建书弹层；入口走作家后台首页点
 """
 from __future__ import annotations
 
+from urllib.parse import quote
+
 CONFIG = {
     "id": "fanqie",
     "label": "番茄",
@@ -26,7 +28,10 @@ CONFIG = {
     # volume_js 换卷，manager._collect_all_volumes 负责循环。
     "count_rows_js":
         "()=>[...document.querySelectorAll('tr')]"
-        ".filter(tr => tr.querySelectorAll(':scope > td').length >= 4)"
+        # Chromium's Element.querySelectorAll(':scope > td') is inconsistent
+        # on this page and returned zero for real six-cell rows.  Count the
+        # direct cell children through children instead.
+        ".filter(tr => [...tr.children].filter(c => c.tagName === 'TD').length >= 4)"
         ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
     # 新建作品尚未提交章节时，章节管理页没有 tr，但会明确显示该空状态。
     # 对账应把它当作远端 0 章，而不是改版/登录失效。
@@ -222,7 +227,13 @@ def chapter_manage_url(book):
     """章节管理页（上线验证用）。"""
     bid = str((book or {}).get("book_id") or "")
     if bid:
-        return "https://fanqienovel.com/main/writer/chapter-manage/" + bid
+        # The current writer console appends the work title as a query-like
+        # path segment (``/<book_id>&<title>``).  Without it the page can
+        # render the shell but leave the chapter table unhydrated, making the
+        # preflight ledger guard stop every unattended batch.
+        title = str((book or {}).get("title") or "").strip()
+        suffix = ("&" + quote(title, safe="") if title else "")
+        return "https://fanqienovel.com/main/writer/chapter-manage/" + bid + suffix
     return CONFIG["home"] + "book-manage"
 
 
@@ -255,3 +266,42 @@ def resolve_book_id(page, book):
     if not m:
         return ""
     return m.group(1) or m.group(2) or m.group(3) or ""
+
+
+def reconcile_book_id(page, book):
+    """Return (found, book_id, error); only trust a miss on a loaded works page."""
+    import re
+    import time
+    title = str((book or {}).get("title") or "").strip()
+    if not title:
+        return False, "", "作品名为空"
+    try:
+        page.navigate(CONFIG["home"] + "book-manage", timeout=30)
+        for _try in range(6):
+            result = page.real_click_text(title, scope="a,button,[role=button],span,li,div,section",
+                                          contains=False)
+            if (result or {}).get("ok"):
+                time.sleep(2.5)
+                match = re.search(r"book-info/(\d+)|chapter-manage/(\d+)|writer/(\d+)/publish",
+                                  str(page.url() or ""))
+                if match:
+                    return True, match.group(1) or match.group(2) or match.group(3), ""
+                return False, "", "已点中同名作品，但无法从平台地址提取作品编号"
+            time.sleep(1.0)
+        probe = page.call(
+            "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
+            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
+            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "(e.innerText||'').trim().includes('创建作品'));"
+            "const loading=[...document.querySelectorAll('.arco-spin,[aria-busy=true]')].some(vis);"
+            "return{ready:document.readyState==='complete'&&location.href.includes('/main/writer/')"
+            "&&location.href.includes('book-manage'),create,loading,titleVisible};}" , title, 500)
+        if (probe and probe.get("ready") and probe.get("create") and
+                not probe.get("loading") and not probe.get("titleVisible")):
+            return False, "", ""
+        if probe and probe.get("titleVisible"):
+            return False, "", "番茄已显示同名作品，但无法可靠打开并提取作品编号"
+        return False, "", "番茄作品管理列表未完整加载"
+    except Exception as exc:
+        return False, "", str(exc)[:240]

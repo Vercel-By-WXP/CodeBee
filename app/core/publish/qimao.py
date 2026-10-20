@@ -219,6 +219,45 @@ def resolve_book_id(page, book):
     return m.group(1) or m.group(2) or m.group(3) or ""
 
 
+def reconcile_book_id(page, book):
+    """Return (found, book_id, error); empty results are trusted only on a loaded list."""
+    import re
+    import time
+    title = str((book or {}).get("title") or "").strip()
+    if not title:
+        return False, "", "作品名为空"
+    try:
+        page.navigate(CONFIG["book_manage"], timeout=30)
+        for _try in range(6):
+            result = page.real_click_text(title, scope="a,button,[role=button],span,li,div,section",
+                                          contains=False)
+            if (result or {}).get("ok"):
+                time.sleep(2.5)
+                match = re.search(r"manage\?id=(\d+)|draft\?id=(\d+)|information\?id=(\d+)",
+                                  str(page.url() or ""))
+                if match:
+                    return True, match.group(1) or match.group(2) or match.group(3), ""
+                return False, "", "已点中同名作品，但无法从平台地址提取作品编号"
+            time.sleep(1.0)
+        probe = page.call(
+            "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
+            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
+            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "(e.innerText||'').trim().includes('创建作品'));"
+            "const loading=[...document.querySelectorAll('.el-loading-mask,[aria-busy=true]')].some(vis);"
+            "return{ready:document.readyState==='complete'&&location.href.includes('/front/book-manage'),"
+            "create,loading,titleVisible};}" , title, 500)
+        if (probe and probe.get("ready") and probe.get("create") and
+                not probe.get("loading") and not probe.get("titleVisible")):
+            return False, "", ""
+        if probe and probe.get("titleVisible"):
+            return False, "", "七猫已显示同名作品，但无法可靠打开并提取作品编号"
+        return False, "", "七猫作品管理列表未完整加载"
+    except Exception as exc:
+        return False, "", str(exc)[:240]
+
+
 def draft_url(book):
     """草稿箱页（发章真发布链中转站）。"""
     bid = str((book or {}).get("book_id") or "")

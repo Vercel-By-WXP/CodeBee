@@ -13,7 +13,7 @@ import re
 import time
 from pathlib import Path
 
-from . import capability_runtime, modelhub, runner, usage, volumes
+from . import capability_runtime, modelhub, prompt_templates, runner, usage, volumes
 
 MAX_SUBTASKS = 4
 DEFAULT_OUTLINE_TIMEOUT = 900   # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够
@@ -229,12 +229,13 @@ def workdir_recon(workdir, max_chars=_RECON_MAX_CHARS):
 
 def _code_plan_prompt(task):
     """代码规划 prompt 组装（编排者与 CLI 两处共用同一份，保证同任务同 prompt）。"""
-    return (CODE_PLAN_PROMPT
-            .replace("__N__", str(MAX_SUBTASKS))
-            .replace("__GOAL__", task["goal"])
-            .replace("__CONTEXT__", task.get("context") or "（无）")
-            .replace("__VERIFY__", task.get("verify_command") or "（未配置）")
-            .replace("__RECON__", workdir_recon(task.get("workdir") or "")))
+    return prompt_templates.render_values(CODE_PLAN_PROMPT, {
+        "__N__": str(MAX_SUBTASKS),
+        "__GOAL__": task["goal"],
+        "__CONTEXT__": task.get("context") or "（无）",
+        "__VERIFY__": task.get("verify_command") or "（未配置）",
+        "__RECON__": workdir_recon(task.get("workdir") or ""),
+    })
 
 
 REVIEW_OUTLINE_PROMPT = """你是内容主编。请为下面的创作任务拟一份写作大纲（要点列表，3-8 条），
@@ -667,31 +668,35 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
         vol_block, vol_key = "", ""
     if start > 1:
         locked_block = locked_serial_outline_block(task, start, start + n - 1)
-        prompt = (SERIAL_CONTINUE_OUTLINE_PROMPT
-                  .replace("__SKILLS__", sk_block)
-                  .replace("__DONE__", str(done))
-                  .replace("__START__", str(start))
-                  .replace("__END__", str(start + n - 1))
-                  .replace("__N__", str(n)).replace("__W__", str(wpc))
-                  .replace("__VOLUMES_KEY__", vol_key)
-                  .replace("__VOLUMES__", vol_block)
-                  .replace("__STYLE_ANCHOR__", prev_style_anchor(task)
-                           or "（前文未记录文风锚，请依据前情大纲与最新一章结尾自行归纳，"
-                              "归纳后全批保持一致）")
-                  .replace("__PREV_OUTLINE__", prev_lines or "（无大纲记录，请依据下方最新一章结尾与小说目标衔接）")
-                  .replace("__LOCKED_OUTLINE__", locked_block or "（无）")
-                  .replace("__PREV_TAIL__", prev_tail or "（无）")
-                  .replace("__EARLY_FINISH__", early_block)
-                  .replace("__GOAL__", task["goal"])
-                  .replace("__CONTEXT__", task.get("context") or "（无）"))
+        prompt = prompt_templates.render_values(SERIAL_CONTINUE_OUTLINE_PROMPT, {
+            "__SKILLS__": sk_block,
+            "__DONE__": str(done),
+            "__START__": str(start),
+            "__END__": str(start + n - 1),
+            "__N__": str(n),
+            "__W__": str(wpc),
+            "__VOLUMES_KEY__": vol_key,
+            "__VOLUMES__": vol_block,
+            "__STYLE_ANCHOR__": prev_style_anchor(task)
+            or "（前文未记录文风锚，请依据前情大纲与最新一章结尾自行归纳，归纳后全批保持一致）",
+            "__PREV_OUTLINE__": prev_lines or "（无大纲记录，请依据下方最新一章结尾与小说目标衔接）",
+            "__LOCKED_OUTLINE__": locked_block or "（无）",
+            "__PREV_TAIL__": prev_tail or "（无）",
+            "__EARLY_FINISH__": early_block,
+            "__GOAL__": task["goal"],
+            "__CONTEXT__": task.get("context") or "（无）",
+        })
     else:
-        prompt = (SERIAL_OUTLINE_PROMPT.replace("__SKILLS__", sk_block)
-                  .replace("__N__", str(n)).replace("__W__", str(wpc))
-                  .replace("__VOLUMES_KEY__", vol_key)
-                  .replace("__VOLUMES__", vol_block)
-                  .replace("__EARLY_FINISH__", early_block)
-                  .replace("__GOAL__", task["goal"])
-                  .replace("__CONTEXT__", task.get("context") or "（无）"))
+        prompt = prompt_templates.render_values(SERIAL_OUTLINE_PROMPT, {
+            "__SKILLS__": sk_block,
+            "__N__": str(n),
+            "__W__": str(wpc),
+            "__VOLUMES_KEY__": vol_key,
+            "__VOLUMES__": vol_block,
+            "__EARLY_FINISH__": early_block,
+            "__GOAL__": task["goal"],
+            "__CONTEXT__": task.get("context") or "（无）",
+        })
 
     def _norm(data):
         """规范化大纲 + 收卷名。卷边界不采信模型，只采信它给的卷名/卷弧光。"""
@@ -813,6 +818,8 @@ __CRITIQUE__
 
 请重设计前 __COUNT__ 章的大纲节拍（只动这 __COUNT__ 章，不碰后续章节），针对反馈解决具体问题。
 先保留原稿有效之处，再提出能改变事件、人物选择或后果的改动；不能只换词、加怪声或添加钩子。
+逐项核对书名/简介/任务目标承诺的核心看点：不能只在对白或旁白中介绍能力、身份或未来爽点；至少让首个故事单元中的行动实际用到该机制，并产生阶段结果或新问题。若首单元暂不适合兑现，说明延后原因与读者当前可获得的替代看点，不把承诺写成既成结果。
+首个回报应匹配题材，可为爽感、信息发现、悬念推进、关系变化、惊险、幽默、氛围或其他有效体验；不强加打脸、金手指、危机或每章爆点。
 前 100/200/600 字只是阅读观察点，不是硬指标；不预设危机、金手指、背叛或打脸。
 判断开篇是否成立，要看题材承诺是否兑现、事件是否具体、读者能否理解人物处境和下一步，尊重本稿叙述方式。
 只输出一个 ```json 代码块，不要输出其他内容。JSON 结构：
@@ -874,12 +881,13 @@ def redesign_opening(task, outline=None, critique="", author_agent=None, workdir
                                   ("（章末钩子：%s）" % c["hook"]) if c.get("hook") else "",
                                   ("（爆点：%s）" % c["highlight"]) if c.get("highlight") else "")
         for idx, c in enumerate(outline["chapters"][:count]))
-    prompt = (SERIAL_OPENING_REBUILD_PROMPT
-              .replace("__CRITIQUE__", (critique or "（无具体意见，开篇评分未达线）")[:600])
-              .replace("__COUNT__", str(count))
-              .replace("__GOAL__", task.get("goal", ""))
-              .replace("__CONTEXT__", task.get("context") or "（无）")
-              .replace("__OUTLINE__", head_txt))
+    prompt = prompt_templates.render_values(SERIAL_OPENING_REBUILD_PROMPT, {
+        "__CRITIQUE__": (critique or "（无具体意见，开篇评分未达线）")[:600],
+        "__COUNT__": str(count),
+        "__GOAL__": task.get("goal", ""),
+        "__CONTEXT__": task.get("context") or "（无）",
+        "__OUTLINE__": head_txt,
+    })
     cap = capability_runtime.block_for(task, run_id)
     if cap:
         prompt += "\n\n" + cap
@@ -1083,9 +1091,10 @@ def make_review_outline(task, deadline=None, run_id=None):
     if not orch:
         return None
     prov, model = orch
-    prompt = (REVIEW_OUTLINE_PROMPT
-              .replace("__GOAL__", task["goal"])
-              .replace("__CONTEXT__", task.get("context") or "（无）"))
+    prompt = prompt_templates.render_values(REVIEW_OUTLINE_PROMPT, {
+        "__GOAL__": task["goal"],
+        "__CONTEXT__": task.get("context") or "（无）",
+    })
     cap = capability_runtime.block_for(task, run_id)
     if cap:
         prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap

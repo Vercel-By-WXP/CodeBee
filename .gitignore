@@ -77,3 +77,6 @@ app/current-browser.png
 cloud/phone-relay/public/ui/
 cloud/phone-relay/.wrangler-validation-*/
 作品信息-*.md
+
+# User requested to keep the docs tree out of future Git submissions.
+/docs/

@@ -428,7 +428,7 @@ def _tool_read_file(workdir, args):
     return text
 
 
-def _tool_write_file(workdir, args):
+def _tool_write_file(workdir, args, sandbox=None):
     rel = str(args.get("path") or "").replace("\\", "/").strip("/")
     if not rel or ".." in Path(rel).parts or any(":" in seg for seg in Path(rel).parts):
         return "（非法路径: %s）" % rel
@@ -437,11 +437,18 @@ def _tool_write_file(workdir, args):
     dest = (base / rel).resolve()
     if base not in dest.parents:
         return "（路径越界: %s）" % rel
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    # newline=""：不翻译换行——模型回写 read_file 读到的 CRLF 内容时，
-    # 默认翻译会二次翻成 \r\r\n
-    with dest.open("w", encoding="utf-8", newline="") as fh:
-        fh.write(content)
+    # Keep the legacy path checks above, then use the shared boundary for an
+    # atomic replacement. This prevents a crashed model write from leaving a
+    # truncated file while preserving the existing newline behavior.
+    try:
+        from .workspace_boundary import WorkspaceBoundary
+        WorkspaceBoundary(
+            workdir,
+            format_locks=(sandbox or {}).get("format_locks") if isinstance(sandbox, dict) else None,
+            internal_dir=(sandbox or {}).get("internal_dir", ".codebee")
+        ).write(rel, content)
+    except Exception as exc:
+        return "（写入失败: %s）" % str(exc)[:240]
     return "已写入 %s（%d 字符，UTF-8）" % (rel, len(content))
 
 
@@ -1008,7 +1015,7 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
         result["task_id"], result.get("run_id") or "", task_type)
 
 
-def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creator=None,
+def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_creator=None,
                disabled_tools=None, sandbox=None, checkpoint_run_id="",
                tool_output_run_id=""):
     from . import policy
@@ -1017,7 +1024,18 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
         sandbox = policy.normalize_sandbox({}, workdir)
     denied.update(sandbox.get("disabled_tools") or [])
     from . import action_policy
-    decision = action_policy.preflight(name, args=args, sandbox=sandbox, known=True)
+    from . import agent_approval
+    approval_task = str(sandbox.get("approval_task") or checkpoint_run_id or "").strip()
+    known_mcp = sandbox.get("known_mcp_tools") if isinstance(sandbox, dict) else None
+    spec = action_policy.spec_for(name, known_mcp=known_mcp)
+    if (spec is not None and spec.zone == "yellow" and
+            sandbox.get("require_approval") and approval_task and checkpoint_run_id and
+            agent_approval.is_approved(approval_task, checkpoint_run_id,
+                                       action=name, group=spec.group)):
+        sandbox = dict(sandbox)
+        sandbox["approved_tools"] = list(set(sandbox.get("approved_tools") or ()) | {name})
+    decision = action_policy.preflight(name, args=args, sandbox=sandbox, known=True,
+                                       known_mcp=known_mcp)
     if decision.get("decision") != "autoExecute":
         if decision.get("decision") == "needConfirm":
             return "（工具需要显式审批，未执行: %s）" % str(name or "")[:120]
@@ -1133,6 +1151,8 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
                 return "（命令授权%s，未执行；拒绝后不会自动重放，请模型检查并重新请求）" % reason
             result = fn(workdir, args or {}, cancel_event=cancel_event,
                         deadline=deadline, sandbox=sandbox)
+        elif name == "write_file":
+            result = fn(workdir, args or {}, sandbox=sandbox)
         else:
             result = fn(workdir, args or {})
         if snapshot_paths:
@@ -1149,6 +1169,38 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
         return result
     except Exception as e:
         return "工具执行失败: %s" % (e)
+
+
+def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creator=None,
+               disabled_tools=None, sandbox=None, checkpoint_run_id="",
+               tool_output_run_id=""):
+    """Run one tool and emit a compact decision receipt for every call."""
+    from . import action_policy, audit, policy
+    effective = sandbox if isinstance(sandbox, dict) else policy.normalize_sandbox({}, workdir)
+    from . import agent_approval
+    approval_task = str(effective.get("approval_task") or checkpoint_run_id or "").strip()
+    known_mcp = effective.get("known_mcp_tools")
+    spec = action_policy.spec_for(name, known_mcp=known_mcp)
+    if (spec is not None and spec.zone == "yellow" and effective.get("require_approval")
+            and approval_task and checkpoint_run_id
+            and agent_approval.is_approved(approval_task, checkpoint_run_id,
+                                           action=name, group=spec.group)):
+        effective = dict(effective)
+        effective["approved_tools"] = list(set(effective.get("approved_tools") or ()) | {name})
+    decision = action_policy.preflight(name, args=args, sandbox=effective, known=True,
+                                       known_mcp=known_mcp)
+    result = _exec_tool_impl(
+        workdir, name, args, cancel_event=cancel_event, deadline=deadline,
+        task_creator=task_creator, disabled_tools=disabled_tools,
+        sandbox=effective, checkpoint_run_id=checkpoint_run_id,
+        tool_output_run_id=tool_output_run_id)
+    text = str(result or "")
+    failed = any(token in text for token in ("拒绝", "未执行", "失败", "错误"))
+    audit.record_decision(
+        name, decision.get("decision"), decision.get("zone"),
+        decision.get("reason"), status="error" if failed else "returned",
+        run_id=checkpoint_run_id or tool_output_run_id, args=args, result=text)
+    return result
 
 
 # ---------------------------------------------------------------- 协议适配
@@ -1899,9 +1951,14 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     mcp_called = []
     mcp_discovered = 0
     try:
-        mcp_discovered = len(_mcp_specs(sandbox=sandbox, workdir=workdir))
+        mcp_specs = _mcp_specs(sandbox=sandbox, workdir=workdir)
+        mcp_discovered = len(mcp_specs)
+        sandbox["known_mcp_tools"] = [str(item.get("full_name") or "")
+                                      for item in mcp_specs if item.get("full_name")]
     except Exception:
         mcp_discovered = 0
+        sandbox["known_mcp_tools"] = []
+    sandbox["approval_task"] = str(sandbox.get("approval_task") or checkpoint_run_id or "")
     tool_output_run_id = checkpoint_run_id or secrets.token_hex(16)
     text = ""
     iters = 0

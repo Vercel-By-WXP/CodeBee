@@ -31,6 +31,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from . import prompt_templates
+
 from . import modelhub, paths, tlsctx
 
 FANQIE_TUTORIAL_URL = "https://fanqienovel.com/writer/zone/tutorial?enter_from=menu"
@@ -185,9 +187,10 @@ def _distill(title, text):
     if not orch:
         return None
     prov, model = orch
-    prompt = (_DISTILL_PROMPT
-              .replace("__TITLE__", title[:80])
-              .replace("__BODY__", text[:TEXT_SNIPPET]))
+    prompt = prompt_templates.render_values(_DISTILL_PROMPT, {
+        "__TITLE__": title[:80],
+        "__BODY__": text[:TEXT_SNIPPET],
+    })
     res = modelhub.chat(prov["id"], model, prompt, max_tokens=4000, timeout=300)
     if not res.get("ok"):
         return None

@@ -43,18 +43,31 @@
 
 请按 [QUICKSTART.md](QUICKSTART.md) 操作。
 
-## 支持的 CLI
+## CLI 接入范围
 
-| CLI | 版本要求 | 编排状态 |
+| CLI | CodeBee 接入情况 | 版本/系统验收记录 |
 | --- | --- | --- |
-| Codex CLI | 【占位：按官方当前稳定版】 | 支持 |
-| Claude Code | 【占位：按官方当前稳定版】 | 支持 |
-| OpenCode / QwenCode / Aider | 【占位：按各项目官方当前稳定版】 | 支持 |
-| Kimi Code / MiMo Code / Grok Build / Pi | 【占位：按各项目官方当前稳定版】 | 支持 |
-| DeepSeek Harness / Gemini CLI / CodeBuddy CLI | 【占位：按各项目官方当前稳定版】 | 支持 |
-| Trae Agent / MiniMax Code / Mistral Vibe / Cline CLI | 【占位：按各项目官方当前稳定版】 | 支持 |
-| OpenClaw | 【占位：按官方当前稳定版】 | 支持 |
-| Goose / GitHub Copilot CLI | 【占位：按各项目官方当前稳定版】 | 仅检测，暂不自动派发 |
+| Codex CLI | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Claude Code | 自动编排 | 目标版本和系统须随发布验收记录 |
+| OpenCode CLI | 自动编排 | 目标版本和系统须随发布验收记录 |
+| QwenCode | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Aider | 自动编排 | 目标版本和系统须随发布验收记录 |
+| OpenClaw | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Kimi Code | 自动编排 | 目标版本和系统须随发布验收记录 |
+| MiMo Code | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Grok Build | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Pi | 自动编排 | 目标版本和系统须随发布验收记录 |
+| DeepSeek Harness | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Gemini CLI | 自动编排 | 目标版本和系统须随发布验收记录 |
+| CodeBuddy CLI | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Trae Agent | 自动编排 | 目标版本和系统须随发布验收记录 |
+| MiniMax Code | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Goose | 仅检测与交互启动 | 暂无自动任务派发入口 |
+| Mistral Vibe | 自动编排 | 目标版本和系统须随发布验收记录 |
+| Cline CLI | 自动编排 | 目标版本和系统须随发布验收记录 |
+| GitHub Copilot CLI | 仅检测与交互启动 | 暂无自动任务派发入口 |
+
+“自动编排”表示 CodeBee 有对应的 CLI 调用模板，不代表所有版本、操作系统、模型与认证方式都通过了端到端验收。CodeBee 可在本机检测 CLI 版本；发布验收记录应写明 CLI 版本、操作系统、模型/认证方式、验证流程和结果。没有这类记录时，该组合视为未验证。本表只声明接入范围，不代替逐版本验收。记录格式见 [CLI_COMPATIBILITY.md](CLI_COMPATIBILITY.md)。我们借鉴 [ElyOffice 的兼容清单](https://github.com/ELY-Open-Source/ElyOffice/blob/main/docs/compatibility.md)，把已验证行为与未验证范围分开说明。
 
 CodeBee 不安装或替换这些 CLI。请先按各项目官方文档完成登录和凭据配置。
 
