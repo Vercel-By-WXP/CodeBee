@@ -1,0 +1,164 @@
+/* CodeBee UI refresh — layered, low-noise workbench polish.
+ * Intentionally presentation-only: existing DOM contracts and application behavior remain intact. */
+:root {
+  --ui-radius-xs: 7px;
+  --ui-radius-sm: 10px;
+  --ui-radius-md: 14px;
+  --ui-radius-lg: 18px;
+  --ui-ease: cubic-bezier(.2,.75,.25,1);
+  --ui-focus: color-mix(in srgb, var(--accent, #6d8cff) 74%, white);
+  --ui-surface-shadow: 0 8px 28px rgba(0, 0, 0, .08);
+  --ui-card-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .025);
+  --ui-control-height: 36px;
+}
+* { scrollbar-color: color-mix(in srgb, var(--muted, #888) 32%, transparent) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted, #888) 27%, transparent); border: 2px solid transparent; border-radius: 99px; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted, #888) 48%, transparent); border: 2px solid transparent; background-clip: padding-box; }
+:where(button, input, textarea, select, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+button, input, textarea, select { font-family: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled) { transition: background-color .16s var(--ui-ease), border-color .16s var(--ui-ease), color .16s var(--ui-ease), box-shadow .16s var(--ui-ease), transform .16s var(--ui-ease); }
+button:disabled { cursor: not-allowed; }
+::selection { background: color-mix(in srgb, var(--accent, #6d8cff) 28%, transparent); }
+html { scrollbar-gutter: stable; }
+body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+#app { isolation: isolate; }
+.side-rail {
+  padding: 12px 7px;
+  gap: 7px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+}
+.rail-btn {
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+.rail-btn:hover { border-color: var(--border); transform: translateY(-1px); }
+.rail-btn.active { border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); }
+#sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+}
+.brand-row { gap: 7px; }
+#btn-brand { border-radius: 11px; }
+#btn-brand:hover, .brand-tool:hover { background: var(--panel2); }
+.brand-name { letter-spacing: -.035em; }
+#btn-new-task, .new-task {
+  min-height: 42px;
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 3px 9px rgba(0,0,0,.06);
+}
+#btn-new-task:hover, .new-task:hover { transform: translateY(-1px); box-shadow: var(--ui-card-shadow); }
+.side-quick { gap: 3px; }
+.qitem {
+  min-height: 37px;
+  border-radius: 10px;
+  padding-inline: 10px;
+  border: 1px solid transparent;
+}
+.qitem:hover { border-color: var(--border); }
+.qitem.active, .qitem[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+}
+.stask { border-radius: 9px; }
+.stask:hover { background: color-mix(in srgb, var(--panel2) 75%, transparent); }
+.stask.active { border-radius: 9px; }
+.topbar {
+  min-height: 54px;
+  padding-inline: clamp(14px, 2vw, 26px);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+}
+.topbar .page-title { letter-spacing: -.025em; font-weight: 650; }
+.topbar .top-actions { gap: 7px; }
+main { scroll-behavior: smooth; }
+.page { min-width: 0; }
+.page h1, .page h2, .page h3 { letter-spacing: -.025em; }
+.page h1 { font-weight: 680; }
+.page h2 { font-weight: 640; }
+button.primary, .primary {
+  box-shadow: 0 1px 0 rgba(255,255,255,.12) inset, 0 2px 5px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+button.primary:hover:not(:disabled), .primary:hover:not(:disabled) {
+  filter: brightness(1.045);
+  box-shadow: 0 1px 0 rgba(255,255,255,.14) inset, 0 5px 14px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+button.ghost, button.secondary, .icon-btn, .brand-tool {
+  border-radius: 10px;
+}
+button.ghost:hover:not(:disabled), button.secondary:hover:not(:disabled), .icon-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--panel2);
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea, select {
+  border-radius: 10px;
+  transition: border-color .16s var(--ui-ease), box-shadow .16s var(--ui-ease), background-color .16s var(--ui-ease);
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+textarea:focus, select:focus {
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
+  outline: none;
+}
+:where(.card, .panel, .settings-card, .overview-card, .stat-card, .run-card, .provider-card) {
+  border-radius: var(--ui-radius-md);
+}
+#inspector {
+  border-left: 1px solid var(--border);
+  background: var(--sidebar);
+}
+.insp-head { min-height: 52px; border-bottom: 1px solid var(--border); }
+.insp-tabs { padding: 8px 10px; gap: 5px; }
+.insp-tab { min-height: 36px; border-radius: 9px; }
+.insp-tab:hover { background: var(--panel2); }
+.insp-tab[aria-selected="true"], .insp-tab.active { background: color-mix(in srgb, var(--accent) 11%, var(--panel)); }
+.modal-wrap, .cmdk-mask, .welcome-wrap { backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
+.modal, .cmdk, .welcome-card {
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.22);
+}
+.modal-head, .modal-foot { gap: 10px; }
+.modal-head { border-bottom-color: var(--border); }
+.modal-foot { border-top-color: var(--border); }
+.cmdk-input { border-radius: 12px; }
+.cmdk-list { overscroll-behavior: contain; }
+.token-gate .gate-card { border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--ui-surface-shadow); }
+#ctx-menu { border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--ui-surface-shadow); }
+a { text-underline-offset: 3px; }
+:where(.activity-row, .mobile-task, .mobile-workspace, .help-toc button) { transition: background-color .15s var(--ui-ease), border-color .15s var(--ui-ease); }
+@media (hover: hover) and (pointer: fine) {
+  .activity-row:hover, .mobile-task:hover { transform: translateX(1px); }
+}
+@media (min-width: 901px) {
+  .topbar { min-height: 58px; }
+  #sidebar { box-shadow: 1px 0 0 rgba(255,255,255,.012); }
+  main { overscroll-behavior: contain; }
+}
+@media (max-width: 900px) {
+  .side-rail { border-right: 0; }
+  #sidebar { border-right: 0; }
+  .topbar { padding-inline: 12px; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  button.primary, .primary { min-height: 40px; }
+  :where(button, .qitem, .rail-btn, .insp-tab) { touch-action: manipulation; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
