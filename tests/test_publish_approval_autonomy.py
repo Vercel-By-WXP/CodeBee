@@ -548,6 +548,13 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                 self.assertEqual(record["next_retry_at"], 1060)
                 self.assertEqual(record["error"], error)
 
+    def test_direct_publish_timeout_message_has_no_manual_submit_handoff(self):
+        from core.publish import auto
+
+        error = "第 12 章平台动作等待超时（5 分钟）；已保留自动恢复记录，稍后会自动对账重试"
+        self.assertTrue(auto._scheduled_error_is_persistent(error))
+        self.assertNotIn("人工提交", error)
+
     def test_draft_only_batches_are_not_resumed_as_publications(self):
         from core.publish import auto
 

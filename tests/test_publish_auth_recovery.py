@@ -120,6 +120,247 @@ class PublishAuthRecoveryTests(unittest.TestCase):
             self.assertEqual(len(page.navigations), 1)
             start_upload.assert_called_once()
 
+    def test_auth_retry_backoff_stays_short_after_verification_completes(self):
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(auto, "_BATCH_JOB_FILE",
+                                   Path(temp) / "batches.json"), \
+                    mock.patch.object(auto, "_BATCH_JOBS", None):
+                auto._remember_automatic_batch(
+                    "task-auth", "fanqie", True, False, None,
+                    False, False, "", False, True, None)
+                self.assertTrue(auto._retain_automatic_batch_for_retry(
+                    "task-auth", "平台等待登录或安全验证，验证完成后自动重试",
+                    now=1000))
+                record = auto._load_batch_jobs()["task-auth"]
+
+        # A completed login must not wait behind the normal 60s→30m backoff;
+        # the watchdog/profile probe can safely recheck it shortly.
+        self.assertEqual(record["status"], "retry_wait")
+        self.assertEqual(record["next_retry_at"], 1015.0)
+
+    def test_standalone_create_book_waits_for_auth_then_retries_once(self):
+        from core.publish import manager
+
+        class ImmediateThread:
+            def __init__(self, target, **_kwargs):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        states = iter((
+            {"status": "waiting_login"},
+            {"status": "waiting_login"},
+            {"status": "connected"},
+        ))
+        with mock.patch.object(manager, "_CREATE_BOOK_RECOVERY", set()), \
+                mock.patch.object(manager, "_st", side_effect=lambda _slot: next(states)), \
+                mock.patch.object(manager, "connect",
+                                   return_value=(False, "平台等待登录或安全验证")) as connect, \
+                mock.patch.object(manager, "create_book_async",
+                                   return_value=(True, "")) as create, \
+                mock.patch.object(manager.ledger, "book_for",
+                                   return_value={"book_id": "book-1"}), \
+                mock.patch.object(manager.threading, "Thread", ImmediateThread), \
+                mock.patch.object(manager.time, "monotonic",
+                                   side_effect=(0, 0, 1, 2, 2)), \
+                mock.patch.object(manager.time, "sleep"):
+            self.assertTrue(manager._queue_create_book_auth_recovery(
+                "task-auth", "fanqie", "", {
+                    "force": False, "force_confirmed": False,
+                    "force_reason": ""}))
+
+        self.assertGreaterEqual(connect.call_count, 1)
+        self.assertTrue(all(call.args == ("fanqie",) and
+                             call.kwargs == {"account": "", "unattended": True}
+                             for call in connect.call_args_list))
+        create.assert_called_once_with(
+            "task-auth", "fanqie", auto_submit=True, account="",
+            force=False, force_confirmed=False, force_reason="")
+
+    def test_standalone_create_book_keeps_recovery_after_worker_failure(self):
+        from core.publish import manager
+
+        class ImmediateThread:
+            def __init__(self, target, **_kwargs):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        states = iter((
+            {"status": "waiting_login"},
+            {"status": "waiting_login"},
+            {"status": "connected"},
+            {"status": "error", "error": "建书失败：连接断开"},
+            {"status": "error", "error": "建书失败：连接断开"},
+            {"status": "connected"},
+        ))
+        book_results = iter((None, {"book_id": "book-1"}))
+        with mock.patch.object(manager, "_CREATE_BOOK_RECOVERY", set()), \
+                mock.patch.object(manager, "_st", side_effect=lambda _slot: next(states)), \
+                mock.patch.object(manager, "_set"), \
+                mock.patch.object(manager, "connect",
+                                   return_value=(False, "平台等待登录或安全验证")), \
+                mock.patch.object(manager, "create_book_async",
+                                   return_value=(True, "")) as create, \
+                mock.patch.object(manager.ledger, "book_for",
+                                   side_effect=lambda *_args: next(book_results)), \
+                mock.patch.object(manager.ledger, "recent", return_value=[{
+                    "action": "create_book", "ok": False,
+                    "error": "建书失败：连接断开"}]), \
+                mock.patch.object(manager.threading, "Thread", ImmediateThread), \
+                mock.patch.object(manager.time, "monotonic", return_value=0), \
+                mock.patch.object(manager.time, "sleep"):
+            self.assertTrue(manager._queue_create_book_auth_recovery(
+                "task-auth", "fanqie", "", {
+                    "force": False, "force_confirmed": False,
+                    "force_reason": ""}))
+
+        self.assertEqual(create.call_count, 2)
+
+    def test_standalone_create_book_retries_when_account_is_temporarily_busy(self):
+        from core.publish import manager
+
+        class ImmediateThread:
+            def __init__(self, target, **_kwargs):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        states = iter((
+            {"status": "waiting_login"},
+            {"status": "connected"},
+            {"status": "connected"},
+            {"status": "connected"},
+        ))
+        results = iter(((False, "该账号有操作正在进行中"), (True, "")))
+        with mock.patch.object(manager, "_CREATE_BOOK_RECOVERY", set()), \
+                mock.patch.object(manager, "_st", side_effect=lambda _slot: next(states)), \
+                mock.patch.object(manager, "_set"), \
+                mock.patch.object(manager, "connect",
+                                   return_value=(False, "平台等待登录或安全验证")), \
+                mock.patch.object(manager, "create_book_async",
+                                   side_effect=lambda *args, **kwargs: next(results)) as create, \
+                mock.patch.object(manager.ledger, "book_for",
+                                   return_value={"book_id": "book-1"}), \
+                mock.patch.object(manager.threading, "Thread", ImmediateThread), \
+                mock.patch.object(manager.time, "monotonic", return_value=0), \
+                mock.patch.object(manager.time, "sleep"):
+            self.assertTrue(manager._queue_create_book_auth_recovery(
+                "task-auth", "fanqie", "", {
+                    "force": False, "force_confirmed": False,
+                    "force_reason": ""}))
+
+        self.assertEqual(create.call_count, 2)
+
+    def test_create_book_accepts_auth_recovery_without_second_click(self):
+        from core import contracts, store
+        from core.publish import manager
+
+        lock = mock.Mock()
+        with mock.patch.object(store, "get_task", return_value={"id": "task-auth"}), \
+                mock.patch.object(contracts, "publish_allowed", return_value=True), \
+                mock.patch.object(store, "inherited_book_meta", return_value={
+                    "status": "done", "data": {"book_name": "测试作品"}}), \
+                mock.patch.object(manager.ledger, "book_for", return_value=None), \
+                mock.patch.object(manager.ledger, "recent", return_value=[]), \
+                mock.patch.object(manager, "_st", return_value={"status": "connected"}), \
+                mock.patch.object(manager, "_create_preflight", return_value=""), \
+                mock.patch.object(manager, "automatic_release_kwargs", return_value={}), \
+                mock.patch.object(manager, "_quality_release_guard",
+                                   return_value={"allowed": True}), \
+                mock.patch.object(manager, "_try_action_lock", return_value=lock), \
+                mock.patch.object(manager, "_login_guard",
+                                   return_value=(False, "平台等待登录或安全验证")), \
+                mock.patch.object(manager, "_queue_create_book_auth_recovery",
+                                   return_value=True) as queue:
+            ok, error = manager.create_book_async("task-auth", "fanqie")
+
+        self.assertTrue(ok, error)
+        self.assertEqual(error, "")
+        lock.release.assert_called_once()
+        queue.assert_called_once_with(
+            "task-auth", "fanqie", "",
+            {"force": False, "force_confirmed": False, "force_reason": ""})
+
+    def test_pending_create_recovery_is_recreated_after_restart(self):
+        from core.publish import manager
+
+        state = {
+            "platforms": {
+                "qimao@author": {
+                    "status": "waiting_login",
+                    "pending_create": {
+                        "task_id": "task-auth",
+                        "account": "author",
+                        "force": True,
+                        "force_confirmed": True,
+                        "force_reason": "operator approval",
+                    },
+                },
+            },
+        }
+        with mock.patch.object(manager, "_state", {}), \
+                mock.patch.object(manager, "_load", side_effect=lambda: manager._state.update(state)), \
+                mock.patch.object(manager, "_queue_create_book_auth_recovery",
+                                   return_value=True) as queue:
+            self.assertEqual(manager._resume_pending_create_recoveries(), 1)
+
+        queue.assert_called_once_with(
+            "task-auth", "qimao", "author",
+            {"force": True, "force_confirmed": True,
+             "force_reason": "operator approval"})
+
+    def test_pending_create_markers_are_independent_per_task(self):
+        from core.publish import manager
+
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(manager, "STATUS_FILE", Path(temp) / "state.json"), \
+                mock.patch.object(manager, "_state", {"platforms": {}}):
+            first = {"task_id": "task-a", "account": ""}
+            second = {"task_id": "task-b", "account": ""}
+            manager._remember_pending_create("fanqie", first)
+            manager._remember_pending_create("fanqie", second)
+            entries = manager._st("fanqie")["pending_creates"]
+            self.assertEqual(set(entries), {"task-a", "task-b"})
+
+            manager._forget_pending_create("fanqie", "task-a")
+            state = manager._st("fanqie")
+            self.assertEqual(set(state["pending_creates"]), {"task-b"})
+            self.assertEqual(state["pending_create"]["task_id"], "task-b")
+
+            manager._forget_pending_create("fanqie", "task-b")
+            self.assertEqual(manager._st("fanqie").get("pending_create"), {})
+
+    def test_restart_resumes_all_keyed_pending_create_tasks(self):
+        from core.publish import manager
+
+        state = {
+            "platforms": {
+                "fanqie": {
+                    "pending_creates": {
+                        "task-a": {"task_id": "task-a", "account": ""},
+                        "task-b": {"task_id": "task-b", "account": ""},
+                    },
+                    "pending_create": {
+                        "task_id": "task-a", "account": "",
+                    },
+                },
+            },
+        }
+        with mock.patch.object(manager, "_state", {}), \
+                mock.patch.object(manager, "_load", side_effect=lambda: manager._state.update(state)), \
+                mock.patch.object(manager, "_queue_create_book_auth_recovery",
+                                   return_value=True) as queue:
+            self.assertEqual(manager._resume_pending_create_recoveries(), 2)
+
+        self.assertEqual({call.args[0] for call in queue.call_args_list},
+                         {"task-a", "task-b"})
+
     def test_waiting_login_or_captcha_keeps_page_then_recovers_without_a_waiter(self):
         from core.publish import manager
 

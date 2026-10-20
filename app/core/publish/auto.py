@@ -53,6 +53,7 @@ IDLE_TIMEOUT_S = _env_float("TUTTI_PUBLISH_IDLE_TIMEOUT_S", 300.0)
 TRANSIENT_RETRY_S = 5        # 连接类瞬断的重试前静默（等浏览器缓过来）
 PUBLISH_START_RETRY_BASE_S = 60
 PUBLISH_START_RETRY_MAX_S = 30 * 60
+AUTH_RETRY_DELAY_S = 15
 PUBLISH_START_RETRY_ATTEMPTS = 3
 PUBLISH_READ_RETRY_ATTEMPTS = 3
 BOOK_PREP_RETRY_ATTEMPTS = 3
@@ -182,6 +183,26 @@ def _forget_automatic_batch(task_id):
             _save_batch_jobs()
 
 
+def _automatic_retry_delay(error, attempt):
+    """Choose a retry delay without stranding a recovered login.
+
+    Authentication challenges are never solved here.  Once the platform
+    accepts the persistent profile again, though, the normal exponential
+    backoff could leave a completed verification idle for up to 30 minutes.
+    Probe authentication failures frequently while keeping ordinary
+    browser/network failures on the conservative backoff schedule.
+    """
+    try:
+        auth_recovery = _needs_login_recovery(error)
+    except (NameError, TypeError, ValueError):
+        auth_recovery = False
+    if auth_recovery:
+        return float(AUTH_RETRY_DELAY_S)
+    return min(PUBLISH_START_RETRY_MAX_S,
+               PUBLISH_START_RETRY_BASE_S
+               * (2 ** min(max(0, int(attempt) - 1), 12)))
+
+
 def _retain_automatic_batch_for_retry(task_id, error, now=None):
     """Keep a recoverable failed batch durable for a fresh reconcile/retry.
 
@@ -201,8 +222,7 @@ def _retain_automatic_batch_for_retry(task_id, error, now=None):
             attempt = max(0, int(record.get("attempt") or 0)) + 1
         except (TypeError, ValueError):
             attempt = 1
-        delay = min(PUBLISH_START_RETRY_MAX_S,
-                    PUBLISH_START_RETRY_BASE_S * (2 ** min(attempt - 1, 12)))
+        delay = _automatic_retry_delay(error, attempt)
         record.update(status="retry_wait", error=str(error or "")[:240],
                       attempt=attempt, next_retry_at=now + delay,
                       updated_at=now)
@@ -305,9 +325,7 @@ def resume_interrupted_batches(now=None):
                 record["status"] = "retry_wait"
                 record["error"] = str(error or "")[:240]
                 attempt = max(1, int(record.get("attempt") or 1))
-                delay = min(PUBLISH_START_RETRY_MAX_S,
-                            PUBLISH_START_RETRY_BASE_S
-                            * (2 ** min(attempt - 1, 12)))
+                delay = _automatic_retry_delay(error, attempt)
                 record["next_retry_at"] = now + delay
                 record["updated_at"] = now
                 with _BATCH_JOB_LOCK:
@@ -1763,9 +1781,9 @@ def publish_pending_async(task_id, platform, auto_submit=True, only=None,
                                        "章节未存" % (item["chapter_no"],
                                                      IDLE_TIMEOUT_S / 60))
                     else:
-                        st["error"] = ("第 %d 章发布等待超时（%.0f 分钟）；若在等人工提交，"
-                                       "请提交后重跑剩余章节" % (item["chapter_no"],
-                                                                 IDLE_TIMEOUT_S / 60))
+                        st["error"] = ("第 %d 章平台动作等待超时（%.0f 分钟）；"
+                                       "已保留自动恢复记录，稍后会自动对账重试"
+                                       % (item["chapter_no"], IDLE_TIMEOUT_S / 60))
                     return
                 # A browser/CDP disconnect can be reported asynchronously
                 # after upload_chapter_async accepted the job. Retry only that

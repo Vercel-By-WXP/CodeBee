@@ -3868,8 +3868,9 @@ def _signing_review_scope(workdir, upto_chapter, cap=26000):
     """Build an oldest-first signing sample from the whole manuscript prefix.
 
     Continuation batches may have moved the prefix into ``已成稿/``. Recover
-    those chapters before applying the same cap so rejection checks do not
-    silently lose the very prior text needed to verify continuity.
+    those chapters before applying the cap. Reserve part of the budget for the
+    latest available chapter so a long old prefix cannot crowd the current
+    checkpoint out of the evaluation sample.
     """
     texts, chapters, read_scope = [], {}, []
     remaining = max(0, int(cap or 0))
@@ -3882,23 +3883,47 @@ def _signing_review_scope(workdir, upto_chapter, cap=26000):
     archived_texts = {}
     first_missing = next((chapter for chapter, text in local_texts.items()
                          if not text), None)
-    if first_missing is not None and first_missing > 1:
-        archived_texts = _archived_chapter_texts(
-            workdir, 1, end, first_missing - 1)
-    for chapter in range(1, end + 1):
-        text = local_texts.get(chapter) or archived_texts.get(chapter, "")
-        if not text:
-            continue
+    if first_missing is not None and end > 0:
+        # Ask the archive reader for the complete prefix so it can split
+        # numbered bundles and allocate legacy unnumbered chapters safely.
+        archived_texts = _quality_chapter_texts(workdir, end + 1, end)
+    available = {
+        chapter: local_texts.get(chapter) or archived_texts.get(chapter, "")
+        for chapter in range(1, end + 1)
+    }
+    available = {chapter: text for chapter, text in available.items() if text}
+    latest_chapter = max(available, default=None)
+    # Keep a bounded quarter (at least 1,000 chars when possible) for the
+    # current/latest chapter. The rest remains an oldest-first context sample.
+    latest_reserve = (min(remaining, max(1000, remaining // 4))
+                      if latest_chapter is not None and len(available) > 1
+                      else 0)
+    context_remaining = remaining - latest_reserve
+
+    def append_chapter(chapter, text, allowance):
         header = "### 第 %d 章\n\n" % chapter
-        excerpt = text.strip()[:max(0, remaining - len(header) - 2)]
+        excerpt = text.strip()[:max(0, allowance - len(header) - 2)]
         if not excerpt:
-            break
+            return 0
         texts.append(header + excerpt)
         chapters[chapter] = excerpt
         read_scope.append({"chapter": chapter, "included_chars": len(excerpt),
                            "total_chars": len(text.strip()),
                            "excerpt": len(excerpt) < len(text.strip())})
-        remaining -= len(header) + len(excerpt) + 2
+        return len(header) + len(excerpt) + 2
+
+    for chapter, text in available.items():
+        if chapter == latest_chapter:
+            continue
+        used = append_chapter(chapter, text, context_remaining)
+        context_remaining -= used
+        remaining -= used
+        if context_remaining <= 0:
+            break
+    if latest_chapter is not None and latest_chapter not in chapters:
+        # Unused context allowance can flow to the latest chapter.
+        remaining -= append_chapter(
+            latest_chapter, available[latest_chapter], remaining)
     return texts, chapters, read_scope
 
 

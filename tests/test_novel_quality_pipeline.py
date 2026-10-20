@@ -1140,6 +1140,43 @@ class NovelQualityPipelineTests(unittest.TestCase):
         self.assertIn("### 第 1 章", texts[0])
         self.assertIn("### 第 8 章", texts[-1])
 
+    def test_signing_review_scope_recovers_numbered_archived_chapters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "已成稿"
+            archive.mkdir()
+            (archive / "book.md").write_text(
+                "## 第1章\n归档首章正文含人物设定和前因。\n"
+                "## 第2章\n归档第二章正文含事件结果。",
+                encoding="utf-8",
+            )
+            Path(tmp, "chapter-03.md").write_text(
+                "第三章当前正文。", encoding="utf-8")
+
+            texts, chapters, scope = pipeline._signing_review_scope(tmp, 3)
+
+        self.assertEqual(list(chapters), [1, 2, 3])
+        self.assertIn("归档首章正文含人物设定和前因", chapters[1])
+        self.assertIn("归档第二章正文含事件结果", chapters[2])
+        self.assertEqual([row["chapter"] for row in scope], [1, 2, 3])
+        self.assertIn("归档首章正文含人物设定", "\n".join(texts))
+
+    def test_signing_review_scope_reserves_budget_for_latest_chapter(self):
+        chapter_text = {
+            1: "开篇背景和前因。" + "旧内容" * 1000,
+            2: "中段转折。" + "中段内容" * 1000,
+            3: "最新章节的决定与结果。" + "当前内容" * 1000,
+        }
+        with patch.object(pipeline, "_read_chapter",
+                          side_effect=lambda _workdir, chapter: chapter_text.get(chapter, "")):
+            texts, chapters, scope = pipeline._signing_review_scope(
+                "unused-workdir", 3, cap=1200)
+
+        self.assertIn(1, chapters)
+        self.assertIn(3, chapters)
+        self.assertIn("最新章节的决定与结果", chapters[3])
+        self.assertEqual([row["chapter"] for row in scope], [1, 3])
+        self.assertLessEqual(sum(len(text) for text in texts), 1200)
+
     def test_continuity_prompt_view_excludes_current_and_future_chapters(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

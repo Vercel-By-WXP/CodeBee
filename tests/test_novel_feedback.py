@@ -4,8 +4,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import hashlib
+import json
 
-from app.core import novel_feedback
+from app.core import novel_feedback, skills
 
 
 class NovelFeedbackSeedTests(unittest.TestCase):
@@ -39,11 +40,29 @@ class NovelFeedbackSeedTests(unittest.TestCase):
             record["original_quote"],
             "故事开篇的切入点缺乏足够的吸引力、爽点不够、看点有些不足",
         )
+        self.assertEqual(record["platform"], "unverified")
+        self.assertIn("原文未注明平台", record["source"])
         self.assertFalse(record["can_reapply"])
         self.assertIn("未提供正文", record["submission_scope"])
         self.assertIn("不能据此断定", record["evidence"])
         self.assertEqual(record["trials"], [])
         self.assertEqual(novel_feedback.validate(record)["id"], record["id"])
+
+    def test_local_legacy_copy_cannot_override_seed_source_facts(self):
+        seed = next(row for row in novel_feedback._read(novel_feedback.SEED_FILE)
+                    if row["id"] == "nf-qimao-ai-2000-20261019")
+        stale_copy = dict(seed, platform="qimao",
+                          source="用户提供的七猫签约评估通知原文")
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "novel-feedback.json"
+            path.write_text(json.dumps([stale_copy], ensure_ascii=False),
+                            encoding="utf-8")
+            with patch.object(novel_feedback, "_file", return_value=path):
+                merged = next(row for row in novel_feedback.list_feedback()
+                              if row["id"] == seed["id"])
+
+        self.assertEqual(merged["platform"], "unverified")
+        self.assertEqual(merged["source"], seed["source"])
 
     def test_prior_rejections_are_recorded_as_separate_unverified_cases(self):
         rows = novel_feedback._read(novel_feedback.SEED_FILE)
@@ -112,6 +131,34 @@ class NovelFeedbackSeedTests(unittest.TestCase):
         self.assertIn("首个回报是否具体", block)
         self.assertIn("不能据此断定", block)
 
+    def test_unverified_opening_feedback_only_matches_exact_work(self):
+        row = next(row for row in novel_feedback._read(novel_feedback.SEED_FILE)
+                   if row["id"] == "nf-qimao-ai-2000-20261019")
+        unrelated = {
+            "type": "serial_novel", "platform": "qimao",
+            "title": "AI年代重生：回到改革开放前",
+        }
+        with patch.object(novel_feedback, "list_feedback", return_value=[row]):
+            self.assertEqual(novel_feedback.relevant(unrelated), [])
+            exact = dict(unrelated, title="《%s》" % row["work"])
+            self.assertEqual(novel_feedback.relevant(exact), [row])
+
+    def test_all_exact_work_feedback_records_survive_analogy_limit(self):
+        template = novel_feedback.validate(novel_feedback._read(
+            novel_feedback.SEED_FILE)[0])
+        records = [dict(template, id="own-%d" % idx,
+                        work="My current novel", platform="qimao",
+                        feedback_date="2026-10-%02d" % (10 + idx))
+                   for idx in range(1, 6)]
+        task = {"type": "serial_novel", "platform": "qimao",
+                "title": "My current novel"}
+
+        with patch.object(novel_feedback, "list_feedback", return_value=records):
+            matches = novel_feedback.relevant(task, limit=3)
+
+        self.assertEqual({row["id"] for row in matches},
+                         {"own-%d" % idx for idx in range(1, 6)})
+
     def test_opening_feedback_does_not_leak_to_unrelated_qimao_title(self):
         task = {
             "type": "serial_novel",
@@ -141,7 +188,7 @@ class NovelFeedbackSeedTests(unittest.TestCase):
         self.assertNotIn("nf-qimao-ai-2000-20261019",
                          {row["id"] for row in matches})
 
-    def test_multiple_broad_premise_tags_still_retrieve_a_similar_case(self):
+    def test_unverified_case_is_not_retrieved_as_premise_analogy(self):
         task = {
             "type": "serial_novel", "platform": "qimao",
             "title": "重生后带AI回到1998年",
@@ -152,8 +199,8 @@ class NovelFeedbackSeedTests(unittest.TestCase):
                               return_value=Path(tmp) / "novel-feedback.json"):
                 matches = novel_feedback.relevant(task)
 
-        self.assertIn("nf-qimao-ai-2000-20261019",
-                      {row["id"] for row in matches})
+        self.assertNotIn("nf-qimao-ai-2000-20261019",
+                         {row["id"] for row in matches})
 
     def test_duplicate_broad_tags_do_not_fake_multiple_premise_signals(self):
         row = novel_feedback.validate(novel_feedback._read(
@@ -183,6 +230,19 @@ class NovelFeedbackSeedTests(unittest.TestCase):
 
         self.assertNotIn("nf-qimao-ai-2000-20261019",
                          {row["id"] for row in matches})
+
+    def test_historical_title_in_goal_does_not_claim_same_work(self):
+        task = {
+            "type": "serial_novel", "platform": "qimao",
+            "title": "AI法医的夜班档案",
+            "goal": "参考《重生之我带AI回到了2000年》的开篇反馈，写新的刑侦故事。",
+        }
+        row = next(row for row in novel_feedback._read(novel_feedback.SEED_FILE)
+                   if row["id"] == "nf-qimao-ai-2000-20261019")
+        with patch.object(novel_feedback, "list_feedback", return_value=[row]):
+            matches = novel_feedback.relevant(task)
+
+        self.assertEqual(matches, [])
 
     def test_english_tag_matching_uses_word_boundaries(self):
         self.assertTrue(novel_feedback._tag_in_text("AI", "AI changes the deal."))
@@ -217,15 +277,83 @@ class NovelFeedbackSeedTests(unittest.TestCase):
         self.assertIn("记录字段过长", block)
         self.assertLess(len(block), 1200)
 
+    def test_feedback_block_discloses_records_omitted_by_prompt_budget(self):
+        template = novel_feedback.validate(novel_feedback._read(
+            novel_feedback.SEED_FILE)[0])
+        records = [dict(template, id="own-%d" % idx,
+                        work="My current novel", platform="qimao",
+                        feedback_date="2026-10-%02d" % (10 + idx))
+                   for idx in range(1, 4)]
+        task = {"type": "serial_novel", "platform": "qimao",
+                "title": "My current novel"}
+
+        with patch.object(novel_feedback, "relevant", return_value=records), \
+                patch.object(novel_feedback, "MAX_BLOCK_CHARS", 600):
+            block = novel_feedback.block_for(task)
+
+        self.assertIn("记录字段过长", block)
+        self.assertIn("未注入 2 条记录", block)
+        self.assertIn("own-2", block)
+        self.assertIn("own-3", block)
+
+    def test_feedback_omission_notice_stays_within_budget_for_long_ids(self):
+        template = novel_feedback.validate(novel_feedback._read(
+            novel_feedback.SEED_FILE)[0])
+        records = [dict(template, id=("<x>&" * 60) + str(idx),
+                        work="My current novel", platform="qimao",
+                        feedback_date="2026-10-%02d" % (10 + idx))
+                   for idx in range(1, 5)]
+        task = {"type": "serial_novel", "platform": "qimao",
+                "title": "My current novel"}
+        budget = 2200
+
+        with patch.object(novel_feedback, "relevant", return_value=records), \
+                patch.object(novel_feedback, "MAX_BLOCK_CHARS", budget):
+            block = novel_feedback.block_for(task)
+
+        self.assertIn("未注入", block)
+        self.assertLessEqual(len(block), budget)
+        self.assertNotIn("&amp;", block)
+
+    def test_oversized_escaped_first_record_stays_within_default_budget(self):
+        template = novel_feedback.validate(novel_feedback._read(
+            novel_feedback.SEED_FILE)[0])
+        record = dict(template, id="<&\"'>" * 40,
+                      work="My current novel", platform="qimao",
+                      feedback_date="2026-10-20")
+        for field in ("original_quote", "evidence", "experiment",
+                      "recheck_question", "source"):
+            record[field] = "<&\"'>" * 500
+        task = {"type": "serial_novel", "platform": "qimao",
+                "title": "My current novel"}
+
+        with patch.object(novel_feedback, "relevant", return_value=[record]):
+            block = novel_feedback.block_for(task)
+
+        self.assertLessEqual(len(block), novel_feedback.MAX_BLOCK_CHARS)
+        self.assertIn("摘要受提示预算限制", block)
+
+    def test_feedback_omission_notice_survives_skill_injection(self):
+        task = {"type": "serial_novel", "title": "My current novel"}
+        notice = "（复盘提示预算不足，未注入 2 条记录：own-2、own-3。）"
+        with patch.object(skills.novel_feedback, "block_for",
+                          return_value=notice), \
+                patch.object(skills, "all_packs", return_value=[]), \
+                patch.object(skills, "list_lessons", return_value=[]):
+            block, _used = skills.block_for(task)
+
+        self.assertTrue(block.startswith(notice))
+
     def test_qimao_feedback_does_not_leak_into_fanqie_target(self):
+        record = next(row for row in novel_feedback._read(
+            novel_feedback.SEED_FILE)
+                      if row["id"] == "nf-qimao-shentong-20261015")
         task = {
             "type": "serial_novel", "platform": "fanqie",
-            "title": "重生之我带AI回到了2000年",
+            "title": "神瞳鉴宝：我在当铺断真假",
         }
-        with TemporaryDirectory() as tmp:
-            with patch.object(novel_feedback, "_file",
-                              return_value=Path(tmp) / "novel-feedback.json"):
-                matches = novel_feedback.relevant(task)
+        with patch.object(novel_feedback, "list_feedback", return_value=[record]):
+            matches = novel_feedback.relevant(task)
         self.assertEqual(matches, [])
 
     def test_platform_feedback_is_not_injected_when_target_platform_is_unknown(self):

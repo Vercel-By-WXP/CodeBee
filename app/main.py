@@ -4885,18 +4885,30 @@ def main():
         pass
     try:
         from core.publish import manager as publish_mgr
-        n_pb = publish_mgr.recover_orphans()  # 只收尸 busy；waiting_login 保留验证页供自动复核
-        if n_pb:
-            print("[CodeBee] 崩溃恢复：%d 条平台发布中断标记为可重试" % n_pb)
-        n_sessions = publish_mgr.resume_saved_sessions()
-        if n_sessions:
-            print("[CodeBee] 自动恢复：正在检查 %d 个已登记平台账号的持久登录态" % n_sessions)
-        # Keep watching verification tabs after the finite interactive waiter
-        # ends.  The watcher is passive: it only recognizes a session that
-        # the platform already accepts and never solves a login challenge.
-        publish_mgr.start_auth_watchdog()
     except Exception:
-        pass
+        publish_mgr = None
+    if publish_mgr is not None:
+        try:
+            n_pb = publish_mgr.recover_orphans()  # 只收尸 busy；waiting_login 保留验证页供自动复核
+            if n_pb:
+                print("[CodeBee] 崩溃恢复：%d 条平台发布中断标记为可重试" % n_pb)
+        except Exception:
+            pass
+        try:
+            n_sessions = publish_mgr.resume_saved_sessions()
+            if n_sessions:
+                print("[CodeBee] 自动恢复：正在检查 %d 个已登记平台账号的持久登录态" % n_sessions)
+        except Exception:
+            pass
+        try:
+            # Keep watching verification tabs after the finite interactive
+            # waiter ends. The watcher is passive: it only recognizes a
+            # session that the platform already accepts and never solves a
+            # login challenge. Keep this independent from profile recovery so
+            # one malformed legacy state cannot disable the watchdog.
+            publish_mgr.start_auth_watchdog()
+        except Exception:
+            pass
     try:
         from core import settings_schema
         settings_schema.register_default_namespaces()  # budget/cascade/compaction 配置就绪（幂等）
