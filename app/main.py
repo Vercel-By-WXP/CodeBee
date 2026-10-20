@@ -4732,6 +4732,15 @@ def main():
     _t0 = time.time()
 
     def _step(msg):
+        # 每进一个阶段就重置看门狗窗口（dump_traceback_later 重复调用会替换
+        # 上一个计时器）：语义从「启动总时长超 20s 就拍」收窄为「单一阶段卡
+        # 超 20s 才拍」——总时长随数据量自然增长（本机 891 个 run 读盘就要
+        # 11s），平滑但慢的启动不该误报全线程转储（2026-10-20 实案）。
+        try:
+            import faulthandler
+            faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
+        except Exception:
+            pass
         print("[CodeBee] %s (%.1fs)" % (msg, time.time() - _t0), flush=True)
 
     _ver = ""
@@ -4749,6 +4758,8 @@ def main():
     from core import command_auth as _command_auth
     _backend_profiles.init()
     _command_auth.init()
+    from core import settings_schema
+    settings_schema.init()  # 落盘句柄：此前 init 无人调用、_persist 空转，schema 化调参保存后重启即丢（2026-10-20 实案：数据目录无 settings_v2.json）
     from core import attachments
     n_pc = attachments.cleanup_stale()  # 待提交附件残留清理（崩溃/弃单不堆积）
     if n_pc:
@@ -5133,7 +5144,16 @@ def main():
             print("[CodeBee] （未检测到 Tailscale；安装后重启本服务即可获得外网地址）")
         print("[CodeBee] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
     if not args.no_browser:
-        threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:%d" % args.port)).start()
+        _auto_open = True
+        try:
+            from core import settings_schema
+            _auto_open = bool(
+                settings_schema.get("startup", "auto_open_browser"))
+        except Exception:
+            pass
+        if _auto_open:
+            threading.Timer(1.0, lambda: webbrowser.open(
+                "http://127.0.0.1:%d" % args.port)).start()
     if os.name != "nt":
         # POSIX 的 SIGTERM（kill <pid>）/SIGHUP（关终端窗口）默认动作是立即
         # 终止进程：atexit 不跑，快速隧道的 cloudflared 子进程会变孤儿。转成

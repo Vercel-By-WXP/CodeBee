@@ -280,3 +280,12 @@ def register_default_namespaces():
             ],
             validate=lambda v: None,
         )
+    if "startup" not in _NAMESPACES:
+        register_namespace(
+            "startup",
+            fields=[
+                FieldDef("auto_open_browser", "bool", True,
+                         "服务就绪后自动打开本机 Web UI（关闭后重启不再弹浏览器；桌面端与 --no-browser 启动不受影响）"),
+            ],
+            validate=lambda v: None,
+        )

@@ -17253,7 +17253,7 @@ async function loadSettingsV2() {
   let v2 = null;
   try { v2 = await api("/api/settings-v2"); } catch (e) { box.innerHTML = ""; return; }
   S.settingsV2 = v2;
-  const NS_LABEL = { orchestrator: t("编排引擎"), budget: t("预算"), cascade: t("级联路由") };
+  const NS_LABEL = { orchestrator: t("编排引擎"), budget: t("预算"), cascade: t("级联路由"), startup: t("启动") };
   let html = "<label>" + esc(t("引擎调参（schema 化设置，立即生效）")) + "</label>";
   for (const ns of Object.keys(v2.namespaces || {})) {
     const d = v2.namespaces[ns] || {};

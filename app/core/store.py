@@ -16,6 +16,7 @@ import secrets
 import shutil
 import threading
 import time
+from concurrent import futures
 from pathlib import Path
 
 from . import artifacts, audit, paths, runner, tracing, volumes
@@ -825,16 +826,30 @@ def _sanitize_run_text(r):
 
 def load_all():
     recovered_failures = []
+    # 冷启动大头：几百个 run 的 run.json（本机实测 171MB/891 个）逐个串行读，
+    # 慢盘/杀软扫描下两位数秒（2026-10-20 实案 11.1s，占整次启动的一半）。
+    # 读盘是可并发的 I/O：先在锁外用线程池把文件读成 JSON，再进锁按原顺序
+    # 对账/落盘——入账顺序、收尸口径、异常吞掉策略与串行版完全一致。
+    def _read_json(p):
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    task_files = sorted(paths.TASKS_DIR.glob("*.json"))
+    run_files = sorted(paths.RUNS_DIR.glob("*/run.json"))
+    with futures.ThreadPoolExecutor(
+            max_workers=min(16, max(4, os.cpu_count() or 4))) as _pool:
+        task_blobs = list(_pool.map(_read_json, task_files))
+        run_blobs = list(_pool.map(_read_json, run_files))
     with LOCK:
-        for p in paths.TASKS_DIR.glob("*.json"):
+        for t in task_blobs:
             try:
-                t = json.loads(p.read_text(encoding="utf-8"))
                 _TASKS[t["id"]] = t
             except Exception:
                 pass
-        for p in paths.RUNS_DIR.glob("*/run.json"):
+        for p, r in zip(run_files, run_blobs):
             try:
-                r = json.loads(p.read_text(encoding="utf-8"))
                 r.pop("cancel_event", None)
                 # 存量清洗：早期版本把 CLI 的 ANSI 转义/控制字符原样写进了摘要与
                 # 错误串（`[91m[1mError:`、U+FFFD 乱码墙），读盘时统一洗一遍——

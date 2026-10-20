@@ -3166,6 +3166,7 @@
     "编排引擎": "Orchestration engine",
     "预算": "Budget",
     "级联路由": "Cascade routing",
+    "启动": "Startup",
     "引擎调参（schema 化设置，立即生效）": "Engine tuning (schema-driven settings, effective immediately)",
     "上下文压缩总开关（默认开启；可在设置页或用 TUTTI_COMPACTION=0 关闭）": "Master switch for context compaction (enabled by default; disable in settings or with TUTTI_COMPACTION=0)",
     "触发压缩的压力比阈值": "Pressure ratio threshold that triggers compaction",
