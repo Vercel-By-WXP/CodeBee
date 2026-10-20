@@ -52,7 +52,7 @@ def preflight(name: str, *, args: dict | None = None,
         return {"decision": "deny", "reason": "disabled_action", "zone": spec.zone}
     allowlist = sandbox.get("allowed_tools")
     allowed = {str(x).strip() for x in (allowlist or [])}
-    bare_name = name.rsplit("__", 1)[-1] if name.startswith("mcp__") else name
+    bare_name = name.split("__", 2)[2] if name.startswith("mcp__") and name.count("__") >= 2 else name
     if allowlist is not None and name not in allowed and bare_name not in allowed:
         return {"decision": "deny", "reason": "action_not_allowed", "zone": spec.zone}
     if spec.zone == "red":

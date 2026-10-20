@@ -22,6 +22,9 @@ class ActionPolicyTests(unittest.TestCase):
             "mcp__docs__read", sandbox={"require_approval": True,
                                          "approved_tools": ["read"]})
         self.assertEqual(mcp_approved["decision"], "autoExecute")
+        mcp_nested = action_policy.preflight(
+            "mcp__docs__foo__bar", sandbox={"allowed_tools": ["foo__bar"]})
+        self.assertEqual(mcp_nested["decision"], "autoExecute")
 
     def test_yellow_action_can_require_runtime_approval(self):
         pending = action_policy.preflight(
