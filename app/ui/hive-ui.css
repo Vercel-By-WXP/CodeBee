@@ -5,9 +5,10 @@
   color-scheme: light;
   --cb-bg-0: #f4f6f8;
   --cb-bg-nav: #edf1f4;
-  --cb-bg-rail: #e8edf1;
-  --cb-bg-sidebar: #f1f5f7;
-  --cb-bg-nav-hover: #e6edf1;
+  --cb-bg-rail: #f5f7f8;
+  --cb-bg-sidebar: #fbfbfc;
+  --cb-bg-nav-hover: #f0f1f2;
+  --cb-bg-nav-selected: color-mix(in srgb, var(--cb-brand) 16%, var(--cb-bg-sidebar));
   --cb-bg-1: #fff;
   --cb-bg-2: #f8fafb;
   --cb-bg-inset: #eef2f5;
@@ -53,6 +54,7 @@ html[data-theme="dark"] {
   --cb-bg-rail: #121a20;
   --cb-bg-sidebar: #18222a;
   --cb-bg-nav-hover: #202c35;
+  --cb-bg-nav-selected: color-mix(in srgb, var(--cb-brand) 14%, var(--cb-bg-sidebar));
   --cb-bg-1: #171f27;
   --cb-bg-2: #202a33;
   --cb-bg-inset: #1c252d;
@@ -518,7 +520,7 @@ html[data-skin][data-theme] #sidebar .sdir > summary:hover {
 }
 html[data-skin][data-theme] #sidebar .stask.active {
   color: var(--cb-text-1);
-  background: color-mix(in srgb, var(--cb-brand) 9%, var(--cb-bg-sidebar));
+  background: var(--cb-bg-nav-selected);
   box-shadow: inset 2px 0 var(--cb-brand);
 }
 html[data-skin][data-theme] #sidebar .side-section.tasks,
