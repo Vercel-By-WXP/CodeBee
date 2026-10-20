@@ -9,11 +9,12 @@
     border: 0;
     border-bottom: 1px solid var(--cb-card-border, var(--border));
     border-radius: 17px 17px 0 0;
-    background: color-mix(in srgb, var(--panel2) 48%, var(--panel));
+    background: color-mix(in srgb, var(--panel2) 72%, var(--panel));
   }
 
   #sub-tasks .cmp-box > .cmp-pills .cmp-wd {
     padding-inline: 0;
+    background: transparent;
   }
 
   #sub-tasks .form > .cmp-box {
@@ -139,8 +140,11 @@
     padding: 8px 12px;
     border-bottom: 1px solid var(--cb-card-border, var(--border));
     border-radius: 15px 15px 0 0;
-    background: color-mix(in srgb, var(--panel2) 48%, var(--panel));
+    background: color-mix(in srgb, var(--panel2) 72%, var(--panel));
   }
-  #sub-tasks .cmp-box > .cmp-pills .cmp-wd { padding-inline: 0; }
+  #sub-tasks .cmp-box > .cmp-pills .cmp-wd {
+    padding-inline: 0;
+    background: transparent;
+  }
   #sub-tasks .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
 }
