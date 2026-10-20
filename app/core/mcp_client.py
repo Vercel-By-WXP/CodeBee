@@ -442,6 +442,10 @@ def _tool_specs_cached(force=False, *, sandbox=None, workdir=None):
             if (t["name"] in srv.get("disabled_tools", [])
                     or t["name"] in disabled or full_name in disabled):
                 continue
+            allowlist = (sandbox or {}).get("allowed_tools")
+            if allowlist is not None and full_name not in {str(x).strip() for x in allowlist} \
+                    and t["name"] not in {str(x).strip() for x in allowlist}:
+                continue
             if not _MODEL_TOOL_NAME_RE.fullmatch(full_name) or full_name in seen_names:
                 continue
             seen_names.add(full_name)
@@ -483,8 +487,21 @@ def dispatch_full_name(full_name, arguments, timeout_s=_CALL_TIMEOUT, *,
     if (full_name in set(str(x) for x in (disabled_tools or []))
             or tool in set(str(x) for x in (disabled_tools or []))):
         return {"ok": False, "text": "", "error": "任务策略已禁用 MCP 工具: %s" % full_name}
+    allowlist = (sandbox or {}).get("allowed_tools")
+    if allowlist is not None and full_name not in {str(x).strip() for x in allowlist} \
+            and tool not in {str(x).strip() for x in allowlist}:
+        return {"ok": False, "text": "", "error": "MCP 工具不在任务能力白名单: %s" % full_name}
     if sandbox is None or not workdir:
         return {"ok": False, "text": "", "error": "MCP 调用缺少任务沙箱策略或工作目录，拒绝启动"}
+    # Discovery and execution are separate capabilities. A configured server
+    # is not permission to invoke an arbitrary tool name on it.
+    discovered = list_tools(srv, sandbox=sandbox, workdir=workdir)
+    if not discovered.get("ok"):
+        return {"ok": False, "text": "", "error": "MCP 工具未能完成能力发现，拒绝执行"}
+    known = {str(item.get("name") or "") for item in discovered.get("tools", [])
+             if isinstance(item, dict)}
+    if tool not in known:
+        return {"ok": False, "text": "", "error": "MCP 工具未登记，拒绝执行: %s" % full_name}
     return call_tool(srv, tool, arguments, timeout_s=timeout_s,
                      sandbox=sandbox, workdir=workdir,
                      cancel_event=cancel_event, deadline=deadline)

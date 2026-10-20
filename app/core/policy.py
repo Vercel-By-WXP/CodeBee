@@ -58,11 +58,35 @@ def normalize_sandbox(spec=None, workdir=None):
         import re
         if not image or not re.match(r"^[A-Za-z0-9][A-Za-z0-9._/:@-]*$", image):
             raise ValueError("Docker 镜像名无效")
+    allowed_tools = None
+    if "allowed_tools" in spec:
+        raw_tools = spec.get("allowed_tools")
+        if not isinstance(raw_tools, (list, tuple, set)):
+            raise ValueError("allowed_tools 必须是工具名列表")
+        allowed_tools = []
+        for value in raw_tools:
+            name = str(value or "").strip()[:120]
+            if name and name not in allowed_tools:
+                allowed_tools.append(name)
+            if len(allowed_tools) >= 200:
+                break
+    approved_tools = []
+    raw_approved = spec.get("approved_tools")
+    if isinstance(raw_approved, (list, tuple, set)):
+        for value in raw_approved:
+            name = str(value or "").strip()[:120]
+            if name and name not in approved_tools:
+                approved_tools.append(name)
+            if len(approved_tools) >= 200:
+                break
     return {"allowed_roots": [str(x) for x in roots], "env_allowlist": env,
             "network": network, "timeout_s": timeout,
             "max_output_bytes": output,
             "backend": backend, "docker_image": image,
-            "disabled_tools": normalize_disabled_tools(spec.get("disabled_tools"))}
+            "disabled_tools": normalize_disabled_tools(spec.get("disabled_tools")),
+            "allowed_tools": allowed_tools,
+            "approved_tools": approved_tools,
+            "require_approval": bool(spec.get("require_approval", False))}
 
 
 def normalize_disabled_tools(items):

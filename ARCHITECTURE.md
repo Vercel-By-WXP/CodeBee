@@ -44,3 +44,21 @@
 ## 运行边界
 
 CodeBee 运行时坚持 Python 标准库；外部 CLI 是独立进程，凭据由各 CLI 或绑定配置提供。CodeBee 不应把密钥写入任务提示词、日志或报告，具体脱敏规则由 `redact.py`、`env_scrub.py` 和相关调用点共同维护。
+
+## 确定性工具裁定
+
+模型输出的工具调用只是一项提议，不能直接获得执行权。`app/core/action_policy.py`
+维护内置工具的封闭能力目录，并在 `_exec_tool` 的第一步执行纯函数裁定：
+
+```text
+能力登记 → 任务白名单/禁用项 → 动态红线 → 运行时审批 → 工具实现
+```
+
+默认保持历史兼容行为；任务沙箱可以提供 `allowed_tools` 建立闭合白名单，提供
+`require_approval=true` 与 `approved_tools` 开启黄灯工具的运行时批准。`fs_manage`
+的 `delete` 动作始终是红线，即使任务已批准也不会执行。未知工具在进入文件、命令或
+MCP 分发前直接拒绝。
+
+MCP 的工具发现和执行也分开：只有发现结果中的工具名才允许调用；任务白名单存在时，
+服务器配置本身不能扩大工具权限。`app/core/audit.py` 对新增审计记录写入
+`prev_hash/hash/seq`，并提供 `verify(event, month)` 检查链是否被篡改。

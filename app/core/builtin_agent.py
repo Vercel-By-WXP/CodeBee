@@ -1016,6 +1016,12 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
     if sandbox is None:
         sandbox = policy.normalize_sandbox({}, workdir)
     denied.update(sandbox.get("disabled_tools") or [])
+    from . import action_policy
+    decision = action_policy.preflight(name, args=args, sandbox=sandbox, known=True)
+    if decision.get("decision") != "autoExecute":
+        if decision.get("decision") == "needConfirm":
+            return "（工具需要显式审批，未执行: %s）" % str(name or "")[:120]
+        return "（工具裁定拒绝，未执行: %s）" % (decision.get("reason") or "denied")
     if name in denied:
         return "（工具已禁用，拒绝执行: %s）" % str(name or "")[:120]
     # All built-in file tools are constrained to the task's allowed roots, not
