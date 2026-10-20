@@ -141,12 +141,25 @@ class CliConcurrency:
 def run_dag(nodes, worker, *, max_workers=4, completed=None):
     """Execute ready nodes in parallel while respecting dependencies.
 
-    ``worker(node, results)`` returns an arbitrary result. Completed ids are
-    skipped, which makes this suitable for checkpoint-based resume.
+    ``worker(node, dependency_results)`` returns an arbitrary result. Each
+    worker receives a stable mapping of its transitive dependency ancestors as
+    they stood when its wave was scheduled; unrelated sibling results cannot
+    leak into that input. Completed ids are skipped, which makes this suitable
+    for checkpoint-based resume.
     """
     ordered = normalize(nodes)
-    topological_order(ordered)  # validates references/cycles
+    topo = topological_order(ordered)  # validates references/cycles
     by_id = {n["id"]: n for n in ordered}
+    dependency_ancestors = {}
+    for node in topo:
+        ancestors = []
+        seen_ancestors = set()
+        for dep in node["depends_on"]:
+            for ancestor in (*dependency_ancestors[dep], dep):
+                if ancestor not in seen_ancestors:
+                    seen_ancestors.add(ancestor)
+                    ancestors.append(ancestor)
+        dependency_ancestors[node["id"]] = tuple(ancestors)
     results = dict(completed or {})
     pending = set(by_id) - set(results)
     while pending:
@@ -155,7 +168,14 @@ def run_dag(nodes, worker, *, max_workers=4, completed=None):
         if not ready:
             raise DependencyError("cycle or failed dependency prevents progress")
         with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(ready)))) as pool:
-            futures = {pool.submit(worker, by_id[i], results): i for i in ready}
+            futures = {
+                pool.submit(
+                    worker,
+                    by_id[i],
+                    {dep: results[dep] for dep in dependency_ancestors[i]},
+                ): i
+                for i in ready
+            }
             for future, ident in ((f, futures[f]) for f in futures):
                 results[ident] = future.result()
                 pending.remove(ident)
