@@ -22,7 +22,7 @@ import threading
 import time
 import weakref
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, prompt_templates, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, prompt_templates, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -288,6 +288,24 @@ _CURRENT_AGENTS: list = []
 # 本次 run 的任务宪章注入块（execute_run 起跑时从 .codebee/constitution.md 读入；
 # 步骤函数在各提示词组装点引用，空串=未配置零噪音）
 _RUN_CONSTITUTION = ""
+
+
+def _compile_dispatch_prompt(run_id, role, prompt, readonly=False):
+    """Add the deterministic run contract at the last dispatch boundary.
+
+    Prompt templates remain readable and the same contract reaches external
+    CLIs and the builtin backend.  Missing legacy task rows must not block a
+    run; the compiler still contributes its phase and read-only boundary.
+    """
+    task = {}
+    try:
+        run = store.get_run(run_id) or {}
+        task = store.get_task(run.get("task_id")) or {}
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "dispatch prompt task lookup failed for run %s: %s", run_id, exc)
+        task = {}
+    return dispatch_prompt.compile_prompt(task, role, prompt, readonly=readonly)
 
 
 def _dead_binding_substitute(dead_id, resume=None, exclude=(), blocked_upstreams=()):
@@ -650,6 +668,7 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     if not allowed:
         return {"ok": False, "error": "任务预算已达上限：%s" % quota_error,
                 "budget": quota.snapshot()}
+    prompt = _compile_dispatch_prompt(run_id, role, prompt, readonly=readonly)
     admission = _ensure_runtime_session(run_id, workdir, role, prompt, agent)
     deadline = _ensure_budget(run_id)
     timeout, deadline = _step_timeout(run_id, timeout, deadline)
@@ -917,6 +936,7 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
     sandbox：任务沙箱策略由调用方透传（本函数无 task 上下文），builtin_agent
     内部 normalize 后在工具执行期强制。"""
     _wait_gate(run_id, ev)
+    prompt = _compile_dispatch_prompt(run_id, role, prompt, readonly=False)
     admission = _ensure_runtime_session(run_id, workdir, role, prompt,
                                         {"id": "builtin", "model": bi.get("model") or ""})
     deadline = _ensure_budget(run_id)
@@ -7812,6 +7832,9 @@ def _execute_run_impl(run_id):
     task["difficulty"] = task_spec["difficulty"]
     # 同理，历史任务可能保存非法/过期 engine；执行以编译后的流程引擎为准。
     task["engine"] = task_spec["engine"]
+    # Prompt policy is explicit in the run record: deterministic compilation is
+    # the only dispatch policy; planning output is reused instead of rewritten.
+    store.update_run(run_id, prompt_strategy=dispatch_prompt.prompt_strategy(task))
     # 同工作目录互斥（2026-09-23 用户拍板「不能并行就要限制」）：任务计划
     # (.codebee/task_plan.md)、项目记忆与任务分支检出都是工作目录级共享状态，
     # 两任务同目录并行会互相覆盖/干扰（禅道双单实案：A 的评审 diff 混进 B 的

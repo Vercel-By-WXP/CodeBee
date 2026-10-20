@@ -13,7 +13,7 @@ import re
 import time
 from pathlib import Path
 
-from . import capability_runtime, modelhub, prompt_templates, runner, usage, volumes
+from . import capability_runtime, dispatch_prompt, modelhub, prompt_templates, runner, usage, volumes
 
 MAX_SUBTASKS = 4
 DEFAULT_OUTLINE_TIMEOUT = 900   # 8 章大纲 + 经验包注入是重生成任务，300s 实测不够
@@ -236,6 +236,11 @@ def _code_plan_prompt(task):
         "__VERIFY__": task.get("verify_command") or "（未配置）",
         "__RECON__": workdir_recon(task.get("workdir") or ""),
     })
+
+
+def _compile_planning_prompt(task, role, prompt):
+    """Use the same deterministic dispatch contract for planner-side calls."""
+    return dispatch_prompt.compile_prompt(task, role, prompt, readonly=True)
 
 
 REVIEW_OUTLINE_PROMPT = """你是内容主编。请为下面的创作任务拟一份写作大纲（要点列表，3-8 条），
@@ -701,6 +706,7 @@ def make_serial_outline(task, author_agent=None, workdir=None, ev=None, log_path
             "__GOAL__": task["goal"],
             "__CONTEXT__": task.get("context") or "（无）",
         })
+    prompt = _compile_planning_prompt(task, "serial-outline", prompt)
 
     def _norm(data):
         """规范化大纲 + 收卷名。卷边界不采信模型，只采信它给的卷名/卷弧光。"""
@@ -895,6 +901,7 @@ def redesign_opening(task, outline=None, critique="", author_agent=None, workdir
     cap = capability_runtime.block_for(task, run_id)
     if cap:
         prompt += "\n\n" + cap
+    prompt = _compile_planning_prompt(task, "opening-rebuild", prompt)
     orch = _orchestrator()
     if not orch:
         _append_log(log_path, "开篇重设计：编排者未配置，回退普通修订")
@@ -1040,6 +1047,7 @@ def make_code_plan(task, planner_agent, workdir, ev=None, resume=None, log_path=
     cap = capability_runtime.block_for(task, run_id)
     if cap:
         prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap
+    prompt = _compile_planning_prompt(task, "plan", prompt)
     res = runner.run_agent(planner_agent, prompt, workdir=workdir, readonly=True,
                            timeout=_deadline_timeout(deadline, 300), deadline=deadline,
                            cancel_event=ev, resume=resume,
@@ -1067,6 +1075,7 @@ def _orch_code_plan(task, prov, model, log_path=None, deadline=None, run_id=None
     cap = capability_runtime.block_for(task, run_id)
     if cap:
         prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap
+    prompt = _compile_planning_prompt(task, "plan", prompt)
     res = modelhub.chat(prov["id"], model, prompt,
                         max_tokens=8000, timeout=_deadline_timeout(deadline, 300), on_delta=cb,
                         reasoning_effort=_reasoning_effort(task),
@@ -1102,6 +1111,7 @@ def make_review_outline(task, deadline=None, run_id=None):
     cap = capability_runtime.block_for(task, run_id)
     if cap:
         prompt += "\n\n## 本次运行可用能力（按证据参考）\n" + cap
+    prompt = _compile_planning_prompt(task, "review-outline", prompt)
     res = modelhub.chat(prov["id"], model, prompt,
                         max_tokens=8000, timeout=_deadline_timeout(deadline, 300),
                         reasoning_effort=_reasoning_effort(task),
