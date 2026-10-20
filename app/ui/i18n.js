@@ -3206,13 +3206,13 @@
 
     // —— 帮助中心 · 发布上架 ——
     "第一次发布前：登录平台": "Before the first publish: log in",
-    "目前支持番茄小说与七猫。第一次发布会引导你在浏览器里登录平台账号（扫码或账密），登录态保存在本机，之后发布免登录；过期了重新登一次即可。": "Fanqie and Qimao are supported. The first publish walks you through logging in to the platform in your browser (QR scan or password); the login state stays on this machine so later publishes skip login — just log in again if it expires.",
+    "目前支持番茄小说与七猫。第一次发布需要在浏览器里完成平台授权（扫码或账密）；授权态保存在本机，之后建书、发章、批量发布、断线恢复和服务重启都会自动续跑。平台要求短信、扫码或安全验证时，只需完成该次平台验证，系统会继续等待并自动重试。": "Fanqie and Qimao are supported. The first publish requires platform authorization in your browser (QR scan or password); the authorization stays on this machine so book creation, chapter publishing, batch publishing, disconnect recovery, and service restarts resume automatically. If the platform requests SMS, a QR scan, or a security check, complete that one platform check and the system will keep waiting and retry automatically.",
     "建书：资料与封面": "Book creation: info & cover",
     "连载任务的建书面板里，作品简介、分类标签可以按平台官方选项一键生成；封面点「生成封面」自动出竖版图（cover.png 落在任务运行目录）。": "In a serial task's book panel, the blurb and category tags generate in one click from the platform's official options; click \"Generate cover\" for an automatic portrait image (cover.png lands in the task's run directory).",
     "发章与校验": "Publishing chapters & verification",
     "章稿定稿后一键发布：系统自动填标题正文、处理平台弹层并提交，随后按平台回执校验结果；登录态失效或安全验证由平台控制。发布完成后任务详情里能看到结果与章节链接。": "One-click publishing fills the title and body, handles platform dialogs, submits automatically, and verifies the platform receipt; expired sessions and security checks remain controlled by the platform. Results and chapter links appear in the task detail afterwards.",
     "发布失败": "When publishing fails",
-    "平台改版或登录态过期会导致失败，失败信息会写明原因。重新登录后再点重试即可；反复失败可以到 GitHub 提 Issue 附上失败截图。": "Platform redesigns or expired logins cause failures, and the error message says why. Log in again and hit retry; if it keeps failing, open a GitHub issue with a screenshot.",
+    "平台改版或登录态过期会写入失败原因，并保留可恢复任务；授权恢复后系统会先按平台实况对账，再自动续传未确认的章节，避免重复发布。": "Platform redesigns or expired sessions are recorded with the reason while the recoverable task is kept. After authorization is restored, the system reconciles the live platform state first, then resumes only unconfirmed chapters to avoid duplicate publishing.",
 
     // —— 帮助中心 · 代码任务与版本 ——
     "代码任务怎么跑": "How coding tasks run",

@@ -79,6 +79,7 @@ _CREATE_BOOK_RECOVERY_GUARD = threading.Lock()
 _CREATE_BOOK_RECOVERY = set()
 _UPLOAD_RECOVERY_GUARD = threading.Lock()
 _UPLOAD_RECOVERY = set()
+_RECOVERY_CANCEL_EPOCH = {}
 _AUTH_STATE_CACHE = {}
 _AUTH_STATE_CACHE_LOCK = threading.Lock()
 _AUTH_PROBE_CONNECTIONS = {}
@@ -1593,6 +1594,8 @@ def disconnect(plat, account=""):
         # browser and resume publishing after the user has signed out.
         with LOCK:
             state = _state["platforms"].get(slot)
+            _RECOVERY_CANCEL_EPOCH[slot] = int(
+                _RECOVERY_CANCEL_EPOCH.get(slot, 0)) + 1
             if isinstance(state, dict):
                 state.pop("pending_creates", None)
                 state.pop("pending_create", None)
@@ -1798,6 +1801,12 @@ def _queue_create_book_auth_recovery(task_id, plat, account, kwargs):
     credential or CAPTCHA control.
     """
     slot = slot_of(plat, account)
+    kwargs = dict(kwargs or {})
+    current_epoch = int(_RECOVERY_CANCEL_EPOCH.get(slot, 0))
+    expected_epoch = kwargs.get("_recovery_epoch")
+    if (expected_epoch is not None and
+            int(expected_epoch) != current_epoch):
+        return False
     key = (str(task_id), str(slot))
     with _CREATE_BOOK_RECOVERY_GUARD:
         if key in _CREATE_BOOK_RECOVERY:
@@ -1808,6 +1817,7 @@ def _queue_create_book_auth_recovery(task_id, plat, account, kwargs):
         _CREATE_BOOK_RECOVERY.add(key)
 
     options = dict(kwargs or {})
+    options.pop("_recovery_epoch", None)
     pending = {
         "task_id": str(task_id),
         "account": str(account or ""),
@@ -1852,11 +1862,29 @@ def _queue_create_book_auth_recovery(task_id, plat, account, kwargs):
             deadline = time.monotonic() + LOGIN_WAIT_S
             waiting_for_auth = False
             while time.monotonic() < deadline:
+                if int(_RECOVERY_CANCEL_EPOCH.get(slot, 0)) != current_epoch:
+                    return
+                # ``disconnect`` removes this marker to cancel a live waiter.
+                # Check it before reconnecting so an explicit sign-out cannot
+                # be undone by the recovery thread already in flight.
+                with LOCK:
+                    state_marker = (_state.get("platforms") or {}).get(slot) or {}
+                entries_marker = state_marker.get("pending_creates")
+                legacy_marker = state_marker.get("pending_create")
+                if (isinstance(entries_marker, dict) and
+                        str(task_id) in entries_marker):
+                    pass
+                elif (isinstance(legacy_marker, dict) and
+                      str(legacy_marker.get("task_id") or "") == str(task_id)):
+                    pass
+                else:
+                    return
                 state = _st(slot)
                 if state.get("status") == "connected":
                     waiting_for_auth = False
                     ok, error = create_book_async(
                         task_id, plat, auto_submit=True, account=account,
+                        _recovery=True, _recovery_epoch=current_epoch,
                         **options)
                     if not ok:
                         if not retryable_create_error(error):
@@ -2003,6 +2031,7 @@ def _upload_retryable_error(plat, error):
         "请求过于频繁", "rate limit", "browser busy", "浏览器忙",
         "平台有操作正在进行中", "账号有操作正在进行中",
         "目标已关闭", "连接断开", "连接被关闭", "等响应超时",
+        "平台作品列表按书名未找到", "未按作品名找到远端作品",
     ))
 
 
@@ -2075,10 +2104,45 @@ def _upload_receipt_exists(pending):
     return False
 
 
+def _reconcile_upload_before_retry(pending):
+    """Return True/False when reconciliation is conclusive, None when unknown."""
+    task_id = str((pending or {}).get("task_id") or "")
+    plat = str((pending or {}).get("platform") or "")
+    if not task_id or not plat:
+        return False
+    try:
+        ok, error = sync_published(task_id, plat, manual=False)
+    except Exception as exc:
+        ok, error = False, str(exc)
+    if ok:
+        if _upload_receipt_exists(pending):
+            return True
+        # Chapter lists can be eventually consistent immediately after a
+        # submit. Require two empty snapshots before deciding it is safe to
+        # click submit again.
+        time.sleep(1.0)
+        try:
+            ok_again, error_again = sync_published(task_id, plat, manual=False)
+        except Exception as exc:
+            ok_again, error_again = False, str(exc)
+        if ok_again:
+            return not _upload_receipt_exists(pending)
+        error = error_again
+    if _upload_retryable_error(plat, error):
+        return None
+    return False
+
+
 def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
                            chapter_no, title, error=""):
     """Durably retry a direct upload after login/browser recovery."""
     slot = slot_of(plat, account)
+    options = dict(options or {})
+    current_epoch = int(_RECOVERY_CANCEL_EPOCH.get(slot, 0))
+    expected_epoch = options.get("_recovery_epoch")
+    if (expected_epoch is not None and
+            int(expected_epoch) != current_epoch):
+        return False
     pending = {
         "task_id": str(task_id),
         "platform": str(plat),
@@ -2094,6 +2158,7 @@ def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
         "scheduled": bool((options or {}).get("scheduled")),
         "direct_today": bool((options or {}).get("direct_today")),
         "last_error": str(error or "")[:300],
+        "recovery_epoch": current_epoch,
     }
     key = _upload_pending_key(pending)
     guard_key = (str(slot), key)
@@ -2109,8 +2174,25 @@ def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
         try:
             deadline = time.monotonic() + LOGIN_WAIT_S
             while time.monotonic() < deadline:
+                if int(_RECOVERY_CANCEL_EPOCH.get(slot, 0)) != current_epoch:
+                    return
+                with LOCK:
+                    state_marker = (_state.get("platforms") or {}).get(slot) or {}
+                entries_marker = state_marker.get("pending_uploads")
+                if (not isinstance(entries_marker, dict) or
+                        key not in entries_marker):
+                    return
                 if _upload_receipt_exists(pending):
                     _forget_pending_upload(slot, key)
+                    return
+                reconciled = _reconcile_upload_before_retry(pending)
+                if reconciled is True:
+                    _forget_pending_upload(slot, key)
+                    return
+                if reconciled is None:
+                    time.sleep(5.0)
+                    continue
+                if int(_RECOVERY_CANCEL_EPOCH.get(slot, 0)) != current_epoch:
                     return
                 state = _st(slot)
                 if state.get("status") == "busy":
@@ -2124,7 +2206,8 @@ def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
                     as_draft=pending["as_draft"],
                     scheduled=pending["scheduled"],
                     direct_today=pending["direct_today"],
-                    _recovery=True)
+                    _recovery=True,
+                    _recovery_epoch=current_epoch)
                 if not ok:
                     pending["last_error"] = str(why or "")[:300]
                     if not _upload_retryable_error(plat, why):
@@ -2240,7 +2323,8 @@ def _resume_pending_create_recoveries():
 
 
 def create_book_async(task_id, plat, auto_submit=True, force=False,
-                      force_confirmed=False, force_reason="", account=""):
+                      force_confirmed=False, force_reason="", account="",
+                      _batch=False, _recovery=False, _recovery_epoch=None):
     """按任务 book_meta 的资料在平台建书。返回 (ok, err)。
 
     account 非空=用该账号的独立 profile/状态槽建书（多账号），建成的
@@ -2257,6 +2341,8 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
     except ValueError as e:
         return False, str(e)
     acc = str(account or "").strip()
+    request_epoch = (int(_RECOVERY_CANCEL_EPOCH.get(slot, 0))
+                     if _recovery_epoch is None else int(_recovery_epoch))
     task = store.get_task(task_id)
     if not task:
         return False, "任务不存在"
@@ -2298,22 +2384,28 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
     action_lock = _try_action_lock(slot)
     if action_lock is None:
         return False, "该账号有操作正在进行中"
+    if (_recovery and
+            request_epoch != int(_RECOVERY_CANCEL_EPOCH.get(slot, 0))):
+        action_lock.release()
+        return False, "平台恢复任务已被主动断开取消"
     if _st(slot).get("status") == "busy":
         action_lock.release()
         return False, "该平台有操作正在进行中"
     ok_login, why = _login_guard(slot)
     if not ok_login:
-        action_lock.release()
-        if _upload_retryable_error(plat, why):
+        if not _batch and _upload_retryable_error(plat, why):
             try:
                 queued = _queue_create_book_auth_recovery(
                     task_id, plat, acc,
                     {"force": force, "force_confirmed": force_confirmed,
                      "force_reason": force_reason})
             except Exception as exc:
+                action_lock.release()
                 return False, "登录态恢复任务启动失败：%s" % str(exc)[:160]
             if queued:
+                action_lock.release()
                 return True, ""
+        action_lock.release()
         return False, why
     _set(slot, status="busy", last_action="create_book", error="")
 
@@ -2472,7 +2564,7 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                           shot=str(ledger.shot_path(plat, task_id, "")),
                           operation_id=operation_id, operation_status=operation_status,
                           duration_s=elapsed_s())
-            if _upload_retryable_error(plat, e):
+            if not _batch and _upload_retryable_error(plat, e):
                 try:
                     _queue_create_book_auth_recovery(
                         task_id, plat, acc,
@@ -2492,7 +2584,7 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
         error = "建书任务启动失败，可自动重试：%s" % exc
         action_lock.release()
         _set(slot, status="connected", error=error)
-        if _upload_retryable_error(plat, exc):
+        if not _batch and _upload_retryable_error(plat, exc):
             try:
                 _queue_create_book_auth_recovery(
                     task_id, plat, acc,
@@ -2740,7 +2832,7 @@ def read_chapter(fp):
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                          force=False, force_confirmed=False, force_reason="",
                          as_draft=False, scheduled=False, direct_today=False,
-                         _recovery=False):
+                         _recovery=False, _batch=False, _recovery_epoch=None):
     """把一章自动发布到平台，或通过 as_draft 只保存草稿。
 
     幂等：已成功发布**或已存草稿**的章号拒绝重做——重复发会平台上出双章，
@@ -2769,6 +2861,11 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     # 那个账号的浏览器/状态槽——默认账号（无 account 字段）= 平台默认槽。
     acc = str(book.get("account") or "").strip()
     slot = slot_of(plat, acc)
+    request_epoch = (int(_RECOVERY_CANCEL_EPOCH.get(slot, 0))
+                     if _recovery_epoch is None else int(_recovery_epoch))
+    if (_recovery and
+            request_epoch != int(_RECOVERY_CANCEL_EPOCH.get(slot, 0))):
+        return False, "平台恢复任务已被主动断开取消"
     # 闭包中需要在找回 book_id 后更新书籍引用；使用独立副本避免
     # Python 将 book 误判为 run() 的局部变量，导致前置解析触发
     # UnboundLocalError。
@@ -2843,19 +2940,22 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         return False, "该平台有操作正在进行中"
     ok_login, why = _login_guard(slot)
     if not ok_login:
-        action_lock.release()
-        if _upload_retryable_error(plat, why):
+        if not _batch and _upload_retryable_error(plat, why):
             try:
                 queued = _queue_upload_recovery(
                     task_id, plat, chapter_file, acc,
                     {"force": force, "force_confirmed": force_confirmed,
                      "force_reason": force_reason, "as_draft": as_draft,
-                     "scheduled": scheduled, "direct_today": direct_today},
+                     "scheduled": scheduled, "direct_today": direct_today,
+                     "_recovery_epoch": request_epoch},
                     ch_no, title, why)
             except Exception as exc:
+                action_lock.release()
                 return False, "登录态恢复任务启动失败：%s" % str(exc)[:160]
             if queued:
+                action_lock.release()
                 return True, ""
+        action_lock.release()
         return False, why
     flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
     # A scheduled fallback uses the same editor fill chain unless a platform
@@ -2920,6 +3020,17 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     values["_volumes"] = list(book_ref.get("volumes") or [])
     values.update(_url_values(mod, book_ref))   # verify/draft/editor 页 URL（流程占位）
     logs = []
+    pending_key = ""
+    if not _batch:
+        pending_key = _remember_pending_upload(
+            slot,
+            {"task_id": task_id, "platform": plat, "account": acc,
+             "chapter_file": str(chapter_file), "chapter_no": ch_no,
+             "title": title, "auto_submit": True, "force": force,
+             "force_confirmed": force_confirmed, "force_reason": force_reason,
+             "as_draft": as_draft, "scheduled": scheduled,
+             "direct_today": direct_today,
+             "_recovery_epoch": request_epoch})
     try:
         operation_id = operations.begin(
             "publish:%s:upload_chapter" % plat,
@@ -2928,26 +3039,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     except Exception as exc:
         _set(slot, status="error", error="发章操作登记失败：%s" % exc)
         action_lock.release()
-        if _upload_retryable_error(plat, exc):
+        if not _batch and _upload_retryable_error(plat, exc):
             try:
                 _queue_upload_recovery(
                     task_id, plat, chapter_file, acc,
                     {"force": force, "force_confirmed": force_confirmed,
                      "force_reason": force_reason, "as_draft": as_draft,
-                     "scheduled": scheduled, "direct_today": direct_today},
+                     "scheduled": scheduled, "direct_today": direct_today,
+                     "_recovery_epoch": request_epoch},
                     ch_no, title, exc)
             except Exception:
                 pass
         return False, "发章操作登记失败：%s" % exc
-
-    pending_key = _remember_pending_upload(
-        slot,
-        {"task_id": task_id, "platform": plat, "account": acc,
-         "chapter_file": str(chapter_file), "chapter_no": ch_no,
-         "title": title, "auto_submit": True, "force": force,
-         "force_confirmed": force_confirmed, "force_reason": force_reason,
-         "as_draft": as_draft, "scheduled": scheduled,
-         "direct_today": direct_today})
 
     def run():
         started_at = time.monotonic()
@@ -3003,7 +3106,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                               quality_forced=quality_forced,
                               quality_reason=quality_reason, account=acc,
                               duration_s=elapsed_s())
-            _forget_pending_upload(slot, pending_key)
+            if pending_key:
+                _forget_pending_upload(slot, pending_key)
             _set(slot, status="connected", error="")
         except Exception as e:
             operations.finish_exception(operation_id, e)
@@ -3016,17 +3120,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                           quality_forced=quality_forced,
                           quality_reason=quality_reason, account=acc,
                           duration_s=elapsed_s())
-            if _upload_retryable_error(plat, e):
+            if not _batch and _upload_retryable_error(plat, e):
                 try:
                     _queue_upload_recovery(
                         task_id, plat, chapter_file, acc,
                         {"force": force, "force_confirmed": force_confirmed,
                          "force_reason": force_reason, "as_draft": as_draft,
-                         "scheduled": scheduled, "direct_today": direct_today},
+                         "scheduled": scheduled, "direct_today": direct_today,
+                         "_recovery_epoch": request_epoch},
                         ch_no, title, e)
                 except Exception:
                     pass
-            else:
+            elif not _batch:
                 _forget_pending_upload(slot, pending_key)
         finally:
             _save()
@@ -3048,17 +3153,18 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                       quality_reason=quality_reason, account=acc)
         _save()
         action_lock.release()
-        if _upload_retryable_error(plat, exc):
+        if not _batch and _upload_retryable_error(plat, exc):
             try:
                 _queue_upload_recovery(
                     task_id, plat, chapter_file, acc,
                     {"force": force, "force_confirmed": force_confirmed,
                      "force_reason": force_reason, "as_draft": as_draft,
-                     "scheduled": scheduled, "direct_today": direct_today},
+                     "scheduled": scheduled, "direct_today": direct_today,
+                     "_recovery_epoch": request_epoch},
                     ch_no, title, exc)
             except Exception:
                 pass
-        else:
+        elif not _batch:
             _forget_pending_upload(slot, pending_key)
         return False, error
     return True, ""
@@ -3319,10 +3425,12 @@ def _sync_published_impl(task_id, plat, manual=False):
                            remote_published=st["published"],
                            remote_scheduled=st["scheduled"],
                            remote_review=st["review"],
+                           remote_draft=st.get("draft", 0),
                            remote_rejected=st["rejected"],
                            remote_published_nos=st["published_nos"],
                            remote_scheduled_nos=st["scheduled_nos"],
                            remote_review_nos=st["review_nos"],
+                           remote_draft_nos=st.get("draft_nos", []),
                            remote_last_publish_at=st["last_publish_at"],
                            remote_last_schedule_at=st["last_schedule_at"],
                            remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"),

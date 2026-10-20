@@ -148,19 +148,21 @@ def _remember_automatic_batch(task_id, platform, auto_submit, as_draft,
                               scheduled, auto_prepare_book, only_file):
     """Persist an accepted direct-publish request for crash recovery.
 
-    Draft-only batches intentionally stay out: saving a draft is not the same
-    authorization as publishing it. Every resumed publish reconciles against
-    the live platform before selecting remaining chapters.
+    Draft-only batches are persisted too. They never publish anything, and
+    every resumed run reconciles against the live platform before selecting
+    remaining chapters, so a service restart or browser interruption does not
+    strand an explicitly requested draft batch.
     """
-    if not auto_submit or as_draft:
+    if not auto_submit and not as_draft:
         return
     try:
         chapters = None if only is None else [int(value) for value in only]
     except (TypeError, ValueError):
         chapters = None
-    params = {"auto_submit": True, "only": chapters,
+    params = {"auto_submit": bool(auto_submit), "only": chapters,
               "force": bool(force), "force_confirmed": bool(force_confirmed),
-              "force_reason": str(force_reason or ""), "as_draft": False,
+              "force_reason": str(force_reason or ""),
+              "as_draft": bool(as_draft),
               "auto_prepare_book": bool(auto_prepare_book),
               "scheduled": bool(scheduled), "_only_file": only_file}
     with _BATCH_JOB_LOCK:
@@ -236,7 +238,7 @@ def _queue_automatic_retry(task_id, platform, error, *, auto_submit=True,
                            scheduled=False, auto_prepare_book=True,
                            only_file=None, now=None):
     """Persist a safely retryable preflight rejection before returning it."""
-    if (not auto_submit or as_draft or
+    if ((not auto_submit and not as_draft) or
             not _scheduled_error_is_persistent(error)):
         return False
     try:
@@ -299,12 +301,14 @@ def resume_interrupted_batches(now=None):
                 _forget_automatic_batch(key)
                 continue
             # Migrate records written before unattended publishing became the
-            # only release mode. Draft records are never persisted here, so a
-            # non-draft recovery must always carry the automatic flag.
+            # only release mode. Draft recovery remains draft-only even if an
+            # old or hand-edited record carried a stale auto_submit flag.
             params = dict(params)
-            if not bool(params.get("as_draft")):
+            if bool(params.get("as_draft")):
+                params["auto_submit"] = False
+            else:
                 params["auto_submit"] = True
-                record["params"] = params
+            record["params"] = params
             record["status"] = "resuming"
             try:
                 record["attempt"] = max(0, int(record.get("attempt") or 0)) + 1
@@ -602,7 +606,8 @@ def _prepare_book(task_id, platform):
         if _cancelled(task_id):
             return False, "自动准备作品已取消"
         ok, err = manager.create_book_async(task_id, platform,
-                                            auto_submit=True, account=acc)
+                                            auto_submit=True, account=acc,
+                                            _batch=True)
         if not ok:
             failure = str(err or "自动创建作品失败")
         else:
@@ -1691,7 +1696,7 @@ def publish_pending_async(task_id, platform, auto_submit=True, only=None,
                         return
                     action_label = "存草稿" if as_draft else "自动发布"
                     st["error"] = ("%s前对账失败：%s。为防重复提交已存在章节，"
-                                   "本次未操作；请连接平台浏览器并等它空闲后重试"
+                                   "本次未操作；系统已保留恢复记录，浏览器空闲后会自动续跑"
                                    % (action_label, why_r))
                     return
                 fresh, fresh_error = _pending_with_recovery(
@@ -1740,7 +1745,8 @@ def publish_pending_async(task_id, platform, auto_submit=True, only=None,
                     st["status"] = "error"
                     st["error"] = "第 %d 章前护栏拦截：%s" % (item["chapter_no"], why)
                     return
-                upload_kwargs = {"auto_submit": auto_submit, "as_draft": as_draft}
+                upload_kwargs = {"auto_submit": auto_submit, "as_draft": as_draft,
+                                 "_batch": True}
                 if scheduled:
                     # 强制定时（2026-10-17）：当日字数上限被账户级占用时平台
                     # 仍接受「定时到明日」——直发/定时开关消失只是直发被禁，

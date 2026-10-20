@@ -176,9 +176,16 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         self.assertTrue(all(call.args == ("fanqie",) and
                              call.kwargs == {"account": "", "unattended": True}
                              for call in connect.call_args_list))
-        create.assert_called_once_with(
-            "task-auth", "fanqie", auto_submit=True, account="",
-            force=False, force_confirmed=False, force_reason="")
+        create.assert_called_once()
+        create_args, create_kwargs = create.call_args
+        self.assertEqual(create_args, ("task-auth", "fanqie"))
+        self.assertEqual(create_kwargs["auto_submit"], True)
+        self.assertEqual(create_kwargs["account"], "")
+        self.assertEqual(create_kwargs["force"], False)
+        self.assertEqual(create_kwargs["force_confirmed"], False)
+        self.assertEqual(create_kwargs["force_reason"], "")
+        self.assertEqual(create_kwargs["_recovery"], True)
+        self.assertEqual(create_kwargs["_recovery_epoch"], 0)
 
     def test_standalone_create_book_keeps_recovery_after_worker_failure(self):
         from core.publish import manager

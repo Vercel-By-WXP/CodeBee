@@ -555,7 +555,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
         self.assertTrue(auto._scheduled_error_is_persistent(error))
         self.assertNotIn("人工提交", error)
 
-    def test_draft_only_batches_are_not_resumed_as_publications(self):
+    def test_draft_only_batches_are_durable_and_never_resumed_as_publications(self):
         from core.publish import auto
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -565,7 +565,36 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                 auto._remember_automatic_batch(
                     "task-1", "qimao", False, True, None, False, False,
                     "", False, False, None)
-                self.assertEqual(auto._load_batch_jobs(), {})
+                record = auto._load_batch_jobs()["task-1"]
+                self.assertFalse(record["params"]["auto_submit"])
+                self.assertTrue(record["params"]["as_draft"])
+
+    def test_interrupted_draft_batch_resumes_as_draft_only(self):
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_file = Path(temp_dir, "batches.json")
+            with mock.patch.object(auto, "_BATCH_JOB_FILE", state_file), \
+                    mock.patch.object(auto, "_BATCH_JOBS", None), \
+                    mock.patch.object(auto, "_running", {}), \
+                    mock.patch("core.store.get_task", return_value={"id": "task-1"}):
+                auto._remember_automatic_batch(
+                    "task-1", "qimao", False, True, [12], False, False,
+                    "", False, False, "chapter-12.md")
+                # A stale flag from an older/manual edit must not turn a
+                # resumed draft batch into a publication.
+                auto._load_batch_jobs()["task-1"]["params"]["auto_submit"] = True
+                auto._save_batch_jobs()
+                launch = mock.Mock(return_value=(True, ""))
+                with mock.patch.object(auto, "publish_pending_async", launch):
+                    self.assertEqual(auto.resume_interrupted_batches(now=1000), 1)
+                self.assertFalse(auto._load_batch_jobs()["task-1"]["params"]["auto_submit"])
+
+        launch.assert_called_once_with(
+            "task-1", "qimao", auto_submit=False, only=[12], force=False,
+            force_confirmed=False, force_reason="", as_draft=True,
+            auto_prepare_book=False, scheduled=False,
+            _only_file="chapter-12.md")
 
     def test_pending_excludes_chapters_already_waiting_for_review(self):
         from core import store
@@ -1447,6 +1476,39 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
         self.assertTrue(safe)
         self.assertTrue(present)
         self.assertIn("审核队列", message)
+
+    def test_draft_queue_is_a_remote_receipt_for_recovery(self):
+        from core.publish import ledger, manager
+        from core.publish.chaprows import bucket_chapter_rows
+
+        rows = bucket_chapter_rows(["第4章 测试 0 草稿"])
+        self.assertEqual(rows["draft_nos"], [4])
+        self.assertEqual(rows["draft"], 1)
+
+        pending = {"task_id": "task-1", "platform": "qimao",
+                   "chapter_no": 4, "as_draft": True}
+        with mock.patch.object(manager, "sync_published",
+                               return_value=(True, "")), \
+                mock.patch.object(ledger, "drafted_chapters",
+                               return_value={4}), \
+                mock.patch.object(ledger, "published_chapters",
+                               return_value=set()), \
+                mock.patch.object(ledger, "scheduled_chapters",
+                               return_value=set()), \
+                mock.patch.object(ledger, "review_chapters",
+                               return_value=set()):
+            self.assertTrue(manager._upload_receipt_exists(pending))
+
+    def test_draft_ledger_includes_calibrated_remote_draft_numbers(self):
+        from core import store
+        from core.publish import ledger
+
+        with mock.patch.object(ledger, "_iter_records", return_value=[]), \
+                mock.patch.object(store, "serial_chain_ids",
+                                   return_value={"task-1"}), \
+                mock.patch.object(ledger, "book_for",
+                                   return_value={"remote_draft_nos": [7]}):
+            self.assertEqual(ledger.drafted_chapters("task-1", "qimao"), {7})
 
     def test_book_preparation_reserves_account_slot_for_other_tasks(self):
         from core import contracts, store

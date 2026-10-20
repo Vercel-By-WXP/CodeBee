@@ -44,10 +44,10 @@ def bucket_chapter_rows(rows):
     last_schedule_at=待发布(定时)行的最大排期时间（定时最后发布时间，
     即定时队列排到的日期）。没有对应行时为空串。"""
     out = {"total": 0, "published": 0, "scheduled": 0, "review": 0,
-           "rejected": 0, "published_nos": [], "scheduled_nos": [],
-           "review_nos": [],
+           "draft": 0, "rejected": 0, "published_nos": [],
+           "scheduled_nos": [], "review_nos": [], "draft_nos": [],
            "last_publish_at": "", "last_schedule_at": ""}
-    nos, sched_nos, review_nos = set(), set(), set()
+    nos, sched_nos, review_nos, draft_nos = set(), set(), set(), set()
     pub_ts, sched_ts = [], []
     for t in rows or []:
         t = str(t)
@@ -60,6 +60,10 @@ def bucket_chapter_rows(rows):
         ts = _norm_ts(t)
         if any(k in t for k in _STATUS_BAD):
             out["rejected"] += 1
+        elif "草稿" in t:
+            out["draft"] += 1
+            if m:
+                draft_nos.add(int(m.group(1)))
         elif _STATUS_PUB in t:
             out["published"] += 1
             if m:
@@ -81,6 +85,7 @@ def bucket_chapter_rows(rows):
     out["published_nos"] = sorted(nos)
     out["scheduled_nos"] = sorted(sched_nos)
     out["review_nos"] = sorted(review_nos)
+    out["draft_nos"] = sorted(draft_nos)
     out["last_publish_at"] = max(pub_ts) if pub_ts else ""
     out["last_schedule_at"] = max(sched_ts) if sched_ts else ""
     return out

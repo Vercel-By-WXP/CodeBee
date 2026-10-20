@@ -201,8 +201,9 @@ def drafted_chapters(task_id, platform):
     """该任务在该平台已成功存草稿的章节号集合（发草稿模式的幂等口径）。
 
     与 published_chapters 同款连载链合并；不含校准的平台实况（实况口径里
-    没有「草稿」桶，草稿章是否已由用户手工发布以重新校准后的
-    remote_published_nos 为准）。草稿章从待发清单剔除：已在平台存稿的章
+    章节管理页校准出的 remote_draft_nos 也纳入，覆盖进程在平台保存成功
+    但尚未来得及写本地 JSONL 的中断场景。草稿章是否已由用户手工发布以
+    重新校准后的 remote_published_nos 为准）。草稿章从待发清单剔除：已在平台存稿的章
     再跑一遍只会造出重复草稿。"""
     from .. import store
     try:
@@ -216,6 +217,12 @@ def drafted_chapters(task_id, platform):
             n = r.get("chapter_no") or 0
             if n > 0:
                 out.add(int(n))
+    try:
+        ent = book_for(task_id, platform) or {}
+        out.update(int(n) for n in (ent.get("remote_draft_nos") or [])
+                   if int(n) > 0)
+    except (TypeError, ValueError):
+        pass
     return out
 
 
