@@ -16,8 +16,9 @@ import subprocess
 import sys
 import threading
 import time
+from urllib.parse import urlparse
 
-from . import paths
+from . import atomic, paths
 
 # ---------------------------------------------------------------- 访问令牌
 _TOK_LOCK = threading.Lock()
@@ -39,12 +40,16 @@ def token() -> str:
         except Exception:
             _TOKEN = ""
         if not _TOKEN:
-            _TOKEN = secrets.token_hex(4)  # 8 位十六进制，手机好输
+            # New installations get 256 bits of entropy.  Existing persisted
+            # tokens remain valid for backwards compatibility; only the
+            # generation format changes.
+            _TOKEN = secrets.token_urlsafe(32)
             try:
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(json.dumps(
-                    {"token": _TOKEN, "created": time.strftime("%Y-%m-%d %H:%M:%S")},
-                    ensure_ascii=False, indent=2), encoding="utf-8")
+                atomic.write_json(
+                    p,
+                    {"token": _TOKEN,
+                     "created": time.strftime("%Y-%m-%d %H:%M:%S")},
+                    mode=0o600)
             except Exception:
                 pass  # 落盘失败也照常工作（内存令牌，重启更换）
         return _TOKEN
@@ -300,6 +305,43 @@ def request_authed(client_ip: str, forwarded: str, query_token: str, header_toke
         return True
     return secrets.compare_digest(str(query_token or ""), tok) or \
         secrets.compare_digest(str(header_token or ""), tok)
+
+
+def same_origin(origin: str, host: str) -> bool:
+    """Validate a browser ``Origin`` against the request ``Host``.
+
+    Empty Origin is allowed for non-browser clients (curl, CLI integrations),
+    while ``null`` and malformed origins are rejected.  Default HTTP(S) ports
+    are normalized so a browser's explicit ``:80``/``:443`` does not produce a
+    false rejection.  The comparison is host-only because the service may sit
+    behind an HTTPS reverse proxy while speaking HTTP on its local socket.
+    """
+    raw_origin = str(origin or "").strip()
+    if not raw_origin:
+        return True
+    if raw_origin.lower() == "null":
+        return False
+    parsed = urlparse(raw_origin)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname:
+        return False
+    raw_host = str(host or "").strip()
+    if not raw_host:
+        return False
+    try:
+        request_host = urlparse("//" + raw_host)
+        request_name = (request_host.hostname or "").rstrip(".").lower()
+        request_port = request_host.port
+        origin_name = parsed.hostname.rstrip(".").lower()
+        origin_port = parsed.port
+    except ValueError:
+        return False
+    if not request_name or request_name != origin_name:
+        return False
+    if request_port is None:
+        request_port = 443 if parsed.scheme.lower() == "https" else 80
+    if origin_port is None:
+        origin_port = 443 if parsed.scheme.lower() == "https" else 80
+    return request_port == origin_port
 
 
 # ---------------------------------------------------------------- 控制权锁

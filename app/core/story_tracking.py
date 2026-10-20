@@ -12,6 +12,8 @@ import re
 import time
 from pathlib import Path
 
+from . import atomic
+
 _MAX_CHAPTERS = 5000
 _STATE_REL = Path(".codebee") / "story_tracking.json"
 _DERIVED = Path(".codebee") / "derived"
@@ -55,10 +57,7 @@ def _empty(task_id, title, premise=""):
 
 def _save(root, state):
     path = _state_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic.write_json(path, state)
 
 
 def _load(root):

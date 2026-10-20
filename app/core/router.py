@@ -6,7 +6,7 @@ import json
 import os
 import re
 
-from . import dispatch, history, upstream
+from . import dispatch, history, model_family, modelhub, upstream
 
 # 各类智能体的能力基线（0-100）。真实 CLI 里官方双雄最高。
 CAPABILITY = {
@@ -385,18 +385,106 @@ def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
         return not (ups and any(ups & d for d in dead_sets))
 
     impl_kind = impl.get("kind")
+
+    def _identity(agent):
+        """Return the best available reviewer isolation identity.
+
+        Registry entries intentionally stay lightweight.  The configured
+        model/provider lives in modelhub, so resolve it at selection time and
+        keep the result in memory only.  Older/custom agents without a
+        binding still participate through their legacy ``kind`` value.
+        """
+        configured_family = str(agent.get("model_family") or "").strip()
+        if configured_family.lower() == "unknown":
+            configured_family = ""
+        out = {
+            "family": configured_family,
+            "provider": str(agent.get("provider_id") or "").strip(),
+            "upstreams": set(),
+        }
+        try:
+            binding = modelhub.resolve_binding(agent.get("id"), difficulty) or {}
+            chain = binding.get("call_chain") or []
+            for row in chain:
+                if not isinstance(row, dict):
+                    continue
+                model = str(row.get("model") or "").strip()
+                provider = str(row.get("provider_id") or "").strip()
+                if provider and not out["provider"]:
+                    out["provider"] = provider
+                if model and not out["family"]:
+                    family = model_family.family(model)
+                    if family.lower() != "unknown":
+                        out["family"] = family
+                # The first usable route is the primary identity.  Fallback
+                # routes are intentionally still considered by upstream
+                # isolation below, but do not overwrite the primary family.
+                try:
+                    host = _host_of((row.get("provider") or {}).get("base_url"))
+                    if host:
+                        out["upstreams"].add(host)
+                except (AttributeError, TypeError):
+                    pass
+            if not out["upstreams"]:
+                out["upstreams"] = agent_upstreams(
+                    agent.get("id"), difficulty=difficulty,
+                    task_type=ttype, role="review")
+        except Exception:
+            # Routing must remain available when a damaged optional binding is
+            # present.  The caller will use the legacy kind fallback.
+            pass
+        if not out["family"]:
+            legacy_kind = str(agent.get("kind") or "").strip()
+            if legacy_kind.lower() != "unknown":
+                out["family"] = legacy_kind
+        return out
+
+    impl_identity = _identity(impl)
+
+    def _separation(a):
+        """Return (safe, reason), conservatively refusing same-source pairs."""
+        ident = _identity(a)
+        if (impl_identity["family"] and ident["family"] and
+                impl_identity["family"].lower() == ident["family"].lower()):
+            return False, "模型族相同（%s）" % ident["family"]
+        if (impl_identity["provider"] and ident["provider"] and
+                impl_identity["provider"] == ident["provider"]):
+            return False, "供应商相同（%s）" % ident["provider"]
+        if (impl_identity["upstreams"] and ident["upstreams"] and
+                impl_identity["upstreams"] & ident["upstreams"]):
+            return False, "上游相同"
+        return True, "模型族/供应商/上游均隔离"
     real = [a for a in agents
             if a.get("mode") == "real" and a["id"] != impl["id"] and _alive(a)]
-    cross = [a for a in real if a.get("kind") != impl_kind]
+    isolated = []
+    rejected = []
+    for candidate in real:
+        safe, why = _separation(candidate)
+        if safe:
+            isolated.append(candidate)
+        else:
+            rejected.append((candidate, why))
+    # Prefer a genuinely isolated model family.  ``kind`` remains a tie-break
+    # for legacy agents whose model metadata is unavailable.
+    cross = [a for a in isolated if a.get("kind") != impl_kind]
     if cross:
         best = max(cross, key=lambda a: score(a, "review", ttype, stats)[0])
         _, reason = score(best, "review", ttype, stats)
-        return best, "跨厂商评审（%s ≠ %s）：%s" % (best.get("kind"), impl_kind, reason)
+        return best, "跨模型族/供应商评审（作者 %s，评审 %s）：%s" % (
+            impl_identity["family"] or impl_kind,
+            _identity(best)["family"] or best.get("kind"), reason)
+    if isolated:
+        best = max(isolated, key=lambda a: score(a, "review", ttype, stats)[0])
+        _, reason = score(best, "review", ttype, stats)
+        return best, "隔离约束满足但 CLI kind 相同（%s）：%s" % (
+            _identity(best)["family"] or best.get("kind"), reason)
     if real:
         best = max(real, key=lambda a: score(a, "review", ttype, stats)[0])
         _, reason = score(best, "review", ttype, stats)
-        return best, ("（无跨厂商智能体可用，回退同厂商 %s 评审——建议启用其他厂商的 CLI）"
-                      % impl_kind) + reason
+        reasons = "; ".join("%s: %s" % (a.get("id"), why)
+                            for a, why in rejected[:3])
+        return best, ("（无满足模型族/供应商/上游隔离的评审者，"
+                      "兼容回退同源候选；原因：%s）" % reasons) + reason
     mb = next((a for a in agents if a["id"] == "mock-b"), None)
     if mb and impl.get("mode") != "mock":
         return mb, "（无第二个真实智能体，用 mock 评审）"

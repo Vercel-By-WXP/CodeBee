@@ -8,6 +8,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from . import atomic
+
 
 def file_digest(path):
     h = hashlib.sha256()
@@ -48,11 +50,7 @@ def build(*, run_id, workdir, command=(), inputs=(), outputs=(), verification=()
 
 
 def dump(record, path):
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(p)
+    atomic.write_json(Path(path), record)
 
 
 def from_run(run, task=None, *, workdir=None):

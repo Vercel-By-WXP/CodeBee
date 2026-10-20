@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 _DIR = paths.DATA_DIR / "contracts"
 _LOCK = threading.RLock()
@@ -45,10 +45,7 @@ def _now():
 
 def _save(item):
     p = _path(item["task_id"])
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(item, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(p)
+    atomic.write_json(p, item)
 
 
 def _load(task_id):

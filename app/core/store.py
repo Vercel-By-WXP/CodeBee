@@ -19,7 +19,7 @@ import time
 from concurrent import futures
 from pathlib import Path
 
-from . import artifacts, audit, paths, runner, tracing, volumes
+from . import artifacts, atomic, audit, paths, runner, tracing, volumes
 
 LOCK = threading.RLock()
 _TASKS = {}
@@ -537,10 +537,7 @@ def create_task(payload):
 
 
 def _save_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic.write_json(path, data)
     bump_state()
 
 
@@ -1667,10 +1664,11 @@ def _write_initial_story_bible(workdir, text):
                         return
                     raise ValueError("工作目录已有 story-bible.md，请清空初始圣经输入或先编辑已有设定")
                 # 空文件是合法的旧占位文件；在锁内覆盖，避免本服务内的并发写入。
-                p.write_text(text, encoding="utf-8")
+                atomic.write_text(p, text)
                 return
             try:
-                fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                atomic.create_text(p, text, mode=0o644)
+                return
             except FileExistsError:
                 # 其他进程可能刚创建了文件。相同内容可幂等返回；空文件仍可
                 # 完成播种，非空不同内容绝不静默覆盖。
@@ -1679,11 +1677,9 @@ def _write_initial_story_bible(workdir, text):
                     if existing == text:
                         return
                     if not existing:
-                        p.write_text(text, encoding="utf-8")
+                        atomic.write_text(p, text)
                         return
                 raise ValueError("工作目录已有 story-bible.md，请清空初始圣经输入或先编辑已有设定")
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(text)
         except ValueError:
             raise
         except OSError as e:
@@ -1729,7 +1725,7 @@ def write_story_bible(task_id, text):
             return False, "故事圣经超长（最大 %d 字符，当前 %d 字符）" % (BIBLE_MAX_CHARS, len(text))
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(text, encoding="utf-8")
+            atomic.write_text(p, text)
         except OSError as e:
             return False, "写入失败: %s" % e
     # 故事圣经是提示词输入，写入后让 SSE/轮询端尽快看到新状态。
@@ -3238,8 +3234,7 @@ def set_paused_all(paused):
 
 def write_report(run_id, markdown):
     p = paths.RUNS_DIR / run_id / "report.md"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(markdown, encoding="utf-8")
+    atomic.write_text(p, markdown)
     with LOCK:
         run = _RUNS.get(run_id)
         if run:

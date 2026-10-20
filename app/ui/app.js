@@ -2461,10 +2461,19 @@ function visibleAccountAlerts(health) {
 }
 
 function dismissVisibleAccountAlerts() {
-  if (!_visibleAcctIds.length) return;
+  dismissAccountAlerts(_visibleAcctIds);
+}
+
+function dismissAccountAlert(agentId) {
+  dismissAccountAlerts([agentId]);
+}
+
+function dismissAccountAlerts(agentIds) {
+  const ids = (agentIds || []).filter(Boolean);
+  if (!ids.length) return;
   const dm = acctDismissMap();
   const until = Date.now() + ACCT_DISMISS_MS;
-  _visibleAcctIds.forEach((id) => { dm[id] = until; });
+  ids.forEach((id) => { dm[id] = until; });
   const now = Date.now();
   Object.keys(dm).forEach((k) => { if (dm[k] <= now) delete dm[k]; });
   try { localStorage.setItem(ACCT_DISMISS_KEY, JSON.stringify(dm)); } catch (e) {}
@@ -2538,43 +2547,81 @@ function healthBannerClick() {
   const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
   const accountAlerts = visibleAccountAlerts(S.state && S.state.health);
   if (!alerts.length && !accountAlerts.length) return;
-  const rows = alerts.map((p) => {
-    const model = p.model ? " · " + p.model : "";
+  const providerRows = alerts.map((p, index) => {
     const statLine = p.static ? "" :
       "<div style='opacity:.75;font-size:12px;margin-top:2px'>" +
       t("连续失败") + " " + p.consecutive_failures + " " + t("次 · 首次失败 ") + (p.first_fail_at || "-") +
       "</div>";
-    return "<div style='margin-bottom:10px'>" +
+    const actions = "<div style='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'>" +
+      (p.provider_id && p.model
+        ? "<button class='ghost small' data-health-action='disable-model' data-health-index=\"" + index + "\">" + t("禁用该模型") + "</button>"
+        : "") +
+      (p.provider_id
+        ? "<button class='ghost small' data-health-action='disable-provider' data-health-index=\"" + index + "\">" + t("禁用该厂商") + "</button>"
+        : "") +
+      "<button class='ghost small' data-health-action='silence' data-health-index=\"" + index + "\">" + t("静默本次告警") + "</button>" +
+      "<button class='ghost small' data-health-action='reset' data-health-index=\"" + index + "\">" + t("手动标记恢复") + "</button>" +
+      "</div>";
+    return "<div style='padding:10px 0;border-bottom:1px solid var(--border)'>" +
       "<b>" + esc(p.provider) + (p.model ? " · " + esc(p.model) : "") + "</b>" +
       statLine +
       "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
-      esc(p.last_error || "") + "</div></div>";
-  }).concat(accountAlerts.map((a) =>
-    "<div style='margin-bottom:10px'><b>" + esc(a.agent_id || t("账号")) + "</b>" +
-    "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
-    esc(a.last_error || a.summary || a.code || t("账号失效，正在定时探活")) +
-    "</div><div style='opacity:.75;font-size:12px;margin-top:2px'>" +
-    esc(t("恢复后会自动重新进入调度")) + "</div></div>" )).join("");
-  const pid0 = alerts.length ? (alerts[0].provider_id || "") : "";
-  const model0 = alerts.length ? (alerts[0].model || "") : "";
+      esc(p.last_error || "") + "</div>" + actions + "</div>";
+  }).join("");
+  const accountRows = accountAlerts.map((a, index) =>
+    "<div style='padding:10px 0;border-bottom:1px solid var(--border)'><b>" + esc(a.agent_id || t("账号")) + "</b>" +
+      "<div style='color:#dc2626;font-size:12px;margin-top:2px;word-break:break-all'>" +
+      esc(a.last_error || a.summary || a.code || t("账号失效，正在定时探活")) +
+      "</div><div style='opacity:.75;font-size:12px;margin-top:2px'>" +
+      esc(t("恢复后会自动重新进入调度")) + "</div>" +
+      "<div style='display:flex;margin-top:8px'><button class='ghost small' data-account-action='dismiss' data-account-index=\"" + index + "\">" +
+      t("隐藏 12 小时") + "</button></div></div>").join("");
+  const rows =
+    (providerRows ? "<section><h3 style='font-size:13px;margin:0 0 2px'>" + t("供应商连接告警") + "</h3>" + providerRows + "</section>" : "") +
+    (accountRows ? "<section style='margin-top:" + (providerRows ? "18px" : "0") + "'><h3 style='font-size:13px;margin:0 0 2px'>" +
+      t("CLI 账号告警") + "</h3>" + accountRows + "</section>" : "");
   const foot =
-    (pid0 && model0 ? "<button class='btn ghost' onclick=\"healthDisableModel('" + esc(pid0) + "','" + esc(model0) + "')\">" + t("禁用该模型") + "</button>" : "") +
-    (pid0 ? "<button class='btn ghost' onclick=\"healthDisableProvider('" + esc(pid0) + "')\">" + t("禁用该厂商") + "</button>" : "") +
-    (alerts.length ? "<button class='btn ghost' onclick=\"healthOp('silence')\">" + t("静默本次告警") + "</button>" +
-      "<button class='btn ghost' onclick=\"healthOp('reset')\">" + t("手动标记恢复") + "</button>" : "") +
-    (_visibleAcctIds.length ? "<button class='btn ghost' onclick='dismissVisibleAccountAlerts()'>" + t("隐藏账号告警") + "</button>" : "") +
+    (accountAlerts.length > 1 ? "<button class='ghost' onclick='dismissVisibleAccountAlerts()'>" + t("隐藏全部账号告警 12 小时") + "</button>" : "") +
     "<button class='primary' onclick='closeModal()'>" + t("关闭") + "</button>";
   openModal(t("供应商健康告警"), rows, foot);
+  bindHealthAlertActions(alerts, accountAlerts);
 }
 
-async function healthOp(op) {
-  const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
-  const down = alerts[0];
+function bindHealthAlertActions(alerts, accountAlerts) {
+  const modal = $("modal");
+  if (!modal) return;
+  modal.querySelectorAll("[data-health-action][data-health-index]").forEach((btn) => {
+    const alert = alerts[Number(btn.dataset.healthIndex)];
+    if (!alert) return;
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.healthAction;
+      if (action === "disable-model") {
+        healthDisableModel(alert.provider_id, alert.model, alert.provider);
+      } else if (action === "disable-provider") {
+        healthDisableProvider(alert.provider_id, alert.provider);
+      } else {
+        healthOp(action, alert);
+      }
+    });
+  });
+  modal.querySelectorAll("[data-account-action][data-account-index]").forEach((btn) => {
+    const account = accountAlerts[Number(btn.dataset.accountIndex)];
+    if (!account) return;
+    btn.addEventListener("click", () => dismissAccountAlert(account.agent_id));
+  });
+}
+
+async function applyHealthOp(provider, op) {
+  const r = await api("/api/health/op", { method: "POST",
+    body: JSON.stringify({ provider, op }) });
+  if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
+  return r;
+}
+
+async function healthOp(op, down) {
   if (!down) return;
   try {
-    const r = await api("/api/health/op", { method: "POST",
-      body: JSON.stringify({ provider: down.provider, op }) });
-    if (r && r.health) { S.state.health = r.health; renderHealthBanner(r.health); }
+    await applyHealthOp(down.provider, op);
     closeModal(); render();
     if (op === "silence") toast(t("已静默 {0} 的告警（恢复后自动重新武装）").replace("{0}", down.provider));
     if (op === "reset") toast(t("已手动标记 {0} 为恢复，探针将重新核实").replace("{0}", down.provider));
@@ -2585,7 +2632,7 @@ async function healthOp(op) {
 
 /* 模型级禁用：绑定链里它的条目由后端自动剔除（modelhub 停用即出调度）。
    只对出问题的那一格生效——厂商其它模型照常可用。 */
-async function healthDisableModel(pid, model) {
+async function healthDisableModel(pid, model, provider) {
   if (!pid || !model) { closeModal(); return; }
   const yes = await uiConfirm(
     t("确认禁用模型 {0}？调度链里它的条目会自动移除，其余模型不受影响；可在模型调度页重新启用。").replace("{0}", pid + " · " + model),
@@ -2594,10 +2641,7 @@ async function healthDisableModel(pid, model) {
   try {
     await api("/api/models/model-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, name: model, op: "disable" }) });
-    if (S.state.health && S.state.health.alerts[0]) {
-      await api("/api/health/op", { method: "POST",
-        body: JSON.stringify({ provider: S.state.health.alerts[0].provider, op: "silence" }) });
-    }
+    if (provider) await applyHealthOp(provider, "silence");
     const models = await api("/api/models");
     S.providers = models.providers; S.bindings = models.bindings;
     S.modelCatalog = models.catalog || [];
@@ -2609,7 +2653,7 @@ async function healthDisableModel(pid, model) {
   }
 }
 
-async function healthDisableProvider(pid) {
+async function healthDisableProvider(pid, provider) {
   if (!pid) { closeModal(); return; }
   const yes = await uiConfirm(
     t("确认禁用该厂商？调度链里它的条目会自动移除，恢复后可在模型调度页重新启用。"),
@@ -2618,10 +2662,7 @@ async function healthDisableProvider(pid) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [pid], op: "disable" }) });
-    if (S.state.health && S.state.health.alerts[0]) {
-      await api("/api/health/op", { method: "POST",
-        body: JSON.stringify({ provider: S.state.health.alerts[0].provider, op: "silence" }) });
-    }
+    if (provider) await applyHealthOp(provider, "silence");
     const models = await api("/api/models");
     S.providers = models.providers; S.bindings = models.bindings;
     S.provSig = "";
@@ -17252,6 +17293,10 @@ async function loadSettingsV2() {
   if (!box) return;
   let v2 = null;
   try { v2 = await api("/api/settings-v2"); } catch (e) { box.innerHTML = ""; return; }
+  if (!v2 || typeof v2 !== "object" || !v2.namespaces || typeof v2.namespaces !== "object") {
+    box.innerHTML = "";
+    return;
+  }
   S.settingsV2 = v2;
   const NS_LABEL = { orchestrator: t("编排引擎"), budget: t("预算"), cascade: t("级联路由"), startup: t("启动") };
   let html = "<label>" + esc(t("引擎调参（schema 化设置，立即生效）")) + "</label>";
@@ -19646,9 +19691,10 @@ async function openPhoneConnect() {
   let urls = [];
   let relay = null;
   let pairError = null;
+  let connectData = null;
   try {
-    const d = await api("/api/connect");
-    relay = d.relay;
+    connectData = await api("/api/connect");
+    relay = connectData.relay;
     // The pairing view opens with a usable QR code. Keep an existing code so
     // reopening the dialog does not invalidate a code the user is scanning.
     // A saved configuration can be online without an active one-time code:
@@ -19665,7 +19711,7 @@ async function openPhoneConnect() {
       }
     }
     // 后端排好的直连入口（公网隧道 / Tailscale / 局域网），配对码之外并列可选。
-    urls = (d.urls || []).map(u => ({ label: u.label, url: u.url }));
+    urls = (connectData.urls || []).map(u => ({ label: u.label, url: u.url }));
   } catch (e) { toast(e.message, true); return; }
   if (!relay) { toast(t("统一手机连接暂不可用，请在本机打开 CodeBee 后重试"), true); return; }
   if (relay && relay.pair_url) urls.unshift({ label: t("Codebee · 手机配对"), url: relay.pair_url });
@@ -19692,7 +19738,7 @@ async function openPhoneConnect() {
     t("连不上时（如路由器重启后地址变了）回电脑重新打开此弹框扫新码即可。") + '</p>' +
     "</div>";
   openModal(t("📱 手机连接"), body, "");
-  if (relay) renderPhoneRelay(relay, d);
+  if (relay) renderPhoneRelay(relay, connectData);
   renderConnQR();
   if (pairError) toast(t("自动生成配对码失败，请重试"), true);
 }
@@ -21156,6 +21202,7 @@ function beeShow(el, on) { if (el) el.classList.toggle("hidden", !on); }
 async function beeRefresh() {
   let v;
   try { v = await api("/api/wxdigest"); } catch (e) { return; }   // 静默：不打扰主流程
+  if (!v || typeof v !== "object") return;
   Bee.view = v;
   Bee.lastUnseen = v.unseen;
   beeRenderPanel();

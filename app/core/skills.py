@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import novel_feedback, paths, prompt_templates, revisions
+from . import atomic, novel_feedback, paths, prompt_templates, revisions
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "skills.json"
@@ -220,10 +220,7 @@ def _load():
 
 
 def _save(data):
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, data)
 
 
 # ---------------------------------------------------------------- 内置经验包

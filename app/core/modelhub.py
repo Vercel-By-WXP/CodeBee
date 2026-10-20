@@ -4499,6 +4499,75 @@ def migrate_chains():
         return True
 
 
+def _builtin_model_alias(model, available):
+    """Resolve an old short free-model ID against the provider catalog."""
+    value = str(model or "").strip()
+    names = [str(item.get("name") or "").strip()
+             for item in (available or [])
+             if isinstance(item, dict) and item.get("name")]
+    if value in names:
+        return value
+    wanted = value.lower()
+    for candidate in names:
+        tail = candidate.rsplit("/", 1)[-1].lower()
+        if tail.endswith(":free"):
+            tail = tail[:-5]
+        if wanted.endswith("-free") and wanted[:-5] == tail:
+            return candidate
+    return ""
+
+
+def migrate_builtin_free_model_ids():
+    """Migrate stale short IDs and drop IDs absent from the live catalog."""
+    with _LOCK:
+        data = _load()
+        builtin = {p.get("id"): p for p in data.get("providers") or []
+                   if _is_our_free_model_provider(p)}
+        if not builtin:
+            return 0
+        changed_rows = 0
+        for prov in builtin.values():
+            models = prov.get("models")
+            if not isinstance(models, list):
+                continue
+            for row in models:
+                if not isinstance(row, dict):
+                    continue
+                old = str(row.get("name") or "").strip()
+                new = _builtin_model_alias(old, models)
+                if new and new != old:
+                    row["name"] = new
+                    changed_rows += 1
+        for binding in (data.get("bindings") or {}).values():
+            if not isinstance(binding, dict):
+                continue
+            original = _binding_chain(binding)
+            if not original:
+                continue
+            updated, changed = [], False
+            for item in original:
+                pid = str(item.get("provider_id") or "")
+                model = str(item.get("model") or "").strip()
+                if pid not in builtin:
+                    updated.append({"provider_id": pid, "model": model})
+                    continue
+                replacement = _builtin_model_alias(model,
+                                                   builtin[pid].get("models"))
+                if replacement:
+                    updated.append({"provider_id": pid, "model": replacement})
+                    changed |= replacement != model
+                else:
+                    changed = True
+            if changed:
+                binding["chain"] = updated
+                _sync_chain_refs(binding)
+                changed_rows += 1
+        if changed_rows:
+            _backup_file(_FILE)
+            _save(data)
+        return changed_rows
+
+
 # ---------------------------------------------------------------- 编排设置（编排者模型）
 
 def orchestrator_view():

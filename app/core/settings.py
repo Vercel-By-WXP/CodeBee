@@ -6,7 +6,7 @@ import json
 import threading
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "settings.json"
@@ -207,9 +207,9 @@ def save(patch):
                 return cur, "cleanup_retention_days 必须是整数"
             if not 1 <= cur["cleanup_retention_days"] <= 365:
                 return cur, "cleanup_retention_days 取值 1-365"
-        _FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(_FILE)
+        # Settings can contain webhook/API credentials; publish atomically and
+        # use a private mode on POSIX so a crash or concurrent reader never
+        # observes a truncated secret-bearing file.
+        atomic.write_json(_FILE, cur, mode=0o600)
     cur["default_workdir_effective"] = cur["default_workdir"] if cur["default_workdir"] else builtin_workdir()
     return cur, None

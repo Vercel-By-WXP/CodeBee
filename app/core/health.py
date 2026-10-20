@@ -72,6 +72,21 @@ def init(data_dir=None, *, start_probe=True):
                     _PROVIDERS[name] = st
         except (OSError, json.JSONDecodeError):
             pass
+        # Older versions recorded runner's generic VENDOR_ERROR for local CLI
+        # crashes (the error envelope itself had no upstream signal).  Those
+        # rows survive restarts unless explicitly migrated, so remove them
+        # before exposing the first health snapshot.  A real classified signal
+        # such as HTTP 5xx is retained.
+        stale_false_positives = [
+            name for name, st in _PROVIDERS.items()
+            if _is_local_false_positive(st)
+        ]
+        if stale_false_positives:
+            for name in stale_false_positives:
+                _PROVIDERS.pop(name, None)
+            _persist()
+            log.info("[health] 清除旧版 CLI 本地故障误报：%s",
+                     ", ".join(stale_false_positives))
         # 「绑定链·」静态告警胶囊已从产品移除（2026-09-18：普通用户误伤，
         # 用户拍板）——老版本持久化的条目启动即清，别让 0.1.6 的状态阴魂不散。
         stale = [k for k in _PROVIDERS if k.startswith("绑定链·")]
@@ -152,6 +167,30 @@ def _allow_unsourced_log(provider, model, text):
             while len(_UNSOURCED_LOGGED) > 512:
                 _UNSOURCED_LOGGED.pop(next(iter(_UNSOURCED_LOGGED)))
         return True
+
+
+def _is_local_false_positive(st):
+    """Whether a persisted provider row is known to be a local-only failure."""
+    if not isinstance(st, dict):
+        return False
+    code = str(st.get("last_error_code") or "").upper()
+    if code in {"TOOL_LAUNCH", "CONTEXT_OVERFLOW"}:
+        return True
+    if code and code != "VENDOR_ERROR":
+        return False
+    text = str(st.get("last_error") or "")
+    if "未启动外部 CLI" in text[:160] or _LAUNCH_FAILURE_PREFIX in text[:80]:
+        return True
+    if "stderr/stdout:" not in text[:160]:
+        return False
+    try:
+        from .error_codes import classify_error_text
+        # VENDOR_ERROR is runner's generic fallback, not evidence that the
+        # provider failed.  Only discard an envelope when no stronger signal
+        # can be classified from its text.
+        return classify_error_text(text) is None
+    except Exception:
+        return False
 
 
 def _fmt_ts(epoch):
@@ -245,7 +284,11 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             # Prefer the structured code already produced by runner. Long CLI
             # envelopes may contain truncation/diagnostic text that obscures a
             # reliable signal when the whole string is classified again.
-            unclassified = not code and classify_error_text(text) is None
+            # VENDOR_ERROR is runner's generic fallback.  It is not a
+            # structured upstream signal, so a plain CLI stderr envelope with
+            # that code must still be treated as local/unknown noise.
+            unclassified = (code in ("", "VENDOR_ERROR")
+                            and classify_error_text(text) is None)
         except Exception:
             unclassified = False
         if unclassified:

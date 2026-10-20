@@ -129,6 +129,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "no-referrer")
         for k, v in (headers or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -197,6 +200,16 @@ class Handler(BaseHTTPRequestHandler):
                                      (q.get("token") or [""])[0],
                                      self.headers.get("X-CodeBee-Token") or "")
 
+    def _same_origin(self):
+        """Allow browser writes only from the CodeBee origin.
+
+        Requests without Origin remain compatible with scripts and local CLI
+        clients; browsers send Origin on POST, so cross-site forms/fetches are
+        rejected before any state-changing handler runs.
+        """
+        return remote.same_origin(self.headers.get("Origin") or "",
+                                  self.headers.get("Host") or "")
+
     def _phone_admin_local(self):
         # Pairing and revocation are available only on the actual computer.
         # Do not trust forwarded loopback requests even before proxy mode starts.
@@ -205,8 +218,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("X-Forwarded-For") or self.headers.get("CF-Connecting-IP"):
             return False
         origin = self.headers.get("Origin")
-        return (not origin or urlparse(origin).netloc.lower() ==
-                (self.headers.get("Host") or "").lower())
+        return remote.same_origin(origin, self.headers.get("Host") or "")
 
     def _client_id(self):
         cid = (self.headers.get("X-CodeBee-Client") or "").strip()
@@ -1149,6 +1161,8 @@ class Handler(BaseHTTPRequestHandler):
         m = None
         if not self._authed():
             return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
+        if not self._same_origin():
+            return self._json(403, {"error": "拒绝跨站写请求"})
         # 所有写接口共用一次严格解析；后续路由再次调用 _body() 时直接取缓存。
         # 这样 malformed JSON 不会被当成空对象继续执行，也避免同一请求重复读流。
         self._body_limit = (MAX_ATTACHMENT_BODY_BYTES if path == "/api/attachments"
@@ -4806,6 +4820,7 @@ def main():
     _step("正在迁移模型绑定…")
     modelhub.migrate_orch_models()  # 旧「编排模型」偏好并入 CLI 绑定（幂等，带备份）
     modelhub.migrate_chains()       # 旧单供应商模型链升级为跨厂商 chain（幂等，带备份）
+    modelhub.migrate_builtin_free_model_ids()  # 旧短 ID 对齐 standalone 当前目录
     n_stale = modelhub.migrate_stale_provider_only_bindings()
     if n_stale:
         print("[CodeBee] 模型绑定：清理 %d 条历史空链供应商锁定，恢复自动调度" % n_stale,
@@ -5115,7 +5130,7 @@ def main():
     elif remote.PUBLIC_URL:
         print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
               % (remote.PUBLIC_URL, tok))
-    elif not args.no_public_tunnel and args.host != "127.0.0.1":
+    elif not args.no_public_tunnel and args.host not in ("127.0.0.1", "localhost", "::1"):
         if remote.has_local_creds():
             print("[CodeBee] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
                   "请用 --public-url 配固定域名）")
@@ -5133,7 +5148,9 @@ def main():
                 print("[CodeBee] 自动安装失败（无 winget/brew 或网络不通）；"
                       "手动安装后重启即可获得公网地址")
     atexit.register(remote.stop_quick_tunnel)
-    if args.host != "127.0.0.1":
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        print("[CodeBee] [警告] 服务已监听非本机地址；所有非回环请求必须携带访问令牌，"
+              "请勿把 token 分享到公开日志或截图。", flush=True)
         lan = remote.lan_ip()
         if lan:
             print("[CodeBee] 局域网   http://%s:%d/?token=%s   ← 手机同一 WiFi 直接打开" % (lan, args.port, tok))

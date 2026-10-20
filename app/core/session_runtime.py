@@ -16,6 +16,8 @@ import threading
 import time
 from pathlib import Path
 
+from . import atomic
+
 
 class SessionBusyError(RuntimeError):
     pass
@@ -67,9 +69,7 @@ class WorkspaceLease:
             payload = {"workspace": str(workspace), "identity": workspace_identity(workspace),
                        "owner": str(owner), "epoch": epoch, "expires_at": expires,
                        "updated_at": now}
-            tmp = file.with_suffix(".tmp")
-            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(file)
+            atomic.write_json(file, payload, mode=0o600, indent=None)
             return cls(file, owner=owner, epoch=epoch, expires_at=expires, root=file.parent)
 
     def _read(self):
@@ -91,9 +91,7 @@ class WorkspaceLease:
             row = self._read()
             row["expires_at"] = time.time() + max(0.01, float(ttl))
             row["updated_at"] = time.time()
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(row, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(self.path)
+            atomic.write_json(self.path, row, mode=0o600, indent=None)
             self.expires_at = row["expires_at"]
             return True
 
@@ -153,9 +151,7 @@ class WorkspaceLease:
             row = self._read()
             row["expires_at"] = 0
             row["released_at"] = time.time()
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(row, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(self.path)
+            atomic.write_json(self.path, row, mode=0o600, indent=None)
             return True
 
 
@@ -200,9 +196,7 @@ class SessionRuntime:
             return {}
 
     def _save(self):
-        tmp = self.registry.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self._sessions, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.registry)
+        atomic.write_json(self.registry, self._sessions, mode=0o600)
 
     def _row(self, sid):
         row = self._sessions.get(str(sid))

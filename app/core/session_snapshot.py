@@ -7,6 +7,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from . import atomic
+
 
 def _digest(path):
     h = hashlib.sha256()
@@ -88,9 +90,7 @@ def replay(snapshot, *, upto_seq=None):
 
 
 def write(snapshot, path):
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic.write_json(Path(path), snapshot)
 
 
 def read(path):

@@ -25,6 +25,8 @@ import threading
 import time
 import uuid
 
+from . import atomic
+
 log = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLD = 3
@@ -75,11 +77,7 @@ def _read() -> dict:
 def _write(value: dict) -> None:
     path = _state_path()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2),
-                       encoding="utf-8")
-        tmp.replace(path)
+        atomic.write_json(path, value)
     except OSError as exc:
         log.warning("[failure-notify] 无法保存通知状态：%s", exc)
 

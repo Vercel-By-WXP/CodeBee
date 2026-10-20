@@ -12,7 +12,7 @@ import re
 import threading
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "retrieval_index.json"
@@ -35,10 +35,7 @@ def _load():
 
 
 def _save(value):
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, value, indent=1)
 
 
 def upsert(source, text, metadata=None, doc_id=""):

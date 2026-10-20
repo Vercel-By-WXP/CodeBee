@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlsplit
 
-from .. import chaptersafe, operations, paths, quality_gate
+from .. import atomic, chaptersafe, operations, paths, quality_gate
 from . import fanqie, flow, ledger, qimao
 from .browser import Browser, BrowserError, Page
 
@@ -505,11 +505,7 @@ def _load():
 def _save():
     with LOCK:
         try:
-            paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
-            tmp = STATUS_FILE.with_suffix(".tmp")
-            tmp.write_text(json.dumps(_state, ensure_ascii=False, indent=1),
-                           encoding="utf-8")
-            tmp.replace(STATUS_FILE)
+            atomic.write_json(STATUS_FILE, _state, mode=0o600, indent=1)
         except Exception:
             pass
 
@@ -931,11 +927,9 @@ def load_accounts():
 
 def _save_accounts(items):
     with LOCK:
-        paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = ACCOUNTS_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"accounts": items}, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
-        tmp.replace(ACCOUNTS_FILE)
+        # Account metadata may be used to select browser profiles.  Keep the
+        # durable index private even though browser cookies live separately.
+        atomic.write_json(ACCOUNTS_FILE, {"accounts": items}, mode=0o600, indent=1)
 
 
 def list_accounts(plat=None):

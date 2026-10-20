@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import atomic
+
 DEFAULT_CLIS = (
     {"name": "codex", "executable": "codex"},
     {"name": "claude", "executable": "claude"},
@@ -56,18 +58,12 @@ def refresh(path, specs=None, *, timeout=3, environ=None):
     """Probe configured CLIs and atomically write the cache."""
     rows = discover(specs=specs, timeout=timeout, environ=environ)
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(json.dumps({"clis": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(target)
+    atomic.write_json(target, {"clis": rows})
     return rows
 
 
 def save(results, path):
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps({"clis": results}, ensure_ascii=False, indent=2),
-                      encoding="utf-8")
+    atomic.write_json(Path(path), {"clis": results})
 
 
 def load(path):

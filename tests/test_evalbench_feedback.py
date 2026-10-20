@@ -106,6 +106,9 @@ class EvalBenchFeedbackTests(unittest.TestCase):
     def test_create_from_run_route_rejects_missing_run_and_unconfirmed_sample(self):
         handler = Handler.__new__(Handler)
         handler.path = "/api/evalbench/sample-from-run"
+        # _route_post 现在先过 same-origin 闸（2026-10-20 起）；裸桩补空
+        # headers——空 Origin=非浏览器客户端放行，与真请求语义一致。
+        handler.headers = {}
         handler._authed = lambda: True
         handler._deny_control = lambda: None
         sample = {"name": "Regression", "requirement": "Correct",

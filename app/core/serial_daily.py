@@ -10,7 +10,7 @@ import threading
 import time
 from datetime import datetime
 
-from . import paths, store
+from . import atomic, paths, store
 
 log = logging.getLogger(__name__)
 _LOCK = threading.RLock()
@@ -41,11 +41,7 @@ def _ensure_loaded():
 
 
 def _save_locked():
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 1, "jobs": list(_JOBS.values())},
-                              ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, {"version": 1, "jobs": list(_JOBS.values())})
 
 
 def _copy(job):

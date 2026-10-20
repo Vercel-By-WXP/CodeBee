@@ -17,6 +17,8 @@ from pathlib import Path
 import threading
 import time
 
+from . import atomic
+
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 _LOCK = threading.RLock()
 
@@ -45,11 +47,7 @@ def _read() -> dict:
 def _write(value: dict) -> None:
     path = _path()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2),
-                       encoding="utf-8")
-        tmp.replace(path)
+        atomic.write_json(path, value)
     except OSError:
         # Evaluation is telemetry.  A read-only data directory must not turn
         # a successful model call into a task failure.

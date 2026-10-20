@@ -10,7 +10,7 @@ import json
 import threading
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 DEFAULT_DIMENSIONS = [
     {"id": "correctness", "name": "正确性", "weight": 1.0},
@@ -97,10 +97,7 @@ def save(policy):
         if key in policy:
             out[key] = str(policy[key] or "").strip()[:120]
     with _LOCK:
-        Path(_FILE).parent.mkdir(parents=True, exist_ok=True)
-        temp = Path(_FILE).with_suffix(".tmp")
-        temp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(_FILE)
+        atomic.write_json(_FILE, out)
     return out
 
 

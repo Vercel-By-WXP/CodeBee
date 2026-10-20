@@ -2,12 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 import {
   ID, SECRET, PAIR_CODE, SESSION_SECONDS, REQUEST_HEADERS, RESPONSE_HEADERS,
   digest, randomSecret, sessionCookie, readSession, sameOrigin, safePath, assetTarget,
-  encode, decode, boundedBody, securityHeaders, json, preferredLang,
+  encode, decode, boundedBody, securityHeaders, json, preferredLang, rateLimitSubject,
 } from "./policy.mjs";
 
-async function allowed(env, request, action, limit, seconds) {
-  const ip = request.headers.get("cf-connecting-ip") || "local";
-  const key = await digest(ip);
+async function allowed(env, request, action, limit, seconds, session = null) {
+  const key = await digest(rateLimitSubject(request, action, session));
   const response = await env.GATES.getByName(key).fetch("https://gate/check", {
     method: "POST", body: JSON.stringify({ action, limit, seconds }),
   });
@@ -104,6 +103,15 @@ export default {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
         }));
       }
+
+      // PWA metadata and other static workbench files are safe to serve before
+      // session validation. Browsers request the manifest during first paint;
+      // returning 401 here makes an otherwise successful phone login look
+      // broken and pollutes the console.
+      if (path !== "/") {
+        const publicAsset = await workbenchAsset(env, request, url);
+        if (publicAsset) return publicAsset;
+      }
       const session = readSession(request);
       if (!session) {
         if (path === "/" && request.method === "GET") return portal(env, request);
@@ -116,7 +124,7 @@ export default {
       if (asset) return asset;
       if (path.startsWith("/relay/") && !["/relay/logout", "/relay/session"].includes(path)) return json({ error: "Not found" }, 404);
       if (!path.startsWith("/relay/") && !safePath(path + url.search)) return json({ error: "此操作请在电脑上完成" }, 403);
-      if (!await allowed(env, request, "request", 600, 60)) return json({ error: "请求过于频繁" }, 429);
+      if (!await allowed(env, request, "request", 600, 60, session)) return json({ error: "请求过于频繁" }, 429);
       const response = await env.DEVICES.getByName(session[0]).fetch(request);
       if (path === "/" && request.method === "GET" && [401, 503].includes(response.status)) {
         const landing = await portal(env, request);

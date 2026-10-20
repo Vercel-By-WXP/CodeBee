@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import threading
 
-from . import paths
+from . import atomic, paths
 
 MOCK_AGENTS = [
     {"id": "mock-a", "label": "演示智能体 A（mock）", "kind": "mock", "mode": "mock", "command": ""},
@@ -66,9 +66,7 @@ def load_enabled():
 
 def save_enabled(state):
     with _LOCK:
-        paths.ensure_dirs()
-        paths.ENABLED_FILE.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_json(paths.ENABLED_FILE, state, mode=0o600)
 
 
 def set_preference(agent_id, enabled=None, model=None, models=None):

@@ -67,6 +67,14 @@ def _normalize_state(agent_id, raw):
     except (TypeError, ValueError):
         value["probe_failures"] = 0
     value["last_error"] = str(value.get("last_error") or "")[:300]
+    value["ever_succeeded"] = bool(value.get("ever_succeeded") or
+                                    (value.get("status") == "recovered" and
+                                     (value.get("recovered_at") or
+                                      value.get("last_success_at"))))
+    try:
+        value["last_success_at"] = max(0.0, float(value.get("last_success_at") or 0))
+    except (TypeError, ValueError):
+        value["last_success_at"] = 0.0
     if value["status"] == "down" and value["next_probe_at"] <= 0:
         value["next_probe_at"] = now + _probe_delay(value)
     if value["status"] == "recovered":
@@ -146,6 +154,7 @@ def record_failure(agent_id, code, error="", at=None):
             "summary": safe_error_summary(value), "failed_at": now,
             "last_error": "", "last_probe_at": 0, "next_probe_at": now + _ACCOUNT_PROBE_DELAY,
             "probe_failures": 0, "recovered_at": 0,
+            "ever_succeeded": False, "last_success_at": 0,
             }
             _ACCOUNTS[aid] = state
         state.update({"agent_id": aid, "status": "down", "code": value,
@@ -164,18 +173,32 @@ def record_failure(agent_id, code, error="", at=None):
 
 
 def record_success(agent_id, at=None):
-    """Mark a previously dead account recovered; routing sees it immediately."""
+    """Record successful use and clear any account quarantine."""
     if not agent_id:
         return False
     aid = str(agent_id)
     now = float(at if at is not None else time.time())
     with _LOCK:
         state = _ACCOUNTS.get(aid)
-        if not state or state.get("status") != "down":
+        if state is None:
+            _ACCOUNTS[aid] = {
+                "agent_id": aid, "status": "recovered", "code": "",
+                "summary": "", "failed_at": 0, "last_error": "",
+                "last_probe_at": now, "next_probe_at": 0,
+                "probe_failures": 0, "recovered_at": now,
+                "ever_succeeded": True, "last_success_at": now,
+            }
+            _persist()
+            return True
+        if state.get("status") != "down":
+            state.update({"ever_succeeded": True, "last_success_at": now,
+                          "last_probe_at": now})
+            _persist()
             return False
         state.update({"status": "recovered", "recovered_at": now,
                       "last_probe_at": now, "next_probe_at": 0,
-                      "probe_failures": 0})
+                      "probe_failures": 0, "ever_succeeded": True,
+                      "last_success_at": now})
         # Recovery is account-wide: remove stale run-local exclusions too, so
         # every still-running schedule can use the account again immediately.
         for entries in _BENCHED.values():
@@ -213,7 +236,8 @@ def snapshot():
         rows.sort(key=lambda x: (0 if x.get("status") == "down" else 1,
                                  str(x.get("agent_id") or "")))
         for row in rows:
-            row["alerting"] = row.get("status") == "down"
+            row["alerting"] = (row.get("status") == "down" and
+                                bool(row.get("ever_succeeded")))
         return {"accounts": rows,
                 "alerts": [r for r in rows if r.get("alerting")],
                 "any_alerting": any(r.get("alerting") for r in rows)}
@@ -348,7 +372,8 @@ def _record_probe_result(agent_id, state, ok):
             # Inline to avoid a second lookup and preserve the identity guard.
             state.update({"status": "recovered", "recovered_at": now,
                           "next_probe_at": 0, "probe_failures": 0,
-                          "alerting": False})
+                          "alerting": False, "ever_succeeded": True,
+                          "last_success_at": now})
             for entries in _BENCHED.values():
                 entries.pop(agent_id, None)
             _persist()

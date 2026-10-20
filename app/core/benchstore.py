@@ -17,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 _LOCK = threading.RLock()
 FRESH_DAYS = 14            # 实测分新鲜度（天）；0 = 永不过期（测试用）
@@ -41,10 +41,7 @@ def read_doc():
 
 def write_doc(data):
     with _LOCK:
-        _path().parent.mkdir(parents=True, exist_ok=True)
-        tmp = _path().with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(_path())
+        atomic.write_json(_path(), data)
 
 
 def read_results():

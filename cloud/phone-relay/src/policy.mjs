@@ -34,6 +34,14 @@ export function readSession(request) {
   return parts.length === 2 && ID.test(parts[0]) && SECRET.test(parts[1]) ? parts : null;
 }
 
+export function rateLimitSubject(request, action, session = null) {
+  if (action === "request" && Array.isArray(session) &&
+      ID.test(session[0]) && SECRET.test(session[1])) {
+    return "session:" + session[1];
+  }
+  return "ip:" + (request.headers.get("cf-connecting-ip") || "local");
+}
+
 export function sameOrigin(request) {
   const origin = request.headers.get("origin");
   return origin === new URL(request.url).origin;

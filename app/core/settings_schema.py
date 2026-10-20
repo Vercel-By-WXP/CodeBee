@@ -19,6 +19,8 @@ import re
 import threading
 from pathlib import Path
 
+from . import atomic
+
 _LOCK = threading.RLock()
 _FILE = None  # init() 注入
 _NAMESPACES = {}   # ns -> {"fields": {path: FieldDef}, "validate": fn}
@@ -67,10 +69,8 @@ def _default_dir():
 def _persist():
     if _FILE is None:
         return
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"values": _VALUES, "revisions": _REVISIONS},
-                              ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, {"values": _VALUES, "revisions": _REVISIONS},
+                      mode=0o600)
 
 
 # ---- 路径读写（支持 "a.b" 点路径；不实现数组下标——Tutti 配置用不到） ----
