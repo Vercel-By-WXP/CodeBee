@@ -1152,7 +1152,10 @@
     bottom: 16px;
     left: 50%;
     display: block;
-    width: min(740px, calc(100% - 48px));
+    /* The main column is substantially wider than the old 740px cap. Let the
+     * prompt surface use that room while retaining an inset on compact
+     * desktop windows. */
+    width: min(900px, calc(100% - 48px));
     margin: 0;
     transform: translateX(-50%);
     pointer-events: auto;
@@ -1916,22 +1919,22 @@
     bottom: max(48px, calc((100dvh - 400px) / 2), env(safe-area-inset-bottom));
     max-height: calc(100dvh - 48px);
     left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px)) / 2);
-    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));
+    width: min(900px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));
     transform: translateX(-50%);
   }
   body.side-collapsed #sub-tasks .form {
     left: calc((100vw + var(--workbench-rail-width, 52px)) / 2);
-    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - 48px));
+    width: min(900px, calc(100vw - var(--workbench-rail-width, 52px) - 48px));
     transform: translateX(-50%);
   }
   body.inspector-open #sub-tasks .form {
     left: calc((100vw + var(--workbench-rail-width, 52px) + var(--side-w, 288px) - var(--workbench-inspector-width, 320px)) / 2);
-    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - var(--workbench-inspector-width, 320px) - 48px));
+    width: min(900px, calc(100vw - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - var(--workbench-inspector-width, 320px) - 48px));
     transform: translateX(-50%);
   }
   body.side-collapsed.inspector-open #sub-tasks .form {
     left: calc((100vw + var(--workbench-rail-width, 52px) - var(--workbench-inspector-width, 320px)) / 2);
-    width: min(740px, calc(100vw - var(--workbench-rail-width, 52px) - var(--workbench-inspector-width, 320px) - 48px));
+    width: min(900px, calc(100vw - var(--workbench-rail-width, 52px) - var(--workbench-inspector-width, 320px) - 48px));
     transform: translateX(-50%);
   }
 }

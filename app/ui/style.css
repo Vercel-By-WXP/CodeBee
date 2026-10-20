@@ -9458,3 +9458,15 @@ html[data-theme="dark"] .panel {
   }
   #sub-tasks .cmp-estimate { text-align: left; margin: 8px 2px 0; font-size: 12px; }
 }
+
+/* Desktop composer width: the main canvas has enough room for a readable
+   prompt, but the old 680px cap left the landing page visually cramped on
+   wide screens. Keep the width fluid beside the side rail and cap it at a
+   comfortable reading width; the mobile rules above still own narrow views. */
+@media (min-width: 901px) {
+  #sub-tasks .composer {
+    width: min(900px, 100%);
+    max-width: 900px;
+  }
+  #sub-tasks .hero-sub { max-width: 760px; }
+}
