@@ -238,6 +238,50 @@ def report_success(provider: str, *, model: str = ""):
 _LAUNCH_FAILURE_PREFIX = "启动失败"
 
 
+def _inactive_config(provider_id, provider, model):
+    """Return whether a known configured provider/model is disabled.
+
+    A late result from a task that was already removed from scheduling must
+    not recreate a health alert. Unknown synthetic providers are left alone so
+    health telemetry remains usable before model configuration is initialized.
+    """
+    if not provider_id and not provider:
+        return False
+    try:
+        from . import modelhub
+        configured = _configured_provider(modelhub.providers(), provider_id, provider)
+        if not configured:
+            return False
+        if configured.get("enabled", True) is False:
+            return True
+        wanted = str(model or "").strip()
+        if not wanted:
+            return False
+        row = next(
+            (item for item in (configured.get("models") or [])
+             if isinstance(item, dict)
+             and str(item.get("name") or "").strip() == wanted),
+            None,
+        )
+        return bool(row and (row.get("enabled", True) is False
+                             or row.get("hidden")))
+    except Exception:
+        return False
+
+
+def _configured_provider(plist, provider_id="", provider=""):
+    """Resolve a configured provider using its canonical ID when available."""
+    wanted_id = str(provider_id or "")
+    if wanted_id:
+        return next((item for item in plist
+                     if str(item.get("id") or "") == wanted_id), None)
+    wanted_name = str(provider or "")
+    if wanted_name:
+        return next((item for item in plist
+                     if str(item.get("name") or "") == wanted_name), None)
+    return None
+
+
 def report_failure(provider: str, error: str = "", *, model: str = "",
                    provider_id: str = "", error_code: str = ""):
     """一次真实失败调用。provider 用展示名（与 usage 台账一致）。
@@ -256,6 +300,10 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     误报的代价只是白跑几次注定失败的尝试，漏报的代价是健康供应商被雪崩
     误杀，后者远重——拿不准时宁可不记。"""
     if not provider:
+        return
+    if _inactive_config(provider_id, provider, model):
+        log.info("[health] 忽略已停用供应商/模型的失败：%s / %s",
+                 provider, model or "默认模型")
         return
     if _LAUNCH_FAILURE_PREFIX in str(error or "")[:80]:
         log.warning("[health] 本地 CLI 启动失败（与供应商 %s 无关，不记健康故障）：%s",
@@ -323,6 +371,13 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         except Exception:
             log.debug("[health] 无法使评测结论失效", exc_info=True)
     with _LOCK:
+        # The configuration can be disabled between the fast pre-check above
+        # and this write. Recheck while holding the health lock so a late
+        # result cannot recreate a row after disable() has cleared it.
+        if _inactive_config(provider_id, provider, model):
+            log.info("[health] 忽略已停用供应商/模型的迟到失败：%s / %s",
+                     provider, model or "默认模型")
+            return
         st = _PROVIDERS.setdefault(provider, {
             "name": provider, "provider_id": provider_id or "",
             "model": model or "", "status": "ok",
@@ -427,6 +482,7 @@ def _effective_silenced(st):
 
 def snapshot():
     """给 API/SSE 的完整视图。"""
+    _prune_inactive_configured()
     with _LOCK:
         out = []
         for name, st in _PROVIDERS.items():
@@ -572,11 +628,16 @@ def _probe_one(st):
         pid = st.get("provider_id") or ""
         model = st.get("model") or ""
         plist = modelhub.providers()
-        provs = {p.get("name"): p for p in plist}
-        prov = provs.get(st.get("name")) or next(
-            (p for p in plist if pid and p.get("id") == pid), None)
-        if not prov:
-            return False, True   # 供应商已删除：探不了也不再是「没恢复」
+        prov = _configured_provider(plist, pid, st.get("name"))
+        if not prov or prov.get("enabled", True) is False:
+            return False, True   # 已删除/停用：不再探测，也不保留旧故障
+        if model:
+            model_row = next((item for item in (prov.get("models") or [])
+                              if isinstance(item, dict)
+                              and str(item.get("name") or "").strip() == model), None)
+            if model_row and (model_row.get("enabled", True) is False
+                              or model_row.get("hidden")):
+                return False, True
         if not prov.get("api_key"):
             st["unprobeable"] = True   # CLI 原生免费通道没有密钥，HTTP 探不了
             return False, False  # 供应商在但没密钥：无法探测，保持状态
@@ -598,27 +659,81 @@ def _probe_one(st):
 
 
 def _prune_missing():
-    """供应商被删除后清掉它的健康记录。
+    """清理已删除或停用供应商/模型的过期健康记录。
 
     幽灵条目探不活也永远不会恢复，还会每轮把 last_fail_at 刷成「刚刚」，
     健康页看起来像它一直在报错（Z.ai 删掉后仍显示 429 的误伤案，2026-09-18）。
+    内置服务自动停用后，旧 transport 告警也不应继续显示或被后台探针触发。
     """
     try:
         from . import modelhub
         plist = modelhub.providers()
     except Exception:
         return
-    ids = {p.get("id") for p in plist}
-    names = {p.get("name") for p in plist}
+    def active(st):
+        provider_id = str(st.get("provider_id") or "")
+        prov = _configured_provider(plist, provider_id, st.get("name"))
+        if not prov or prov.get("enabled", True) is False:
+            return False
+        model = str(st.get("model") or "").strip()
+        if model:
+            row = next((item for item in (prov.get("models") or [])
+                        if isinstance(item, dict)
+                        and str(item.get("name") or "").strip() == model), None)
+            if row and (row.get("enabled", True) is False or row.get("hidden")):
+                return False
+        return True
+
     with _LOCK:
-        stale = [n for n, st in _PROVIDERS.items()
-                 if not ((st.get("provider_id") and st.get("provider_id") in ids)
-                         or st.get("name") in names)]
+        stale = [name for name, st in _PROVIDERS.items() if not active(st)]
         if stale:
-            for n in stale:
-                _PROVIDERS.pop(n, None)
+            for name in stale:
+                _PROVIDERS.pop(name, None)
             _persist()
-            log.info("[health] 清除已删除供应商的健康记录：%s", ", ".join(stale))
+            log.info("[health] 清除已删除或停用供应商/模型的健康记录：%s",
+                     ", ".join(stale))
+
+
+def clear_inactive():
+    """清除已删除或停用供应商/模型留下的健康状态。"""
+    _prune_inactive_configured()
+
+
+def _prune_inactive_configured():
+    """Remove rows that match a currently configured disabled item.
+
+    Do not remove unknown rows here: health tests and early-startup telemetry
+    can legitimately arrive before the model registry has been initialized.
+    """
+    try:
+        from . import modelhub
+        plist = modelhub.providers()
+    except Exception:
+        return
+    def inactive(st):
+        provider_id = str(st.get("provider_id") or "")
+        prov = _configured_provider(plist, provider_id, st.get("name"))
+        if not prov:
+            return False
+        if prov.get("enabled", True) is False:
+            return True
+        model = str(st.get("model") or "").strip()
+        if not model:
+            return False
+        row = next((item for item in (prov.get("models") or [])
+                    if isinstance(item, dict)
+                    and str(item.get("name") or "").strip() == model), None)
+        return bool(row and (row.get("enabled", True) is False
+                             or row.get("hidden")))
+
+    with _LOCK:
+        stale = [name for name, st in _PROVIDERS.items() if inactive(st)]
+        if stale:
+            for name in stale:
+                _PROVIDERS.pop(name, None)
+            _persist()
+            log.info("[health] 清除已停用供应商/模型的健康记录：%s",
+                     ", ".join(stale))
 
 
 def _record_probe_result(name, st, ok, gone):
@@ -629,7 +744,7 @@ def _record_probe_result(name, st, ok, gone):
         if gone:
             _PROVIDERS.pop(name, None)
             _persist()
-            log.info("[health] %s 已删除，健康记录随之清除", name)
+            log.info("[health] %s 已删除或停用，健康记录随之清除", name)
         elif ok:
             report_success(name)
             log.info("[health] 探针确认 %s 已恢复", name)

@@ -131,6 +131,162 @@ class ProviderHealthRegressionTests(unittest.TestCase):
         providers = {row["provider"] for row in health.snapshot()["providers"]}
         self.assertEqual(providers, {"provider-%s" % code for code in codes})
 
+    def test_disabled_provider_clears_persisted_transport_alert(self):
+        health.report_failure(
+            "Our Free Model",
+            "退出码 1；stderr/stdout: dsh: TRANSPORT: DeepSeek Messages transport failed",
+            model="nemotron-3.5-super-vl-free",
+            provider_id="builtin-free",
+            error_code="NETWORK",
+        )
+        for _ in range(2):
+            health.report_failure(
+                "Our Free Model",
+                "退出码 1；stderr/stdout: dsh: TRANSPORT: DeepSeek Messages transport failed",
+                model="nemotron-3.5-super-vl-free",
+                provider_id="builtin-free",
+                error_code="NETWORK",
+            )
+
+        with mock.patch("app.core.modelhub.providers", return_value=[{
+            "id": "builtin-free", "name": "Our Free Model", "enabled": False,
+            "models": [{"name": "nemotron-3.5-super-vl-free", "enabled": True}],
+        }]):
+            health._prune_missing()
+            snapshot = health.snapshot()
+
+        self.assertEqual(snapshot["alerts"], [])
+        self.assertNotIn("Our Free Model",
+                         {row["provider"] for row in snapshot["providers"]})
+
+    def test_enabled_provider_keeps_real_transport_alert(self):
+        for _ in range(3):
+            health.report_failure(
+                "Our Free Model",
+                "退出码 1；stderr/stdout: dsh: TRANSPORT: DeepSeek Messages transport failed",
+                model="nemotron-3.5-super-vl-free",
+                provider_id="builtin-free",
+                error_code="NETWORK",
+            )
+
+        with mock.patch("app.core.modelhub.providers", return_value=[{
+            "id": "builtin-free", "name": "Our Free Model", "enabled": True,
+            "models": [{"name": "nemotron-3.5-super-vl-free", "enabled": True}],
+        }]):
+            health._prune_missing()
+            snapshot = health.snapshot()
+
+        self.assertEqual([row["provider"] for row in snapshot["alerts"]],
+                         ["Our Free Model"])
+
+    def test_disabled_model_clears_its_stale_provider_alert(self):
+        for _ in range(3):
+            health.report_failure(
+                "Our Free Model",
+                "退出码 1；stderr/stdout: dsh: TRANSPORT: DeepSeek Messages transport failed",
+                model="nemotron-3.5-super-vl-free",
+                provider_id="builtin-free",
+                error_code="NETWORK",
+            )
+
+        with mock.patch("app.core.modelhub.providers", return_value=[{
+            "id": "builtin-free", "name": "Our Free Model", "enabled": True,
+            "models": [{"name": "nemotron-3.5-super-vl-free", "enabled": False}],
+        }]):
+            health._prune_missing()
+            snapshot = health.snapshot()
+
+        self.assertEqual(snapshot["alerts"], [])
+
+    def test_probe_skips_a_disabled_provider(self):
+        state = {"provider_id": "builtin-free", "name": "Our Free Model",
+                 "model": "nemotron-3.5-super-vl-free"}
+        with mock.patch("app.core.modelhub.providers", return_value=[{
+            "id": "builtin-free", "name": "Our Free Model", "enabled": False,
+            "api_key": "test-key",
+        }]), mock.patch("app.core.modelhub.chat") as chat:
+            self.assertEqual(health._probe_one(state), (False, True))
+
+        chat.assert_not_called()
+
+    def test_late_failure_cannot_recreate_disabled_provider_alert(self):
+        configured = [{
+            "id": "builtin-free", "name": "Our Free Model", "enabled": False,
+            "models": [{"name": "nemotron-3.5-super-vl-free", "enabled": True}],
+        }]
+        with mock.patch("app.core.modelhub.providers", return_value=configured):
+            health.report_failure(
+                "Our Free Model",
+                "退出码 1；stderr/stdout: dsh: TRANSPORT: DeepSeek Messages transport failed",
+                model="nemotron-3.5-super-vl-free",
+                provider_id="builtin-free",
+                error_code="NETWORK",
+            )
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_health_snapshot_immediately_hides_newly_disabled_provider(self):
+        health.report_failure(
+            "Our Free Model",
+            "dsh: TRANSPORT: DeepSeek Messages transport failed",
+            model="nemotron-3.5-super-vl-free",
+            provider_id="builtin-free",
+            error_code="NETWORK",
+        )
+        for _ in range(3):
+            health.report_failure(
+                "Our Free Model",
+                "dsh: TRANSPORT: DeepSeek Messages transport failed",
+                model="nemotron-3.5-super-vl-free",
+                provider_id="builtin-free",
+                error_code="NETWORK",
+            )
+
+        with mock.patch("app.core.modelhub.providers", return_value=[{
+            "id": "builtin-free", "name": "Our Free Model", "enabled": False,
+            "models": [{"name": "nemotron-3.5-super-vl-free", "enabled": True}],
+        }]):
+            self.assertEqual(health.snapshot()["alerts"], [])
+
+    def test_late_failure_rechecks_disabled_state_inside_health_write(self):
+        with mock.patch.object(health, "_inactive_config",
+                               side_effect=[False, True]):
+            health.report_failure(
+                "Our Free Model",
+                "dsh: TRANSPORT: DeepSeek Messages transport failed",
+                model="nemotron-3.5-super-vl-free",
+                provider_id="builtin-free",
+                error_code="NETWORK",
+            )
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_disable_health_cleanup_runs_after_modelhub_lock_is_released(self):
+        import app.core.modelhub as modelhub
+
+        observed = []
+        original = health.clear_inactive
+
+        def check_modelhub_lock_order():
+            acquired = modelhub._LOCK.acquire(blocking=False)
+            observed.append(acquired)
+            if acquired:
+                modelhub._LOCK.release()
+            original()
+
+        with mock.patch.object(health, "clear_inactive",
+                               side_effect=check_modelhub_lock_order):
+            with mock.patch.object(modelhub, "_load", return_value={
+                "providers": [{
+                    "id": "p1", "name": "Provider", "enabled": True,
+                    "models": [{"name": "m1", "enabled": True}],
+                }],
+            }), mock.patch.object(modelhub, "_save"):
+                changed, error = modelhub.model_ops("p1", ["m1"], "disable")
+
+        self.assertEqual((changed, error), (1, ""))
+        self.assertEqual(observed, [True])
+
 
 if __name__ == "__main__":
     unittest.main()

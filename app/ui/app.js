@@ -2460,6 +2460,33 @@ function visibleAccountAlerts(health) {
     .filter((a) => (dm[a.agent_id || ""] || 0) <= now);
 }
 
+function visibleProviderAlerts(health) {
+  const alerts = (health && health.alerts) || [];
+  // The backend also prunes these rows. Keep the UI defensive while an older
+  // long-running process still serves a persisted alert from before disable.
+  // Do not flash or beep for a stale persisted row before the provider
+  // registry has arrived. Unknown telemetry is preserved once the registry is
+  // loaded, so this only suppresses the configuration bootstrap window.
+  if (!S._modelsLoaded || !Array.isArray(S.providers)) return [];
+  return alerts.filter((alert) => {
+    const providerId = String(alert.provider_id || "");
+    const providerName = String(alert.provider || "");
+    const provider = (providerId
+      ? S.providers.find((p) => String(p.id || "") === providerId)
+      : null) || (!providerId
+      ? S.providers.find((p) => String(p.name || "") === providerName)
+      : null);
+    // Preserve unknown/synthetic telemetry until the backend can classify it.
+    if (!provider) return true;
+    if (provider.enabled === false) return false;
+    const model = String(alert.model || "").trim();
+    if (!model) return true;
+    const row = (provider.models || []).find((m) =>
+      String(m.name || "").trim() === model);
+    return !(row && (row.enabled === false || row.hidden));
+  });
+}
+
 function dismissVisibleAccountAlerts() {
   dismissAccountAlerts(_visibleAcctIds);
 }
@@ -2485,7 +2512,7 @@ function dismissAccountAlerts(agentIds) {
 function renderHealthBanner(health) {
   const el = $("health-banner");
   if (!el) return;
-  const alerts = (health && health.alerts) || [];
+  const alerts = visibleProviderAlerts(health);
   const accountAlerts = visibleAccountAlerts(health);
   _visibleAcctIds = accountAlerts.map((a) => a.agent_id || "");
   const allAlerts = alerts.concat(accountAlerts.map((a) => ({
@@ -2534,7 +2561,7 @@ function renderHealthBanner(health) {
 }
 
 function healthBannerText(health) {
-  const providers = (health && health.alerts) || [];
+  const providers = visibleProviderAlerts(health);
   const accounts = (health && health.account_alerts) || [];
   return providers.map((p) => {
     const m = p.model ? " · " + p.model : "";
@@ -2544,7 +2571,7 @@ function healthBannerText(health) {
 }
 
 function healthBannerClick() {
-  const alerts = (S.state && S.state.health && S.state.health.alerts) || [];
+  const alerts = visibleProviderAlerts(S.state && S.state.health);
   const accountAlerts = visibleAccountAlerts(S.state && S.state.health);
   if (!alerts.length && !accountAlerts.length) return;
   const providerRows = alerts.map((p, index) => {
@@ -2706,6 +2733,9 @@ async function refreshPollLookups(force) {
         renderDirectModelPicker();
         const provSig = JSON.stringify((S.providers || []).map((p) => [p.id, p.enabled, !!p.api_key]));
         if (provSig !== S.provSig) { S.provSig = provSig; loadOrchestrator(); }
+        // Re-render after model configuration arrives so stale backend alerts
+        // for disabled providers disappear without waiting for a restart.
+        renderHealthBanner(S.state && S.state.health);
       }
       render();
     } catch (e) {

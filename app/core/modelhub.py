@@ -793,6 +793,7 @@ def model_ops(provider_id, names, op):
         return 0, "未知操作 " + op
     if not names:
         return 0, "未选择模型"
+    clear_health = False
     with _LOCK:
         data = _load()
         prov = _find_prov(data, provider_id)
@@ -820,7 +821,16 @@ def model_ops(provider_id, names, op):
         if changed:
             _promote(models, newly_enabled)  # 启用的置顶，停用的退到启用块之后
             _save(data)
-        return changed, ""
+            clear_health = op == "disable"
+    # Release modelhub's configuration lock before taking health's lock. This
+    # keeps the lock order consistent with report_failure's recheck path.
+    if clear_health:
+        try:
+            from . import health
+            health.clear_inactive()
+        except Exception:
+            pass
+    return changed, ""
 
 
 def _restore_all(provider_id):
@@ -1366,6 +1376,7 @@ def providers_op(ids, op):
         return 0, "未知操作 " + op
     if not ids:
         return 0, "未选择供应商"
+    clear_health = False
     with _LOCK:
         data = _load()
         plist = data.get("providers", [])
@@ -1444,7 +1455,15 @@ def providers_op(ids, op):
                     not (p.get("id") in sel and p.get("enabled", True)),
                     not bool(p.get("enabled", True))))
         _save(data)
-        return changed, ("" if changed else "所选供应商已是目标状态")
+        clear_health = op == "disable"
+    # Release modelhub's configuration lock before taking health's lock.
+    if clear_health:
+        try:
+            from . import health
+            health.clear_inactive()
+        except Exception:
+            pass
+    return changed, ("" if changed else "所选供应商已是目标状态")
 
 
 def delete_provider(pid):
