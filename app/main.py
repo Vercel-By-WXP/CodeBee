@@ -621,7 +621,10 @@ class Handler(BaseHTTPRequestHandler):
                 from core import evalbench
                 return self._json(200, evalbench.state())
             if path == "/api/evalbench/failed-runs":
-                from core import evalbench, store
+                # 不能在此 import store：函数内 import 会把 store 变成整个
+                # _route_get 的局部名，早于本行的路由一读即 UnboundLocalError
+                # （2026-10-20 实案，见 tests/test_route_store_shadow_guard.py）。
+                from core import evalbench
                 failures = []
                 for run in store.list_runs(limit=100):
                     if not isinstance(run, dict) or run.get("status") not in ("failed", "error"):
@@ -1741,7 +1744,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "sample": res})
         if path == "/api/evalbench/sample-from-run":
-            from core import evalbench, store
+            # 同 failed-runs：函数内 import store 会遮蔽整个 _route_post（见 2117 注释）
+            from core import evalbench
             body = self._body() or {}
             run_id = str(body.get("run_id") or "")
             run = store.get_run(run_id)
