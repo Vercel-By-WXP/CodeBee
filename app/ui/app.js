@@ -17570,6 +17570,10 @@ async function loadEvalBench() {
   if (ad && S.settings) ad.value = S.settings.bench_auto_days || 7;
   const fbe = $("eb-feedback-enabled");
   if (fbe && S.settings) fbe.checked = S.settings.bench_feedback_enabled !== false;
+  try {
+    const failed = await api("/api/evalbench/failed-runs");
+    S.evalbenchFailures = failed.failures || [];
+  } catch (e) { S.evalbenchFailures = []; }
   renderEvalBench();
   if (S.evalbench && S.evalbench.running) EB_TIMER = setInterval(pollEvalBench, 2500);
 }
@@ -17624,6 +17628,7 @@ function renderEvalBench() {
   if (!eb) return;
   const samplesBox = $("eb-samples"), candsBox = $("eb-cands"), board = $("eb-board");
   if (!samplesBox) return;                     // 子页不在 DOM（防御并行改版）
+  renderEvalBenchFailures();
   if (!samplesBox.dataset.done) {
     samplesBox.innerHTML = eb.samples.map((s) =>
       '<div class="item"><div class="t"><span class="name">' + esc(t(s.name)) + "</span>" +
@@ -17708,6 +17713,64 @@ function renderEvalBench() {
         : t("反哺生效中：暂无 14 天内实测分，跑一轮评测后开始影响排序。");
     }
   }
+}
+
+function renderEvalBenchFailures() {
+  const box = $("eb-failed-runs");
+  if (!box) return;
+  const rows = S.evalbenchFailures || [];
+  if (!rows.length) {
+    box.innerHTML = '<div class="hint">' + t("暂无可导入的失败步骤") + "</div>";
+    return;
+  }
+  box.innerHTML = rows.slice(0, 30).map((row) =>
+    '<div class="item"><div class="t"><span class="name">' +
+    esc(row.task_id || row.run_id) + " · #" + esc(row.step_n) + " · " +
+    esc(row.role || row.agent || t("失败步骤")) + "</span>" +
+    '<button class="ghost small" onclick="evalbenchFailureSample(\'' +
+    jsq(row.run_id) + "'," + Number(row.step_n) + ')">' +
+    t("整理为回归样题") + "</button></div><div class=\"desc\">" +
+    esc(row.failure_excerpt || t("无失败摘要")) + "</div></div>").join("");
+}
+
+function evalbenchFailureSample(runId, stepN) {
+  const row = (S.evalbenchFailures || []).find((item) =>
+    item.run_id === runId && Number(item.step_n) === Number(stepN));
+  if (!row) return;
+  const body = '<p class="hint">' + t("以下是脱敏预览，不会写入样题。请自行填写可复现输入与期望标准；不要粘贴密钥或个人信息。") +
+    '</p><pre class="hint" style="white-space:pre-wrap;max-height:180px;overflow:auto">' +
+    esc(row.failure_excerpt || t("无失败摘要")) + '</pre><div class="form">' +
+    '<div class="field"><label>' + t("样题名称") + '</label><input id="fb-name" maxlength="20" value="' +
+    esc(t("失败回归") + " " + (row.task_id || row.run_id).slice(0, 12)) + '"></div>' +
+    '<div class="field"><label>' + t("期望行为 / 验收标准") + '</label><input id="fb-req" maxlength="120"></div>' +
+    '<div class="field"><label>' + t("复现输入（手工填写，不会从运行记录复制）") + '</label><textarea id="fb-prompt" rows="5" maxlength="2000"></textarea></div>' +
+    '<div class="field"><label>' + t("评审维度（2-6 个，逗号分隔）") + '</label><input id="fb-dims" value="' +
+    t("正确性，可复现性") + '"></div>' +
+    '<label class="toggle"><input id="fb-confirm" type="checkbox"> <span>' +
+    t("我已检查预览并确认只保存手工编写的复现输入和期望标准") + '</span></label></div>';
+  openModal(t("从失败运行创建回归样题"), body,
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
+    '<button class="primary" onclick="evalbenchFailureSampleDo(\'' + jsq(runId) + "'," + Number(stepN) + ')">' +
+    t("确认并保存样题") + '</button>');
+}
+
+async function evalbenchFailureSampleDo(runId, stepN) {
+  if (!(($("fb-confirm") || {}).checked)) { toast(t("请先确认预览与样题内容"), true); return; }
+  const dims = (($("fb-dims") || {}).value || "").split(/[,，、\\n]+/).map((s) => s.trim()).filter(Boolean);
+  try {
+    await api("/api/evalbench/sample-from-run", { method: "POST", body: JSON.stringify({
+      run_id: runId, step_n: stepN, confirmed: true,
+      sample: { name: ($("fb-name") || {}).value,
+        requirement: ($("fb-req") || {}).value,
+        prompt: ($("fb-prompt") || {}).value, dims }
+    }) });
+    closeModal();
+    S.evalbench = await api("/api/evalbench");
+    const samples = $("eb-samples");
+    if (samples) samples.dataset.done = "";
+    renderEvalBench();
+    toast(t("回归样题已创建；失败输出未保存"));
+  } catch (e) { toast(t("创建失败：") + e.message, true); }
 }
 
 /* 逐题对比：行=样题，列=候选模型（按榜单名次），格=最新一次得分 */

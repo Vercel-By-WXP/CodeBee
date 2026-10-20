@@ -620,6 +620,23 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/evalbench":
                 from core import evalbench
                 return self._json(200, evalbench.state())
+            if path == "/api/evalbench/failed-runs":
+                from core import evalbench, store
+                failures = []
+                for run in store.list_runs(limit=100):
+                    if not isinstance(run, dict) or run.get("status") not in ("failed", "error"):
+                        continue
+                    for step in run.get("steps") or []:
+                        if not isinstance(step, dict) or step.get("status") not in ("failed", "error"):
+                            continue
+                        failure_preview, err = evalbench.failure_sample_preview(run, step.get("n"))
+                        if not err:
+                            failures.append(failure_preview)
+                            if len(failures) >= 100:
+                                break
+                    if len(failures) >= 100:
+                        break
+                return self._json(200, {"failures": failures[:100]})
             if path == "/api/evalbench/report":
                 # 评测报告导出（Markdown，浏览器下载）
                 from core import evalbench
@@ -1723,6 +1740,19 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, {"ok": True, "sample": res})
+        if path == "/api/evalbench/sample-from-run":
+            from core import evalbench, store
+            body = self._body() or {}
+            run_id = str(body.get("run_id") or "")
+            run = store.get_run(run_id)
+            if not run or run.get("id") != run_id:
+                return self._json(404, {"error": "运行记录不存在"})
+            sample, err = evalbench.sample_from_failed_run(
+                run, body.get("step_n"), body.get("sample"),
+                confirmed=body.get("confirmed") is True)
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, {"ok": True, "sample": sample})
         if path == "/api/evalbench/sample-export":
             from core import evalbench
             body = self._body() or {}

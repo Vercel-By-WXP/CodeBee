@@ -1423,6 +1423,10 @@
             <button class="ghost small" onclick="sampleAdd()" data-i18n="＋ 添加自定义样题">＋ 添加自定义样题</button>
             <button class="ghost small" onclick="sampleImport()" data-i18n="导入样题分享码">导入样题分享码</button>
           </div>
+          <div class="field"><label data-i18n="从失败运行创建回归样题">从失败运行创建回归样题</label>
+            <p class="hint" data-i18n="只显示脱敏失败摘要；失败输出不会自动保存。请手工填写复现输入和期望标准。">只显示脱敏失败摘要；失败输出不会自动保存。请手工填写复现输入和期望标准。</p>
+            <div id="eb-failed-runs" class="list"></div>
+          </div>
           <h3 data-i18n="候选模型（勾选要实测的模型）" class="sec-title">候选模型（勾选要实测的模型）</h3>
           <div id="eb-cands" class="list"></div>
           <div class="input-row" style="margin-top:10px">

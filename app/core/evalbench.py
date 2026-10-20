@@ -25,6 +25,7 @@ import uuid
 
 # L2：可 import L0（paths/usage）与 L1（modelhub）；verify 子进程走 runner（L2 同层）
 from . import paths
+from .redact import scrub_text
 
 _LOCK = threading.RLock()
 _RUN = None          # 运行中态：{"total","done","current","cancel","started_ts"}；None = 空闲
@@ -179,6 +180,55 @@ def sample_op(op, sample=None, sid=""):
                 encoding="utf-8")
         return {"id": sid, "deleted": True}, None
     return None, "未知操作 " + str(op)
+
+
+def failure_sample_preview(run, step_n):
+    """Build a redacted preview for an explicitly selected failed run step."""
+    if not isinstance(run, dict) or run.get("status") not in ("failed", "error"):
+        return None, "只能从失败运行创建回归样题"
+    try:
+        step_n = int(step_n)
+    except (TypeError, ValueError):
+        return None, "步骤编号无效"
+    steps = run.get("steps") or []
+    step = next((item for item in steps if isinstance(item, dict) and
+                 item.get("n") == step_n), None)
+    if not step or step.get("status") not in ("failed", "error"):
+        return None, "未找到失败步骤"
+    excerpt = scrub_text(step.get("summary") or step.get("output") or "", limit=800)
+    return {
+        # Preserve the opaque local key so the create endpoint resolves this run.
+        "run_id": str(run.get("id") or "")[:80],
+        "task_id": scrub_text(run.get("task_id") or "", limit=80),
+        "step_n": step_n,
+        "role": scrub_text(step.get("role") or "", limit=80),
+        "agent": scrub_text(step.get("agent_label") or "", limit=80),
+        "model": scrub_text(step.get("model") or "", limit=80),
+        "failure_excerpt": excerpt,
+    }, None
+
+
+def sample_from_failed_run(run, step_n, sample, confirmed=False):
+    """Persist a user-authored regression sample after explicit confirmation.
+
+    Failure content is preview-only and is never copied into the durable sample.
+    """
+    _, error = failure_sample_preview(run, step_n)
+    if error:
+        return None, error
+    if confirmed is not True:
+        return None, "请先确认已检查脱敏预览，并自行填写复现输入和期望标准"
+    if not isinstance(sample, dict):
+        return None, "样题内容无效"
+    safe_sample = dict(sample)
+    for field, limit in (("name", 20), ("requirement", 120), ("prompt", 2000)):
+        safe_sample[field] = scrub_text(safe_sample.get(field) or "", limit=limit)
+    dims = safe_sample.get("dims")
+    safe_sample["dims"] = [scrub_text(dim, limit=8) for dim in dims[:6]] \
+        if isinstance(dims, list) else []
+    safe_sample["id"] = ""
+    safe_sample["builtin"] = False
+    return sample_op("add", sample=safe_sample)
 
 
 _SAMPLE_SHARE_PREFIX = "CBSAMP1."
