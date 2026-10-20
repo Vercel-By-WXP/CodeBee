@@ -3343,10 +3343,13 @@ def _final_deterministic_quality_issues(workdir, start, end):
         _continuity_rows_from_ledger(workdir), chapter_texts, through=end)
     continuity = novel_quality.continuity_conflict_notes(rows)
     repetition = novel_quality.repetition_notes(chapter_texts)
+    craft = []
+    for chapter, text in sorted(chapter_texts.items()):
+        craft.extend(novel_quality.chapter_craft_notes(text, chapter=chapter))
     opening = []
     if start <= 1 <= end and chapter_texts.get(1):
         opening = novel_quality.opening_signal_notes(chapter_texts[1])
-    return continuity + repetition + opening
+    return continuity + repetition + craft + opening
 
 
 def _shrink_context_block(sk_block, bible, budget=12000):
@@ -3512,7 +3515,7 @@ __LOCKED_CH__
 __STALE_NOTE__
 __REDO_ISSUES__
 __REUSE_GUARD__
-- 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。
+- 正文约 __WORDS__ 字，中文，直接开写正文（可含本章标题行）。章节文件只允许小说正文和可选标题行；禁止写入或回复 `<event_check>`、`<ledger>`、`<continuity>`、JSON、Markdown 代码块、评审意见、任务验收或账本内容。
 
 ## 前情提要（此前各章结尾摘录，衔接用）
 __PREV__
@@ -3572,6 +3575,7 @@ __STYLE__
 - 按“原问题→原场景→改动的选择/后果→保留的伏笔”返修；切入点或设定问题不能仅靠换词、加怪声或情绪动作解决。
 - 逐项复核连续性账本：人物状态、时间地点、能力限制、已知信息和剧情承诺必须与前文一致；若有改变，补写触发事件、选择、代价和后果。
 - 删除跨章复用的套话、同款比喻和同一动作反应，至少换一个叙述角度或信息落点，不以同义词堆砌制造变化。
+- 章节文件只保留小说正文和可选标题行；不要把评审标签（如 `<event_check>`、`<ledger>`、`<continuity>`）、JSON、代码块或修改说明写进正文。
 
 ## 要求
 - 针对性解决所有 major 问题（含确定性文本信号指出的问题），保持与前后的剧情衔接；字数仍约 __WORDS__ 字。"""
@@ -3617,6 +3621,10 @@ SERIAL_SIGNING_EVAL_PROMPT = """你是独立小说质量评审（不要修改任
 文风统一检查视角距离、语域和人物口气，引号等体例检查单列，不能据此认定编辑拒稿原因；
 情感细腻度检查矛盾欲望、关系与选择如何互相影响，生理动作数量或是否有特写不能代替此项；
 节奏控制检查场景新增了什么与首个单元兑现了什么，不以固定段数、章数、冲突或钩子频次判失败。
+逐章还要检查以下常见的生成腔组合：独立数字/数量段是否成组递增、泛化比喻是否密集、
+“看了很久/没有说话/声音很轻”等通用停顿动作是否反复代替人物判断；同时核对“这是预谋/他早就知道”
+等结论是否有正文证据，行政/检测/传播等时间线是否足以支撑结果，是否在一章内堆叠多个高潮、反转和新钩子。
+发现这些问题时必须引用具体原文，给出删减、改成行动因果或拆章的方向；不要把“像 AI”当作证据，也不要承诺规避平台检测。
 每个维度都要 evidence，正面评分同样需原文与分析；摘要、章名、题材标签不算证据。
 summary 写明实际已读章号、是否节选及尚未验证项；明确区分平台原反馈、文本观察和适配假设。
 可检查文风是否突变、情绪是否被概括、开篇承诺是否兑现、因果桥是否成立、重复是否损害节奏；这些是检查问题而不是预设缺陷。没有当前平台规则或明确编辑反馈时，不把质量评审包装成平台审核结论。
@@ -3839,6 +3847,16 @@ def _chapter_io(workdir, i, mode):
         raise ValueError("章节路径越界: chapter-%02d.md" % i)
     if mode == "r":
         text = _read_text_any_enc(p)
+        # Model CLIs may write directly to the chapter file and bypass the
+        # pipeline's atomic writer. Sanitize on read as a second boundary.
+        cleaned = chaptersafe.strip_internal_blocks(text)
+        if cleaned != text:
+            try:
+                from pathlib import Path as _P
+                _P(p).write_text(cleaned, encoding="utf-8")
+            except Exception:
+                pass
+            text = cleaned
         # 读侧自愈（2026-10-18 实案：外部CLI用自己的工具写章，绕过写盘归一器；
         # 评审/合并读章时发现引号漂移就地治好——写手是谁都逃不掉）
         try:
@@ -3933,7 +3951,15 @@ def _read_variant(workdir, i, k):
     if not _inside(workdir, p) or not os.path.isfile(p):
         return ""
     try:
-        return _read_text_any_enc(p)
+        text = _read_text_any_enc(p)
+        cleaned = chaptersafe.strip_internal_blocks(text)
+        if cleaned != text:
+            try:
+                from pathlib import Path as _P
+                _P(p).write_text(cleaned, encoding="utf-8")
+            except Exception:
+                pass
+        return cleaned
     except OSError:
         return ""
 
@@ -4511,6 +4537,8 @@ _DETERMINISTIC_ISSUE_KINDS = frozenset({
     "跨章开笔句式重复",
     "跨章收束句式重复", "惯用修辞重复", "连续性账本冲突",
     "连续性状态跳变", "开篇缺少具体触发事件", "开篇缺少人物选择或即时后果",
+    "章内数字报数模板重复", "章内泛化比喻密集", "章内情绪占位动作重复",
+    "章内桥段堆叠",
 })
 
 
@@ -5846,13 +5874,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 _quality_issue_for_chapter(item, i)
                 for item in novel_quality.repetition_notes(chapter_quality_texts)
                 if _issue_hits_chapter(item, i)]
+            craft_issues = novel_quality.chapter_craft_notes(text, chapter=i)
             clear_deterministic_issues(i)
-            add_deterministic_issues(continuity_issues + repetition_issues + opening_issues)
+            add_deterministic_issues(
+                continuity_issues + repetition_issues + craft_issues + opening_issues)
             # Recompute from the current manuscript every round.  The issue
             # collector is idempotent for reporting, but a prior-round issue
             # must still block this round when repair did not resolve it.
             if any(item.get("severity") == "major"
-                   for item in continuity_issues + repetition_issues):
+                   for item in continuity_issues + repetition_issues + craft_issues):
                 passed = False
             if rnd == 1 and gate_live:
                 s_means, s_issues, s_summary = _signing_eval(

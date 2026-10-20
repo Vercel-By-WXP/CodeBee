@@ -7,7 +7,26 @@
 （同 _ms_io/_inside 口径）。pipeline._write_chapter 委托此函数。"""
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+
+# These tags are part of the reviewer protocol in pipeline.py. They are
+# persisted separately under .codebee and must never cross into chapter text.
+_INTERNAL_BLOCK_RE = re.compile(
+    r"(?is)<(?P<tag>event_check|ledger|continuity)\b[^>]*>"
+    r".*?</(?P=tag)\s*>"
+)
+
+
+def strip_internal_blocks(text):
+    """Remove reviewer-only tagged blocks while preserving ordinary prose."""
+    source = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not source:
+        return ""
+    cleaned = _INTERNAL_BLOCK_RE.sub("", source)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def atomic_write_chapter(workdir, i, text):
@@ -21,7 +40,7 @@ def atomic_write_chapter(workdir, i, text):
         raise ValueError("章节路径越界: chapter-%02d.md" % int(i))
     tmp = Path(str(p) + ".tmp")
     try:
-        tmp.write_text(str(text), encoding="utf-8", errors="replace")
+        tmp.write_text(strip_internal_blocks(text), encoding="utf-8", errors="replace")
         tmp.replace(p)
     except BaseException:
         try:

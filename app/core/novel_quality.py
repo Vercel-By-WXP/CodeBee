@@ -703,6 +703,20 @@ _STOCK_PHRASES = (
     "脸色微变", "攥紧拳头", "深吸一口气", "身形一闪", "不由得一愣",
     "仿佛一道", "像是被", "不是……而是", "不是...而是",
 )
+_CHAPTER_PLACEHOLDER_PHRASES = (
+    "看了很久", "看了许久", "没有说话", "没有再说话", "顿了顿",
+    "声音很轻", "声音很冷", "一动不动", "没有动", "沉默了几秒",
+)
+_NUMERIC_BEAT_RE = re.compile(
+    r"^(?:[0-9０-９]+(?:[.,，。][0-9０-９]+)?|"
+    r"[零一二三四五六七八九十百千万两]+)"
+    r"(?:万|千|百)?(?:人|个|名|次|条|万|千|百)?$")
+_METRIC_BEAT_RE = re.compile(
+    r"(?:人数|播放量|在线峰值|热搜|突破|冲破|爬升|爬|增长|"
+    r"[0-9０-９一二三四五六七八九十百千万两]+(?:小时|分钟|天)后)"
+    r"[^。！？!?；;\n]{0,18}"
+    r"(?:[0-9０-９一二三四五六七八九十百千万两]+(?:万|千|百)?"
+    r"(?:人|次|条|万|千|百)?|第一|第二|第三|第四|第五)")
 _OPENING_TRIGGER_RE = re.compile(
     # Trigger vocabulary must describe an event or action, not merely name
     # the premise. Otherwise exposition such as "她研究AI系统十年" falsely
@@ -970,6 +984,83 @@ def _stock_phrase_notes(texts):
                 "quote": phrase,
                 "kind": "惯用修辞重复",
             })
+    return notes
+
+
+def chapter_craft_notes(text, chapter=None):
+    """Find chapter-local template signals that cross-chapter checks miss.
+
+    These are manuscript editing warnings, not a detector for authorship or a
+    prediction of a platform decision.  A single simile or number is normal;
+    only repeated clusters are reported.  The thresholds target the observed
+    failure mode where a chapter stacks several metric ladders and generic
+    emotional placeholders around otherwise plausible plot beats.
+    """
+    source = str(text or "").replace("\r\n", "\n").strip()
+    if not source:
+        return []
+    number_beats = []
+    for paragraph in re.split(r"\n\s*\n", source):
+        compact = re.sub(r"[\s\u3000。！？!?；;:：\"'“”‘’「」『』]", "", paragraph)
+        if _NUMERIC_BEAT_RE.fullmatch(compact):
+            number_beats.append(compact)
+    metric_beats = []
+    for sentence in _SENTENCE_RE.findall(source):
+        sentence = re.sub(r"\s+", "", sentence)
+        if _METRIC_BEAT_RE.search(sentence):
+            metric_beats.append(sentence)
+    number_beat_count = len(number_beats) + len(metric_beats)
+    notes = []
+    if number_beat_count >= 6:
+        quote = (metric_beats[0] if metric_beats else "、".join(number_beats[:3]))[:120]
+        notes.append({
+            "dim": "文风统一", "severity": "major",
+            "chapter": chapter, "quote": quote,
+            "note": "本章独立数字/数量报数段过密（共 %d 段），并多次用递增数字代替场景变化——"
+                    "保留真正改变人物处境的数据，其余改为具体反应、阻力或选择"
+                    % number_beat_count,
+            "kind": "章内数字报数模板重复",
+        })
+
+    metaphor_hits = [re.sub(r"[\s\u3000]+", "", item).strip("\"'“”‘’「」『』")
+                     for item in _METAPHOR_RE.findall(source)]
+    metaphor_hits = [item for item in metaphor_hits if len(item) >= 4]
+    if len(metaphor_hits) >= 6:
+        notes.append({
+            "dim": "文风统一", "severity": "minor", "chapter": chapter,
+            "quote": metaphor_hits[0][:80],
+            "note": "本章泛化比喻密度偏高（‘像/仿佛/如同’共 %d 处）——"
+                    "删去能由动作或物件直接呈现的比喻，保留真正承担人物视角的意象"
+                    % len(metaphor_hits),
+            "kind": "章内泛化比喻密集",
+        })
+
+    placeholder_hits = []
+    for phrase in _CHAPTER_PLACEHOLDER_PHRASES:
+        count = source.count(phrase)
+        if count:
+            placeholder_hits.extend([phrase] * count)
+    distinct_placeholders = {item for item in placeholder_hits}
+    if len(placeholder_hits) >= 8 and len(distinct_placeholders) >= 2:
+        notes.append({
+            "dim": "情感细腻度", "severity": "major", "chapter": chapter,
+            "quote": next(iter(distinct_placeholders)),
+            "note": "本章用通用停顿/沉默/轻声动作承载情绪过多（共 %d 处、%d 类）——"
+                    "改为人物当下的判断、身体反应和具体选择，避免同一情绪占位"
+                    % (len(placeholder_hits), len(distinct_placeholders)),
+            "kind": "章内情绪占位动作重复",
+        })
+
+    separators = len(re.findall(r"^\s*---+\s*$", source, flags=re.M))
+    if separators >= 4 and len(re.sub(r"\s+", "", source)) < 12000:
+        notes.append({
+            "dim": "节奏控制", "severity": "minor", "chapter": chapter,
+            "quote": source[:80],
+            "note": "本章在较短篇幅内切换 %d 个场景段落，容易把多个高潮和钩子并排堆放——"
+                    "保留一个主冲突的阶段结果，其余信息延后或改为下一章行动"
+                    % (separators + 1),
+            "kind": "章内桥段堆叠",
+        })
     return notes
 
 
@@ -1656,6 +1747,8 @@ def signal_summary(text, chapter=None):
         hints.append("存在偏长句，复查长定语、重复说明与动作拆分")
     if len(paragraphs) >= 4 and chars / len(paragraphs) > 220:
         hints.append("段落偏长，复查手机阅读下的节奏与信息密度")
+    for item in chapter_craft_notes(text, chapter=chapter):
+        hints.append("章内复查提示：" + str(item.get("note") or ""))
     # 逐字重复（整段/整句/完整对白）是成稿事故而非文风选择，直接点名证据；
     # 起草验收闸（pipeline._chapter_state）用同一判定打回，评审面据此复核
     for line in format_duplicate_notes(duplicate_notes(text)):

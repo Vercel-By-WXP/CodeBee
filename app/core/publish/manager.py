@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlsplit
 
-from .. import operations, paths, quality_gate
+from .. import chaptersafe, operations, paths, quality_gate
 from . import fanqie, flow, ledger, qimao
 from .browser import Browser, BrowserError, Page
 
@@ -2786,7 +2786,7 @@ def chapter_fill_values(ch_no, title, body, book_name) -> Dict[str, Any]:
             "chapter_scope": str(title or ""),
             "chapter_name": split_chapter_name(title),
             "chapter_no": str(int(ch_no)) if ch_no else "",
-            "chapter_body": str(body or ""),
+            "chapter_body": chaptersafe.strip_internal_blocks(body),
             "book_name": str(book_name or "")}
 
 
@@ -2824,7 +2824,7 @@ def read_chapter(fp):
                 break
     if not title:
         title = p.stem
-    body = "\n".join(lines[body_start:]).strip()
+    body = chaptersafe.strip_internal_blocks("\n".join(lines[body_start:]))
     ch_no = ledger.parse_chapter_no(title) or ledger.parse_chapter_no(p.name)
     return ch_no, title, body, ""
 

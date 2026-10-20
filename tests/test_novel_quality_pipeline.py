@@ -1147,6 +1147,27 @@ class NovelQualityPipelineTests(unittest.TestCase):
         self.assertTrue(any("开篇观察" in hint for hint in first["hints"]), first)
         self.assertFalse(any("开篇观察" in hint for hint in later["hints"]), later)
 
+    def test_chapter_craft_notes_catch_stacked_template_beats(self):
+        text = "\n\n".join([
+            "直播间人数开始爬。", "一百人。", "一千人。", "五千人。",
+            "直播间人数突破一万。", "直播间人数突破三万。", "直播间人数突破五万。",
+            "她看了很久。", "他没有说话。", "她顿了顿。", "声音很轻。",
+            "他一动不动。", "她看了很久。", "他没有说话。", "她顿了顿。",
+            "像潮水一样往上涌。", "像火山一样喷发。", "像一个旁观者一样。",
+            "像一盏灯一样亮着。", "仿佛一场突来的大雨。", "如同一张无形的网。",
+        ])
+        notes = novel_quality.chapter_craft_notes(text, chapter=35)
+        kinds = {item["kind"] for item in notes}
+        self.assertIn("章内数字报数模板重复", kinds)
+        self.assertIn("章内情绪占位动作重复", kinds)
+        self.assertIn("章内泛化比喻密集", kinds)
+        self.assertTrue(any("章内复查提示" in item
+                            for item in novel_quality.signal_summary(text, 35)["hints"]))
+
+    def test_chapter_craft_notes_do_not_flag_single_style_choice(self):
+        text = "她抬头看了一眼钟。\n\n三个人同时进门。\n\n夜色像一块薄布。"
+        self.assertEqual(novel_quality.chapter_craft_notes(text, chapter=2), [])
+
     def test_opening_advisory_survives_saturated_signal_summary(self):
         with patch.object(novel_quality, "format_duplicate_notes",
                           return_value=["重复提示 %d" % n for n in range(8)]), \
