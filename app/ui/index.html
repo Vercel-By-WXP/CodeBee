@@ -479,31 +479,31 @@
           <h2 class="hero" id="cmp-greet">上午好呀，有什么想让我帮忙的吗</h2>
         </div>
         <p id="cmp-workspace-hint" class="hero-sub workspace-hint"></p>
-          <!-- Composer 大输入框：工作目录作为框上沿上下文；值真源仍是
+          <!-- Composer 大输入框：工作目录作为框内上下文行；值真源仍是
                #f-type / #f-workdir（既有 ID，联动与测试锚点全兼容）。
                附件在左下、发送在右下；Enter 发送，Shift+Enter 换行 -->
-          <div class="cmp-pills">
-            <div class="cmp-wd">
-              <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
-              <div class="input-row">
-                <input id="f-workdir" placeholder="工作目录 · 留空用默认" data-i18n-ph="工作目录 · 留空用默认">
-                <button data-i18n="选择…" class="ghost small wd-pick-btn" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
-                <button type="button" id="f-workdir-menu-btn" class="ghost small wd-menu-btn" aria-haspopup="listbox" aria-controls="wd-menu" title="最近使用的文件夹" data-i18n-title="最近使用的文件夹" onclick="toggleWdMenu(event)">
-                  <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
-                </button>
-              </div>
-              <!-- 最近文件夹下拉：点 ▾ 展开（toggleWdMenu 渲染），含浏览与「用默认路径」 -->
-              <div id="wd-menu" class="wd-menu hidden" role="listbox" aria-label="最近使用的文件夹" data-i18n-aria="最近使用的文件夹"></div>
-            </div>
-            <!-- 工作目录指向 git 仓库时出现（probeGit 显隐）：分支以小胶囊挂同一条上下文条，
-                 悬停看当前分支/脏区/检出说明（renderGitHint 写 title）；运行时检出任务分支 -->
-            <div class="field hidden" id="row-git">
-              <label data-i18n="代码版本"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>代码版本</label>
-              <select id="f-git-rev"></select>
-              <p class="hint" id="git-hint"></p>
-            </div>
-          </div>
           <div class="cmp-box">
+            <div class="cmp-pills">
+              <div class="cmp-wd">
+                <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
+                <div class="input-row">
+                  <input id="f-workdir" placeholder="工作目录 · 留空用默认" data-i18n-ph="工作目录 · 留空用默认">
+                  <button data-i18n="选择…" class="ghost small wd-pick-btn" type="button" title="浏览本机目录选择" data-i18n-title="浏览本机目录选择" onclick="pickFolder('f-workdir')">选择…</button>
+                  <button type="button" id="f-workdir-menu-btn" class="ghost small wd-menu-btn" aria-haspopup="listbox" aria-controls="wd-menu" title="最近使用的文件夹" data-i18n-title="最近使用的文件夹" onclick="toggleWdMenu(event)">
+                    <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+                  </button>
+                </div>
+                <!-- 最近文件夹下拉：点 ▾ 展开（toggleWdMenu 渲染），含浏览与「用默认路径」 -->
+                <div id="wd-menu" class="wd-menu hidden" role="listbox" aria-label="最近使用的文件夹" data-i18n-aria="最近使用的文件夹"></div>
+              </div>
+              <!-- 工作目录指向 git 仓库时出现（probeGit 显隐）：分支以小胶囊挂同一条上下文条，
+                   悬停看当前分支/脏区/检出说明（renderGitHint 写 title）；运行时检出任务分支 -->
+              <div class="field hidden" id="row-git">
+                <label data-i18n="代码版本"><svg class="ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>代码版本</label>
+                <select id="f-git-rev"></select>
+                <p class="hint" id="git-hint"></p>
+              </div>
+            </div>
           <!-- 平时空（默认路径提示由 JS 写进占位符）；继续会话/克隆任务预填时这里落覆盖警告 -->
           <p class="hint cmp-hint" id="f-workdir-hint"></p>
             <div class="cmp-context-note"><svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span data-i18n="描述目标即可，CodeBee 会自动拆解并执行">描述目标即可，CodeBee 会自动拆解并执行</span></div>
@@ -582,14 +582,6 @@
           </div>
           <!-- 快捷类型：点一个即选定并聚焦目标框（renderQuickChips 渲染） -->
           <div id="cmp-quick" class="cmp-quick" role="group" aria-label="常用类型" data-i18n-aria="常用类型"></div>
-          <div id="cmp-template" class="cmp-template" role="group" aria-label="任务模板" data-i18n-aria="任务模板">
-            <label for="f-template" data-i18n="任务模板">任务模板</label>
-            <select id="f-template" aria-label="任务模板" data-i18n-aria="任务模板">
-              <option value="" data-i18n="不使用模板">不使用模板</option>
-            </select>
-            <span class="cmp-template-hint" data-i18n="选中后会填入任务，检查无误再点发送">选中后会填入任务，检查无误再点发送</span>
-            <button id="btn-template-save" type="button" class="ghost small" data-i18n="保存当前设置">保存当前设置</button>
-          </div>
           <!-- 开跑前成本预估（refreshEstimate 填充；无同类样本时保持隐藏） -->
           <p class="hint cmp-estimate hidden" id="cmp-estimate"></p>
           <!-- 需求拷问采访卡（renderClarify 渲染；goal 模糊时出现，跳过=直接创建） -->
@@ -603,6 +595,15 @@
           <details id="f-advanced">
             <summary data-i18n="更多选项">更多选项</summary>
             <div class="adv-body">
+              <!-- 任务模板是低频快捷方式，收进更多选项，避免干扰主要输入流程。 -->
+              <div id="cmp-template" class="cmp-template" role="group" aria-label="任务模板" data-i18n-aria="任务模板">
+                <label for="f-template" data-i18n="任务模板">任务模板</label>
+                <select id="f-template" aria-label="任务模板" data-i18n-aria="任务模板">
+                  <option value="" data-i18n="不使用模板">不使用模板</option>
+                </select>
+                <span class="cmp-template-hint" data-i18n="选中后会填入任务，检查无误再点发送">选中后会填入任务，检查无误再点发送</span>
+                <button id="btn-template-save" type="button" class="ghost small" data-i18n="保存当前设置">保存当前设置</button>
+              </div>
               <!-- 对话模型（可选）是低频高级项：只对「直接执行」类型生效，收在这 -->
               <div id="f-direct-model" class="field hidden"><label data-i18n="对话模型（可选）">对话模型（可选）</label><div class="grid-2">
                 <select id="f-direct-provider" aria-label="对话厂商" data-i18n-aria="对话厂商"><option data-i18n="自动推荐">自动推荐</option></select>

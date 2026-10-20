@@ -1,16 +1,15 @@
-/* Attachment reference: the folder strip sits behind the composer rather
- * than inside its input surface. Keep every control's existing DOM hook. */
+/* Keep the workspace context and task input in one continuous composer card. */
 @media (min-width: 901px) {
-  #sub-tasks .form > .cmp-pills {
+  #sub-tasks .cmp-box > .cmp-pills {
     position: relative;
-    width: calc(100% - 28px);
+    width: auto;
     min-height: 38px;
-    margin: 0 auto -1px;
-    padding: 5px 12px;
-    border: 1px solid var(--cb-card-border, var(--border));
-    border-bottom: 0;
-    border-radius: 14px 14px 0 0;
-    background: var(--panel2);
+    margin: 0 -12px;
+    padding: 5px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--cb-card-border, var(--border));
+    border-radius: 0;
+    background: transparent;
   }
 
   #sub-tasks .form > .cmp-box {
@@ -19,7 +18,7 @@
     margin: 0;
     padding: 0 12px 6px;
     border: 1px solid var(--cb-card-border, var(--border));
-    border-radius: 22px;
+    border-radius: 18px;
     background: var(--panel);
     box-shadow: 0 2px 8px rgba(24, 32, 42, .035), 0 12px 36px rgba(24, 32, 42, .04);
   }
@@ -115,8 +114,8 @@
   #sub-tasks .type-item { min-height: 44px; }
   #sub-tasks .type-item.on { background: var(--panel2); }
 
-  /* Recent folders must paint above the raised input card. */
-  #sub-tasks .form > .cmp-pills:has(.wd-menu:not(.hidden)) { z-index: 3; }
+  /* Recent folders must paint above the input and its enclosing card. */
+  #sub-tasks .cmp-box > .cmp-pills:has(.wd-menu:not(.hidden)) { z-index: 3; }
 
   #sub-tasks details#f-advanced summary {
     color: var(--muted);
@@ -129,8 +128,7 @@
   }
 }
 
-/* Keep the separate folder strip in normal flow on touch layouts. */
 @media (max-width: 900px) {
-  #sub-tasks .form > .cmp-pills { margin-bottom: 0; }
+  #sub-tasks .cmp-box > .cmp-pills { margin: 0; }
   #sub-tasks .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
 }
