@@ -432,13 +432,17 @@ def _prev_serial_story(task):
         if best_i:
             # GBK 兼容：CLI 子代理在中文 Windows 上可能把章稿落成 GBK
             b = best.read_bytes()
+            from . import chaptersafe
             try:
-                tail = b.decode("utf-8")[-500:].strip()
+                tail = chaptersafe.strip_internal_blocks(
+                    b.decode("utf-8"))[-500:].strip()
             except UnicodeDecodeError:
                 try:
-                    tail = b.decode("gbk")[-500:].strip()
+                    tail = chaptersafe.strip_internal_blocks(
+                        b.decode("gbk"))[-500:].strip()
                 except UnicodeDecodeError:
-                    tail = b.decode("utf-8", "replace")[-500:].strip()
+                    tail = chaptersafe.strip_internal_blocks(
+                        b.decode("utf-8", "replace"))[-500:].strip()
     except OSError:
         pass
     return "\n".join(lines), max(best_i, 0), book_title, tail, volnames

@@ -58,6 +58,8 @@ def _chapter_facts(workdir, limit=3):
             try:
                 with open(p, encoding="utf-8", errors="replace") as f:
                     txt = f.read(4000)
+                from . import chaptersafe
+                txt = chaptersafe.strip_internal_blocks(txt)
                 # 取开头（多为场景/人物动作）+ 关键句粗筛
                 head = " ".join(txt.split("\n")[1:6])
                 if head.strip():

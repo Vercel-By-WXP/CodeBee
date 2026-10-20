@@ -259,7 +259,9 @@ def _collect_material(task):
         for name in ("chapter-001.md", "chapter-01.md", "chapter-1.md"):
             p = Path(task.get("workdir") or "") / name
             if p.is_file():
-                head = runner.read_text_any_enc(p)[:_FIRST_CH_HEAD]
+                from . import chaptersafe
+                head = chaptersafe.strip_internal_blocks(
+                    runner.read_text_any_enc(p))[:_FIRST_CH_HEAD]
                 break
     except OSError:
         pass

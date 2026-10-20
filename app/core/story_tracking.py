@@ -133,7 +133,8 @@ def commit_chapter(workdir, chapter_no, outline, prose, *, facts=None, character
     if not 1 <= number <= _MAX_CHAPTERS:
         raise ValueError("章节号必须在 1-%d 之间" % _MAX_CHAPTERS)
     outline = str(outline or "").strip()
-    prose = _norm_lf(str(prose or "").strip())
+    from . import chaptersafe
+    prose = _norm_lf(chaptersafe.strip_internal_blocks(prose))
     if not outline:
         raise ValueError("提交章节前必须有细纲")
     if not prose:
@@ -194,7 +195,8 @@ def refresh_prose(workdir, chapter_no, prose):
         number = int(chapter_no)
     except (TypeError, ValueError):
         raise ValueError("章节号无效")
-    prose = _norm_lf(str(prose or "").strip())
+    from . import chaptersafe
+    prose = _norm_lf(chaptersafe.strip_internal_blocks(prose))
     if not prose:
         raise ValueError("正文不能为空")
     state = _load(root)

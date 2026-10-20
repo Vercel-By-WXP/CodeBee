@@ -53,6 +53,15 @@ class PublishQualityGuardTests(unittest.TestCase):
             self.assertEqual((chapter_no, title, error), (7, "第7章 归档", ""))
             self.assertEqual(body, "正文。")
 
+    def test_internal_blocks_inside_fences_and_truncated_blocks_are_removed(self):
+        self.assertEqual(
+            chaptersafe.strip_internal_blocks(
+                "正文。\n```xml\n<event_check>\n已完成\n</event_check>\n```\n"),
+            "正文。")
+        self.assertEqual(
+            chaptersafe.strip_internal_blocks("正文。\n<ledger>道具|册子|出现"),
+            "正文。")
+
     def test_release_guard_uses_store_chronology_not_random_run_id_suffix(self):
         older = {
             "id": "r-20261019-120000-9999", "created_at_ns": 100,

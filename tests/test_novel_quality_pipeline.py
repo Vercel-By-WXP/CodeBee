@@ -1460,6 +1460,19 @@ class NovelQualityPipelineTests(unittest.TestCase):
                          if "引号制式跨章混用" in item["note"])
             self.assertIn("第 3 章", issue["note"])
 
+    def test_archived_prose_drops_reviewer_blocks_before_quality_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "已成稿"
+            archive.mkdir()
+            (archive / "book.md").write_text(
+                "# 第1章\n正文证据。\n<event_check>\n已完成\n</event_check>\n",
+                encoding="utf-8")
+            chapters = pipeline._quality_chapter_texts(root, 2, 2)
+            joined = "\n".join(chapters.values())
+            self.assertIn("正文证据。", joined)
+            self.assertNotIn("event_check", joined)
+
     def test_mixed_archive_files_do_not_overwrite_numbered_chapters(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

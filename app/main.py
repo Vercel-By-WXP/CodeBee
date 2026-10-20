@@ -3490,6 +3490,11 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "text/plain; charset=utf-8"
         if ctype.startswith("text/"):
             data = _utf8_bytes(data)
+            if re.fullmatch(r"chapter-\d{1,4}(?:-v\d+)?\.(?:md|txt)",
+                            fp.name, re.I):
+                from core import chaptersafe
+                data = chaptersafe.strip_internal_blocks(
+                    data.decode("utf-8", "replace")).encode("utf-8")
         # mtime 供前端「编辑保存」做冲突检测：文件被任务/外部改动后拒绝覆盖（409）
         return self._send(200, data, ctype,
                           {"X-Tutti-Mtime": str(int(fp.stat().st_mtime))})
@@ -3541,6 +3546,10 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
         try:
+            if re.fullmatch(r"chapter-\d{1,4}(?:-v\d+)?\.(?:md|txt)",
+                            fp.name, re.I):
+                from core import chaptersafe
+                content = chaptersafe.strip_internal_blocks(content)
             fp.parent.mkdir(parents=True, exist_ok=True)
             fp.write_bytes(content.encode("utf-8"))
         except OSError:

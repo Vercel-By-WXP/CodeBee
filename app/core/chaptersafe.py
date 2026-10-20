@@ -17,6 +17,12 @@ _INTERNAL_BLOCK_RE = re.compile(
     r"(?is)<(?P<tag>event_check|ledger|continuity)\b[^>]*>"
     r".*?</(?P=tag)\s*>"
 )
+_INTERNAL_OPEN_RE = re.compile(
+    r"(?is)<(?P<tag>event_check|ledger|continuity)\b[^>]*>.*\Z"
+)
+_EMPTY_FENCE_RE = re.compile(
+    r"(?m)^[ \t]*```[^\r\n]*\r?\n"
+    r"(?:[ \t]*\r?\n)*[ \t]*```[ \t]*(?:\r?\n|$)")
 
 
 def strip_internal_blocks(text):
@@ -25,6 +31,13 @@ def strip_internal_blocks(text):
     if not source:
         return ""
     cleaned = _INTERNAL_BLOCK_RE.sub("", source)
+    # A truncated model response may omit a closing tag. Once an allowlisted
+    # internal tag appears, discard its remainder rather than publish an audit
+    # tail as prose.
+    cleaned = _INTERNAL_OPEN_RE.sub("", cleaned)
+    # If the protocol block was wrapped in a Markdown fence, remove the empty
+    # fence left after the tagged payload is stripped.
+    cleaned = _EMPTY_FENCE_RE.sub("", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 

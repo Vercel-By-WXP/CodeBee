@@ -4365,7 +4365,7 @@ def _archived_preface(workdir, start):
         if not os.path.isfile(p):
             continue
         try:
-            t = _read_text_any_enc(p)
+            t = chaptersafe.strip_internal_blocks(_read_text_any_enc(p))
         except Exception:
             continue
         if not t or not t.strip():
@@ -4426,7 +4426,8 @@ def _quality_chapter_texts(workdir, start, end):
             if not os.path.isfile(path):
                 continue
             try:
-                body = _read_text_any_enc(path).strip()
+                body = chaptersafe.strip_internal_blocks(_read_text_any_enc(path))
+                body = body.strip()
             except Exception:
                 continue
             if body:
@@ -5782,7 +5783,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     try:
                         race_losers.append({
                             "variant": v["variant"],
-                            "text": (_read_text_any_enc(os.path.join(workdir, v["file"])) or "")[:8000]})
+                            "text": chaptersafe.strip_internal_blocks(
+                                _read_text_any_enc(os.path.join(workdir, v["file"])))[:8000]})
                     except OSError:
                         pass
                     try:
@@ -6853,7 +6855,8 @@ def _bestof_draft(run_id, task, impl, prompt_fn, ms_name, workdir, step_wd, ev,
                       note=(note + " · " if note else "") + "候选 %d/%d" % (kk + 1, n))
         txt = ""
         try:
-            txt = _read_text_any_enc(os.path.join(workdir, vfile))
+            txt = chaptersafe.strip_internal_blocks(
+                _read_text_any_enc(os.path.join(workdir, vfile)))
         except Exception:
             txt = ""
         results[kk] = (vfile, r, (txt or "").strip())
@@ -7046,6 +7049,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if task.get("type") == "translation":
                 # 翻译追加术语表先行要求（andrewyng/translation-agent 借鉴）
                 p += TRANSLATION_APPENDIX
+            if task.get("type") in ("novel", "serial_novel"):
+                p += ("\n\n## 成稿边界\n"
+                      "文件只保留小说正文和可选标题行；禁止输出或写入评审标签、"
+                      "JSON、Markdown 代码围栏、任务说明、验收结果或修改说明。")
             if task.get("type") == "weekly_report":
                 # 禅道本周素材注入（Weekly Report Generator 借鉴：从工作系统
                 # 取数入素材）。尽力而为：未配置/不可达静默为空，绝不阻塞起草。
