@@ -11,6 +11,15 @@ from app.core import novel_quality, pipeline, planner
 
 
 class NovelQualityPipelineTests(unittest.TestCase):
+    def _dimension_analysis(self, dim):
+        return {
+            "开篇吸引力": "仓库空无一物形成悬念，但本处尚未体现后续结果。",
+            "情节推进": "发现空仓触发事件，却没有展现人物选择或局面变化。",
+            "文风统一": "叙述采用短句并保持视角稳定，但单句无法证明全章语域。",
+            "情感细腻度": "此句只有发现，没有呈现情绪反应或关系影响。",
+            "节奏控制": "空仓发现快速给出信息，但不能说明全章铺垫回报比例。",
+        }[dim]
+
     def _review_with_complete_dimension_evidence(self, opening_score):
         text = "她推开仓库的门，发现里面空无一物。"
         return {
@@ -23,7 +32,7 @@ class NovelQualityPipelineTests(unittest.TestCase):
             },
             "evidence": [
                 {"dim": dim, "chapter": 1, "quote": text,
-                 "analysis": "引文可支持该维度判断。"}
+                 "analysis": self._dimension_analysis(dim)}
                 for dim in novel_quality.SIGNING_RUBRIC
             ],
             "issues": [],
@@ -148,7 +157,7 @@ class NovelQualityPipelineTests(unittest.TestCase):
         later_text = "她终于找到失踪多年的旧档案。"
         review["evidence"] = [
             {"dim": dim, "chapter": 2, "quote": later_text,
-             "analysis": "该引文支持本维度评分。"}
+             "analysis": self._dimension_analysis(dim)}
             for dim in novel_quality.SIGNING_RUBRIC
         ]
         self.assertEqual(
@@ -531,6 +540,25 @@ class NovelQualityPipelineTests(unittest.TestCase):
                     {1: quote}, [record])
                 self.assertEqual(errors, [])
 
+    def test_feedback_analysis_periodicity_check_handles_long_nonperiodic_text(self):
+        analysis = "改写后主角做出选择并承担代价：" + "".join(
+            chr(0x4E00 + index) for index in range(12000))
+        self.assertTrue(novel_quality._feedback_analysis_is_substantive(
+            "addressed", analysis))
+
+    def test_linear_periodicity_check_matches_exhaustive_short_strings(self):
+        import itertools
+
+        for length in range(1, 13):
+            for chars in itertools.product("甲乙", repeat=length):
+                text = "".join(chars)
+                expected = any(
+                    length % width == 0
+                    and text[:width] * (length // width) == text
+                    for width in range(1, length // 2 + 1))
+                self.assertEqual(novel_quality._is_periodic_text(text), expected,
+                                 text)
+
     def test_feedback_check_rejects_analysis_that_contradicts_its_status(self):
         quote = "她推开仓库的门，发现里面空无一物。"
         record = {"id": "case-1", "experiment": "让人物动机和情节结果保持一致。"}
@@ -745,7 +773,7 @@ class NovelQualityPipelineTests(unittest.TestCase):
         evidence = {
             "scores": {dim: 8 for dim in novel_quality.SIGNING_RUBRIC},
             "evidence": [{"dim": dim, "chapter": 1, "quote": quote,
-                          "analysis": "引文支持该维度判断。"}
+                          "analysis": self._dimension_analysis(dim)}
                          for dim in novel_quality.SIGNING_RUBRIC],
             "issues": [],
         }
@@ -770,7 +798,7 @@ class NovelQualityPipelineTests(unittest.TestCase):
             "scores": {dim: 8 for dim in novel_quality.SIGNING_RUBRIC},
             "evidence": [{
                 "dim": dim, "chapter": 1, "quote": text,
-                "analysis": "引文支持该维度判断。",
+                "analysis": "本段对%s的呈现支持评分，但尚未体现后续发展。" % dim,
             } for dim in novel_quality.SIGNING_RUBRIC],
             "issues": [],
         }
@@ -779,6 +807,55 @@ class NovelQualityPipelineTests(unittest.TestCase):
         errors = novel_quality.review_evidence_errors(review, {1: text})
         self.assertIn(novel_quality.SIGNING_RUBRIC[0] + "缺少可定位正文引文与分析", errors)
         self.assertIn(novel_quality.SIGNING_RUBRIC[1] + "缺少可定位正文引文与分析", errors)
+
+    def test_review_evidence_rejects_short_or_placeholder_dimension_analysis(self):
+        text = "她推开仓库的门，发现里面空无一物。"
+        review = self._review_with_complete_dimension_evidence(8)
+        for analysis in ("好", "支持", "引文支持该维度判断。"):
+            with self.subTest(analysis=analysis):
+                review["evidence"][0]["analysis"] = analysis
+                errors = novel_quality.review_evidence_errors(review, {1: text})
+                self.assertIn(
+                    novel_quality.SIGNING_RUBRIC[0] + "缺少可定位正文引文与分析",
+                    errors)
+        review["evidence"][0]["analysis"] = (
+            self._dimension_analysis(novel_quality.SIGNING_RUBRIC[0]))
+        self.assertNotIn(
+            novel_quality.SIGNING_RUBRIC[0] + "缺少可定位正文引文与分析",
+            novel_quality.review_evidence_errors(review, {1: text}))
+
+    def test_review_evidence_rejects_repeated_filler_within_one_dimension(self):
+        text = "她推开仓库的门，发现里面空无一物。"
+        review = self._review_with_complete_dimension_evidence(8)
+        for filler in ("好" * 16, "支持" * 8,
+                       "引文支持该维度判断。" * 2,
+                       "开篇吸引力" * 2):
+            with self.subTest(filler=filler):
+                review["evidence"][0]["analysis"] = filler
+                errors = novel_quality.review_evidence_errors(review, {1: text})
+                self.assertIn(
+                    novel_quality.SIGNING_RUBRIC[0] + "缺少可定位正文引文与分析",
+                    errors)
+
+    def test_review_evidence_rejects_analysis_copied_across_dimensions(self):
+        text = "她推开仓库的门，发现里面空无一物。"
+        review = self._review_with_complete_dimension_evidence(8)
+        copied_analysis = "该段引文支持本维度评分，但没有覆盖全篇的后续发展。"
+        for evidence in review["evidence"]:
+            evidence["analysis"] = copied_analysis
+        errors = novel_quality.review_evidence_errors(review, {1: text})
+        for dim in novel_quality.SIGNING_RUBRIC:
+            self.assertIn(dim + "缺少可定位正文引文与分析", errors)
+
+    def test_review_evidence_rejects_dimension_name_padded_template(self):
+        text = "她推开仓库的门，发现里面空无一物。"
+        review = self._review_with_complete_dimension_evidence(8)
+        for evidence in review["evidence"]:
+            evidence["analysis"] = (
+                "%s方面，这段引文支持评分，但无法证明其他情节。" % evidence["dim"])
+        errors = novel_quality.review_evidence_errors(review, {1: text})
+        for dim in novel_quality.SIGNING_RUBRIC:
+            self.assertIn(dim + "缺少可定位正文引文与分析", errors)
 
     def test_feedback_checks_fail_closed_for_malformed_record_collections(self):
         review = {"feedback_check": []}
@@ -1677,6 +1754,23 @@ class NovelQualityPipelineTests(unittest.TestCase):
             3: "他抬手推开沉重的木门，目光越过昏暗的长廊，寻找藏在暗处的证据。",
         }
         notes = novel_quality.repetition_notes(template_sentences)
+        self.assertTrue(any(item["kind"] == "跨章近似句式重复"
+                            and item["severity"] == "major" for item in notes), notes)
+
+    def test_major_repetition_survives_many_minor_exact_sentence_findings(self):
+        template = "她握紧手中的旧钥匙，沿着昏暗走廊缓慢地向最里面的房间走去。"
+        minor_sentences = [
+            "第%d次，她抬头看向挂在墙上的旧钟并记下准确的时间。" % number
+            for number in range(12)
+        ]
+        chapters = {
+            1: "\n".join([template, *minor_sentences]),
+            2: "\n".join([template.replace("旧钥匙", "生锈钥匙"),
+                          *minor_sentences]),
+            3: template.replace("昏暗走廊", "狭长走廊"),
+        }
+        notes = novel_quality.repetition_notes(chapters)
+        self.assertLessEqual(len(notes), novel_quality._REPEAT_MAX_NOTES, notes)
         self.assertTrue(any(item["kind"] == "跨章近似句式重复"
                             and item["severity"] == "major" for item in notes), notes)
 

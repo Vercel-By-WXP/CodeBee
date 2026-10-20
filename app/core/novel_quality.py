@@ -189,6 +189,22 @@ def _feedback_has_unresolved_conclusion(analysis: str) -> bool:
     return False
 
 
+def _is_periodic_text(text: str) -> bool:
+    """Return whether text is an exact repetition of a shorter unit in O(n)."""
+    if len(text) < 2:
+        return False
+    prefix = [0] * len(text)
+    matched = 0
+    for index in range(1, len(text)):
+        while matched and text[index] != text[matched]:
+            matched = prefix[matched - 1]
+        if text[index] == text[matched]:
+            matched += 1
+        prefix[index] = matched
+    period = len(text) - prefix[-1]
+    return bool(prefix[-1] and len(text) % period == 0)
+
+
 def _feedback_analysis_is_substantive(status: str, analysis: str) -> bool:
     """Reject placeholder or repeated feedback analyses without dictating prose."""
     compact = re.sub(r"[\s\u3000，,。；;：:！？!?、（）()\[\]{}\"'‘’“”]", "",
@@ -202,11 +218,12 @@ def _feedback_analysis_is_substantive(status: str, analysis: str) -> bool:
         return False
     # A repeated token can satisfy a character count without explaining the
     # manuscript.  Catch both exact periodic filler and common status-only text.
-    for width in range(1, len(compact) // 2 + 1):
-        if len(compact) % width == 0:
-            unit = compact[:width]
-            if unit * (len(compact) // width) == compact:
-                return False
+    # KMP's prefix table detects an exact periodic string in linear time.
+    # Trying every possible unit width constructs O(n²) temporary text for a
+    # long model response, even though a review normally contains only a few
+    # hundred characters.
+    if _is_periodic_text(compact):
+        return False
     repeated_placeholders = (
         "已处理", "已完成", "不适用", "不相关", "仍未解决", "正文证据充分",
         "没有问题", "已核验", "done", "notapplicable", "irrelevant",
@@ -539,6 +556,8 @@ def review_evidence_errors(review: Any, chapters: Mapping[int, str]) -> list[str
     rows = review.get("evidence")
     rows = rows if isinstance(rows, list) else []
     supported = set()
+    analysis_dimensions = {}
+    valid_analysis_by_dim = {}
     for row in rows:
         if not isinstance(row, dict) or row.get("dim") not in SIGNING_RUBRIC:
             continue
@@ -553,9 +572,32 @@ def review_evidence_errors(review: Any, chapters: Mapping[int, str]) -> list[str
         if not isinstance(raw_quote, str) or not isinstance(raw_analysis, str):
             continue
         quote = raw_quote.strip()
+        analysis = re.sub(r"\s+", "", raw_analysis)
+        # A non-empty token such as "好" is not an explanation.  Keep this
+        # deliberately structural: literary support and limitations remain
+        # human judgements, but each dimension must at least contain enough
+        # text to state them rather than pass with a placeholder.
         if (len(re.sub(r"\s+", "", quote)) >= 8 and quote in text
-                and raw_analysis.strip()):
-            supported.add(row["dim"])
+                and len(analysis) >= 16):
+            dim = row["dim"]
+            # The same generic explanation copied across dimensions does not
+            # establish dimension-specific reasoning. Ignore punctuation and
+            # whitespace when detecting exact template reuse.
+            normalized_analysis = analysis.casefold()
+            for rubric_dim in SIGNING_RUBRIC:
+                normalized_analysis = normalized_analysis.replace(
+                    rubric_dim.casefold(), "")
+            analysis_key = re.sub(r"[\W_]+", "", normalized_analysis)
+            # Length alone can be padded by repeating one word ("好好好…")
+            # or by repeating a short generic sentence. Require some actual
+            # non-rubric content and reject exact periodic filler.
+            if len(analysis_key) < 8 or _is_periodic_text(analysis_key):
+                continue
+            analysis_dimensions.setdefault(analysis_key, set()).add(dim)
+            valid_analysis_by_dim[dim] = analysis_key
+    supported.update(
+        dim for dim, key in valid_analysis_by_dim.items()
+        if len(analysis_dimensions.get(key, ())) == 1)
     errors = ["%s缺少可定位正文引文与分析" % dim
               for dim in SIGNING_RUBRIC if dim not in supported]
 
@@ -1131,10 +1173,20 @@ def repetition_notes(chapters):
     def finish_notes(current):
         # Reserve report slots for repeated stock phrases and near-reused
         # imagery. Otherwise many exact sentence findings can fill the cap
-        # before these more specific style patterns reach the output.
-        if reserved_notes:
-            return current[:max(0, _REPEAT_MAX_NOTES - len(reserved_notes))] + reserved_notes
-        return current[:_REPEAT_MAX_NOTES]
+        # before these more specific style patterns reach the output. Major
+        # findings always outrank minor warnings, regardless of which detector
+        # produced them. Deduplicate reserved notes that were also collected by
+        # the normal scan.
+        combined = []
+        seen = set()
+        for note in current + reserved_notes:
+            key = (note.get("kind"), note.get("chapter"), note.get("quote"))
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(note)
+        combined.sort(key=lambda note: note.get("severity") != "major")
+        return combined[:_REPEAT_MAX_NOTES]
 
     notes = []
     sentence_hits = {}
@@ -1169,9 +1221,6 @@ def repetition_notes(chapters):
             },
             "kind": "跨章整句重复",
         })
-        if len(notes) >= _REPEAT_MAX_NOTES:
-            return finish_notes(notes)
-
     for chapters_seen, variants, chapter_quotes in _near_duplicate_sentence_groups(texts):
         severity = "major" if len(chapters_seen) >= 3 else "minor"
         notes.append({
@@ -1184,9 +1233,6 @@ def repetition_notes(chapters):
                                for chapter, quote in chapter_quotes.items()},
             "kind": "跨章近似句式重复",
         })
-        if len(notes) >= _REPEAT_MAX_NOTES:
-            return finish_notes(notes)
-
     # Repeated clauses catch a more subtle template pattern: each full sentence
     # differs, while the same substantial action or reaction is reused inside
     # it.  Short stock phrases remain the responsibility of the dedicated list
@@ -1217,9 +1263,6 @@ def repetition_notes(chapters):
             "chapter_quotes": chapter_quotes,
             "kind": "跨章分句重复",
         })
-        if len(notes) >= _REPEAT_MAX_NOTES:
-            return finish_notes(notes)
-
     repeated_full_metaphors = {
         phrase for phrase, chapters_seen in metaphor_hits.items()
         if any(phrase in sentence_samples[sentence_key]
@@ -1242,13 +1285,8 @@ def repetition_notes(chapters):
             "chapter_quotes": {str(chapter): phrase for chapter in chapters_seen},
             "kind": "跨章比喻重复",
         })
-        if len(notes) >= _REPEAT_MAX_NOTES:
-            return finish_notes(notes)
-
     for near_metaphor_note in near_metaphor_notes:
         notes.append(near_metaphor_note)
-        if len(notes) >= _REPEAT_MAX_NOTES:
-            return finish_notes(notes)
 
     # Compare the first and last sentence of each chapter.  Matching a long
     # edge is a useful proxy for repeated chapter openings/closings while
@@ -1282,16 +1320,11 @@ def repetition_notes(chapters):
                 },
                 "kind": "跨章%s句式重复" % edge_name,
             })
-            if len(notes) >= _REPEAT_MAX_NOTES:
-                return finish_notes(notes)
-
     # Stock rhetoric was computed before the capped scans so it could retain a
     # slot when exact/near-repeat findings saturate the report.
     for stock_note in stock_notes:
         notes.append(stock_note)
-        if len(notes) >= _REPEAT_MAX_NOTES:
-            break
-    return notes[:_REPEAT_MAX_NOTES]
+    return finish_notes(notes)
 
 
 def parse_continuity_lines(lines, chapter=None):
