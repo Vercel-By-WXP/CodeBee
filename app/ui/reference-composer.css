@@ -5,11 +5,15 @@
     width: auto;
     min-height: 38px;
     margin: 0 -12px;
-    padding: 5px 6px;
+    padding: 5px 12px;
     border: 0;
     border-bottom: 1px solid var(--cb-card-border, var(--border));
-    border-radius: 0;
-    background: transparent;
+    border-radius: 17px 17px 0 0;
+    background: color-mix(in srgb, var(--panel2) 48%, var(--panel));
+  }
+
+  #sub-tasks .cmp-box > .cmp-pills .cmp-wd {
+    padding-inline: 0;
   }
 
   #sub-tasks .form > .cmp-box {
@@ -129,7 +133,14 @@
 }
 
 @media (max-width: 900px) {
-  #sub-tasks .cmp-box > .cmp-pills { margin: 0; }
-  #sub-tasks .cmp-pills .cmp-wd { padding-inline: 0; }
+  #sub-tasks .cmp-box > .cmp-pills {
+    width: auto;
+    margin: 0 -12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--cb-card-border, var(--border));
+    border-radius: 15px 15px 0 0;
+    background: color-mix(in srgb, var(--panel2) 48%, var(--panel));
+  }
+  #sub-tasks .cmp-box > .cmp-pills .cmp-wd { padding-inline: 0; }
   #sub-tasks .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
 }
