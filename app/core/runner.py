@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import glob
 import json
+import logging
 import os
 import re
 import shutil
@@ -35,6 +36,8 @@ from .error_codes import (
     is_transient_error as _shared_transient_error,
 )
 
+log = logging.getLogger(__name__)
+
 
 def _attempt_ledger(run_id=""):
     """Return the shared attempt ledger without making it a hard dependency."""
@@ -49,6 +52,105 @@ def _attempt_ledger(run_id=""):
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
 DEFAULT_STREAM_ACTIVITY_TIMEOUT_S = 180  # 流式 CLI 的活动延长窗口
+
+# dsh is a one-shot CLI, but some endpoint failures are retried internally by
+# its node launcher.  Keep a small, run-scoped admission budget outside the
+# child process as a second circuit breaker.  The key includes the step role so
+# a failed draft retry cannot consume the budget for an unrelated review step.
+_DSH_LAUNCH_LOCK = threading.Lock()
+_DSH_LAUNCH_HISTORY = {}
+
+
+def _dsh_launch_limits():
+    """Return (max launches, rolling window, minimum gap) for dsh.
+
+    Environment overrides are intentionally bounded so a bad setting cannot
+    silently restore the old unbounded retry storm.
+    """
+    def _number(name, default, lower, upper, integer=False):
+        try:
+            value = int(os.environ.get(name, str(default))) if integer else float(
+                os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            value = default
+        return max(lower, min(upper, value))
+
+    return (
+        int(_number("TUTTI_DSH_MAX_LAUNCHES", 4, 1, 12, integer=True)),
+        _number("TUTTI_DSH_LAUNCH_WINDOW_S", 600, 30, 3600),
+        _number("TUTTI_DSH_MIN_LAUNCH_GAP_S", 10, 0, 300),
+    )
+
+
+def _dsh_launch_admit(run_id, role, agent_id, upstream):
+    """Reserve one dsh process launch, or return a human-readable block reason."""
+    if agent_id not in ("deepseek-harness", "dsh"):
+        return None
+    # Legacy/direct callers may not provide a durable run and role.  Do not
+    # make those unrelated calls share the synthetic ``unbound`` bucket.
+    if not run_id or not role:
+        return None
+    max_launches, window_s, gap_s = _dsh_launch_limits()
+    key = (str(run_id or "unbound"), str(role or ""), str(upstream or "unknown"))
+    now = time.monotonic()
+    with _DSH_LAUNCH_LOCK:
+        # Prune abandoned run keys as well as the key being admitted.  This
+        # keeps a long-lived CodeBee service from accumulating one small list
+        # for every failed/expired run id.
+        prune_after = max(window_s, 3600)
+        for old_key, old_records in list(_DSH_LAUNCH_HISTORY.items()):
+            kept = [record for record in old_records
+                    if now - record["ts"] < prune_after]
+            if kept:
+                _DSH_LAUNCH_HISTORY[old_key] = kept
+            else:
+                _DSH_LAUNCH_HISTORY.pop(old_key, None)
+        if len(_DSH_LAUNCH_HISTORY) > 1024:
+            oldest = sorted(
+                _DSH_LAUNCH_HISTORY,
+                key=lambda item: _DSH_LAUNCH_HISTORY[item][-1]["ts"],
+            )
+            for old_key in oldest[:-1024]:
+                _DSH_LAUNCH_HISTORY.pop(old_key, None)
+        history = [record for record in _DSH_LAUNCH_HISTORY.get(key, ())
+                   if now - record["ts"] < window_s]
+        failed = [record for record in history if record["state"] == "failed"]
+        if failed and now - failed[-1]["ts"] < gap_s:
+            _DSH_LAUNCH_HISTORY[key] = history
+            return ("dsh 启动熔断：同一运行/步骤距离上次失败仅 %.1fs，"
+                    "冷却 %.1fs 后再试" % (now - failed[-1]["ts"], gap_s))
+        if len(history) >= max_launches:
+            _DSH_LAUNCH_HISTORY[key] = history
+            return ("dsh 启动熔断：同一运行/步骤在 %.0fs 内已失败 %d 次，"
+                    "停止继续拉起子进程" % (
+                        window_s, len([r for r in history if r["state"] == "failed"])))
+        token = (key, object())
+        history.append({"ts": now, "state": "active", "token": token})
+        _DSH_LAUNCH_HISTORY[key] = history
+    return token
+
+
+def _dsh_launch_complete(token, ok):
+    """Finalize a dsh launch reservation, clearing success or recording failure."""
+    if not token:
+        return
+    key = token[0] if isinstance(token, tuple) and len(token) == 2 else None
+    if key is None:
+        return
+    with _DSH_LAUNCH_LOCK:
+        records = _DSH_LAUNCH_HISTORY.get(key, [])
+        for index, record in enumerate(records):
+            if record.get("token") == token:
+                if ok:
+                    records.pop(index)
+                else:
+                    record["state"] = "failed"
+                    record["ts"] = time.monotonic()
+                break
+        if records:
+            _DSH_LAUNCH_HISTORY[key] = records
+        else:
+            _DSH_LAUNCH_HISTORY.pop(key, None)
 
 _BASH_CANDIDATES = [
     r"D:\Git\usr\bin\bash.exe",
@@ -2420,14 +2522,42 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             ("reqwest error stream", 2),
                             ("error sending request for url", 2),
                         )
-                    res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
-                                      timeout=_stable_timeout(min(timeout, remaining)), deadline=deadline,
-                                      cancel_event=cancel_event,
-                                      log_path=log_path, stall_timeout=stall_t,
-                                      activity_timeout=activity_t,
-                                      repeat_abort=repeat_guard,
-                                      abort_markers=stream_abort_markers,
-                                      audit_notes=audit_notes)
+                    elif agent.get("id") in ("deepseek-harness", "dsh"):
+                        # dsh may keep printing the same endpoint retry while
+                        # its node child is still alive.  Three identical 429
+                        # signals are enough evidence to kill the whole tree;
+                        # the outer launch budget handles repeated invocations.
+                        stream_abort_markers = (
+                            ("exceeded retry limit", 1),
+                            ("429 Too Many Requests", 3),
+                            ("too many requests", 3),
+                        )
+                    launch_token = _dsh_launch_admit(
+                        checkpoint_run_id or command_context.get("run_id"),
+                        command_context.get("role"), agent.get("id"), upstream)
+                    if isinstance(launch_token, str):
+                        res = {
+                            "ok": False, "exit_code": None, "stdout": "",
+                            "stderr": launch_token, "duration": 0.0,
+                            "cancelled": False, "timed_out": False,
+                            "stalled": False, "deadline_exceeded": False,
+                            "abort_marker": None, "launch_budget_exhausted": True,
+                        }
+                    else:
+                        res = None
+                        try:
+                            res = run_process(argv=argv, stdin_text=stdin_text, cwd=workdir, env=env,
+                                              timeout=_stable_timeout(min(timeout, remaining)), deadline=deadline,
+                                              cancel_event=cancel_event,
+                                              log_path=log_path, stall_timeout=stall_t,
+                                              activity_timeout=activity_t,
+                                              repeat_abort=repeat_guard,
+                                              abort_markers=stream_abort_markers,
+                                              audit_notes=audit_notes)
+                        finally:
+                            _dsh_launch_complete(
+                                launch_token,
+                                bool(res and (res.get("ok") or res.get("cancelled"))))
                     res["command"] = redact_command(argv)
                 finally:
                     # 超长指令临时文件：CLI 进程已结束（管道已收），即刻清场不污染工作目录
@@ -2444,6 +2574,17 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                    "stream_retries": stream_retries,
                    "attempt_ordinal": attempt + 1}
             if not res["ok"]:
+                if res.get("launch_budget_exhausted"):
+                    out["error"] = ((res.get("stderr") or
+                                     "dsh 启动预算耗尽，已停止继续拉起子进程") +
+                                    "（temporarily unavailable；可切换其他 CLI）")
+                    # This is a local circuit breaker, not a permanent
+                    # configuration block: let a model chain or the pipeline
+                    # fail over to another endpoint/CLI.
+                    out["error_code"] = ErrorCode.LOCAL_STATE
+                    _finish_attempt_ledger(ledger, checkpoint_run_id,
+                                           command_context, att, out)
+                    break
                 if (kind == "opencode" and attempt == 0
                         and _opencode_fast_banner_death(res)
                         and not (cancel_event is not None
@@ -2722,6 +2863,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         })
         out["attempts"] = list(attempt_history)
         out["forbidden_upstreams"] = sorted(forbidden_upstreams)
+        # A local dsh admission block is a routing event, not a terminal
+        # configuration error.  Give the remaining call-chain candidates a
+        # chance before returning the exhausted dsh result.
+        if raw.get("launch_budget_exhausted"):
+            if ai < len(attempts) - 1:
+                continue
+            return out
         if (not out["ok"]
                 and error_code_value(out.get("error_code"))
                 == ErrorCode.MODEL_UNAVAILABLE.value):

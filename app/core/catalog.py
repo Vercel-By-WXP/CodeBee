@@ -165,8 +165,12 @@ DEFAULT_CATALOG = [
                 "密钥由运行时自动调度或「模型调度（可选）」注入 DEEPSEEK_API_KEY（优先级最高）；端点注入 DEEPSEEK_BASE_URL，"
                 "但若 settings.yaml 已固定 llm-deepseek.baseURL，则以它为准（settings 高于 env）",
         "detect": {"cli": "dsh"},
+        # dsh is one-shot, but its node launcher can retry a dead endpoint
+        # internally.  Bound the child so CodeBee can fail over instead of
+        # allowing a quiet process tree to live for the whole 20-minute step.
         "orch": {"kind": "generic", "command": "dsh",
-                 "argv_template": ["--profile", "headless", "{prompt}"]},
+                 "argv_template": ["--profile", "headless", "{prompt}"],
+                 "timeout_ms": 180000, "stall_timeout_s": 45},
         "config": {"path": "~/.dsh/settings.yaml", "format": "yaml-line",
                    "model_key": "agent-default-model.model"},
         "install": "npm install -g @deepseek-ai/dsh",
@@ -496,6 +500,9 @@ def _apply_stall_patch(entries):
         elif e.get("id") == "grok-build":
             orch.setdefault("timeout_ms", 180000)
             orch.setdefault("stall_timeout_s", 120)
+        elif e.get("id") in ("deepseek-harness", "dsh"):
+            orch.setdefault("timeout_ms", 180000)
+            orch.setdefault("stall_timeout_s", 45)
 
 
 def _apply_install_patch(entries):
