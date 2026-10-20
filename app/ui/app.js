@@ -13817,6 +13817,16 @@ function setSkin(id) {
 
 function toggleTheme() { setThemeMode(currentMode() === "light" ? "dark" : "light"); }
 
+// The task board is a separate page but shares these persisted appearance
+// preferences. Keep an already-open workbench in sync when the board changes
+// either value in another tab/window.
+window.addEventListener("storage", (event) => {
+  if (event.key !== SKIN_KEY && event.key !== THEME_KEY) return;
+  applyAppearance();
+  renderAppearance();
+  renderCodePreviews();
+});
+
 /* 外观页：皮肤卡片（点选即换） + 明暗分段控。选中态同时给描边与勾选，
  * 不只靠颜色深浅传达，保证在高对比等皮肤下也一眼可辨。 */
 function renderAppearance() {

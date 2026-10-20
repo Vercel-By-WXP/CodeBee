@@ -1,0 +1,443 @@
+/* Shared CodeBee workbench tokens and layout contract.
+ * Load after page-specific styles so both the main workbench and board consume
+ * the same L0/L1/L2 surfaces and light/dark semantic colors. */
+:root {
+  color-scheme: light;
+  --cb-bg-0: #f4f6f8;
+  --cb-bg-nav: #edf1f4;
+  --cb-bg-1: #fff;
+  --cb-bg-2: #f8fafb;
+  --cb-bg-inset: #eef2f5;
+  --cb-text-1: #17212b;
+  --cb-text-2: #51606b;
+  --cb-text-3: #687985;
+  --cb-line: #dce4e9;
+  --cb-line-strong: #c6d1d8;
+  --cb-brand: #0b8f78;
+  --cb-brand-strong: #06725f;
+  --cb-honey: #b87512;
+  --cb-info: #2f75d6;
+  --cb-success: #0e8f62;
+  --cb-warning: #a65c08;
+  --cb-danger: #b9363d;
+  --cb-focus: #2f75d6;
+  --cb-log-bg: #172027;
+  --cb-log-text: #d8e5e8;
+  --cb-shadow-card: 0 1px 3px rgba(18, 31, 41, .08);
+  --cb-shadow-popover: 0 8px 24px rgba(18, 31, 41, .14);
+  --cb-radius-sm: 4px;
+  --cb-radius-md: 6px;
+  --cb-radius-lg: 8px;
+  --cb-radius-modal: 12px;
+  --cb-space-1: 4px;
+  --cb-space-2: 8px;
+  --cb-space-3: 12px;
+  --cb-space-4: 16px;
+  --cb-space-5: 20px;
+  --cb-space-6: 24px;
+  --cb-space-7: 32px;
+  --cb-space-8: 40px;
+  --cb-font-ui: "Segoe UI Variable", "Microsoft YaHei UI", "PingFang SC",
+    "Noto Sans CJK SC", system-ui, sans-serif;
+  --cb-font-mono: "Cascadia Code", "JetBrains Mono", "SFMono-Regular",
+    Consolas, monospace;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cb-bg-0: #11171d;
+  --cb-bg-nav: #151d24;
+  --cb-bg-1: #171f27;
+  --cb-bg-2: #202a33;
+  --cb-bg-inset: #1c252d;
+  --cb-text-1: #f4f7fa;
+  --cb-text-2: #b9c4cd;
+  --cb-text-3: #9ba9b4;
+  --cb-line: #2c3944;
+  --cb-line-strong: #40515e;
+  --cb-brand: #28b89a;
+  --cb-brand-strong: #5ad5ba;
+  --cb-honey: #f2bb55;
+  --cb-info: #73a8f2;
+  --cb-success: #43c99a;
+  --cb-warning: #f2b84b;
+  --cb-danger: #f07c82;
+  --cb-focus: #73a8f2;
+  --cb-log-bg: #0d1318;
+  --cb-log-text: #d8e5e8;
+  --cb-shadow-card: 0 1px 3px rgba(0, 0, 0, .2);
+  --cb-shadow-popover: 0 8px 24px rgba(0, 0, 0, .34);
+}
+
+/* Skin remains a user-selected brand accent; surfaces and status meanings stay
+ * consistent across skins and across both entry points. These values mirror
+ * the existing per-skin palettes in style.css and board.css. */
+html[data-skin="ocean"] { --cb-brand: #1f6fd0; --cb-brand-strong: #1f6fd0; --cb-brand-alt: #5b4fe0; }
+html[data-theme="dark"][data-skin="ocean"] { --cb-brand: #3ba9f5; --cb-brand-strong: #3ba9f5; --cb-brand-alt: #6d6cf6; }
+html[data-skin="classic"] { --cb-brand: #167dce; --cb-brand-strong: #167dce; --cb-brand-alt: #7858de; }
+html[data-theme="dark"][data-skin="classic"] { --cb-brand: #53b9f5; --cb-brand-strong: #53b9f5; --cb-brand-alt: #a28af5; }
+html[data-skin="apple"] { --cb-brand: #007aff; --cb-brand-strong: #007aff; --cb-brand-alt: #5856d6; }
+html[data-theme="dark"][data-skin="apple"] { --cb-brand: #0a84ff; --cb-brand-strong: #0a84ff; --cb-brand-alt: #64d2ff; }
+html[data-skin="hermes"] { --cb-brand: #9a6e15; --cb-brand-strong: #9a6e15; --cb-brand-alt: #7d5a10; }
+html[data-theme="dark"][data-skin="hermes"] { --cb-brand: #e0b455; --cb-brand-strong: #e0b455; --cb-brand-alt: #c98f3a; }
+html[data-skin="paper"] { --cb-brand: #2563eb; --cb-brand-strong: #2563eb; --cb-brand-alt: #1d4ed8; }
+html[data-theme="dark"][data-skin="paper"] { --cb-brand: #6ea8fe; --cb-brand-strong: #6ea8fe; --cb-brand-alt: #94c1ff; }
+html[data-skin="forest"] { --cb-brand: #0e8f61; --cb-brand-strong: #0e8f61; --cb-brand-alt: #0d8577; }
+html[data-theme="dark"][data-skin="forest"] { --cb-brand: #35c98c; --cb-brand-strong: #35c98c; --cb-brand-alt: #2bbfa8; }
+html[data-skin="amber"] { --cb-brand: #b96a12; --cb-brand-strong: #b96a12; --cb-brand-alt: #b8542c; }
+html[data-theme="dark"][data-skin="amber"] { --cb-brand: #e79a2b; --cb-brand-strong: #e79a2b; --cb-brand-alt: #e2703f; }
+html[data-skin="violet"] { --cb-brand: #7b3ce0; --cb-brand-strong: #7b3ce0; --cb-brand-alt: #c92c74; }
+html[data-theme="dark"][data-skin="violet"] { --cb-brand: #a86cf5; --cb-brand-strong: #a86cf5; --cb-brand-alt: #ec4f95; }
+html[data-skin="contrast"] { --cb-brand: #0b52c9; --cb-brand-strong: #0b52c9; --cb-brand-alt: #b03000; }
+html[data-theme="dark"][data-skin="contrast"] { --cb-brand: #4da3ff; --cb-brand-strong: #4da3ff; --cb-brand-alt: #ff9d4d; }
+
+/* Legacy application variables now resolve to the shared surface and status
+ * contract. Keeping the aliases avoids changing existing component behavior. */
+html[data-skin][data-theme] {
+  --bg: var(--cb-bg-0);
+  --sidebar: var(--cb-bg-nav);
+  --panel: var(--cb-bg-1);
+  --panel2: var(--cb-bg-2);
+  --border: var(--cb-line);
+  --border-strong: var(--cb-line-strong);
+  --text: var(--cb-text-1);
+  --muted: var(--cb-text-2);
+  --accent: var(--cb-brand);
+  --accent2: var(--cb-brand-alt);
+  --ok: var(--cb-success);
+  --warn: var(--cb-warning);
+  --bad: var(--cb-danger);
+  --log-bg: var(--cb-log-bg);
+  --log-text: var(--cb-log-text);
+  --shadow: var(--cb-shadow-card);
+  --workbench-rail-width: 52px;
+  --workbench-sidebar-width: 248px;
+  --workbench-inspector-width: 296px;
+}
+
+html,
+body { background: var(--cb-bg-0); }
+body {
+  color: var(--cb-text-1);
+  font-family: var(--cb-font-ui);
+}
+:where(button, input, textarea, select, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--cb-focus);
+  outline-offset: 2px;
+}
+:where(.panel, .card, .prov-side, .pd-config, .opanel, .kpi) {
+  border-radius: var(--cb-radius-lg);
+}
+
+/* Main workbench shell: 52px rail + resizable 248px module column. */
+@media (min-width: 1440px) {
+  #app { grid-template-columns: 52px var(--side-w, 248px) minmax(0, 1fr); }
+  body.side-collapsed #app { grid-template-columns: 52px 0 minmax(0, 1fr); }
+  body.inspector-open #app {
+    grid-template-columns: 52px var(--side-w, 248px) minmax(0, 1fr) 296px;
+  }
+  body.side-collapsed.inspector-open #app {
+    grid-template-columns: 52px 0 minmax(0, 1fr) 296px;
+  }
+  #sidebar { width: auto; }
+  .side-rail {
+    background: var(--cb-bg-nav);
+    border-right-color: var(--cb-line);
+  }
+  #sidebar { background: var(--cb-bg-nav); border-right-color: var(--cb-line); }
+  .topbar { height: 56px; min-height: 56px; background: var(--cb-bg-0); }
+  main { padding: 24px 32px 72px; }
+}
+
+@media (min-width: 901px) and (max-width: 1439px) {
+  html[data-skin][data-theme] { --workbench-sidebar-width: 232px; }
+  #app { grid-template-columns: 52px var(--side-w, 232px) minmax(0, 1fr); }
+  body.side-collapsed #app { grid-template-columns: 52px 0 minmax(0, 1fr); }
+  body.inspector-open #app { grid-template-columns: 52px var(--side-w, 232px) minmax(0, 1fr); }
+  body.side-collapsed.inspector-open #app { grid-template-columns: 52px 0 minmax(0, 1fr); }
+  body.inspector-open #inspector {
+    position: fixed;
+    z-index: 90;
+    inset: 0 0 0 auto;
+    width: min(296px, 92vw);
+    height: 100dvh;
+    border-left: 1px solid var(--cb-line);
+    background: var(--cb-bg-1);
+    box-shadow: var(--cb-shadow-popover);
+  }
+  .side-rail { background: var(--cb-bg-nav); border-right-color: var(--cb-line); }
+  #sidebar { background: var(--cb-bg-nav); border-right-color: var(--cb-line); }
+  .topbar { height: 56px; min-height: 56px; background: var(--cb-bg-0); }
+  main { padding: 20px 24px 64px; }
+}
+
+/* Configuration keeps a visible resource list beside the selected detail. */
+@media (min-width: 901px) {
+  #sub-models .prov-layout { grid-template-columns: 272px minmax(0, 1fr); gap: 20px; }
+  #sub-models .prov-side {
+    background: var(--cb-bg-1);
+    border-color: var(--cb-line);
+    border-radius: var(--cb-radius-lg);
+    box-shadow: var(--cb-shadow-card);
+  }
+  #sub-models .prov-item { min-height: 56px; border-radius: var(--cb-radius-md); }
+  #sub-models .prov-item.active {
+    background: color-mix(in srgb, var(--cb-brand) 9%, var(--cb-bg-1));
+    border-color: color-mix(in srgb, var(--cb-brand) 32%, var(--cb-line));
+    box-shadow: inset 2px 0 var(--cb-brand);
+  }
+  #sub-models .pd-config,
+  #sub-models .prow,
+  #sub-models .keys-box,
+  #binding-list > .card {
+    background: var(--cb-bg-2);
+    border-color: var(--cb-line);
+  }
+}
+
+/* Health-first overview: four balanced KPI cards, with the trend taking the
+ * wider side of the existing two-panel row. */
+#sub-overview .ov-head { align-items: center; min-height: 56px; }
+#sub-overview .ov-title { font-size: 20px; line-height: 1.4; }
+#sub-overview .ov-head-text { flex: 1 1 auto; min-width: 0; }
+#sub-overview .ov-sub { max-width: 720px; }
+#sub-overview .ov-head-act { margin-left: auto; }
+#sub-overview .ov-kpis { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; }
+#sub-overview .ov-kpis > .kpi { grid-column: span 3; min-width: 0; }
+#sub-overview .ov-kpis > .hint { grid-column: 1 / -1; }
+#sub-overview .ov-row { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 16px; }
+#sub-overview .ov-row > .ov-trend { min-width: 0; }
+#sub-overview .ov-row > .ov-quick { min-width: 0; }
+
+/* Usage layout uses a 12-column grid without changing data ownership or order. */
+#sub-usage > .panel.wide {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-content: start;
+  align-items: start;
+  column-gap: 16px;
+  row-gap: 12px;
+}
+#sub-usage > .panel.wide > * { grid-column: 1 / -1; min-width: 0; }
+#sub-usage > .panel.wide > .panel-head { grid-column: 1 / -1; }
+#sub-usage #usage-kpis {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+#sub-usage #usage-kpis > .kpi { grid-column: span 3; min-width: 0; }
+#sub-usage #usage-kpis > .kpi.wide { grid-column: span 6; }
+#sub-usage .usage-chart { min-width: 0; }
+#sub-usage > .panel.wide > .usage-chart-trend { grid-column: span 8; }
+#sub-usage > .panel.wide > .usage-chart-models { grid-column: span 4; }
+#sub-usage .usage-chart > .sec-title { margin-top: 8px; }
+#sub-usage #usage-trend .usage-svg,
+#sub-usage #usage-models .usage-svg { max-width: 100%; }
+#sub-usage .usage-heat-head { margin-bottom: 0; }
+#sub-usage #usage-recent { max-height: 460px; overflow: auto; }
+#sub-usage .analytics-panel { grid-column: 1 / -1; min-width: 0; }
+
+/* The legacy settings shell defaults to a narrow reading column. Usage is a
+ * dashboard with parallel charts, so let its own content use the workbench
+ * width while preserving the ordinary settings column elsewhere. */
+body.settings-mode #page-settings:has(> #sub-usage:not(.hidden)) {
+  width: min(1440px, 100%);
+  margin-inline: auto;
+}
+@media (min-width: 901px) {
+  body.settings-mode #mainwrap > main:has(> #page-settings > #sub-usage:not(.hidden)) {
+    padding-inline: 32px;
+  }
+}
+
+/* The agent catalog is a resource grid; each entry keeps its installation
+ * state, capabilities, version, and local actions grouped as one surface. */
+#sub-agents #ag-installed,
+#sub-agents #ag-installable {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+#sub-agents .cards > .card {
+  min-width: 0;
+  border-radius: var(--cb-radius-lg);
+  background: var(--cb-bg-1);
+  box-shadow: var(--cb-shadow-card);
+}
+#sub-agents .card .head { min-height: 32px; }
+#sub-agents .card .facts { overflow-wrap: anywhere; }
+#sub-agents .mgmt-log { max-height: 240px; }
+#binding-list { grid-template-columns: minmax(0, 1fr); }
+#binding-list > .card { min-width: 0; }
+
+/* Run records remain scannable as rows; the state text is retained and failures
+ * gain a shape cue so color is not the only signal. */
+#run-list .item {
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: var(--cb-radius-md);
+  background: var(--cb-bg-1);
+}
+#run-list .item:has(.chip.failed),
+#run-list .item:has(.chip.timeout) {
+  border-inline-start: 3px solid var(--cb-danger);
+}
+#run-list .item:has(.chip.running) { border-inline-start: 3px solid var(--cb-info); }
+#run-list .item .chip { flex: none; }
+#run-list .item .time { font-family: var(--cb-font-mono); font-variant-numeric: tabular-nums; }
+#run-detail #rd-log pre,
+#run-detail .rd-logdrawer pre,
+#run-detail .chat-cli-log-text {
+  background: var(--cb-log-bg);
+  color: var(--cb-log-text);
+  border-radius: var(--cb-radius-md);
+}
+
+/* The board reuses the shared tokens; logs alone may use the deeper log surface. */
+body:has(#board) {
+  background: var(--cb-bg-0);
+  color: var(--cb-text-1);
+}
+body:has(#board) #hd,
+body:has(#board) #board,
+body:has(#board) .panel,
+body:has(#board) .kpi {
+  background: var(--cb-bg-0);
+  color: var(--cb-text-1);
+}
+body:has(#board) #hd {
+  border-bottom-color: var(--cb-line);
+  background: var(--cb-bg-nav);
+}
+body:has(#board) .panel,
+body:has(#board) .kpi {
+  border-color: var(--cb-line);
+  background: var(--cb-bg-1);
+  box-shadow: var(--cb-shadow-card);
+}
+body:has(#board) .panel { border-radius: var(--cb-radius-lg); }
+body:has(#board) #main { gap: 16px; }
+body:has(#board) .wall-grid { gap: 10px; }
+body:has(#board) .wall-card,
+body:has(#board) .run-card { background: var(--cb-bg-2); }
+body:has(#board) .dw-log,
+body:has(#board) .dw-log-body,
+body:has(#board) .dw-log-body pre {
+  background: var(--cb-log-bg);
+  color: var(--cb-log-text);
+}
+body:has(#board) {
+  --live: var(--cb-info);
+  --live-hi: var(--cb-info);
+  --live-bg: color-mix(in srgb, var(--cb-info) 12%, transparent);
+  --live-bd: color-mix(in srgb, var(--cb-info) 40%, transparent);
+  --data: var(--cb-brand);
+  --data-bg: color-mix(in srgb, var(--cb-brand) 10%, transparent);
+  --data-bd: color-mix(in srgb, var(--cb-brand) 36%, transparent);
+  --good: var(--cb-success);
+  --err: var(--cb-danger);
+  --card: var(--cb-bg-2);
+  --t1: var(--cb-text-1);
+  --t2: var(--cb-text-2);
+  --t3: var(--cb-text-3);
+}
+
+/* Replace the dark-only settings overrides with the shared surfaces. */
+html[data-theme="dark"] body.settings-mode #sidebar,
+html[data-theme="dark"] body.settings-mode .side-rail { background: var(--cb-bg-nav); }
+html[data-theme="dark"] body.settings-mode #mainwrap,
+html[data-theme="dark"] body.settings-mode #mainwrap > main { background: var(--cb-bg-0); }
+html[data-theme="dark"] body.settings-mode .settings-search-wrap,
+html[data-theme="dark"] body.settings-mode #page-settings .card,
+html[data-theme="dark"] body.settings-mode #page-settings .prow,
+html[data-theme="dark"] body.settings-mode #page-settings .prov-batch,
+html[data-theme="dark"] body.settings-mode #page-settings .mrow-batch,
+html[data-theme="dark"] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-theme="dark"] body.settings-mode #page-settings select,
+html[data-theme="dark"] body.settings-mode #page-settings textarea,
+html[data-theme="dark"] body.settings-mode #page-settings button.ghost,
+html[data-theme="dark"] body.settings-mode #page-settings a.button.ghost,
+html[data-theme="dark"] body.settings-mode #sub-models .prov-side,
+html[data-theme="dark"] body.settings-mode #sub-models .pd-config,
+html[data-theme="dark"] body.settings-mode #sub-models .prow,
+html[data-theme="dark"] body.settings-mode #sub-models .keys-box .krow {
+  border-color: var(--cb-line);
+  background: var(--cb-bg-1);
+  color: var(--cb-text-1);
+}
+html[data-theme="dark"] body.settings-mode .settings-search-wrap:focus-within,
+html[data-theme="dark"] body.settings-mode #page-settings button.ghost:hover,
+html[data-theme="dark"] body.settings-mode #page-settings a.button.ghost:hover {
+  background: var(--cb-bg-2);
+  border-color: var(--cb-line-strong);
+}
+html[data-theme="dark"] body.settings-mode .side-settings .set-group,
+html[data-theme="dark"] body.settings-mode .side-settings .set-item,
+html[data-theme="dark"] body.settings-mode #page-settings .panel-head h2,
+html[data-theme="dark"] body.settings-mode #page-settings label,
+html[data-theme="dark"] body.settings-mode #page-settings .field label,
+html[data-theme="dark"] body.settings-mode #page-settings .settings-subhead {
+  color: var(--cb-text-2);
+}
+html[data-theme="dark"] body.settings-mode .side-settings .set-item.active {
+  color: var(--cb-text-1);
+  background: color-mix(in srgb, var(--cb-brand) 12%, var(--cb-bg-nav));
+  box-shadow: inset 2px 0 var(--cb-brand);
+}
+html[data-theme="dark"] body.settings-mode #sub-models .prov-item.active {
+  border-color: color-mix(in srgb, var(--cb-brand) 40%, var(--cb-line));
+  background: color-mix(in srgb, var(--cb-brand) 10%, var(--cb-bg-1));
+}
+
+@media (max-width: 1080px) {
+  #sub-overview .ov-row { grid-template-columns: minmax(0, 1fr); }
+  #sub-usage > .panel.wide { column-gap: 12px; }
+  #sub-usage > .panel.wide > .usage-chart-trend,
+  #sub-usage > .panel.wide > .usage-chart-models { grid-column: 1 / -1; }
+}
+
+@media (max-width: 900px) {
+  body.settings-mode #page-settings:has(> #sub-usage:not(.hidden)) { width: 100%; margin: 0; }
+  #sub-overview .ov-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #sub-overview .ov-kpis > .kpi { grid-column: span 1; }
+  #sub-usage > .panel.wide { display: block; }
+  #sub-usage > .panel.wide > * { margin-bottom: 16px; }
+  #sub-usage #usage-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #sub-usage #usage-kpis > .kpi,
+  #sub-usage #usage-kpis > .kpi.wide { grid-column: span 1; }
+  #sub-usage #usage-kpis > .kpi.wide { grid-column: 1 / -1; }
+  #sub-models .prov-layout { grid-template-columns: minmax(0, 1fr); }
+  #sub-models .prov-side { position: static; max-height: min(42vh, 360px); }
+  #run-list .item { min-height: 56px; }
+  body:has(#board) #board {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  }
+  body:has(#board) #main { gap: 12px; }
+}
+
+@media (max-width: 430px) {
+  #sub-overview .ov-kpis { grid-template-columns: minmax(0, 1fr); }
+  #sub-overview .ov-kpis > .kpi { grid-column: 1 / -1; }
+  #sub-usage #usage-kpis { grid-template-columns: minmax(0, 1fr); }
+  #sub-usage #usage-kpis > .kpi,
+  #sub-usage #usage-kpis > .kpi.wide { grid-column: 1 / -1; }
+  #sub-usage .panel-head { align-items: flex-start; }
+  #sub-usage #usage-ranges { width: 100%; flex-wrap: wrap; }
+  #sub-usage #usage-ranges .seg { max-width: 100%; overflow-x: auto; }
+  #sub-usage #usage-recent,
+  #sub-usage #usage-dims,
+  #sub-usage #analytics-cli { overflow-x: auto; }
+  #sub-usage .usage-table { min-width: 620px; }
+  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px; }
+  :where(button, .button, .icon-btn, .seg-btn) { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

@@ -3632,8 +3632,8 @@
     "霓虹": "Neon",
     "高对比": "High contrast",
     "夜": "Night",
-    "切换皮肤（仅大屏记忆）": "Switch skin (board only)",
-    "切换明暗（仅大屏记忆）": "Toggle light/dark (board only)",
+    "切换全局皮肤": "Change global skin",
+    "切换全局明暗": "Toggle global light/dark theme",
     "关闭 (Esc)": "Close (Esc)",
     // —— EN 词条收尾补全（2026-10-06 巡检 G-② 残件 7 条：本地插件/自定义样题/报告导出/浏览器面板；133 字 webhooks 键词条早已在位，文件级 grep 误报勿重加）——
     "本地插件": "Local plugins",

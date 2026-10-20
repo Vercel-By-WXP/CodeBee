@@ -4,9 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CodeBee · 任务驾驶舱</title>
+<script>
+(function () {
+  try {
+    var query = new URLSearchParams(location.search);
+    document.documentElement.dataset.skin = query.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "ocean";
+    document.documentElement.dataset.theme = query.get("mode") || localStorage.getItem("orch.theme") || localStorage.getItem("orch.boardTheme") || "light";
+  } catch (_) {
+    document.documentElement.dataset.skin = "ocean";
+    document.documentElement.dataset.theme = "light";
+  }
+})();
+</script>
 <link rel="icon" href="/icons/icon-192.png">
 <link rel="stylesheet" href="/board.css">
 <link rel="stylesheet" href="/button-reference.css">
+<link rel="stylesheet" href="/hive-ui.css">
 </head>
 <body>
 
@@ -41,8 +54,8 @@
     <div class="hd-svc" id="hd-health"><i aria-hidden="true"></i><span id="hd-health-text"></span></div>
     <div id="hd-conn" class="hd-off hidden" data-i18n="连接断开">连接断开</div>
     <div class="hd-swap">
-      <button class="sw-btn" id="sw-skin" type="button" data-i18n-title="切换皮肤（仅大屏记忆）"><span data-i18n="皮肤">皮肤</span> <b id="sw-skin-n">—</b></button>
-      <button class="sw-btn" id="sw-mode" type="button" data-i18n-title="切换明暗（仅大屏记忆）"><b id="sw-mode-n">—</b></button>
+      <button class="sw-btn" id="sw-skin" type="button" data-i18n-title="切换全局皮肤"><span data-i18n="皮肤">皮肤</span> <b id="sw-skin-n">—</b></button>
+      <button class="sw-btn" id="sw-mode" type="button" data-i18n-title="切换全局明暗"><b id="sw-mode-n">—</b></button>
     </div>
     <div id="hd-clock" class="hd-clock">--:--:--</div>
   </div>

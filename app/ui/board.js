@@ -81,20 +81,20 @@ function submitGate() {
 }
 
 /* ---------------------------------------------------------------- 换肤
-   大屏独立记忆：orch.boardSkin / orch.boardTheme 优先，缺省时继承主界面的
-   orch.skin / orch.theme（第一次打开跟主界面一致），再缺省落 ocean/dark。
-   只写 html 的 data-skin/data-theme，值集与主应用 style.css 同一套。 */
-const SKINS = [["ocean", "深海"], ["classic", "经典"], ["forest", "森林"],
+   主工作台和驾驶舱共用 orch.skin / orch.theme。旧版驾驶舱独立偏好只作
+   一次性回退，任何切换都会写回全局偏好，保持两处入口一致。 */
+const SKINS = [["ocean", "深海"], ["classic", "经典"], ["apple", "苹果"],
+               ["hermes", "墨金"], ["paper", "简白"], ["forest", "森林"],
                ["amber", "暖阳"], ["violet", "霓虹"], ["contrast", "高对比"]];
 const SKIN_IDS = new Set(SKINS.map((s) => s[0]));
 const _q = new URLSearchParams(location.search);
 
 function skin() {
-  const v = _q.get("skin") || localStorage.getItem("orch.boardSkin") || localStorage.getItem("orch.skin") || "ocean";
+  const v = _q.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "ocean";
   return SKIN_IDS.has(v) ? v : "ocean";
 }
 function mode() {
-  const v = _q.get("mode") || localStorage.getItem("orch.boardTheme") || localStorage.getItem("orch.theme") || "dark";
+  const v = _q.get("mode") || localStorage.getItem("orch.theme") || localStorage.getItem("orch.boardTheme") || "light";
   return v === "light" ? "light" : "dark";
 }
 function applySkin() {
@@ -104,14 +104,30 @@ function applySkin() {
   $("#sw-skin-n").textContent = t((SKINS.find((s) => s[0] === skin()) || SKINS[0])[1]);
   $("#sw-mode-n").textContent = t(mode() === "dark" ? "夜间" : "日间");
 }
+function clearQueryOverride(key) {
+  if (!_q.has(key)) return;
+  _q.delete(key);
+  const url = new URL(location.href);
+  url.searchParams.delete(key);
+  history.replaceState(null, "", url);
+}
 $("#sw-skin").addEventListener("click", () => {
   const i = SKINS.findIndex((s) => s[0] === skin());
-  localStorage.setItem("orch.boardSkin", SKINS[(i + 1) % SKINS.length][0]);
+  const nextSkin = SKINS[(i + 1) % SKINS.length][0];
+  clearQueryOverride("skin");
+  localStorage.setItem("orch.skin", nextSkin);
+  localStorage.setItem("orch.boardSkin", nextSkin);
   applySkin();
 });
 $("#sw-mode").addEventListener("click", () => {
-  localStorage.setItem("orch.boardTheme", mode() === "dark" ? "light" : "dark");
+  const nextMode = mode() === "dark" ? "light" : "dark";
+  clearQueryOverride("mode");
+  localStorage.setItem("orch.theme", nextMode);
+  localStorage.setItem("orch.boardTheme", nextMode);
   applySkin();
+});
+window.addEventListener("storage", (event) => {
+  if (event.key === "orch.skin" || event.key === "orch.theme") applySkin();
 });
 applySkin();
 
