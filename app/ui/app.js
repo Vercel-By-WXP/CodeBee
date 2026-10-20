@@ -19641,7 +19641,12 @@ async function openPhoneConnect() {
     relay = d.relay;
     // The pairing view opens with a usable QR code. Keep an existing code so
     // reopening the dialog does not invalidate a code the user is scanning.
-    if (relay && !relay.pair_url && !relay.configured) {
+    // A saved configuration can be online without an active one-time code:
+    // `connected` only describes the desktop-to-relay socket, not phone
+    // sessions. Generate a fresh code for a first-use or enabled connector
+    // so restart, expiry, or revoke cannot leave the view blank. Preserve an
+    // explicit "关闭远程连接" choice (configured=true, enabled=false).
+    if (relay && !relay.pair_url && (!relay.configured || relay.enabled)) {
       try {
         const result = await ensurePhoneRelayPair();
         relay = result || relay;
@@ -19707,9 +19712,16 @@ function syncConnectUrls(rawUrls, relay) {
     urls.push({ label: t("Codebee · 已配对入口"), url: relay.entry + "/" });
   }
   S.connUrls = urls;
-  const publicIndex = urls.findIndex(u => String(u.label || "").startsWith("公网"));
   const pairIndex = urls.findIndex(u => u.label === pairLabel);
-  if (!S.connUrlPicked) S.connIdx = publicIndex >= 0 ? publicIndex : (pairIndex >= 0 ? pairIndex : 0);
+  const relayIndex = urls.findIndex(u => u.label === t("Codebee · 已配对入口"));
+  const publicIndex = urls.findIndex(u => String(u.label || "").startsWith("公网"));
+  // The relay URL is the stable CodeBee entry and carries the one-time
+  // pairing credential. Keep it selected by default; the temporary direct
+  // tunnel remains an explicit fallback when the relay route is unavailable.
+  if (!S.connUrlPicked) {
+    const stableIndex = pairIndex >= 0 ? pairIndex : relayIndex;
+    S.connIdx = stableIndex >= 0 ? stableIndex : (publicIndex >= 0 ? publicIndex : 0);
+  }
   else {
     const kept = urls.findIndex(u => u.url === currentUrl);
     S.connIdx = kept >= 0 ? kept : Math.min(S.connIdx, Math.max(0, urls.length - 1));
