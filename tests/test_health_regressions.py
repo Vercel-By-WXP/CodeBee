@@ -93,28 +93,12 @@ class ProviderHealthRegressionTests(unittest.TestCase):
 
         self.assertEqual(health.snapshot()["providers"], [])
 
-    def test_init_keeps_opaque_cli_envelope_with_structured_upstream_code(self):
+    def test_init_prunes_opaque_envelopes_with_structured_transient_codes(self):
+        """2026-10-21 政策反转：结构化瞬态码 + 信封文本分类不出任何供应商
+        信号 = 无从核实的记账，按「拿不准宁可不记」清掉。真故障会在
+        下一次真实失败（分钟级）重新记账；假告警却会永远赖在横幅里。"""
         path = Path(self.tmp.name) / "provider_health.json"
-        path.write_text(json.dumps({"providers": {
-            "Rate-limited provider": {
-                "name": "Rate-limited provider",
-                "status": "down",
-                "last_error_code": "RATE_LIMIT",
-                "last_error": "退出码 1；stderr/stdout: opaque provider response",
-            },
-        }}), encoding="utf-8")
-
-        with mock.patch.object(health, "_prune_missing"):
-            health.init(self.tmp.name, start_probe=False)
-
-        providers = health.snapshot()["providers"]
-        self.assertEqual(len(providers), 1)
-        self.assertEqual(providers[0]["provider"], "Rate-limited provider")
-
-    def test_init_keeps_opaque_envelopes_for_all_structured_transient_codes(self):
-        """Restart migration must not erase a real, already-classified failure."""
-        path = Path(self.tmp.name) / "provider_health.json"
-        codes = ("TIMEOUT", "NETWORK", "UPSTREAM_SERVER")
+        codes = ("TIMEOUT", "NETWORK", "UPSTREAM_SERVER", "RATE_LIMIT")
         path.write_text(json.dumps({"providers": {
             "provider-%s" % code: {
                 "name": "provider-%s" % code,
@@ -128,8 +112,42 @@ class ProviderHealthRegressionTests(unittest.TestCase):
         with mock.patch.object(health, "_prune_missing"):
             health.init(self.tmp.name, start_probe=False)
 
-        providers = {row["provider"] for row in health.snapshot()["providers"]}
-        self.assertEqual(providers, {"provider-%s" % code for code in codes})
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_grep_hit_source_line_never_enters_provider_health(self):
+        """grep 命中行的行号会伪装成状态码：types.gen.d.ts:429: 曾把健康的
+        OpenCode 免费通道推进 down 告警（2026-10-21 实案）。无论调用方自带
+        什么码，信封剥掉源码位置后分类不出信号就必须跳过。"""
+        text = ("退出码 1；stderr/stdout: ./.mimocode/node_modules/@mimo-ai/sdk"
+                "/dist/gen/types.gen.d.ts:429:export type Todo = {")
+        for supplied in ("VENDOR_ERROR", "UPSTREAM_SERVER", ""):
+            health.report_failure(
+                "OpenCode 原生免费模型",
+                text,
+                model="opencode/deepseek-v4.1-flash-free",
+                provider_id="prov-48",
+                error_code=supplied,
+            )
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_init_prunes_persisted_grep_line_false_positive(self):
+        path = Path(self.tmp.name) / "provider_health.json"
+        path.write_text(json.dumps({"providers": {
+            "OpenCode 原生免费模型": {
+                "name": "OpenCode 原生免费模型",
+                "status": "down",
+                "consecutive_failures": 2,
+                "last_error_code": "UPSTREAM_SERVER",
+                "last_error": ("退出码 1；stderr/stdout: ./.mimocode/node_modules"
+                               "/@mimo-ai/sdk/dist/gen/types.gen.d.ts:429:export "
+                               "type Todo = {"),
+            },
+        }}), encoding="utf-8")
+
+        with mock.patch.object(health, "_prune_missing"):
+            health.init(self.tmp.name, start_probe=False)
+
+        self.assertEqual(health.snapshot()["providers"], [])
 
 
 if __name__ == "__main__":

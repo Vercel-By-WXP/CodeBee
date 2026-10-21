@@ -1659,6 +1659,13 @@ _LOG_ERR_HINT = re.compile(
     re.I)
 
 
+# 「路径:行号(:列号):内容」形态（grep -n / 编译器诊断 / ripgrep 命中行）。
+# 前缀允许 ./ ../ 绝对盘符与 ~；结尾必须有真实扩展名，避免误吞普通报错。
+_GREP_HIT_LINE_RE = re.compile(
+    r"^(?:\.{0,2}/|[A-Za-z]:[\\/]|~)?[^\s:]+\.[A-Za-z0-9]{1,10}"
+    r":\d{1,6}(?::\d{1,6})?(?::|\s|$)")
+
+
 def _json_envelope_message(ev, depth=0):
     """从解析后的 JSON 错误信封里挖人话 message（opencode/codex/grok 形态各异）。"""
     if depth > 4:
@@ -1720,6 +1727,11 @@ def _cli_error_lines(text):
         i += 1
         if re.match(r"^\d+:\s", line) or line.startswith(("$ ", "【命令】")):
             continue  # grep/Read source line numbers and echoed commands.
+        if _GREP_HIT_LINE_RE.match(line):
+            # grep「路径:行号:内容」命中行是模型工具的扫描输出，不是 CLI 自己
+            # 的报错；行号里的 429/5xx 会伪装成上游信号（2026-10-21 实案：
+            # types.gen.d.ts:429:export type Todo 把免费通道推进 down 告警）。
+            continue
         if line.startswith("{"):
             try:
                 ev = json.loads(line)

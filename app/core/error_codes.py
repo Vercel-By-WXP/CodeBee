@@ -148,6 +148,14 @@ def error_code_value(code):
     return str(code or "")
 
 
+# grep/编译器「路径:行号(:列号):内容」命中行里的行号会被误认成 HTTP 状态码
+# （2026-10-21 实案：TODO 扫描 grep 命中 types.gen.d.ts:429:export type Todo
+# 被归成限流/上游故障，健康的免费通道连坐进 down 告警）。分类前先剥掉源码
+# 位置令牌；真实的「HTTP 429」「status: 503」等措辞不受影响。
+_SOURCE_LOCATION_RE = re.compile(
+    r"(?:[A-Za-z]:[\\/]|[./~])?[^\s:]+\.[A-Za-z0-9]{1,10}(?::\d{1,6}){1,2}")
+
+
 def classify_error_text(error):
     """Map a vendor/CLI error message to the shared failure taxonomy.
 
@@ -156,7 +164,7 @@ def classify_error_text(error):
     More specific credential/permission/quota signals are checked before generic
     server and transport wording.
     """
-    text = str(error or "").lower()
+    text = _SOURCE_LOCATION_RE.sub(" ", str(error or "")).lower()
     if not text:
         return None
     config_file_hint = any(marker in text for marker in

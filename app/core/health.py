@@ -176,8 +176,6 @@ def _is_local_false_positive(st):
     code = str(st.get("last_error_code") or "").upper()
     if code in {"TOOL_LAUNCH", "CONTEXT_OVERFLOW"}:
         return True
-    if code and code != "VENDOR_ERROR":
-        return False
     text = str(st.get("last_error") or "")
     if "未启动外部 CLI" in text[:160] or _LAUNCH_FAILURE_PREFIX in text[:80]:
         return True
@@ -188,7 +186,14 @@ def _is_local_false_positive(st):
         # VENDOR_ERROR is runner's generic fallback, not evidence that the
         # provider failed.  Only discard an envelope when no stronger signal
         # can be classified from its text.
-        return classify_error_text(text) is None
+        if classify_error_text(text) is None:
+            # 分类器修正后（2026-10-21：grep 命中行的行号 429/5xx 曾被旧版
+            # 归成 UPSTREAM_SERVER/NETWORK 落盘），这类信封已不再携带供应商
+            # 信号——无论当年记的码是什么，凡通用/瞬态族一律按误报清掉。
+            # 结构化账号级死错（QUOTA/AUTH 等）文本仍应可分类，落不进这里。
+            return code in {"", "VENDOR_ERROR", "UPSTREAM_SERVER", "NETWORK",
+                            "TIMEOUT", "RATE_LIMIT"}
+        return False
     except Exception:
         return False
 
@@ -287,7 +292,8 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             # VENDOR_ERROR is runner's generic fallback.  It is not a
             # structured upstream signal, so a plain CLI stderr envelope with
             # that code must still be treated as local/unknown noise.
-            unclassified = (code in ("", "VENDOR_ERROR")
+            unclassified = (code in ("", "VENDOR_ERROR", "UPSTREAM_SERVER",
+                                     "NETWORK", "TIMEOUT", "RATE_LIMIT")
                             and classify_error_text(text) is None)
         except Exception:
             unclassified = False
