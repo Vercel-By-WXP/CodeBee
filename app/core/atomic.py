@@ -13,6 +13,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from typing import Optional
 
 
 def _sync_directory(directory: Path) -> None:
@@ -33,6 +34,21 @@ def _sync_directory(directory: Path) -> None:
             pass
 
 
+def _apply_mode(path, mode):
+    """Apply POSIX permission bits without making Windows files read-only.
+
+    CPython's Windows ``chmod`` only models the read-only attribute; it does
+    not implement Unix owner/group/other permissions. Files created on Windows
+    therefore retain the ACL inherited from their parent directory.
+    """
+    if mode is None or os.name == "nt":
+        return
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+
+
 def write_bytes(path, data, *, mode=None, durable=True) -> Path:
     """Atomically replace *path* with bytes and return the destination path.
 
@@ -47,11 +63,7 @@ def write_bytes(path, data, *, mode=None, durable=True) -> Path:
     try:
         fd, tmp_name = tempfile.mkstemp(prefix=".%s." % target.name,
                                          suffix=".tmp", dir=str(target.parent))
-        if mode is not None:
-            try:
-                os.chmod(tmp_name, mode)
-            except OSError:
-                pass
+        _apply_mode(tmp_name, mode)
         with os.fdopen(fd, "wb") as fh:
             fd = -1
             fh.write(payload)
@@ -109,11 +121,7 @@ def create_bytes(path, data, *, mode=None, durable=True) -> Path:
     try:
         fd, tmp_name = tempfile.mkstemp(prefix=".%s." % target.name,
                                          suffix=".tmp", dir=str(target.parent))
-        if mode is not None:
-            try:
-                os.chmod(tmp_name, mode)
-            except OSError:
-                pass
+        _apply_mode(tmp_name, mode)
         with os.fdopen(fd, "wb") as fh:
             fd = -1
             fh.write(payload)
@@ -148,6 +156,7 @@ def create_text(path, text, *, mode=None, durable=True, encoding="utf-8") -> Pat
                         durable=durable)
 
 
-def write_json(path, value, *, mode=None, durable=True, indent=2) -> Path:
+def write_json(path, value, *, mode=None, durable=True,
+               indent: Optional[int] = 2) -> Path:
     return write_text(path, json.dumps(value, ensure_ascii=False, indent=indent),
                       mode=mode, durable=durable)

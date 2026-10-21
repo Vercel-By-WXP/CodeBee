@@ -27,6 +27,17 @@ RUFF_SELECT = ("E4", "E7", "E9", "F")
 SCHEMA_VERSION = 1
 
 
+def _configure_stdio() -> None:
+    """Keep diagnostics printable on Windows installations using a legacy code page."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            configure = getattr(stream, "reconfigure", None)
+            if callable(configure):
+                configure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
 def _relative_file(value: Any) -> str:
     """Return a stable repository-relative path for a tool diagnostic."""
     raw = str(value or "").replace("\\", "/")
@@ -351,6 +362,7 @@ def _check(collected: Mapping[str, Any], baseline: Mapping[str, Any]) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_stdio()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--update-baseline",

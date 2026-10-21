@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """自动化（定时任务）：按计划到点自动拉起一次编排运行，无人值守推进日常工作。
 
-数据落盘 <data>/automation.json（tmp + os.replace 原子写；data 目录由 paths.py
+数据落盘 <data>/automation.json（统一原子写入与权限收紧；data 目录由 paths.py
 决定，TUTTI_DATA 环境变量感知）。调度是一个 daemon 线程，每 TICK_SECONDS 秒
 扫一遍到期任务：首次到点按 /api/tasks 的链路创建一个持久任务，后续触发复用
 该任务并只新增 run 记录，再交给 jobs.enqueue 拉起真实运行。单次触发
@@ -37,7 +37,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import jobs, paths, store
+from . import atomic, jobs, paths, store
 
 log = logging.getLogger(__name__)
 
@@ -268,12 +268,9 @@ def _list_locked():
 
 
 def _save_locked():
-    """整体落盘：tmp + os.replace 原子替换，坏一半也不会丢旧数据。"""
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 1, "tasks": _list_locked()},
-                              ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(str(tmp), str(_FILE))
+    """整体落盘：统一使用 durable 原子替换，坏一半也不会丢旧数据。"""
+    atomic.write_json(_FILE, {"version": 1, "tasks": _list_locked()},
+                      mode=0o600, indent=2)
     store.bump_state()  # 落盘即状态变化：多端 SSE 尽快看到
 
 

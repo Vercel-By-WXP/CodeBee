@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import builtin_agent, paths, runner
+from . import atomic, builtin_agent, paths, runner
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def _run_reader(cfg):
         raise RuntimeError("微信直连已启用，但还没选择要监听的群")
     _DIR.mkdir(parents=True, exist_ok=True)
     gf, rf = _DIR / "reader_groups.json", _DIR / "reader_result.json"
-    gf.write_text(json.dumps(groups, ensure_ascii=False), encoding="utf-8")
+    atomic.write_json(gf, groups, mode=0o600, indent=None)
     cmd = [rp, str(READER_SCRIPT), "--pull", "--out", watch,
            "--state", str(_DIR / "reader_state.json"),
            "--groups-file", str(gf), "--result", str(rf)]
@@ -663,7 +663,6 @@ def start():
 # ---------------------------------------------------------------- 装载
 
 def _save_locked():
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = {"version": 1, "config": _STATE.get("config") or {},
            "cursors": _STATE.get("cursors") or {},
            "unseen": int(_STATE.get("unseen") or 0),
@@ -671,7 +670,7 @@ def _save_locked():
            "last_scan": _STATE.get("last_scan") or "",
            "next_scan": _STATE.get("next_scan") or "",
            "last_error": _STATE.get("last_error") or ""}
-    _FILE.write_text(json.dumps(tmp, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_json(_FILE, tmp, mode=0o600, indent=1)
 
 
 def _normalize(d):

@@ -5,7 +5,7 @@ import json
 import threading
 import time
 
-from . import paths
+from . import atomic, paths
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "agent_presence.json"
@@ -21,10 +21,7 @@ def _load():
 
 
 def _save(value):
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, value, mode=0o600, indent=2)
 
 
 def heartbeat(agent_id, label="", capabilities=None, task_id="", status="idle", metadata=None):

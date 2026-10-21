@@ -16,6 +16,8 @@ import time
 import uuid
 from pathlib import Path
 
+from . import atomic
+
 _LOCK = threading.RLock()
 # goal_id -> dict（内存缓存；磁盘为唯一事实来源）
 _GOALS = {}
@@ -45,13 +47,11 @@ def _default_dir():
 
 
 def _persist():
-    """原子写盘（tmp + replace）。调用方必须已持有 _LOCK。"""
+    """持久化当前目标；调用方必须已持有 _LOCK。"""
     if _FILE is None:
         return
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"goals": list(_GOALS.values())},
-                              ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, {"goals": list(_GOALS.values())}, mode=0o600,
+                      indent=2)
 
 
 class StaleRevisionError(Exception):

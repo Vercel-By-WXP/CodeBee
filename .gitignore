@@ -80,3 +80,5 @@ cloud/phone-relay/.wrangler-validation-*/
 
 # User requested to keep the docs tree out of future Git submissions.
 /docs/
+/创作成果/
+/投稿修订_无名簿/

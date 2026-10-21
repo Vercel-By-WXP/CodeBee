@@ -125,8 +125,11 @@ def verify(event: str, month: str | None = None) -> dict:
         is_chained = "seq" in row or "prev_hash" in row
         if is_chained:
             chain_started = True
+            raw_sequence = row.get("seq")
+            if raw_sequence is None:
+                return {"ok": False, "event": event, "entries": len(lines), "broken_at": index}
             try:
-                sequence = int(row.get("seq"))
+                sequence = int(raw_sequence)
             except (TypeError, ValueError):
                 return {"ok": False, "event": event, "entries": len(lines), "broken_at": index}
             if expected_seq and sequence != expected_seq + 1:

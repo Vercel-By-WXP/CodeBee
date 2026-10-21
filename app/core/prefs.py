@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import threading
 
-from . import paths
+from . import atomic, paths
 
 _LOCK = threading.Lock()
 
@@ -69,12 +69,8 @@ def record(payload):
             c = _clamp(key, v)
             if c is not None:
                 cur[key] = c
-        tmp = _file().with_suffix(".tmp")
         try:
-            paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps(cur, ensure_ascii=False, indent=2),
-                           encoding="utf-8")
-            tmp.replace(_file())
+            atomic.write_json(_file(), cur, mode=0o600, indent=2)
         except OSError:
             pass
 

@@ -22,6 +22,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from .ws import MiniWS, WebSocketError
 
@@ -253,22 +254,22 @@ class Browser:
             pass
 
     # ------------------------------------------------------------ 页面
-    def pages(self):
+    def pages(self) -> List[Dict[str, Any]]:
         return [t for t in _http_json("http://127.0.0.1:%d/json/list" % self.port)
                 if t.get("type") == "page"]
 
-    def new_page(self, url="about:blank"):
+    def new_page(self, url="about:blank") -> "Page":
         t = _http_json("http://127.0.0.1:%d/json/new?%s" % (self.port, url),
                        method="PUT")    # Chromium 111+ 要求 PUT
         return Page(t["webSocketDebuggerUrl"])
 
-    def first_page(self, create=True):
+    def first_page(self, create=True) -> Optional["Page"]:
         ps = self.pages()
         if ps:
             return Page(ps[0]["webSocketDebuggerUrl"])
         return self.new_page() if create else None
 
-    def page_for_target(self, target_id):
+    def page_for_target(self, target_id) -> Optional["Page"]:
         """Return a live page for a previously persisted target id.
 
         Authentication challenges can open a second tab. The publishing

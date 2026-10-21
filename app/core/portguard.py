@@ -109,3 +109,14 @@ def clear_stale_port(port, main_script):
         except Exception as e:
             return False, "旧实例 PID %d 清理失败 %s" % (pid, str(e)[:80])
     return False, "占用者非 CodeBee（PID %d），未自动关闭" % pid
+
+
+def safe_clear_stale_port(port, main_script, *, test_instance=False):
+    """Return a safe failure result if stale-port inspection itself fails."""
+    if test_instance:
+        return False, "测试实例不执行端口清场"
+    try:
+        return clear_stale_port(port, main_script)
+    except Exception as exc:
+        log.warning("端口清场检查失败：%s", type(exc).__name__)
+        return False, "端口清场失败（%s）" % type(exc).__name__

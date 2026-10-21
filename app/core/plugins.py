@@ -24,7 +24,7 @@ try:
 except ImportError:  # pragma: no cover - Python 3.10 fallback
     tomllib = None
 
-from . import market, paths, skills, plugin_compat
+from . import atomic, market, paths, skills, plugin_compat
 
 _LOCK = threading.RLock()
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -95,11 +95,7 @@ def _load_registry():
 
 
 def _save_registry(data):
-    target = _registry_file()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(target)
+    atomic.write_json(_registry_file(), data, mode=0o600)
 
 
 def _invalidate_mcp_cache():

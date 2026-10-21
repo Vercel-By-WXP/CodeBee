@@ -1,5 +1,6 @@
 """Automatic publishing keeps the task contract approval gate."""
 import sys
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,6 +46,22 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                     mock.patch.object(auto, "_BATCH_JOBS", None):
                 self.assertEqual(auto._load_batch_jobs(), {
                     "task-1": {"status": "retry_wait"}})
+
+    def test_legacy_fixed_temp_batch_state_is_recovered_atomically(self):
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "batches.json"
+            candidate = {"task-1": {"status": "in_flight"}}
+            path.with_suffix(".tmp").write_text(
+                '{"task-1":{"status":"in_flight"}}', encoding="utf-8")
+            with mock.patch.object(auto, "_BATCH_JOB_FILE", path), \
+                    mock.patch.object(auto, "_BATCH_JOBS", None):
+                loaded = auto._load_batch_jobs()
+
+            self.assertEqual(loaded, candidate)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), candidate)
+            self.assertFalse(path.with_suffix(".tmp").exists())
 
     def test_corrupt_batch_state_fails_closed_instead_of_being_overwritten(self):
         from core.publish import auto

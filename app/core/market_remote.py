@@ -38,7 +38,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import market, tlsctx
+from . import atomic, market, tlsctx
 
 _LOCK = market._LOCK   # 安装/记账与 market 共用一把锁，避免交叉写 market.json
 
@@ -530,17 +530,13 @@ def refresh(source_id=None):
         if not isinstance(plugins, list):
             results.append({"id": s["id"], "ok": False, "error": "清单缺 plugins 数组"})
             continue
-        f = _cache_file(s["id"])
-        f.parent.mkdir(parents=True, exist_ok=True)
-        tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps({
+        atomic.write_json(_cache_file(s["id"]), {
             "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "url": used,
             "catalog": {"name": raw.get("name") or s["id"],
                         "description": raw.get("description") or "",
                         "plugins": plugins},
-        }, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(f)
+        }, mode=0o600, indent=None)
         results.append({"id": s["id"], "ok": True, "count": len(plugins)})
     v = view()
     v["refresh"] = results

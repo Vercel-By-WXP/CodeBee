@@ -17,7 +17,7 @@ import time
 import zlib
 from urllib.parse import urlsplit
 
-from . import paths, remote
+from . import atomic, paths, remote
 from .relay_ws import RelaySocket
 
 DEFAULT_URL = "https://app.codebeeagent.com"
@@ -58,14 +58,8 @@ def _config():
 
 
 def _save(config):
-    path = paths.DATA_DIR / "phone-relay.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    # Restrict POSIX permissions before writing the credential.
-    fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(config, handle)
-    os.replace(str(temporary), str(path))
+    atomic.write_json(paths.DATA_DIR / "phone-relay.json", config,
+                      mode=0o600, indent=None)
 
 
 def safe_path(path):

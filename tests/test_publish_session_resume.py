@@ -12,6 +12,110 @@ if str(APP) not in sys.path:
 
 
 class SavedPublishSessionResumeTests(unittest.TestCase):
+    def test_legacy_temp_restore_write_failure_keeps_cache_empty_for_retry(self):
+        from core import atomic
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "batches.json"
+            temp_path = path.with_suffix(".tmp")
+            temp_path.write_text(
+                '{"task-1":{"status":"retry_wait"}}', encoding="utf-8")
+            with mock.patch.object(auto, "_BATCH_JOB_FILE", path), \
+                    mock.patch.object(auto, "_BATCH_JOBS", None):
+                with mock.patch.object(atomic, "write_json",
+                                       side_effect=OSError("disk full")) as write:
+                    with self.assertRaisesRegex(RuntimeError, "恢复队列写盘失败"):
+                        auto._load_batch_jobs()
+
+                self.assertIsNone(auto._BATCH_JOBS)
+                self.assertTrue(temp_path.exists())
+                write.assert_called_once_with(
+                    path, {"task-1": {"status": "retry_wait"}},
+                    mode=0o600, indent=1)
+
+    def test_legacy_temp_unlink_failure_keeps_restored_queue_usable(self):
+        import json
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "batches.json"
+            temp_path = path.with_suffix(".tmp")
+            candidate = {"task-1": {"status": "retry_wait"}}
+            temp_path.write_text(json.dumps(candidate), encoding="utf-8")
+            original_unlink = Path.unlink
+
+            def fail_legacy_temp_unlink(target, *args, **kwargs):
+                if target == temp_path:
+                    raise PermissionError("sharing violation")
+                return original_unlink(target, *args, **kwargs)
+
+            with mock.patch.object(auto, "_BATCH_JOB_FILE", path), \
+                    mock.patch.object(auto, "_BATCH_JOBS", None), \
+                    mock.patch.object(Path, "unlink",
+                                      autospec=True,
+                                      side_effect=fail_legacy_temp_unlink), \
+                    self.assertLogs("core.publish.auto", level="WARNING"):
+                self.assertEqual(auto._load_batch_jobs(), candidate)
+
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), candidate)
+            self.assertTrue(temp_path.exists())
+
+    def test_batch_state_write_failure_keeps_published_state_intact(self):
+        from core import atomic
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "batches.json"
+            target.write_text('{"old": {}}', encoding="utf-8")
+            with mock.patch.object(auto, "_BATCH_JOB_FILE", target), \
+                 mock.patch.object(auto, "_BATCH_JOBS", {"new": {}}):
+                with mock.patch.object(atomic, "write_json",
+                                       side_effect=OSError("disk full")) as write:
+                    with self.assertRaises(OSError):
+                        auto._save_batch_jobs()
+
+            write.assert_called_once_with(
+                target, {"new": {}}, mode=0o600, indent=1)
+            self.assertEqual(target.read_text(encoding="utf-8"), '{"old": {}}')
+
+    def test_scheduler_mark_write_failure_keeps_previous_file(self):
+        from core import atomic
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "fired.json"
+            target.write_text('{"old-task": "2026-10-20"}', encoding="utf-8")
+            with mock.patch.object(auto, "_AP_FILE", target), \
+                 mock.patch.object(auto, "_AP_FIRED", {"new-task": "2026-10-21"}):
+                with mock.patch.object(atomic, "write_json",
+                                       side_effect=OSError("disk full")) as write:
+                    auto._mark_fired("new-task", "2026-10-21")
+
+            write.assert_called_once_with(
+                target, {"new-task": "2026-10-21"}, mode=0o600, indent=1)
+            self.assertEqual(target.read_text(encoding="utf-8"),
+                             '{"old-task": "2026-10-20"}')
+
+    def test_retry_state_write_failure_keeps_previous_file(self):
+        from core import atomic
+        from core.publish import auto
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "retry.json"
+            target.write_text('{"old-task": {"attempt": 1}}', encoding="utf-8")
+            with mock.patch.object(auto, "_AP_RETRY_FILE", target), \
+                 mock.patch.object(auto, "_AP_RETRY", {
+                     "new-task": {"attempt": 2}}):
+                with mock.patch.object(atomic, "write_json",
+                                       side_effect=OSError("disk full")) as write:
+                    auto._save_retry_state()
+
+            write.assert_called_once_with(
+                target, {"new-task": {"attempt": 2}}, mode=0o600, indent=1)
+            self.assertEqual(target.read_text(encoding="utf-8"),
+                             '{"old-task": {"attempt": 1}}')
+
     def test_strict_task_read_preserves_existing_missing_and_tolerant_semantics(self):
         from core import paths, store
 

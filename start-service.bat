@@ -63,6 +63,7 @@ echo [警告] 服务 %TRIES% 秒内未在 %PORT% 监听（首次启动可能较�
 echo.
 echo 本机地址: http://localhost:%PORT%
 echo 令牌见 CodeBee 控制台，或本机打开后设置-手机连接里扫码。
-echo 关闭：结束 "CodeBee" 最小化窗口即可。
+set "MSG=关闭：结束 CodeBee 最小化窗口即可"
+echo %MSG%
 timeout /t 5 >nul
 endlocal

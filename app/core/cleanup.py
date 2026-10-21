@@ -28,7 +28,7 @@ import os
 import time
 from pathlib import Path
 
-from . import paths, settings as settings_mod
+from . import atomic, paths, settings as settings_mod
 
 DEFAULT_RETENTION_DAYS = 14
 LOG_MAX_BYTES = 5 * 1024 * 1024      # 服务日志超过这个体量才截
@@ -51,11 +51,7 @@ def _load_state():
 
 
 def _save_state(st):
-    p = _state_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(str(tmp), str(p))
+    atomic.write_json(_state_path(), st, mode=0o600)
 
 
 def _profiles_base(home=None):
@@ -320,9 +316,7 @@ def _delete_path(p: Path, op):
         with open(str(p), "rb") as f:
             f.seek(-LOG_KEEP_BYTES, 2)
             tail = f.read()
-        tmp = p.with_suffix(".tmp-cl")
-        tmp.write_bytes(tail)
-        os.replace(str(tmp), str(p))
+        atomic.write_bytes(p, tail)
     else:
         p.unlink()
 

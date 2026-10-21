@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 import uuid
 from pathlib import Path
 
+from . import atomic
 from .redact import scrub_text
 
 _LOCK = threading.RLock()
@@ -53,14 +53,9 @@ def _load():
 
 def _persist(profiles):
     path = _file()
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps({"profiles": profiles}, ensure_ascii=False, indent=2),
-                   encoding="utf-8")
-    try:
-        os.chmod(str(tmp), 0o600)
-    except OSError:
-        pass
-    os.replace(str(tmp), str(path))
+    # ACP profiles may contain launch environment secrets. Protect them before
+    # the complete replacement becomes visible and avoid fixed-temp races.
+    atomic.write_json(path, {"profiles": profiles}, mode=0o600)
 
 
 def _valid_workspace_path(value):

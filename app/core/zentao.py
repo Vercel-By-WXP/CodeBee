@@ -56,7 +56,6 @@ import io
 import ipaddress
 import json
 import logging
-import os
 import re
 import socket
 import threading
@@ -67,7 +66,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import jobs, operations, paths, settings, store, tlsctx
+from . import atomic, jobs, operations, paths, settings, store, tlsctx
 
 try:
     import chinese_calendar as _hcal   # 法定节假日+调休数据（chinesecalendar）
@@ -191,11 +190,9 @@ def _guard_url(url):
 # ---------------------------------------------------------------- 持久化
 
 def _save_locked():
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 2, **_STATE},
-                              ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(str(tmp), str(_FILE))
+    # The config contains the ZenTao password. Publish it atomically and keep
+    # POSIX permissions private from the moment the replacement is visible.
+    atomic.write_json(_FILE, {"version": 2, **_STATE}, mode=0o600)
 
 
 def _normalize_claim(d):

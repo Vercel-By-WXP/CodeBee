@@ -14,7 +14,7 @@ import re
 import sys
 import threading
 
-from . import paths
+from . import atomic, paths
 
 # config.format 取值:
 #   toml-line : 按行正则读写 `model = "..."`（适合 codex config.toml）
@@ -567,8 +567,7 @@ def load(force=False):
             return _CACHE["entries"]
         paths.ensure_dirs()
         if not paths.CATALOG_FILE.exists():
-            paths.CATALOG_FILE.write_text(
-                json.dumps(DEFAULT_CATALOG, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic.write_json(paths.CATALOG_FILE, DEFAULT_CATALOG, mode=0o600)
         try:
             entries = json.loads(paths.CATALOG_FILE.read_text(encoding="utf-8"))
         except Exception:
@@ -598,6 +597,5 @@ def by_id(entry_id):
 def reset_to_default():
     """把 catalog.json 恢复为内置默认（用户改坏时的逃生门）。"""
     with _LOCK:
-        paths.CATALOG_FILE.write_text(
-            json.dumps(DEFAULT_CATALOG, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_json(paths.CATALOG_FILE, DEFAULT_CATALOG, mode=0o600)
         _CACHE["entries"] = None

@@ -24,7 +24,7 @@ import shutil
 import threading
 import time
 
-from . import paths, skills
+from . import atomic, paths, skills
 
 _LOCK = threading.RLock()
 
@@ -156,11 +156,7 @@ def _load_registry():
 
 
 def _save_registry(data):
-    f = _registry_file()
-    f.parent.mkdir(parents=True, exist_ok=True)
-    tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(f)  # 原子替换（与 skills._save 同一手法）
+    atomic.write_json(_registry_file(), data, mode=0o600)
 
 
 def _scan_marked_files():

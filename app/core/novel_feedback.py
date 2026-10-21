@@ -276,8 +276,9 @@ def block_for(task: dict) -> str:
     # Omission IDs are display hints, not authoritative identifiers. Keep
     # their rendering ASCII-only and bounded so hostile or unusually long IDs
     # cannot expand through HTML escaping and defeat the prompt budget.
-    omission_id = lambda value: re.sub(
-        r"[^A-Za-z0-9_.:-]", "_", str(value or ""))[:24] or "unknown"
+    def omission_id(value):
+        return re.sub(
+            r"[^A-Za-z0-9_.:-]", "_", str(value or ""))[:24] or "unknown"
     max_omitted = len(rows)
     omission_names = ", ".join("x" * 24 for _ in range(min(3, max_omitted)))
     omission_more = (" 等%d条" % max_omitted) if max_omitted > 3 else ""

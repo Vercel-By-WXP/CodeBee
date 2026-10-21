@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import paths, platform_rules, prompt_templates, revisions, skills
+from . import atomic, paths, platform_rules, prompt_templates, revisions, skills
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "knowledge.json"
@@ -52,9 +52,7 @@ def _load():
 
 def _save(data):
     try:
-        _FILE.parent.mkdir(parents=True, exist_ok=True)
-        _FILE.write_text(json.dumps(data, ensure_ascii=False, indent=1),
-                         encoding="utf-8")
+        atomic.write_json(_FILE, data, indent=1)
     except Exception:
         pass
 
@@ -599,10 +597,7 @@ def seed_platform_rules():
                 n += 1
         if dirty_state:
             try:
-                state_path.parent.mkdir(parents=True, exist_ok=True)
-                state_path.write_text(
-                    json.dumps(state, ensure_ascii=False, indent=1),
-                    encoding="utf-8")
+                atomic.write_json(state_path, state, indent=1)
             except Exception:
                 pass
     return n

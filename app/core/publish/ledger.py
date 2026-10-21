@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from .. import paths
+from .. import atomic, paths
 
 LOCK = threading.RLock()
 
@@ -305,10 +305,7 @@ def save_book(task_id, platform, info, account=None):
         # 多账号：记录建书账号（None=不改，保持既有绑定账号）
         if account is not None:
             entry["account"] = str(account or "")[:16]
-        tmp = _BOOKS_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
-        tmp.replace(_BOOKS_FILE)
+        atomic.write_json(_BOOKS_FILE, books, indent=1)
 
 
 def update_book(task_id, platform, **fields):
@@ -331,10 +328,7 @@ def update_book(task_id, platform, **fields):
                 ent.pop(k, None)        # None=删键（换绑书时作废旧校准数）
             else:
                 ent[k] = v
-        tmp = _BOOKS_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
-        tmp.replace(_BOOKS_FILE)
+        atomic.write_json(_BOOKS_FILE, books, indent=1)
 
 
 def remove_book(task_id, platform):
@@ -350,10 +344,7 @@ def remove_book(task_id, platform):
         del books[target][str(platform)]
         if not books[target]:
             del books[target]
-        tmp = _BOOKS_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(books, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
-        tmp.replace(_BOOKS_FILE)
+        atomic.write_json(_BOOKS_FILE, books, indent=1)
     return True
 
 

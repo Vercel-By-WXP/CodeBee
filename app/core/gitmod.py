@@ -16,7 +16,7 @@ import os
 import re
 
 from . import paths as paths_mod
-from . import runner
+from . import review_findings, runner
 
 # 版本引用白名单：分支名/标签/短哈希及 rev^0、rev~2 组合，禁止以 - 开头
 # （argv 传参本身不经过 shell，这里主要挡参数注入与 pathspec 歧义）
@@ -204,6 +204,26 @@ _INSIDE_MAX_FILE_CHARS = 8000   # 单个新文件进 diff 的上限
 _INSIDE_MAX_FILE_LINES = 200
 _STAT_MAX_LINES = 20000         # +/- 统计的单文件行数封顶（统计不求全文）
 
+# 评审噪音：锁文件、构建产物与生成代码不参与模型评审，但仍如实计入
+# coverage.ignored_files，绝不静默消失。
+_REVIEW_IGNORE_RE = re.compile(
+    r"(^|/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|"
+    r"poetry\.lock|Pipfile\.lock|Cargo\.lock|go\.sum|composer\.lock|Gemfile\.lock|"
+    r"uv\.lock|bun\.lockb)$"
+    r"|(^|/)(node_modules|vendor|dist|build|__pycache__|\.venv|venv|"
+    r"\.mypy_cache|\.pytest_cache|coverage)/"
+    r"|\.(min\.js|min\.css|map|pyc|pyo|lock|generated\.[A-Za-z0-9]+)$",
+    re.I)
+
+
+def is_review_noise(path):
+    return bool(_REVIEW_IGNORE_RE.search(str(path or "").replace("\\", "/")))
+
+
+def head_sha(workdir):
+    r = _git(workdir, "rev-parse", "HEAD")
+    return (r.get("stdout") or "").strip() if r.get("ok") else ""
+
 
 def _inside(workdir, target):
     try:
@@ -305,21 +325,33 @@ def _status_code(xy):
     return s[0]
 
 
-def collect_changes(workdir, max_diff=30000):
+def collect_changes(workdir, max_diff=30000, *, ignore_review_noise=False,
+                    max_file_chars=None, max_file_lines=None):
     """只读收集工作区变更（不动 index、不碰分支）。
 
-    返回 {"files": [{"status", "path", "add", "del"}...], "diff": "...",
-    "add_total", "del_total"}。diff = 已跟踪改动（git diff HEAD）+ 未跟踪新文件
-    逐段拼成 diff 形态——新文件不进 git diff，但恰是智能体产物的大头（新章节、
-    新模块），缺了评审与人审都瞎一半。add/del 是行级统计（numstat + 新文件计数），
-    供检查器面板的 +N -M 徽标；旧调用方不读这两个字段，向后兼容。
+    返回 {"files": [...], "diff": "...", "add_total", "del_total", "coverage": {...}}。
+    diff = 已跟踪改动（git diff HEAD）+ 未跟踪新文件逐段拼成 diff 形态——新文件
+    不进 git diff，但恰是智能体产物的大头（新章节、新模块），缺了评审与人审都瞎
+    一半。add/del 是行级统计（numstat + 新文件计数），供检查器面板的 +N -M 徽标。
+    coverage 记录「哪些文件真的进了评审、哪里被截断/忽略」：评审侧据此禁止
+    部分覆盖冒充完整通过。旧调用方不读新字段，向后兼容。
     附件目录不算变更；非 git 仓库/命令失败返回空集合，绝不抛错。
     """
-    empty = {"files": [], "diff": "", "add_total": 0, "del_total": 0}
+    empty = {"files": [], "diff": "", "add_total": 0, "del_total": 0,
+             "coverage": {"repo": False, "complete": False,
+                          "truncated": False, "changed_files": 0,
+                          "reviewed_files": [], "omitted_files": [],
+                          "ignored_files": [], "partial_files": [],
+                          "diff_chars": 0, "diff_limit": max_diff}}
     entries = _porcelain_entries(workdir)
     if entries is None:
         return empty
+    file_chars = _INSIDE_MAX_FILE_CHARS if max_file_chars is None else max(
+        500, int(max_file_chars))
+    file_lines = _INSIDE_MAX_FILE_LINES if max_file_lines is None else max(
+        50, int(max_file_lines))
     files, untracked = [], []
+    ignored = []
     for xy, path in entries:
         if not path:
             continue
@@ -339,40 +371,97 @@ def collect_changes(workdir, max_diff=30000):
         f["add"], f["del"] = add, deln
         add_total += add
         del_total += deln
-    parts, budget = [], max_diff
+    parts, reviewed, partial_files = [], [], []
+    truncated = False
+    budget = max_diff
     r = _git(workdir, "diff", "HEAD")
     if r["ok"] and r["stdout"]:
-        take = r["stdout"][:budget]
-        parts.append(take)
-        budget -= len(take)
+        raw_diff = r["stdout"]
+        if ignore_review_noise:
+            kept, dropped = [], []
+            for section in review_findings.split_diff_sections(raw_diff):
+                path = section.get("path") or ""
+                if path and is_review_noise(path):
+                    dropped.append(path)
+                else:
+                    kept.append(section["diff"])
+            raw_diff = "".join(kept)
+            ignored.extend(dropped)
+        if len(raw_diff) > budget:
+            truncated = True
+            take = raw_diff[:budget]
+            parts.append(take)
+            parts.append("\n…（已跟踪 diff 超过 %d 字符，已截断；"
+                         "未纳入文件见 coverage）\n" % max_diff)
+            sections = review_findings.split_diff_sections(take)
+            reviewed.extend([s["path"] for s in sections if s.get("path")])
+            if sections and sections[-1].get("path"):
+                partial_files.append(sections[-1]["path"])
+        else:
+            parts.append(raw_diff)
+            reviewed.extend([s["path"] for s in
+                             review_findings.split_diff_sections(raw_diff)
+                             if s.get("path")])
+        budget -= min(len(raw_diff), budget)
     for p in untracked:
         if budget <= 0:
+            truncated = True
             break
+        if ignore_review_noise and is_review_noise(p):
+            ignored.append(p)
+            continue
         fp = os.path.abspath(os.path.join(str(workdir), p))
         if not os.path.isfile(fp) or not _inside(workdir, fp):
             continue
         lines_n = _count_lines(fp, cap=_STAT_MAX_LINES)
         add_total += lines_n
         try:
-            text = runner.read_text_any_enc(fp)[:_INSIDE_MAX_FILE_CHARS]
+            full_text = runner.read_text_any_enc(fp)
         except OSError:
             continue
-        lines = text.splitlines()[:_INSIDE_MAX_FILE_LINES]
+        text = full_text[:file_chars]
+        lines = text.splitlines()[:file_lines]
         body = "\n".join("+" + ln for ln in lines)
-        if len(text) > _INSIDE_MAX_FILE_CHARS or text.count("\n") >= _INSIDE_MAX_FILE_LINES:
+        cut = (len(full_text) > file_chars or full_text.count("\n") >= file_lines)
+        if cut:
             body += "\n+…（新文件过长，已截断）"
+            partial_files.append(p)
         section = ("diff --git a/%s b/%s\nnew file mode 100644\n"
                    "--- /dev/null\n+++ b/%s\n@@ -0,0 +1,%d @@\n%s\n"
-                   % (p, p, p, len(lines), body))[:budget]
-        parts.append(section)
-        budget -= len(section)
+                   % (p, p, p, len(lines), body))
+        if len(section) > budget:
+            section = section[:budget]
+            truncated = True
+            partial_files.append(p)
+        if section:
+            parts.append(section)
+            reviewed.append(p)
+            budget -= len(section)
         # 未跟踪文件在 numstat 里没有条目，把行数补进该文件的统计
         for f in files:
             if f["path"] == p:
                 f["add"] = lines_n
                 break
+    changed_paths = {f["path"] for f in files}
+    ignored = [p for p in dict.fromkeys(ignored) if p in changed_paths]
+    reviewed = [p for p in dict.fromkeys(reviewed) if p in changed_paths]
+    omitted = sorted(changed_paths - set(reviewed) - set(ignored))
+    partial_files = [p for p in dict.fromkeys(partial_files) if p in changed_paths]
+    coverage = {
+        "repo": True,
+        "changed_files": len(files),
+        "reviewed_files": reviewed[:200],
+        "omitted_files": omitted[:200],
+        "ignored_files": ignored[:200],
+        "partial_files": partial_files[:200],
+        "truncated": truncated,
+        "diff_chars": sum(len(part) for part in parts),
+        "diff_limit": max_diff,
+        "complete": bool(not truncated and not omitted and not partial_files),
+    }
     return {"files": files[:200], "diff": "".join(parts),
-            "add_total": add_total, "del_total": del_total}
+            "add_total": add_total, "del_total": del_total,
+            "coverage": coverage}
 
 
 def finalize_run(workdir, gitinfo, message):

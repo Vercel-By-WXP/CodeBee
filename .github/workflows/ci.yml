@@ -18,6 +18,33 @@ env:
   PYTHONPATH: ${{ github.workspace }}/scripts/production_guard
 
 jobs:
+  cross-platform-smoke:
+    name: Isolated smoke tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify persistence, process, routing, and workspace contracts
+        shell: bash
+        run: |
+          python -m unittest discover -s tests -p test_atomic_persistence.py -v
+          python -m unittest discover -s tests -p test_durable_file_integrations.py -v
+          python -m unittest discover -s tests -p test_remote_security.py -v
+          python -m unittest discover -s tests -p test_request_log_redaction.py -v
+          python -m unittest discover -s tests -p test_reviewer_isolation.py -v
+          python -m unittest discover -s tests -p test_runner_process_contract.py -v
+          python -m unittest discover -s tests -p test_runner_recent_output.py -v
+          python -m unittest discover -s tests -p test_ai_repair_command_security.py -v
+          python -m unittest discover -s tests -p test_release_gate.py -v
+          python -m unittest discover -s tests -p test_workspace_boundary.py -v
+          python -m unittest discover -s tests -p test_cli_compatibility_docs.py -v
+
   syntax-check:
     name: Syntax check (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}

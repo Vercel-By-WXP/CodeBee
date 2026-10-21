@@ -26,6 +26,9 @@
 <link rel="stylesheet" href="task-ops.css">
 <link rel="stylesheet" href="ui-polish.css">
 <link rel="stylesheet" href="hive-ui.css">
+<link rel="stylesheet" href="warm-skin.css">
+<link rel="stylesheet" href="redesign-layout.css">
+<link rel="stylesheet" href="atlas.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
      app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
@@ -308,6 +311,7 @@
       <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
       <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
       <div data-i18n="知识与扩展" class="set-group">知识与扩展</div>
+      <button class="set-item" data-sub="atlas" data-search="记忆图谱 星图 atlas 可视化 搜索 注入 治理 memory atlas visualization"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="记忆图谱">记忆图谱</span></button>
       <button class="set-item" data-sub="memory" data-search="记忆中心 记忆 全局 项目 memory center global project"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="记忆中心">记忆中心</span></button>
       <button class="set-item" data-sub="skills" data-search="经验库 技能 skill 规范 教训 skills guidelines lessons"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="经验库">经验库</span></button>
       <button class="set-item" data-sub="knowledge" data-search="知识库 记忆 搜索 知识 knowledge memory search"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="知识库">知识库</span></button>
@@ -387,6 +391,63 @@
     </aside>
 
     <main>
+    <!-- ================= 主页（暖色皮肤专属，默认隐藏） ================= -->
+    <section id="page-home" class="page rd-home hidden">
+      <div class="rd-home-head">
+        <div class="rd-home-date" id="rd-home-date"></div>
+        <h1 class="rd-home-title" data-i18n="把今天要完成的事，交给 CodeBee。">把今天要完成的事，交给 CodeBee。</h1>
+        <p class="rd-home-sub" data-i18n="拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。">拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。</p>
+      </div>
+
+      <!-- 任务输入卡 -->
+      <div class="rd-input-card">
+        <div class="rd-input-head">
+          <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
+          <span class="rd-input-project" id="rd-input-project">CodeBee 控制台</span>
+          <span class="rd-input-branch" id="rd-input-branch">main</span>
+          <button class="rd-input-switch" data-i18n="切换">切换</button>
+        </div>
+        <textarea class="rd-input-area" id="rd-input-area" rows="3" data-i18n-ph="描述要完成的目标，或粘贴一段指令…" placeholder="描述要完成的目标，或粘贴一段指令…"></textarea>
+        <div class="rd-input-foot">
+          <div class="rd-input-actions">
+            <button class="rd-btn primary" data-i18n="直接执行">直接执行</button>
+            <button class="rd-btn" data-i18n="专家编排">专家编排</button>
+            <button class="rd-btn rd-btn-dropdown">
+              <svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg>
+              <span data-i18n="内容编辑">内容编辑</span>
+              <svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+            </button>
+            <button class="rd-btn-icon" title="附件" aria-label="附件">
+              <svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg>
+            </button>
+          </div>
+          <button class="rd-send-btn" title="发送" aria-label="发送">
+            <svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 快速开始 -->
+      <div class="rd-quick-start">
+        <span class="rd-qs-label" data-i18n="快速开始">快速开始</span>
+        <div class="rd-qs-buttons">
+          <button class="rd-qs-btn" data-i18n="继续修订第 11–20 章">继续修订第 11–20 章</button>
+          <button class="rd-qs-btn" data-i18n="修复最近的失败任务">修复最近的失败任务</button>
+          <button class="rd-qs-btn" data-i18n="生成本周周报">生成本周周报</button>
+          <button class="rd-qs-btn" data-i18n="审阅未提交改动">审阅未提交改动</button>
+        </div>
+      </div>
+
+      <!-- 最近任务 -->
+      <div class="rd-recent-tasks">
+        <div class="rd-section-head">
+          <h2 data-i18n="最近任务">最近任务</h2>
+          <button class="rd-link-btn" onclick="switchTab('tasks')" data-i18n="查看全部">查看全部</button>
+        </div>
+        <div id="rd-recent-list" class="rd-task-list"></div>
+      </div>
+    </section>
+
     <!-- ================= 设置页（导航在左栏，内容为居中窄栏） ================= -->
     <section id="page-settings" class="page">
       <!-- 概览首页：日期 → 一句话概览 → KPI 卡 → 趋势 + 快捷入口 → 最近运行。
@@ -1240,6 +1301,105 @@
         </div>
       </div>
 
+      <!-- 记忆图谱：星图可视化 + 全域搜索 + 注入预演 + 治理台 -->
+      <div id="sub-atlas" class="subpage hidden">
+        <div class="atlas-topbar">
+          <div class="atlas-brand">
+            <div class="atlas-sigil" aria-hidden="true">
+              <svg viewBox="0 0 28 28">
+                <circle cx="14" cy="14" r="11" fill="none" stroke="var(--accent)" stroke-width=".5" opacity=".35"/>
+                <g class="rot"><ellipse cx="14" cy="14" rx="12.5" ry="5" fill="none" stroke="var(--accent)" stroke-width=".4" opacity=".28"/></g>
+                <g class="rot2"><ellipse cx="14" cy="14" rx="5" ry="12.5" fill="none" stroke="var(--accent)" stroke-width=".4" opacity=".2"/></g>
+                <path d="M14 8 15.5 12.3 19.8 14 15.5 15.5 14 19.8 12.3 15.5 8 14l4.3-1.7Z" fill="var(--accent)" opacity=".85"/>
+                <circle cx="14" cy="14" r="1.6" fill="var(--text)"/>
+              </svg>
+            </div>
+            <div>
+              <div class="atlas-name" data-i18n="记忆图谱">记忆图谱</div>
+              <div class="atlas-sub">MEMORY ATLAS</div>
+            </div>
+          </div>
+          <div class="atlas-search">
+            <svg class="ico lead" aria-hidden="true"><use href="#i-search"/></svg>
+            <input id="atlas-q" type="text" placeholder="搜索记忆、知识、教训、工作区…" aria-label="搜索记忆" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+          <div class="atlas-meta">
+            <div class="atlas-live-badge"><i></i><span data-i18n="记忆层在线">记忆层在线</span></div>
+            <div class="atlas-total"><b id="atlas-total">0</b><span data-i18n="条记忆">条记忆</span></div>
+          </div>
+        </div>
+        <div class="atlas-shell">
+          <aside class="a-panel a-stream" aria-label="记忆流">
+            <div class="a-stream-head">
+              <div><div class="a-eyebrow">STREAM</div><h2 class="a-title" data-i18n="记忆流">记忆流</h2></div>
+              <span class="a-stream-count" id="atlas-stream-count">—</span>
+            </div>
+            <div class="a-chips" id="atlas-source-chips"></div>
+            <div id="atlas-filter-note"></div>
+            <div class="a-slist" id="atlas-stream-list"></div>
+            <div class="a-stream-foot"><span id="atlas-foot-left"></span><span data-i18n="全库">全库 <b id="atlas-lib-total">—</b></span></div>
+          </aside>
+          <section class="a-atlas" id="atlas-canvas-wrap" aria-label="记忆星图">
+            <canvas id="atlas-sky"></canvas>
+            <span class="a-corner tl"></span><span class="a-corner tr"></span><span class="a-corner bl"></span><span class="a-corner br"></span>
+            <div class="a-atlas-head">
+              <div class="a-eyebrow">CONSTELLATION</div>
+              <h1 data-i18n="记忆星图">记忆星图</h1>
+              <p>KARMA-WEIGHTED · TOP LOADED</p>
+            </div>
+            <div class="a-mode" id="atlas-mode" role="group" aria-label="星图着色">
+              <button data-mode="source" class="active" aria-pressed="true" data-i18n="来源">来源</button>
+              <button data-mode="health" aria-pressed="false" data-i18n="健康">健康</button>
+            </div>
+            <div class="a-atlas-status" id="atlas-status"></div>
+            <div class="a-core" id="atlas-core">
+              <div class="a-core-ring r3"></div>
+              <div class="a-core-ring r2"></div>
+              <div class="a-core-ring r1"></div>
+              <div class="a-core-disc">
+                <span class="a-core-num" id="atlas-core-num">0</span>
+                <span class="a-core-label" id="atlas-core-label">MEMORY</span>
+              </div>
+            </div>
+            <div class="a-telemetry" id="atlas-telemetry">
+              <div class="tel-eyebrow"><span class="a-eyebrow">TELEMETRY</span><span class="a-mini">LIVE</span></div>
+              <div class="a-tel-row"><span data-i18n="注入命中率">注入命中率</span><b id="atlas-tel-hit">—</b></div>
+              <div class="a-tel-row"><span data-i18n="有效 / 失守">有效 / 失守</span><b><span id="atlas-tel-won">0</span> / <em id="atlas-tel-lost">0</em></b></div>
+              <div class="a-tel-hint"><i></i><span data-i18n="点选星体查看单条记忆">点选星体查看单条记忆</span></div>
+            </div>
+            <div class="a-node-card" id="atlas-node-card" role="dialog" aria-label="记忆详情"></div>
+            <div class="a-legend" id="atlas-legend"></div>
+            <div class="a-tooltip" id="atlas-tip"></div>
+          </section>
+          <aside class="a-rail">
+            <section class="a-panel a-preview" id="atlas-preview" aria-label="注入预演">
+              <div class="a-pv-head">
+                <div><div class="a-eyebrow">INJECTION</div><h2 class="a-title" data-i18n="注入预演">注入预演</h2></div>
+                <button class="a-icon-btn" id="atlas-recalc" title="重新演算" aria-label="重新演算"><svg class="ico"><use href="#i-refresh"/></svg></button>
+              </div>
+              <p class="a-desc" data-i18n="看见这次任务将注入什么，以及为什么。">看见这次任务将注入什么，以及为什么。</p>
+              <div class="a-seg" id="atlas-scen" role="group" aria-label="任务类型"></div>
+              <div class="a-goal">
+                <input id="atlas-goal" aria-label="任务目标" autocomplete="off">
+                <button id="atlas-build" title="演算" aria-label="演算"><svg class="ico"><use href="#i-sigma"/></svg></button>
+              </div>
+              <div class="a-budgets" id="atlas-budgets"></div>
+              <div class="a-inj-scroll" id="atlas-inj-groups"></div>
+              <div class="a-inj-foot" id="atlas-inj-foot"></div>
+            </section>
+            <section class="a-panel a-curation" aria-label="治理台">
+              <div class="a-pv-head">
+                <div><div class="a-eyebrow">GOVERN</div><h2 class="a-title sm" data-i18n="治理台">治理台</h2></div>
+              </div>
+              <div class="a-gov-grid" id="atlas-gov-grid"></div>
+              <div class="a-queue" id="atlas-queue"></div>
+              <div class="a-q-foot" data-i18n="治理操作将写入真实数据">治理操作将写入真实数据</div>
+            </section>
+          </aside>
+        </div>
+      </div>
+
       <!-- 经验库 -->
       <!-- 记忆中心：统一呈现全局经验/知识与项目记忆，操作复用各自已有治理链 -->
       <div id="sub-memory" class="subpage hidden">
@@ -1824,7 +1984,78 @@
       </div>
     </section>
     </main>
+
+    <!-- ================= 右侧状态侧栏（仅暖色皮肤桌面端显示） ================= -->
+    <aside id="status-sidebar" aria-label="状态概览" data-i18n-aria="状态概览">
+      <!-- 正在运行 -->
+      <div class="status-card">
+        <div class="status-card-head">
+          <span class="status-card-title">
+            <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
+            <span data-i18n="正在运行">正在运行</span>
+          </span>
+          <span class="status-card-count" id="status-running-count">0</span>
+        </div>
+        <div id="status-running-list"></div>
+      </div>
+
+      <!-- 待你处理 -->
+      <div class="status-card">
+        <div class="status-card-head">
+          <span class="status-card-title">
+            <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
+            <span data-i18n="待你处理">待你处理</span>
+          </span>
+          <span class="status-card-count" id="status-pending-count">0</span>
+        </div>
+        <div id="status-pending-list"></div>
+      </div>
+
+      <!-- 本月用量 -->
+      <div class="status-card">
+        <div class="status-card-head">
+          <span class="status-card-title">
+            <svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>
+            <span data-i18n="本月用量">本月用量</span>
+          </span>
+        </div>
+        <div class="usage-stats">
+          <div class="usage-stat">
+            <div class="usage-stat-value" id="status-usage-tokens">—</div>
+            <div class="usage-stat-label" data-i18n="万 tokens">万 tokens</div>
+          </div>
+          <div class="usage-stat">
+            <div class="usage-stat-value" id="status-usage-cost">—</div>
+            <div class="usage-stat-label" data-i18n="元">元</div>
+          </div>
+          <div class="usage-stat">
+            <div class="usage-stat-value" id="status-usage-runs">—</div>
+            <div class="usage-stat-label" data-i18n="次运行">次运行</div>
+          </div>
+        </div>
+      </div>
+    </aside>
   </div>
+
+  <!-- ================= 底部标签栏（仅暖色皮肤移动端显示） ================= -->
+  <nav id="mobile-tabbar" aria-label="主导航" data-i18n-aria="主导航">
+    <button class="tab-item active" data-tab="home" onclick="switchTab('overview')">
+      <svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg>
+      <span data-i18n="工作台">工作台</span>
+    </button>
+    <button class="tab-item" data-tab="tasks" onclick="switchTab('tasks')">
+      <svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>
+      <span data-i18n="任务">任务</span>
+    </button>
+    <button class="tab-item" data-tab="runs" onclick="switchTab('runs')">
+      <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
+      <span data-i18n="运行">运行</span>
+    </button>
+    <button class="tab-item" data-tab="settings" onclick="switchTab('appearance')">
+      <svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg>
+      <span data-i18n="设置">设置</span>
+    </button>
+  </nav>
 
   <!-- ================= 任务检查器（右缘停靠列，参考桌面端 Git 工具 + 进程面板） ================= -->
   <aside id="inspector" class="hidden" aria-label="任务检查器" data-i18n-aria="任务检查器">

@@ -32,7 +32,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from . import paths, settings as settings_mod
+from . import atomic, paths, settings as settings_mod
 
 _SEG_SPLIT = re.compile(r"[\\/]")
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
@@ -362,10 +362,11 @@ def _remap_all_json(pairs):
             stat = [0]
             new_obj = _remap_obj(obj, pairs, stat)
             if stat[0]:
-                tmp = p.with_suffix(".tmp")
-                tmp.write_text(json.dumps(new_obj, ensure_ascii=False, indent=2),
-                               encoding="utf-8")
-                os.replace(str(tmp), str(p))
+                try:
+                    mode = p.stat().st_mode & 0o777
+                except OSError:
+                    mode = None
+                atomic.write_json(p, new_obj, mode=mode, indent=2)
                 files += 1
                 hits += stat[0]
         except Exception:

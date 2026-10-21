@@ -15,7 +15,7 @@ import math
 import threading
 import time
 
-from . import paths
+from . import atomic, paths
 
 LOCK = threading.RLock()
 
@@ -233,10 +233,7 @@ def _budget_alert_check(day):
             if push("\n".join(lines)) is False:
                 return
             st["done"] = done + ["%s%d" % (m[0], m[1]) for m in new]
-            sp.parent.mkdir(parents=True, exist_ok=True)
-            tmp = sp.with_suffix(".tmp")
-            tmp.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(sp)
+            atomic.write_json(sp, st, mode=0o600, indent=None)
     except Exception:
         pass
 

@@ -6,7 +6,7 @@ import json
 import threading
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "project-permissions.json"
@@ -22,10 +22,7 @@ def _load():
 
 
 def _save(value):
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    temp = _FILE.with_suffix(".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(_FILE)
+    atomic.write_json(_FILE, value, mode=0o600, indent=2)
 
 
 def list_for(project_id):

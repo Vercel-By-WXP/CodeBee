@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from typing import Any, Dict, List
 
 
 class WorkspaceBoundaryError(ValueError):
@@ -21,7 +22,9 @@ class WorkspaceBoundary:
         self.max_write_bytes = max(1, int(max_write_bytes))
         self.max_read_bytes = max(1, int(max_read_bytes))
         self.internal_dir = str(internal_dir or ".codebee").strip("/\\")
-        self.format_locks = list(format_locks or ())
+        self.format_locks: List[Dict[str, Any]] = [
+            item for item in (format_locks or ()) if isinstance(item, dict)
+        ]
 
     def resolve(self, relative):
         raw = str(relative or "").strip().replace("\\", "/")

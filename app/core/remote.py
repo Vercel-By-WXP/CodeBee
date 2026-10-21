@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import secrets
@@ -79,6 +80,102 @@ def set_bind_host(host: str):
     """Record the HTTP bind address so direct URLs only advertise reachable hops."""
     global _BIND_HOST
     _BIND_HOST = str(host or "").strip().lower()
+
+
+_HOST_LABEL_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$", re.I)
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_WILDCARD_HOSTS = {"0.0.0.0", "::"}
+
+
+def _normalized_host(value):
+    """Return a canonical host from an HTTP Host value, or an empty string.
+
+    Ports are parsed to reject malformed authority values but intentionally
+    excluded from identity: reverse proxies commonly expose :443/:80 while
+    forwarding to CodeBee's independent local port.
+    """
+    raw = str(value or "")
+    if not raw or raw != raw.strip() or any(ch.isspace() for ch in raw):
+        return ""
+    if any(ch in raw for ch in "/?#@,\\"):
+        return ""
+    # Bind addresses are often supplied as bare IPv6 literals (``--host ::``);
+    # HTTP Host values still use brackets, which urlparse validates below.
+    if not raw.startswith("[") and raw.count(":") > 1:
+        try:
+            return ipaddress.ip_address(raw).compressed
+        except ValueError:
+            return ""
+    try:
+        parsed = urlparse("//" + raw)
+        if parsed.username is not None or parsed.password is not None:
+            return ""
+        host = parsed.hostname
+        parsed.port  # validate any supplied port
+    except ValueError:
+        return ""
+    if not host:
+        return ""
+    host = host.rstrip(".").lower()
+    try:
+        return ipaddress.ip_address(host).compressed
+    except ValueError:
+        try:
+            host = host.encode("idna").decode("ascii").lower()
+        except (UnicodeError, ValueError):
+            return ""
+        return host if _HOST_LABEL_RE.fullmatch(host) else ""
+
+
+def allowed_request_host(host: str, forwarded: str = "") -> bool:
+    """Whether an HTTP Host belongs to this CodeBee listener.
+
+    This prevents DNS-rebinding sites from reaching a loopback service with
+    their own Origin/Host pair. Explicit bind addresses, the LAN/Tailscale
+    interface addresses used by phone links, and the configured public URL are
+    accepted. An explicitly trusted proxy can also retain its named Host when
+    it supplies a forwarded client address.
+    """
+    candidate = _normalized_host(host)
+    if not candidate:
+        return False
+    # Preserve named reverse-proxy hosts when the proxy is explicitly trusted
+    # and supplied its client-address header. A browser reaching loopback via
+    # DNS rebinding cannot set these restricted headers, while forwarded
+    # requests still pass through the existing token check.
+    if _TRUST_PROXY and forwarded:
+        return True
+    allowed = set(_LOOPBACK_HOSTS)
+    bind_host = _normalized_host(_BIND_HOST)
+    if bind_host and bind_host not in _WILDCARD_HOSTS:
+        allowed.add(bind_host)
+    try:
+        public = urlparse(str(PUBLIC_URL or "").strip())
+        public_host = _normalized_host(public.hostname or "")
+        if public.scheme.lower() in ("http", "https") and public_host:
+            allowed.add(public_host)
+    except (TypeError, ValueError):
+        pass
+    if candidate in allowed:
+        return True
+    if bind_host not in _WILDCARD_HOSTS:
+        return False
+    # Hostnames not explicitly configured above are rejected without doing
+    # interface discovery; this keeps rebinding probes cheap under load.
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        return False
+    for discover in (lan_ip, tailscale_ip):
+        try:
+            address = _normalized_host(discover())
+        except Exception:
+            address = ""
+        if address:
+            allowed.add(address)
+    return candidate in allowed
 
 
 # ---------------------------------------------------------------- 快速隧道（trycloudflare）

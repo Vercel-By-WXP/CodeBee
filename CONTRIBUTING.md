@@ -27,9 +27,12 @@
 
 ## 添加 CLI 适配器
 
-1. 在【适配器目录】登记 CLI 名称、检测命令、版本要求和无头调用模板。
-2. 实现【接口名】约定的执行、超时、输出解析和错误分类。
-3. 添加检测、成功、超时和降级场景的验证。
-4. 在 README 的支持列表和安全说明中补充行为。
+1. 从仓库根目录运行 `python app/main.py scaffold-adapter --name "Example CLI" --executable example-cli`。该命令生成 `app/core/adapters/` 下的起始文件和 `tests/test_adapter_<name>.py`；示例参数仍需按供应商文档核实。
+2. 在 `catalog.py`/`registry.py` 登记稳定 CLI ID、检测命令、能力和无头调用信息；检查 `manager.py` 对安装检测、绑定与健康状态的处理。
+3. 按当前 runner 兼容契约实现 argv/输入通道、超时、退出码和供应商输出解析。命令必须作为参数列表传递，不要把用户输入拼入 shell 字符串；错误映射使用 `error_codes.py` 的稳定错误码。现有 CLI 的 catalog ID、配置与结果字段需保持兼容。
+4. 用临时 fake CLI 覆盖成功、非零退出、CLI 缺失、认证失败、超时、混合编码/流式输出和降级；更新 README 的自动编排/仅检测分类，并在 `CLI_COMPATIBILITY.md` 记录真实验收范围。mock 测试不能标记真实 CLI 版本为已验证。
+5. 提交前运行相关 unittest、`python scripts/architecture_check.py --changed`、`python tools/static_check.py` 和 `node --check app/ui/app.js`（仅在修改 UI 时）。完整发版需通过 `python scripts/release_gate.py`。
+
+接入脚手架当前是生成式起点，不是可直接注册并运行的统一 adapter protocol；为已有 CLI 加分支时不要改动其他供应商的参数模板或输出语义。
 
 小步提交、清晰描述和可复现检查都很有帮助。欢迎先开 Issue 讨论方向。

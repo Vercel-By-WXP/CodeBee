@@ -38,6 +38,22 @@ class ReleaseGateTestSummaryTests(unittest.TestCase):
                 "Ran 12 tests in 0.5s\n\nOK\n"
                 "unexpected trailing output\n"))
 
+    def test_version_mismatch_blocks_release(self):
+        completed = subprocess.CompletedProcess(
+            args=["version-check"], returncode=1,
+            stdout="", stderr="version mismatch: package.json='0.1.118'")
+        with mock.patch.object(release_gate, "_run", return_value=completed):
+            with self.assertRaisesRegex(release_gate.GateError, "version mismatch"):
+                release_gate.check_versions()
+
+    def test_matching_versions_pass_the_shared_release_gate(self):
+        completed = subprocess.CompletedProcess(
+            args=["version-check"], returncode=0,
+            stdout="version check passed: 0.1.119\n", stderr="")
+        with mock.patch.object(release_gate, "_run", return_value=completed) as run:
+            release_gate.check_versions()
+        self.assertIn("sync_version.py", run.call_args.args[0][1])
+
 
 if __name__ == "__main__":
     unittest.main()

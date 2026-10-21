@@ -1,0 +1,137 @@
+/* CodeBee UI —— 暖色纸张皮肤（warm）
+ * 设计原则：暖中性色 + 单一琥珀强调，护眼且契合"工作台"隐喻
+ * 区别于主流 SaaS 冷蓝色调，形成品牌识别
+ */
+
+/* 暖色纸张·夜间版 */
+html[data-skin="warm"] {
+  --bg: #1a1916;
+  --sidebar: #222019;
+  --panel: #252320;
+  --panel2: #2f2c27;
+  --border: rgba(232, 228, 220, .10);
+  --border-strong: rgba(232, 228, 220, .20);
+  --text: #e8e4dc;
+  --muted: #9a9387;
+  --accent: #d4943a;
+  --accent2: #c47a2e;
+  --ok: #4a9a7a;
+  --warn: #d4943a;
+  --bad: #c45a4a;
+  --chip-queued-bg: #2f2c27;
+  --log-bg: #161512;
+  --log-text: #c8c2b8;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  --uc-in: #d4943a;
+  --uc-ca: #4a9a7a;
+  --uc-out: #c47a2e;
+}
+
+/* 暖色纸张·日间版 */
+html[data-skin="warm"][data-theme="light"] {
+  --bg: #f4f2ec;
+  --sidebar: #faf9f5;
+  --panel: #fffefa;
+  --panel2: #f0ede5;
+  --border: #e8e4dc;
+  --border-strong: #d4cfc4;
+  --text: #1d1b17;
+  --muted: #8f887a;
+  --accent: #a86a20;
+  --accent2: #8f5a1a;
+  --ok: #2f6f57;
+  --warn: #a2671f;
+  --bad: #b0473d;
+  --chip-queued-bg: #f0ede5;
+  --log-bg: #faf9f5;
+  --log-text: #5f5a50;
+  --shadow: 0 10px 30px rgba(29, 27, 23, .08);
+  --uc-in: #a86a20;
+  --uc-ca: #2f6f57;
+  --uc-out: #8f5a1a;
+}
+
+/* ================= 暖色皮肤专属优化 ================= */
+
+/* 卡片圆角加大，营造柔和感 */
+html[data-skin="warm"] .panel,
+html[data-skin="warm"] .item,
+html[data-skin="warm"] .card {
+  border-radius: 12px;
+}
+
+/* 按钮圆角 */
+html[data-skin="warm"] button.primary,
+html[data-skin="warm"] button.ghost,
+html[data-skin="warm"] button.danger {
+  border-radius: 10px;
+}
+
+/* 输入框圆角 */
+html[data-skin="warm"] .cmp-box {
+  border-radius: 14px;
+}
+
+/* 侧栏任务项悬停 */
+html[data-skin="warm"][data-theme="light"] .stask:hover,
+html[data-skin="warm"][data-theme="light"] .qitem:hover,
+html[data-skin="warm"][data-theme="light"] .sdir summary:hover {
+  background: #f0ede5;
+}
+
+html[data-skin="warm"][data-theme="light"] .stask.active,
+html[data-skin="warm"][data-theme="light"] .qitem.active {
+  background: #ebe7dd;
+}
+
+/* 暗色模式悬停 */
+html[data-skin="warm"][data-theme="dark"] .stask:hover,
+html[data-skin="warm"][data-theme="dark"] .qitem:hover,
+html[data-skin="warm"][data-theme="dark"] .sdir summary:hover {
+  background: #2f2c27;
+}
+
+html[data-skin="warm"][data-theme="dark"] .stask.active,
+html[data-skin="warm"][data-theme="dark"] .qitem.active {
+  background: #332f2a;
+}
+
+/* 顶栏毛玻璃效果 */
+html[data-skin="warm"][data-theme="light"] .topbar {
+  background: rgba(250, 249, 245, .85);
+  backdrop-filter: blur(18px);
+}
+
+html[data-skin="warm"][data-theme="dark"] .topbar {
+  background: rgba(34, 32, 25, .85);
+  backdrop-filter: blur(18px);
+}
+
+/* 状态点颜色强化 */
+html[data-skin="warm"] .status-dot.running {
+  background: var(--ok);
+}
+
+html[data-skin="warm"] .status-dot.waiting {
+  background: var(--warn);
+}
+
+html[data-skin="warm"] .status-dot.failed {
+  background: var(--bad);
+}
+
+/* 进度条颜色 */
+html[data-skin="warm"] .progress-bar {
+  background: var(--accent);
+}
+
+/* 标签选中态 */
+html[data-skin="warm"][data-theme="light"] .seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+html[data-skin="warm"][data-theme="dark"] .seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}

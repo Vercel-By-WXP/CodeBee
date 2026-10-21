@@ -5,6 +5,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from app.core import atomic
 
@@ -91,6 +92,12 @@ class AtomicPersistenceTests(unittest.TestCase):
             target = Path(tmp) / "secret.json"
             atomic.write_json(target, {"token": "secret"}, mode=0o600)
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
+    def test_windows_mode_application_does_not_make_files_read_only(self):
+        with mock.patch.object(atomic.os, "name", "nt"), \
+             mock.patch.object(atomic.os, "chmod") as chmod:
+            atomic._apply_mode("unused-on-windows", 0o600)
+        chmod.assert_not_called()
 
 
 if __name__ == "__main__":

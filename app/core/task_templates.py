@@ -6,7 +6,7 @@ import secrets
 import threading
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 _FILE = paths.DATA_DIR / "task-templates.json"
 _LOCK = threading.RLock()
@@ -48,10 +48,7 @@ def save(template):
     with _LOCK:
         rows = [x for x in _read() if x.get("id") != row["id"]]
         rows.append(row)
-        Path(_FILE).parent.mkdir(parents=True, exist_ok=True)
-        temp = Path(_FILE).with_suffix(".tmp")
-        temp.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(_FILE)
+        atomic.write_json(_FILE, rows, mode=0o600, indent=2)
     return row
 
 
@@ -61,5 +58,5 @@ def remove(template_id):
         kept = [x for x in rows if x.get("id") != str(template_id)]
         if len(kept) == len(rows):
             return False
-        Path(_FILE).write_text(json.dumps(kept, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_json(_FILE, kept, mode=0o600, indent=2)
         return True

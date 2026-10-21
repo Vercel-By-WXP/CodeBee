@@ -12,12 +12,10 @@
 """
 from __future__ import annotations
 
-import glob
 import json
 import logging
 import os
 import re
-import shutil
 import signal
 import subprocess
 import tempfile
@@ -36,6 +34,40 @@ from .error_codes import (
     is_transient_error as _shared_transient_error,
 )
 
+from .cli_text import (
+    _decode_line as _decode_line, _fmt_codex_item as _fmt_codex_item,
+    clean_cli_text as clean_cli_text,
+    collapse_dup_lines as collapse_dup_lines,
+    decode_output as decode_output, pretty_cli_log as pretty_cli_log,
+    read_text_any_enc as read_text_any_enc, strip_ansi as strip_ansi,
+    tail_decoded as tail_decoded,
+)
+
+from .cli_commands import (
+    _fallback_probe_cli as _fallback_probe_cli,
+    _git_repo_issue as _git_repo_issue,
+    _npm_shim_bypass as _npm_shim_bypass,
+    _orphan_pack_files as _orphan_pack_files,
+    _stable_timeout as _stable_timeout, find_git_bash as find_git_bash,
+    redact_command as redact_command, resolve_command as resolve_command,
+)
+
+from .cli_parsers import (
+    _codex_fail_msg as _codex_fail_msg,
+    _codex_provider_args as _codex_provider_args,
+    _codex_silent_no_answer as _codex_silent_no_answer,
+    _codex_work_events as _codex_work_events,
+    _model_flag as _model_flag,
+    _parse_claude_json as _parse_claude_json,
+    _parse_codex_jsonl as _parse_codex_jsonl,
+)
+
+
+from .runner_parsing import (  # noqa: F401 - 旧调用面再导出
+    _loads_lenient, as_scores, extract_json, extract_scores_from_text,
+    scores_from_prose,
+)
+
 log = logging.getLogger(__name__)
 
 
@@ -52,6 +84,9 @@ def _attempt_ledger(run_id=""):
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
 DEFAULT_STREAM_ACTIVITY_TIMEOUT_S = 180  # 流式 CLI 的活动延长窗口
+DEFAULT_PROCESS_CAPTURE_BYTES = 16 * 1024 * 1024  # stdout/stderr 各限 16 MiB
+DEFAULT_PROCESS_LOG_BYTES = 32 * 1024 * 1024  # 每个步骤日志文件最多 32 MiB
+MAX_AGENT_CAPTURE_BYTES = 8 * 1024 * 1024  # stdout/stderr 各限 8 MiB，日志仍流式落盘
 
 # dsh is a one-shot CLI, but some endpoint failures are retried internally by
 # its node launcher.  Keep a small, run-scoped admission budget outside the
@@ -151,305 +186,6 @@ def _dsh_launch_complete(token, ok):
             _DSH_LAUNCH_HISTORY[key] = records
         else:
             _DSH_LAUNCH_HISTORY.pop(key, None)
-
-_BASH_CANDIDATES = [
-    r"D:\Git\usr\bin\bash.exe",
-    r"C:\Program Files\Git\usr\bin\bash.exe",
-    r"C:\Program Files (x86)\Git\usr\bin\bash.exe",
-]
-_bash_cache = {"path": None, "done": False}
-
-
-def find_git_bash():
-    """Windows 专供：claude 原生 exe 找不到 bash 会拒绝启动，指给 Git Bash。
-    macOS/Linux 有系统 bash，claude 自会找到；强行设 CLAUDE_CODE_GIT_BASH_PATH
-    反而可能指错（/bin/bash 与 Git Bash 行为有差异），故非 Windows 一律 None。"""
-    if os.name != "nt":
-        return None
-    if _bash_cache["done"]:
-        return _bash_cache["path"]
-    _bash_cache["done"] = True
-    p = shutil.which("bash.exe") or shutil.which("bash")
-    if p:
-        _bash_cache["path"] = p
-        return p
-    for cand in _BASH_CANDIDATES:
-        if os.path.isfile(cand):
-            _bash_cache["path"] = cand
-            return cand
-    return None
-
-
-_CLI_EXTS = (".exe", ".cmd", ".bat")
-
-
-def _fallback_probe_cli(name):
-    """which() 落空时按常见安装位兜底找 CLI，返回全路径或 None。
-
-    服务进程的 PATH 是启动那一刻的快照：CLI 在服务起跑之后才安装/迁移（如
-    2026-09-30 claude 转 winget 原生安装）时，快照里没有新目录，which 解析
-    不到、裸名直传 Popen 直接 FileNotFoundError，直到重启服务才自愈。这里
-    只探测磁盘已知落点，不改 PATH、不缓存（装没装是低频事件，探几次不亏）。
-    Mac 同病：curl 脚本装的 uv/aider 落 ~/.local/bin，GUI 启动的服务常吃不到
-    这条 PATH；brew 在 Apple Silicon 落 /opt/homebrew/bin。"""
-    name = str(name)
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
-        return None   # 带斜杠/参数形态的不是裸命令名，交给原路径逻辑
-    # Unit/integration tests may provide Windows-style install roots while
-    # running on Linux (the release gate is intentionally Ubuntu-hosted).
-    # Treat those explicit roots as a Windows probe request; ordinary POSIX
-    # callers still take the native ~/.local/bin path below.
-    # The release gate runs on Linux but its Windows contract tests provide
-    # explicit Windows install roots. Do not treat USERPROFILE alone as a
-    # Windows signal: the HTTP guard uses it for a temporary POSIX home.
-    test_windows = (os.environ.get("CODEBEE_RELEASE_TEST_PLATFORM") == "win32")
-    windows_roots = ("LOCALAPPDATA", "APPDATA", "ProgramW6432",
-                     "ProgramFiles", "ProgramFiles(x86)", "SystemRoot",
-                     "NVM_SYMLINK")
-    windows_probe = (os.name == "nt" or
-                     (test_windows and any(os.environ.get(key)
-                                           for key in windows_roots)))
-    if not windows_probe:
-        for d in (os.path.join(os.path.expanduser("~"), ".local", "bin"),
-                  "/opt/homebrew/bin", "/usr/local/bin"):
-            p = os.path.join(d, name)
-            try:
-                if os.path.isfile(p) and os.access(p, os.X_OK):
-                    return p
-            except OSError:
-                pass
-        return None
-    # An explicit NVM_SYMLINK is the current Node installation, so it must
-    # win over stale inherited PATH entries from an older nvm version.
-    nvm_link = os.environ.get("NVM_SYMLINK")
-    if nvm_link and os.path.isdir(nvm_link):
-        for ext in _CLI_EXTS:
-            p = os.path.join(nvm_link, name + ext)
-            try:
-                if os.path.isfile(p):
-                    return p
-            except OSError:
-                pass
-    # POSIX release-gate hosts do not make PATHEXT-style shims visible to
-    # shutil.which.  When the caller has explicitly supplied Windows install
-    # roots, inspect PATH for the same .cmd/.bat names before fixed roots.
-    # A release-gate test root must win over the hosted runner's inherited
-    # PATH (which normally contains the real C:\\Windows PowerShell path).
-    test_system_root = os.environ.get("CODEBEE_RELEASE_TEST_SYSTEM_ROOT")
-    if not test_system_root:
-        for d in (os.environ.get("PATH") or "").split(os.pathsep):
-            if not d:
-                continue
-            for ext in (".cmd", ".bat", ".exe"):
-                p = os.path.join(d, name + ext)
-                try:
-                    if os.path.isfile(p):
-                        return p
-                except OSError:
-                    pass
-    local = os.environ.get("LOCALAPPDATA") or ""
-    home = os.path.expanduser("~")
-    if test_windows and os.environ.get("USERPROFILE"):
-        home = os.environ["USERPROFILE"]
-    if home == "~":
-        home = os.environ.get("USERPROFILE") or home
-    appdata = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
-    program_files = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
-    program_files_x86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
-    # Tests provide a dedicated root instead of mutating the hosted runner's
-    # real SystemRoot; production keeps the native environment fallback.
-    system_root = (os.environ.get("CODEBEE_RELEASE_TEST_SYSTEM_ROOT") or
-                   os.environ.get("SystemRoot") or r"C:\Windows")
-    flat_dirs = (
-        os.path.join(local, "Microsoft", "WinGet", "Links"),
-        os.path.join(home, ".local", "bin"),
-        os.path.join(appdata, "npm"),
-        # Node.js 官方 Windows 安装器把 node/npm.cmd 放在这里；服务进程
-        # 可能启动于安装前，PATH 快照没有刷新，但磁盘上的命令仍可直接使用。
-        os.path.join(program_files, "nodejs"),
-        os.path.join(program_files_x86, "nodejs"),
-        # Windows PowerShell 系统必在，但独占一条 PATH 目录；流水线/GUI 启动
-        # 的服务快照缺这条时，裸名 powershell 起跑即「不是内部或外部命令」
-        # （2026-10-16 minimax-code 安装实案）。
-        os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0"),
-        # MiniMax Code 官方安装器落这里并写注册表用户 PATH，已在跑的进程
-        # 不继承；固定落点探到即用，装完当场可检出、可编排。
-        os.path.join(home, ".minimax-code"),
-    )
-    # nvm-windows 的当前 node 目录（NVM_SYMLINK，如 D:\nvm4w\nodejs）：nvm
-    # 切版重链后启动的进程 PATH 快照常缺这条，装在里面的 npm 全局 CLI
-    # （opencode/mimo 等）全体假「未安装」（2026-10-16 opencode 免费池
-    # 服务侧探测落空实案）。
-    # A test or service launcher may inject a temporary Windows-style root
-    # while the host environment still has a stale machine-level NVM_SYMLINK.
-    # Prefer an explicitly existing override, then ignore stale roots.
-    if nvm_link and not os.path.isdir(nvm_link):
-        nvm_link = None
-    if nvm_link:
-        flat_dirs += (nvm_link,)
-    for d in flat_dirs:
-        for ext in _CLI_EXTS:
-            p = os.path.join(d, name + ext)
-            if os.path.isfile(p):
-                return p
-    # winget 便携包：Packages\<厂商.Id_*>\name.EXE（目录名带来源哈希，glob 一层）
-    pkgs = os.path.join(local, "Microsoft", "WinGet", "Packages")
-    try:
-        for p in glob.glob(os.path.join(pkgs, "*", name + ".*")):
-            if p.lower().endswith(_CLI_EXTS) and os.path.isfile(p):
-                return p
-    except OSError:
-        pass
-    return None
-
-
-def resolve_command(command):
-    """命令名 → 可直接 spawn 的 argv 前缀（.cmd/.bat 垫片必须经 cmd /c）。"""
-    path = shutil.which(command) or _fallback_probe_cli(command) or command
-    low = str(path).lower()
-    if low.endswith(".cmd") or low.endswith(".bat"):
-        return ["cmd", "/c", path]
-    return [path]
-
-
-def _stable_timeout(value):
-    """Keep whole-second budgets exact when passing them to subprocesses."""
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return value
-    nearest = round(numeric)
-    if abs(numeric - nearest) < 1e-3:
-        return int(nearest)
-    return numeric
-
-
-def redact_command(argv):
-    """Return an audit-safe argv snapshot with credential-like values masked."""
-    out = []
-    hide_next = False
-    names = {"--api-key", "--apikey", "--token", "--auth-token", "--password",
-             "--secret", "api_key", "api-key", "token", "password"}
-    secret_pattern = re.compile(
-        r"(?i)(sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._-]+|"
-        r"(?:api[_ -]?key|token|password|secret)\s*[:=]\s*[^\s]+)")
-    for raw in argv or ():
-        value = str(raw)
-        low = value.lower()
-        if hide_next:
-            out.append("<redacted>")
-            hide_next = False
-        elif low in names or any(k in low for k in ("api_key=", "api-key=", "token=", "password=")):
-            if "=" in value:
-                out.append(value.split("=", 1)[0] + "=<redacted>")
-            else:
-                out.append(value)
-                hide_next = True
-        else:
-            out.append(secret_pattern.sub("<redacted>", value[:500]))
-    return out[:80]
-
-
-def _orphan_pack_files(workdir):
-    """列出缺少同名 .idx 的 pack 文件名（无则空列表）。
-
-    Git 本体扫目录时发现 pack 没有对应 .idx，只打一行 warning 就跳过该包，
-    所以 git status/fsck 全都正常；aider 走的 gitpython/gitdb 却按
-    pack-*.pack 逐个打开同名 .idx，缺一次就抛 FileNotFoundError，被它记成
-    「is your git repo corrupted?」——2026-09-22 mo-so 实案：pack-a52e675e
-    .idx 缺失，aider 换将后跑满 14 分钟才失败，报错头还是 prompt toolkit 噪声。
-    """
-    try:
-        probe = subprocess.run(
-            ["git", "-C", workdir, "rev-parse", "--git-path", "objects/pack"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=5, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    rel = (probe.stdout or "").strip()
-    if probe.returncode != 0 or not rel:
-        return []
-    pack_dir = rel if os.path.isabs(rel) else os.path.join(workdir, rel)
-    try:
-        names = set(os.listdir(pack_dir))
-    except OSError:
-        return []
-    return sorted(n for n in names
-                  if n.startswith("pack-") and n.endswith(".pack")
-                  and (n[:-len(".pack")] + ".idx") not in names)
-
-
-def _git_repo_issue(workdir):
-    """返回工作目录 Git 仓库的可读性问题；无 Git 仓库时返回空串。
-
-    Aider 会在启动后自行读取索引。索引包缺失时它通常先写入 .gitignore，
-    再在深层调用中才报错，用户会误以为任务卡住；提前做一次廉价预检能把
-    错误变成可操作的任务失败信息。
-    """
-    if not workdir or not os.path.isdir(workdir):
-        return ""
-    git_dir = os.path.join(workdir, ".git")
-    if not os.path.exists(git_dir):
-        return ""
-    try:
-        probe = subprocess.run(
-            ["git", "-C", workdir, "rev-parse", "--git-dir"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=5, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return "Git 命令不可用，无法读取仓库；请安装 Git 或改用非 Aider 实现器"
-    if probe.returncode != 0:
-        detail = (probe.stderr or probe.stdout or "仓库元数据不可读").strip()
-        return "Git 仓库不可读：%s；请先执行 git fsck/恢复 .git 对象后重试" % detail[-300:]
-    try:
-        probe = subprocess.run(
-            ["git", "-C", workdir, "status", "--porcelain", "--untracked-files=no"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=8, check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return "Git 仓库检查超时；请先执行 git status/git fsck 修复后重试"
-    except OSError:
-        return "Git 命令不可用，无法读取仓库；请安装 Git 或改用非 Aider 实现器"
-    if probe.returncode != 0:
-        detail = (probe.stderr or probe.stdout or "仓库对象或索引不可读").strip()
-        return "Git 仓库损坏或对象缺失：%s；请先执行 git fsck 并恢复仓库后重试" % detail[-300:]
-    # git status 对「pack 缺 .idx」不敏感（只 warning 跳过该包），必须单独查：
-    # aider 的 gitdb 按 pack-*.pack 逐个开同名 .idx，缺一个就整步失败。
-    orphans = _orphan_pack_files(workdir)
-    if orphans:
-        return ("Git 仓库 pack 索引缺失：%s 没有同名 .idx（git 本体只警告跳过，"
-                "Aider 的 gitdb 会直接报「Unable to list files in git repo」）。"
-                "修复：在 %s 目录对每个 pack 执行 `git index-pack <pack文件>` "
-                "重建索引，或临时改用 Codex/Claude 实现器。"
-                % (", ".join(orphans[:3]), os.path.join(".git", "objects", "pack")))
-    return ""
-
-
-def _npm_shim_bypass(argv):
-    """generic 类 CLI 把提示词嵌进 argv；经 cmd /c 重解析时引号/特殊字符会把
-    提示词截烂（kimi 实测：模型只看到 UTF-8 须知、任务本体整段丢失）。识别
-    标准 npm .cmd 垫片（%_prog% + %dp0% 目标脚本），改 node 直启绕开 cmd。
-    识别不出标准形态原样返回。"""
-    if len(argv) >= 3 and argv[0] == "cmd" and argv[1] == "/c" \
-            and str(argv[2]).lower().endswith((".cmd", ".bat")):
-        shim = argv[2]
-        try:
-            with open(shim, encoding="utf-8", errors="replace") as fh:
-                text = fh.read()
-        except Exception:
-            return argv
-        m = re.search(r'%_prog%"\s+"?%dp0%(\\[^"\n]+?\.(?:mjs|js))"?', text)
-        if not m:
-            return argv
-        script = os.path.normpath(
-            os.path.join(os.path.dirname(shim), m.group(1).lstrip("\\")))
-        node = os.path.join(os.path.dirname(shim), "node.exe")
-        return [node if os.path.isfile(node) else "node", script] + list(argv[3:])
-    return argv
-
 
 def _win_descendant_pids(root_pid):
     """Toolhelp32 快照枚举 root_pid 的全部后代 pid（子/孙/…，顺序无保证）。
@@ -587,7 +323,298 @@ def _drain_streams(proc, t_out, t_err, *, timeout=10):
             pass
 
 
-def _pipe_reader(stream, chunks, log_fh, stamp=None):
+class _RecentBytes:
+    """Thread-safe, fixed-size tail buffer for streaming error detection."""
+
+    def __init__(self, max_bytes):
+        self._max_bytes = max(1, int(max_bytes))
+        self._data = bytearray()
+        self._lock = threading.Lock()
+
+    def append(self, chunk):
+        if not chunk:
+            return
+        with self._lock:
+            if len(chunk) >= self._max_bytes:
+                self._data[:] = chunk[-self._max_bytes:]
+                return
+            self._data.extend(chunk)
+            overflow = len(self._data) - self._max_bytes
+            if overflow > 0:
+                del self._data[:overflow]
+
+    def snapshot(self):
+        with self._lock:
+            return bytes(self._data)
+
+
+class _CapturedBytes:
+    """Accumulate one process stream, optionally retaining only a fixed prefix."""
+
+    def __init__(self, max_bytes=None):
+        self._max_bytes = max_bytes
+        self._chunks = []
+        self._size = 0
+        self._lock = threading.Lock()
+        self.truncated = False
+
+    def append(self, chunk):
+        if not chunk:
+            return
+        with self._lock:
+            if self._max_bytes is None:
+                self._chunks.append(chunk)
+                return
+            remaining = self._max_bytes - self._size
+            kept = chunk[:max(0, remaining)]
+            if kept:
+                self._chunks.append(kept)
+                self._size += len(kept)
+            if len(kept) < len(chunk):
+                self.truncated = True
+
+    def getvalue(self):
+        with self._lock:
+            return b"".join(self._chunks)
+
+
+class _BoundedLogWriter:
+    """Serialize concurrent stream writes and cap a process log's total size."""
+
+    _MARKER = b"\n[CodeBee: process log truncated; remaining output omitted]\n"
+    _OLD_MARKER = b"\n[CodeBee: older log content discarded]\n"
+
+    def __init__(self, file_obj, max_bytes=None, shared_state=None):
+        self._file = file_obj
+        requested_max = (max(0, int(max_bytes))
+                         if max_bytes is not None else None)
+        # All writers for one normalized path use one lock and one byte
+        # counter. This covers the two pipe-reader threads and side-channel
+        # notes appended while a process is running. Cross-process writers are
+        # intentionally outside this guarantee; use a file lock if that
+        # deployment model is ever supported.
+        self._state = shared_state or {
+            "lock": threading.Lock(),
+            "written": 0,
+            "max_bytes": requested_max,
+            "truncated": False,
+            "dropped_bytes": 0,
+            "stopped": False,
+        }
+        self._lock = self._state["lock"]
+        with self._lock:
+            try:
+                file_obj.seek(0, os.SEEK_END)
+                current_size = max(0, int(file_obj.tell()))
+            except (OSError, ValueError):
+                current_size = 0
+            # Reconcile the state with the actual file when a writer is first
+            # opened (or an external actor truncated it).
+            self._state["written"] = current_size
+            existing_max = self._state.get("max_bytes")
+            if requested_max is not None and (
+                    existing_max is None or requested_max < existing_max):
+                self._state["max_bytes"] = requested_max
+            self._max_bytes = self._state.get("max_bytes")
+            if self._max_bytes is not None and current_size >= self._max_bytes:
+                self._trim_existing()
+
+    @property
+    def _written(self):
+        return int(self._state["written"])
+
+    @_written.setter
+    def _written(self, value):
+        self._state["written"] = max(0, int(value))
+
+    @property
+    def truncated(self):
+        return bool(self._state["truncated"])
+
+    @truncated.setter
+    def truncated(self, value):
+        self._state["truncated"] = bool(value)
+
+    @property
+    def dropped_bytes(self):
+        return int(self._state["dropped_bytes"])
+
+    @dropped_bytes.setter
+    def dropped_bytes(self, value):
+        self._state["dropped_bytes"] = max(0, int(value))
+
+    def _trim_existing(self):
+        """Keep a short recent tail and reserve room for this invocation."""
+        old_size = self._written
+        max_bytes = self._state.get("max_bytes")
+        if not isinstance(max_bytes, int):
+            return
+        if max_bytes <= 0:
+            self._file.seek(0)
+            self._file.truncate(0)
+            self._written = 0
+            self.dropped_bytes += old_size
+            self.truncated = True
+            self._state["stopped"] = True
+            return
+
+        marker_size = min(len(self._OLD_MARKER), max(1, max_bytes // 4))
+        marker = self._OLD_MARKER[:marker_size]
+        tail_budget = max(0, (max_bytes - marker_size) // 2)
+        tail_size = min(old_size, tail_budget)
+        self._file.seek(max(0, old_size - tail_size), os.SEEK_SET)
+        tail = self._file.read(tail_size) if tail_size else b""
+        self._file.seek(0)
+        self._file.truncate(0)
+        self._file.write(marker + tail)
+        self._file.flush()
+        self._written = len(marker) + len(tail)
+        self.dropped_bytes += max(0, old_size - len(tail))
+        self.truncated = True
+
+    def write(self, data):
+        payload = bytes(data)
+        if not payload:
+            return 0
+        with self._lock:
+            max_bytes = self._state.get("max_bytes")
+            if not isinstance(max_bytes, int):
+                self._file.write(payload)
+                self._written += len(payload)
+                return len(payload)
+            if self._state["stopped"]:
+                self.dropped_bytes += len(payload)
+                return len(payload)
+
+            remaining = max(0, max_bytes - self._written)
+            if len(payload) <= remaining:
+                self._file.write(payload)
+                self._written += len(payload)
+                return len(payload)
+
+            # Reserve room for a visible marker so readers know the tail is
+            # missing. The same total-size bound applies across append retries.
+            marker_size = min(remaining, len(self._MARKER))
+            if marker_size < min(len(self._MARKER), max_bytes):
+                reclaim = min(self._written,
+                              min(len(self._MARKER), max_bytes) - marker_size)
+                if reclaim:
+                    self._file.seek(-reclaim, os.SEEK_END)
+                    self._file.truncate()
+                    self._written -= reclaim
+                    self.dropped_bytes += reclaim
+                    remaining += reclaim
+                    marker_size = min(remaining, len(self._MARKER))
+            keep_size = max(0, remaining - marker_size)
+            kept = payload[:keep_size]
+            if kept:
+                self._file.write(kept)
+                self._written += len(kept)
+            if marker_size:
+                self._file.write(self._MARKER[:marker_size])
+                self._written += marker_size
+            self.dropped_bytes += len(payload) - len(kept)
+            self.truncated = True
+            self._state["stopped"] = True
+            return len(payload)
+
+    def flush(self):
+        with self._lock:
+            self._file.flush()
+
+    def close(self):
+        try:
+            with self._lock:
+                self._file.close()
+        finally:
+            state_path = getattr(self, "_state_path", None)
+            if state_path is not None:
+                self._state_path = None
+                _release_log_state(state_path, self._state)
+
+
+_LOG_STATES_LOCK = threading.Lock()
+_LOG_STATES = {}
+
+
+def _log_state_key(path):
+    return os.path.normcase(os.path.realpath(os.path.abspath(os.fspath(path))))
+
+
+def _shared_log_state(path, max_bytes):
+    key = _log_state_key(path)
+    with _LOG_STATES_LOCK:
+        state = _LOG_STATES.get(key)
+        if state is None:
+            state = {
+                "lock": threading.Lock(),
+                "written": 0,
+                "max_bytes": (max(0, int(max_bytes))
+                              if max_bytes is not None else None),
+                "truncated": False,
+                "dropped_bytes": 0,
+                "stopped": False,
+                "users": 0,
+            }
+            _LOG_STATES[key] = state
+        elif max_bytes is not None:
+            requested = max(0, int(max_bytes))
+            existing = state.get("max_bytes")
+            if existing is None or requested < existing:
+                state["max_bytes"] = requested
+        state["users"] += 1
+        return state
+
+
+def _release_log_state(path, state):
+    key = _log_state_key(path)
+    with _LOG_STATES_LOCK:
+        if _LOG_STATES.get(key) is not state:
+            return
+        state["users"] = max(0, state["users"] - 1)
+        if state["users"] == 0:
+            _LOG_STATES.pop(key, None)
+
+
+def _open_bounded_log(path, max_bytes):
+    fd = os.open(str(path), os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600)
+    state = None
+    try:
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)
+        state = _shared_log_state(path, max_bytes)
+        # Unbuffered writes keep the shared counter aligned with file size even
+        # when another helper opens the same path before an explicit flush.
+        writer = _BoundedLogWriter(
+            os.fdopen(fd, "a+b", buffering=0), max_bytes, state)
+        writer._state_path = path
+        return writer
+    except Exception:
+        os.close(fd)
+        if state is not None:
+            _release_log_state(path, state)
+        raise
+
+
+def _append_log_bytes(path, payload, max_bytes=DEFAULT_PROCESS_LOG_BYTES):
+    if not path or not payload:
+        return
+    writer = None
+    try:
+        writer = _open_bounded_log(path, max_bytes)
+        writer.write(payload)
+        writer.flush()
+    except OSError:
+        pass
+    finally:
+        if writer is not None:
+            try:
+                writer.close()
+            except OSError:
+                pass
+
+
+def _pipe_reader(stream, chunks, log_fh, stamp=None, recent=None):
     """持续读子进程管道并实时落盘。
 
     必须用 read1()：BufferedReader.read(n) 会阻塞到凑满 n 字节或 EOF，
@@ -605,6 +632,8 @@ def _pipe_reader(stream, chunks, log_fh, stamp=None):
             if not b:
                 break
             chunks.append(b)
+            if recent is not None:
+                recent.append(b)
             if stamp is not None:
                 stamp[0] = time.time()
                 if len(stamp) > 1:
@@ -624,310 +653,6 @@ def _pipe_reader(stream, chunks, log_fh, stamp=None):
             stream.close()
         except Exception:
             pass
-
-
-def _decode_line(blob):
-    """单行解码：UTF-8 → GBK → replace（与 decode_output 同一编码纪律）。"""
-    try:
-        return blob.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    try:
-        return blob.decode("gbk")
-    except UnicodeDecodeError:
-        return blob.decode("utf-8", "replace")
-
-
-def decode_output(data):
-    """子进程输出解码：UTF-8 严格解码失败时**逐行** UTF-8→GBK 兜底。
-
-    整块 GBK 回退已废（2026-10-16 pwsh 命令输出实案）：块里只要混进一个非
-    UTF-8 字节（rg/Get-Content 吐的杂字），整块 UTF-8 就失败，GBK 又几乎
-    来者不拒——于是纯 UTF-8 中文被整块误读成「鏍煎紡妫€」双重乱码写进日志
-    与步骤摘要（16:29 连载 run 的评审维度名全灭即此案）。GBK/UTF-8 的多字
-    节序列都不含 0x0A，按行切不会切坏字符：行级 UTF-8 优先、GBK 兜底、
-    replace 收尾，混合编码日志两边都保住（2026-09-20 aider 日志实证的
-    场景不变）。"""
-    if not data:
-        return ""
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    return "\n".join(_decode_line(ln) for ln in data.split(b"\n"))
-
-
-def read_text_any_enc(path):
-    """读文本文件，编码纪律同 decode_output（UTF-8 严格 → GBK 回退 → replace 兜底）。
-
-    工作区文件由 CLI 子代理落盘，中文 Windows 上 PowerShell Set-Content 缺省写
-    GBK；消费侧（章节/diff/故事圣经）统一走本函数，不再因编码混编出 U+FFFD。
-    文件不存在/读失败抛 OSError，由调用方兜底（与 open 语义一致）。"""
-    with open(path, "rb") as f:
-        data = f.read()
-    return decode_output(data)
-
-
-def tail_decoded(data, tail):
-    """按字节取尾部再解码；切片可能落在 UTF-8 多字节字符中间，先丢弃开头的
-    continuation 字节（10xxxxxx，至多 3 个）对齐字符边界，否则残缺字节会被
-    GBK 回退解码成乱码字符。"""
-    if not data:
-        return ""
-    chunk = data[-tail:] if tail and len(data) > tail else data
-    i = 0
-    while i < len(chunk) and i < 3 and (chunk[i] & 0xC0) == 0x80:
-        i += 1
-    return decode_output(chunk[i:])
-
-
-# 终端控制序列：CSI（颜色/光标/清行，`\x1b[91m`）、OSC（窗口标题）、其余两字符转义
-_ANSI_RE = re.compile(
-    r"\x1b\[[0-9;?]*[ -/]*[@-~]"
-    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?"
-    r"|\x1b[@-Z\\-_]"
-)
-# 被切片/前端截断掉 ESC 的「裸序列」残尾（`[91m`、`[0m`）：只在行首止血，
-# 正文里合法的 [数字+字母]（如 [1m] 引用）不动——后面紧跟 `]` 的不算残尾
-_ANSI_HEAD_RE = re.compile(r"^\[[0-9;?]{1,6}[A-Za-z](?!\])")
-# CLI 拿来做进度条/画框/旋转动画的图元，成串出现时人读不出任何信息
-_NOISE_RUN_RE = re.compile(r"([\u2500-\u259f\u25a0-\u25ff\u2800-\u28ff])\1{7,}")
-# 解不出来的字节（replace 兜底）成串即「乱码墙」——多数等宽字体把 U+FFFD 画成
-# 带问号的菱形，一屏看起来就是 ◆◆◆◆
-_FFFD_RUN_RE = re.compile(r"\ufffd{3,}")
-_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
-
-def strip_ansi(text):
-    """剥掉 ANSI 转义序列（颜色/光标/进度），并清掉行首被截断的裸序列残尾。"""
-    if not text:
-        return ""
-    out = _ANSI_RE.sub("", text)
-    # 残尾可能连着几个（`[91m[0mError:`），一次替换只够消掉最前面那个
-    while True:
-        nxt = "\n".join(_ANSI_HEAD_RE.sub("", ln) for ln in out.split("\n"))
-        if nxt == out:
-            return out
-        out = nxt
-
-
-def clean_cli_text(text):
-    """CLI 原始输出 → 人类可读文本（只用于错误摘要/日志展示，不碰模型正文）。
-
-    终端噪声四种，都是实测踩过的：
-    1. ANSI 转义：`\\x1b[91m\\x1b[1mError:` 在浏览器里渲染成 `[91m[1mError:`；
-    2. 裸 `\\r` 覆写：进度条/旋转动画反复回退改写同一行，原样展示会叠成一片；
-       `\\r\\n` 是行结束符不是覆写，先归一化再按覆写取「该行最终形态」；
-    3. 画线/进度图元成串（`────…`、`████…`）与 U+FFFD 乱码墙（编码不可解）；
-    4. 剩余控制字符。
-    """
-    if not text:
-        return ""
-    out = strip_ansi(text).replace("\r\n", "\n")
-    if "\r" in out:
-        lines = []
-        for ln in out.split("\n"):
-            if "\r" in ln:
-                parts = ln.split("\r")
-                ln = next((p for p in reversed(parts) if p.strip()), parts[-1])
-            lines.append(ln)
-        out = "\n".join(lines)
-    out = _CTRL_RE.sub("", out)
-    out = _FFFD_RUN_RE.sub(
-        lambda m: "…（%d 个字符无法解码：CLI 输出不是 UTF-8/GBK）" % len(m.group(0)), out)
-    out = _NOISE_RUN_RE.sub(lambda m: m.group(1) * 3 + "…", out)
-    return re.sub(r"\n{4,}", "\n\n\n", out)
-
-
-_TS_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.,]+Z?\s*")
-
-
-def collapse_dup_lines(text, max_group=4):
-    """折叠「归一化后重复」的邻近行，保留每种首行原文并标注折叠数。
-
-    真实案例：codex_otel 遥测对网关自定义模型名（如 [opencode]xxx，方括号是
-    非法 OTel tag 字符）每个 SSE 事件刷一对 WARN——counter/duration 两种文案
-    交替出现，且每条带微秒时间戳：剥掉时间戳前缀后相邻行仍不相等，必须按
-    「邻近组」折叠——组内至多 max_group 个键，新键只有组满才结算上一组，
-    这样交替刷屏的各个文案都归入同一组（计数各自累计）。空行先结算所在组
-    再原样保留。超过组宽的零散重复（中间隔着足量新行）不受影响。
-    """
-    if not text:
-        return ""
-    out = []
-    keys, first, cnt = [], {}, {}
-
-    def _flush():
-        for k in keys:
-            out.append(first[k])
-            if cnt[k] > 1:
-                out.append("⋯（上行重复 ×%d 已折叠）" % (cnt[k] - 1))
-        keys.clear()
-        first.clear()
-        cnt.clear()
-
-    for ln in text.splitlines():
-        k = _TS_PREFIX.sub("", ln).strip()
-        if not k:
-            _flush()          # 先结算扣住的组，保证空行前后顺序不失真
-            out.append(ln)
-            continue
-        if k in cnt:
-            cnt[k] += 1
-        elif len(keys) >= max_group:
-            _flush()
-            keys.append(k)
-            first[k] = ln
-            cnt[k] = 1
-        else:
-            keys.append(k)
-            first[k] = ln
-            cnt[k] = 1
-    _flush()
-    if text.endswith("\n"):
-        out.append("")
-    return "\n".join(out)
-
-
-def _fmt_codex_item(it, cap):
-    t = it.get("type") or ""
-    if t == "agent_message":
-        return "【消息】" + str(it.get("text") or "")[:cap]
-    if t == "reasoning":
-        return "【思考】" + str(it.get("text") or "")[:cap]
-    if t == "command_execution":
-        line = "【命令】%s（退出码 %s）" % (it.get("command") or "?", it.get("exit_code", "?"))
-        outp = str(it.get("aggregated_output") or "").strip()
-        if outp:
-            line += "\n  | " + outp[:600].replace("\n", "\n  | ")
-        return line
-    if t == "file_change":
-        names = ", ".join(str(c.get("path") or "?") for c in (it.get("changes") or [])
-                          if isinstance(c, dict))
-        return "【文件改动】" + (names or "?")
-    if t == "mcp_tool_call":
-        return "【工具】%s %s" % (it.get("tool") or "?",
-                                  json.dumps(it.get("arguments") or "", ensure_ascii=False)[:200])
-    if t == "web_search":
-        return "【搜索】" + str(it.get("query") or "")
-    if t == "error":
-        return "【错误】" + str(it.get("message") or "")
-    return None
-
-
-def pretty_cli_log(text, max_event_chars=4000):
-    """codex --json 的 JSONL 事件流 → 人类可读行；非 JSONL 行原样保留。
-
-    --json 模式下 stdout 全是机器事件（thread/turn/item…），智能体真正在说的
-    话被埋在转义 JSON 里；这里逐行翻译成【消息】【思考】【命令】，让日志抽屉
-    读到的是「蜂在干什么」。解析失败或未识别的事件类型原样保留，不吞内容。
-
-    claude stream-json 同场翻译（2026-09-22 真实案：3.2MB 步骤日志 15828 条
-    thinking_tokens 心跳，每 SSE 分片一条、数值只涨 1~2）：思考心跳按邻近组
-    折成一行；init/api_retry/assistant/result 翻译成可读行——api_retry 是
-    429/断连诊断金矿，逐条保留不折叠。只影响抽屉显示，原始日志与解析不动。
-    """
-    out = []
-    hb = [0, 0]   # claude 思考心跳邻近组：[条数, 最大估算 tokens]
-    msg_seen = [False]   # 是否已出过【消息】（防 result 再重复一遍正文）
-
-    def _flush_thinking():
-        if hb[0]:
-            out.append("— 思考中（心跳 ×%d 已折叠，估算 ~%d tokens）—" % (hb[0], hb[1]))
-            hb[0] = hb[1] = 0
-
-    for ln in (text or "").splitlines():
-        s = ln.strip()
-        ev = None
-        if s.startswith("{") and s.endswith("}"):
-            try:
-                ev = json.loads(s)
-            except Exception:
-                ev = None
-        if isinstance(ev, dict) and ev.get("type") == "system" \
-                and (ev.get("subtype") or "") == "thinking_tokens":
-            try:
-                n = int(ev.get("estimated_tokens") or 0)
-            except Exception:
-                n = 0
-            hb[0] += 1
-            if n > hb[1]:
-                hb[1] = n
-            continue
-        _flush_thinking()
-        if not isinstance(ev, dict):
-            out.append(ln)
-            continue
-        typ = ev.get("type") or ""
-        if typ == "system":   # claude 其余系统事件
-            sub = ev.get("subtype") or ""
-            if sub == "init":
-                out.append("— 会话启动（model=%s）—" % (ev.get("model") or "?"))
-            elif sub == "api_retry":
-                out.append("— API 重试 %s/%s（等 %sms）：%s —" % (
-                    ev.get("attempt", "?"), ev.get("max_retries", "?"),
-                    ev.get("retry_delay_ms", "?"), ev.get("error") or "?"))
-            elif sub == "task_started":
-                out.append("— 工具任务启动：%s —" % (ev.get("description") or "?"))
-            else:
-                out.append(ln)   # 未知 subtype 原样保留，不吞内容
-            continue
-        if typ == "assistant":   # claude 正文/思考/工具调用都在 content 块里
-            for blk in ((ev.get("message") or {}).get("content") or []):
-                if not isinstance(blk, dict):
-                    continue
-                bt = blk.get("type") or ""
-                if bt == "thinking":
-                    th = " ".join(str(blk.get("thinking") or "").split())
-                    if th:
-                        out.append("【思考】" + th[:200])
-                elif bt == "text":
-                    tx = str(blk.get("text") or "")
-                    if tx:
-                        out.append("【消息】" + tx[:max_event_chars])
-                        msg_seen[0] = True
-                elif bt == "tool_use":
-                    out.append("【命令】%s %s" % (
-                        blk.get("name") or "?",
-                        json.dumps(blk.get("input") or "", ensure_ascii=False)[:200]))
-            continue
-        if typ in ("user", "stream_event", "tool_progress"):
-            continue   # claude 工具回包/流片段是过程噪音
-        if typ == "result":   # claude 收尾：统计一行；报错带原因
-            u = ev.get("usage") or {}
-            if ev.get("is_error"):
-                out.append("— 完成（报错）：" + str(ev.get("result") or "")[:300] + " —")
-            else:
-                cost = ev.get("total_cost_usd")
-                if not msg_seen[0]:
-                    tx = str(ev.get("result") or "")
-                    if tx:   # 旧单 JSON 模式没有 assistant 事件，正文在这补上
-                        out.append("【消息】" + tx[:max_event_chars])
-                        msg_seen[0] = True
-                out.append("— 完成（tokens 入 %s / 出 %s，%s）—" % (
-                    u.get("input_tokens", "?"), u.get("output_tokens", "?"),
-                    ("$%.2f" % cost) if isinstance(cost, (int, float)) else "?"))
-            continue
-        if typ in ("thread.started", "turn.started"):
-            continue
-        if typ == "turn.completed":
-            u = ev.get("usage") or {}
-            out.append("— 一轮完成（tokens 入 %s / 出 %s）—" % (
-                u.get("input_tokens", "?"), u.get("output_tokens", "?")))
-            continue
-        if typ == "turn.failed":
-            e = ev.get("error")
-            out.append("— 一轮失败：%s —" % (e.get("message") if isinstance(e, dict) else e))
-            continue
-        if typ in ("item.completed", "item.started", "item.updated"):
-            if typ != "item.completed" or not isinstance(ev.get("item"), dict):
-                continue  # started/updated 是过程噪音，completed 才有内容
-            line = _fmt_codex_item(ev["item"], max_event_chars)
-            if line:
-                out.append(line)
-            continue
-        out.append(ln)
-    return "\n".join(out)
 
 
 def _normalize_abort_markers(value):
@@ -972,7 +697,9 @@ def _normalize_abort_markers(value):
 def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None,
                 stall_timeout=0, repeat_abort=None, deadline=None,
-                abort_markers=None, activity_timeout=0, audit_notes=None):
+                abort_markers=None, activity_timeout=0, audit_notes=None,
+                max_capture_bytes=DEFAULT_PROCESS_CAPTURE_BYTES,
+                max_log_bytes=DEFAULT_PROCESS_LOG_BYTES):
     """通用子进程执行：并发读管道防死锁；超时/取消杀整棵进程树。
 
     stall_timeout：停滞看门狗（秒，0=关闭）——超过该时长 stdout/stderr 无任何
@@ -998,6 +725,12 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     argv/env 里看不出的运行形态钉进日志（如 claude 凭据=绑定链注入/本机默认），
     事后诊断不用靠猜。只写形态名，绝不写密钥值。
 
+    max_capture_bytes：stdout/stderr 各自的内存捕获上限，默认 16 MiB。超限后
+    仍排空子进程管道并流式写步骤日志，但只保留每路前缀、设置 output_truncated，
+    并将本次调用标记失败。显式传 None 可保留完整捕获行为；模型 CLI 使用更低上限。
+    max_log_bytes：步骤日志文件累计上限，默认 32 MiB；超限后停止追加并写截断标记，
+    返回 log_truncated/log_dropped_bytes。显式传 None 可关闭上限。
+
     返回 {ok, exit_code, stdout, stderr, duration, cancelled, timed_out, stalled,
     deadline_exceeded, abort_marker}；杀树后未能确认整树清空时额外带
     quiescence_unknown=True（孙进程可能仍在，诊断用，不改变终态语义）。
@@ -1008,7 +741,19 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     if argv is None:
         return {"ok": False, "exit_code": None, "stdout": "", "stderr": "argv 为空",
                 "duration": 0.0, "cancelled": False, "timed_out": False,
-                "stalled": False, "deadline_exceeded": False, "abort_marker": None}
+                "stalled": False, "deadline_exceeded": False, "abort_marker": None,
+                "output_truncated": False, "log_truncated": False,
+                "log_dropped_bytes": 0}
+    try:
+        max_capture_bytes = (max(0, int(max_capture_bytes))
+                             if max_capture_bytes is not None else None)
+    except (TypeError, ValueError, OverflowError):
+        max_capture_bytes = 0
+    try:
+        max_log_bytes = (max(0, int(max_log_bytes))
+                         if max_log_bytes is not None else None)
+    except (TypeError, ValueError, OverflowError):
+        max_log_bytes = 0
     try:
         deadline = float(deadline) if deadline is not None else None
     except (TypeError, ValueError):
@@ -1025,14 +770,22 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         return {"ok": False, "exit_code": None, "stdout": "",
                 "stderr": "[任务总时限已到，未启动子进程]", "duration": 0.0,
                 "cancelled": False, "timed_out": True, "stalled": False,
-                "deadline_exceeded": True, "abort_marker": None}
+                "deadline_exceeded": True, "abort_marker": None,
+                "output_truncated": False, "log_truncated": False,
+                "log_dropped_bytes": 0}
     aborts = _normalize_abort_markers(repeat_abort)
     aborts.extend(_normalize_abort_markers(abort_markers))
     full_env = scrub_env(os.environ.copy(), mode="drop")
     if env:
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
         full_env.update({str(k): str(v) for k, v in env.items()})
-    log_fh = open(log_path, "ab") if log_path else None
+    log_fh = None
+    if log_path:
+        try:
+            log_fh = _open_bounded_log(log_path, max_log_bytes)
+        except OSError:
+            # A diagnostic log must not prevent an otherwise valid CLI call.
+            log_fh = None
     # 审计：调用下达前先把「执行的命令 + 发给智能体的指令原文」写进日志，
     # 运行中点开步骤就能看到"编排者下了什么令"，不用等结束猜。
     # env 绝不写（含 API key）；argv 里只有 base_url/env_key 名，无密钥值。
@@ -1040,7 +793,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     if log_fh:
         try:
             head = ["===== 下达 %s =====" % time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "$ " + " ".join(str(a) for a in argv)]
+                    "$ " + " ".join(redact_command(argv))]
             for _note in (audit_notes or []):
                 if _note:
                     head.append("· " + str(_note))
@@ -1072,19 +825,32 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                                "若刚安装，重启 CodeBee 服务让 PATH 生效即可。"
                                % tgt),
                     "duration": 0.0, "cancelled": False, "timed_out": False,
-                    "stalled": False, "deadline_exceeded": False, "abort_marker": None}
+                    "stalled": False, "deadline_exceeded": False, "abort_marker": None,
+                    "output_truncated": False,
+                    "log_truncated": bool(log_fh and log_fh.truncated),
+                    "log_dropped_bytes": int(log_fh.dropped_bytes) if log_fh else 0}
         except Exception as e:
             return {"ok": False, "exit_code": None, "stdout": "",
                     "stderr": "启动失败: %r" % e, "duration": 0.0,
                     "cancelled": False, "timed_out": False, "stalled": False,
-                    "deadline_exceeded": False, "abort_marker": None}
+                    "deadline_exceeded": False, "abort_marker": None,
+                    "output_truncated": False,
+                    "log_truncated": bool(log_fh and log_fh.truncated),
+                    "log_dropped_bytes": int(log_fh.dropped_bytes) if log_fh else 0}
         # 挂巢（beekeeper）：服务无论以何种方式退出（含被硬杀），蜜蜂 CLI
         # 一起带走。挂巢失败只降级，绝不影响本步起跑。
         beekeeper.adopt(proc)
-        out_chunks, err_chunks = [], []
+        out_capture = _CapturedBytes(max_capture_bytes)
+        err_capture = _CapturedBytes(max_capture_bytes)
         stamp = [time.time(), False, time.monotonic()]  # [墙钟、是否有输出、单调时钟]
-        t_out = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks, log_fh, stamp), daemon=True)
-        t_err = threading.Thread(target=_pipe_reader, args=(proc.stderr, err_chunks, log_fh, stamp), daemon=True)
+        out_recent = _RecentBytes(8000)
+        err_recent = _RecentBytes(8000)
+        t_out = threading.Thread(
+            target=_pipe_reader,
+            args=(proc.stdout, out_capture, log_fh, stamp, out_recent), daemon=True)
+        t_err = threading.Thread(
+            target=_pipe_reader,
+            args=(proc.stderr, err_capture, log_fh, stamp, err_recent), daemon=True)
         t_out.start()
         t_err.start()
         if stdin_text is not None:
@@ -1149,10 +915,10 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 break
             if aborts:
                 try:
-                    recent = decode_output(b"".join(out_chunks)[-8000:] +
-                                           b"\n" + b"".join(err_chunks)[-8000:])
+                    recent_text = decode_output(
+                        out_recent.snapshot() + b"\n" + err_recent.snapshot())
                     for marker, limit in aborts:
-                        if recent.count(marker) >= limit:
+                        if recent_text.count(marker) >= limit:
                             repeat_aborted = True
                             abort_marker = marker
                             timed_out = True
@@ -1167,8 +933,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         t_out.join(timeout=5)
         t_err.join(timeout=5)
         exit_code = proc.returncode
-        stdout = decode_output(b"".join(out_chunks))
-        stderr = decode_output(b"".join(err_chunks))
+        stdout = decode_output(out_capture.getvalue())
+        stderr = decode_output(err_capture.getvalue())
+        output_truncated = out_capture.truncated or err_capture.truncated
         # stdout/stderr 的 close 已归 _pipe_reader 自线程（EOF 后自关）：这里再
         # close 会抢 read1 手里的锁，孙进程漏杀攥着管道时就死等（见其 docstring）。
         # stdin 无读线程，_feed 写完自关；这里兜底一次（DEVNULL 时本就无事）。
@@ -1179,6 +946,9 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             pass
         if cancelled:
             stderr += "\n[已被用户取消]"
+        elif output_truncated:
+            stderr += ("\n[输出超过捕获上限：stdout/stderr 各最多 %s 字节，"
+                       "结果不完整，已标记失败]" % max_capture_bytes)
         elif repeat_aborted:
             limit = next((n for m, n in aborts if m == abort_marker), "?")
             if len(aborts) == 1 and abort_markers is None:
@@ -1195,11 +965,14 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         elif timed_out:
             stderr += "\n[超时 %ss，已终止进程树]" % timeout
         result = {
-            "ok": exit_code == 0 and not cancelled and not timed_out,
+            "ok": (exit_code == 0 and not cancelled and not timed_out
+                   and not output_truncated),
             "exit_code": exit_code, "stdout": stdout, "stderr": stderr,
             "duration": duration, "cancelled": cancelled, "timed_out": timed_out,
             "stalled": stalled, "deadline_exceeded": deadline_exceeded,
-            "abort_marker": abort_marker,
+            "abort_marker": abort_marker, "output_truncated": output_truncated,
+            "log_truncated": bool(log_fh and log_fh.truncated),
+            "log_dropped_bytes": int(log_fh.dropped_bytes) if log_fh else 0,
             "activity_extended": bool(activity_timeout and stamp[1]
                                        and duration > timeout),
             "activity_timeout": activity_timeout,
@@ -1222,64 +995,8 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
 
 # ---------------------------------------------------------------- 各家适配
 
-def _parse_codex_jsonl(stdout):
-    """解析 codex exec JSONL 事件流。返回 (text, usage, sid)。
-
-    usage 细分来自 turn.completed：input_tokens（含 cached）、cached_input_tokens、
-    output_tokens、reasoning_output_tokens；多 turn 累加。
-    sid 来自 thread.started 的 thread_id（§07 T1.1：供后续 revise/fix 复用会话，
-    会话内前缀按供应商缓存读计价）。
-    """
-    text = ""
-    sid = ""
-    usage = {"input": 0, "output": 0, "cached": 0, "reasoning": 0, "total": 0}
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            ev = json.loads(line)
-        except Exception:
-            continue
-        if ev.get("type") == "thread.started":
-            sid = str(ev.get("thread_id") or sid)
-        elif ev.get("type") == "item.completed":
-            item = ev.get("item") or {}
-            if item.get("type") == "agent_message" and item.get("text"):
-                text = item["text"]
-        elif ev.get("type") == "turn.completed":
-            u = ev.get("usage") or {}
-            inp = int(u.get("input_tokens") or 0)
-            out = int(u.get("output_tokens") or 0)
-            usage["input"] += inp
-            usage["output"] += out
-            usage["cached"] += int(u.get("cached_input_tokens") or 0)
-            usage["reasoning"] += int(u.get("reasoning_output_tokens") or 0)
-            usage["total"] += (u.get("total_tokens") if u.get("total_tokens") is not None
-                               else inp + out)
-    return text, usage, sid
 
 
-def _codex_work_events(stdout):
-    """统计本轮事件流里真实「动了手」的事件数（命令执行/文件改动/MCP 工具）。
-
-    实现步空转闸的客观判据：2026-09-17 mo-so 实现步模型一条命令都没发，纯口头
-    谎报「进程执行被策略拦截」却 exit 0 + 一段像模像样的总结——text 看不出敷衍，
-    command_execution 计数为 0 才是硬证据。"""
-    n = 0
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            ev = json.loads(line)
-        except Exception:
-            continue
-        if ev.get("type") == "item.completed" and (
-                ev.get("item") or {}).get("type") in (
-                "command_execution", "file_change", "mcp_tool_call"):
-            n += 1
-    return n
 
 
 _CODEX_NUDGE_PROMPT = (
@@ -1289,38 +1006,6 @@ _CODEX_NUDGE_PROMPT = (
 )
 
 
-def _codex_silent_no_answer(stdout):
-    """检测 codex「轮次静默空答」，返回 (是否静默, 最后一条 agent_message 文本)。
-
-    形态=事件流里有工具动作（command_execution/file_change/mcp_tool_call），
-    但没有任何一条 agent_message 晚于最后一个工具动作——模型干完活没交结论
-    就 turn.completed。2026-10-16 神瞳实案：qa 轮吐完开场白、跑完 6 条读文件
-    命令后正常收尾（exit 0），开场白被当成最终答案展示。纯说话零动手的轮次
-    不算（那是正常短答）。"""
-    seq = 0
-    last_msg = -1
-    last_work = -1
-    msg_text = ""
-    for line in (stdout or "").splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            ev = json.loads(line)
-        except Exception:
-            continue
-        if ev.get("type") != "item.completed":
-            continue
-        item = ev.get("item") or {}
-        t = item.get("type")
-        if t == "agent_message" and str(item.get("text") or "").strip():
-            seq += 1
-            last_msg = seq
-            msg_text = str(item.get("text"))
-        elif t in ("command_execution", "file_change", "mcp_tool_call"):
-            seq += 1
-            last_work = seq
-    return (last_work >= 0 and last_msg < last_work), msg_text
 
 
 def _codex_nudge_recover(eff_agent, sid, readonly, model, env, workdir,
@@ -1351,91 +1036,12 @@ def _codex_nudge_recover(eff_agent, sid, readonly, model, env, workdir,
     return ok, str(text or "").strip(), usage
 
 
-def _codex_fail_msg(stdout):
-    """从 JSONL 事件流提取终态失败消息；无失败返回 ""。
-
-    2026-09-16 实测：配额/限流只出现在 error 与 turn.failed 事件里，旧解析器
-    两者都丢——进程退出码非 0 时错误串里只剩 "Reading prompt from stdin..."，
-    _quota_error/_transient_error 判不出可降级，健康后继模型从未被尝试。
-    Reconnecting... 是 CLI 内部重试噪音（可能自愈），不取作终态错误；重复
-    重连由进程看门狗提前中断。turn.failed 优先于裸 error（后者取最后一条兜底）。
-    """
-    terminal, last_err = "", ""
-    for line in (stdout or "").splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            ev = json.loads(line)
-        except Exception:
-            continue
-        t = ev.get("type")
-        if t == "turn.failed":
-            e = ev.get("error")
-            terminal = e.get("message") if isinstance(e, dict) else str(e or "")
-        elif t == "error":
-            m = str(ev.get("message") or "")
-            if m and "reconnecting" not in m.lower():
-                last_err = m
-    return terminal or last_err
 
 
-def _parse_claude_json(stdout):
-    data = None
-    try:
-        data = json.loads(stdout)
-    except Exception:
-        # stream-json：逐行事件取最后一条 type=="result"（与旧单 JSON 同构）
-        for line in stdout.splitlines():
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                ev = json.loads(line)
-            except Exception:
-                continue
-            if isinstance(ev, dict) and ev.get("type") == "result":
-                data = ev
-    if not isinstance(data, dict):
-        return None
-    u = data.get("usage") or {}
-    inp = int(u.get("input_tokens") or 0)
-    out = int(u.get("output_tokens") or 0)
-    # 缓存读 + 缓存写都计入 cached（读是省钱的部分，写是额外消耗的部分）
-    cached = int(u.get("cache_read_input_tokens") or 0) + \
-        int(u.get("cache_creation_input_tokens") or 0)
-    usage = {"input": inp, "output": out, "cached": cached, "reasoning": 0,
-             "total": inp + out + cached}
-    # 网关实服模型：请求 deepseek-v4.1-flash 却被网关映射成 gemini-3.8-flash
-    # 之类（2026-09-23 夜班实案）——用量统计记错名、失败排查看错病根，都
-    # 靠 result 行的 modelUsage 对出来
-    served = sorted({str(k) for k in ((data.get("modelUsage") or {}) or {})})
-    return {
-        "text": data.get("result") or "",
-        "cost_usd": data.get("total_cost_usd") or 0.0,
-        "usage": usage,
-        "tokens": usage["total"],
-        "is_error": bool(data.get("is_error")),
-        # §07 T1.1：claude -p 返回本次会话 id，供 --resume 复用
-        "sid": str(data.get("session_id") or ""),
-        "served_models": served,
-    }
 
 
-def _codex_provider_args(cp):
-    """把外部供应商注入为一次性的 codex model_provider（-c 覆盖，不改配置文件）。"""
-    name = cp.get("name", "orch")
-    return ["-c", 'model_provider="%s"' % name,
-            "-c", 'model_providers.%s.name="%s"' % (name, name),
-            "-c", 'model_providers.%s.base_url="%s"' % (name, cp.get("base_url", "")),
-            "-c", 'model_providers.%s.env_key="%s"' % (name, cp.get("env_key", "ORCH_API_KEY")),
-            "-c", 'model_providers.%s.wire_api="%s"' % (name, cp.get("wire_api", "responses"))]
 
 
-def _model_flag(kind, model):
-    if kind in ("codex", "qwen"):
-        return ["-m", model]
-    return ["--model", model]  # claude / opencode / aider
 
 
 def _transient_error(err):
@@ -1608,14 +1214,11 @@ def _cred_audit_note(kind, att, argv):
             "未登录则必死在登录/凭据闸门）")
 
 
-def _log_note(log_path, text):
+def _log_note(log_path, text, max_bytes=DEFAULT_PROCESS_LOG_BYTES):
     if not log_path or not text:
         return
-    try:
-        with open(log_path, "a", encoding="utf-8") as fh:
-            fh.write("\n[%s]\n" % text)
-    except OSError:
-        pass
+    _append_log_bytes(log_path, ("\n[%s]\n" % text).encode("utf-8", "replace"),
+                      max_bytes=max_bytes)
 
 
 def _finish_attempt_ledger(ledger, run_id, command_context, att, out):
@@ -1657,7 +1260,6 @@ _LOG_ERR_HINT = re.compile(
     r"|\b401\b|unauthorized|unauthorised|invalid[_ ]api[_ ]key|authentication[_ ]error"
     r"|ENOTFOUND|ECONNREFUSED|failed to run prompt|api_error|overloaded)",
     re.I)
-
 
 # 「路径:行号(:列号):内容」形态（grep -n / 编译器诊断 / ripgrep 命中行）。
 # 前缀允许 ./ ../ 绝对盘符与 ~；结尾必须有真实扩展名，避免误吞普通报错。
@@ -1804,12 +1406,10 @@ def _augment_error_from_log(out, log_path, limit=300):
 def _grace_wait(cancel_event, seconds, log_path=None, why=""):
     """链尾限流宽限等待：小片睡眠随时响应取消。返回 False=已取消（别再重试）。"""
     if log_path:
-        try:
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write("\n[限流宽限] %s：等待 %ds 后原地重试一次\n"
-                         % (why or "上游限流（429）", seconds))
-        except Exception:
-            pass
+        _append_log_bytes(
+            log_path,
+            ("\n[限流宽限] %s：等待 %ds 后原地重试一次\n"
+             % (why or "上游限流（429）", seconds)).encode("utf-8", "replace"))
     end = time.monotonic() + seconds
     while time.monotonic() < end:
         if cancel_event is not None and cancel_event.is_set():
@@ -1838,7 +1438,8 @@ def _report_key(att, out):
     回写失败绝不能影响主流程（账本是旁路），所以整体吞异常。
     """
     pid, kid = att.get("provider_id") or "", att.get("key_id") or ""
-    if not (pid and kid) or attempt_cancelled(out):
+    raw = out.get("raw") if isinstance(out.get("raw"), dict) else {}
+    if not (pid and kid) or attempt_cancelled(out) or raw.get("output_truncated"):
         return
     try:
         from . import modelhub
@@ -1869,6 +1470,8 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
         return ErrorCode.CANCELLED
     if res.get("timed_out"):
         return ErrorCode.TIMEOUT
+    if res.get("output_truncated"):
+        return ErrorCode.PARSE_FAIL
     if not res.get("ok") or (parsed and parsed.get("is_error")):
         detail = "\n".join((str(res.get("stderr") or ""),
                             str(res.get("stdout") or ""),
@@ -2565,7 +2168,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                               activity_timeout=activity_t,
                                               repeat_abort=repeat_guard,
                                               abort_markers=stream_abort_markers,
-                                              audit_notes=audit_notes)
+                                              audit_notes=audit_notes,
+                                              max_capture_bytes=MAX_AGENT_CAPTURE_BYTES)
                         finally:
                             _dsh_launch_complete(
                                 launch_token,
@@ -2626,14 +2230,19 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         else "退出码 %s" % res["exit_code"])
                 if res.get("deadline_exceeded"):
                     head = "任务总时限已到"
-                out["error"] = head + ("；stderr/stdout: " + tail if tail else "")
-                if kind == "codex":
+                if res.get("output_truncated"):
+                    out["error"] = (
+                        "CLI 输出超过捕获上限（stdout/stderr 各最多 %s 字节），"
+                        "本次结果不完整" % MAX_AGENT_CAPTURE_BYTES)
+                else:
+                    out["error"] = head + ("；stderr/stdout: " + tail if tail else "")
+                if kind == "codex" and not res.get("output_truncated"):
                     fm = _codex_fail_msg(res["stdout"])
                     if fm:
                         # 事件流终态错误比原始 JSONL 尾部可读，也是链降级判定依据
                         out["error"] = "codex: %s（退出码 %s）" % (fm, res["exit_code"])
                 # 5D+2D：错误码归一
-                if kind == "claude":
+                if kind == "claude" and not res.get("output_truncated"):
                     parsed_err = _parse_claude_json(res["stdout"] or "")
                     if (not res.get("timed_out") and not res.get("cancelled")
                             and parsed_err and parsed_err.get("is_error")
@@ -2643,7 +2252,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         if drift:
                             out["error"] += "；" + drift
                             _log_note(log_path, drift)
-                if kind == "codex" and att.get("provider_id"):
+                if (kind == "codex" and att.get("provider_id")
+                        and not res.get("output_truncated")):
                     el = out["error"].lower()
                     if (("wire_api" in el and "no longer supported" in el)
                             or "no route matched" in el
@@ -2656,21 +2266,21 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             _mh.note_codex_wire_dead(att["provider_id"])
                         except Exception:
                             pass
-                elif "no model configured" in out["error"].lower():
+                elif (not res.get("output_truncated")
+                      and "no model configured" in out["error"].lower()):
                     # CLI 本体没配置（kimi 实测）→ 运行期自愈：把绑定注入其
                     # 自家配置，本次换将之后的下一轮即可用
                     try:
                         from . import manager as _mg
                         note = _mg.sync_cli_config_now(agent.get("id", ""))
                         if note and log_path:
-                            try:
-                                with open(log_path, "a", encoding="utf-8") as fh:
-                                    fh.write("\n[自愈] %s\n" % note)
-                            except Exception:
-                                pass
+                            _append_log_bytes(
+                                log_path, ("\n[自愈] %s\n" % note).encode(
+                                    "utf-8", "replace"))
                     except Exception:
                         pass
                 if not (res.get("timed_out") or res.get("cancelled")
+                        or res.get("output_truncated")
                         or _quota_error(out["error"]) or _transient_error(out["error"])
                         or _rate_limited(out["error"])
                         or _permission_error(out["error"])):
@@ -2681,13 +2291,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     _augment_error_from_log(out, log_path)
                 out["error_code"] = (ErrorCode.CANCELLED if res.get("cancelled")
                                       else ErrorCode.TIMEOUT if res.get("timed_out")
+                                      else ErrorCode.PARSE_FAIL
+                                      if res.get("output_truncated")
                                       else ErrorCode.FORBIDDEN
                                       if _permission_error(out["error"])
                                       else classify_error_text(out["error"])
                                       or _classify_failure(res, kind=kind))
                 out["error"] += _login_hint(kind, out["error_code"],
                                             out["error"])
-                retryable_stream = (stream_retries < STREAM_RETRY_N
+                retryable_stream = (not res.get("output_truncated")
+                                    and stream_retries < STREAM_RETRY_N
                                     and _stream_retryable_failure(
                                         res, out["error"], kind=kind,
                                         readonly=readonly)
@@ -2961,130 +2574,3 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 skipped_upstreams.add(upstream)
     return out
 
-
-def _loads_lenient(text):
-    """容错 json.loads：修复字符串内未转义引号后再解析。
-
-    模型高频病：评审 note 里带英文直引号（"第5章"冷战三天"使用…"），
-    严格 JSON 被打碎。判据：字符串内遇到 `"` 时向后看第一个非空白字符，
-    是 , } ] : 视为结构性收尾引号，否则按字面引号转义。"""
-    out = []
-    i, n = 0, len(text)
-    in_str = False
-    while i < n:
-        c = text[i]
-        if in_str:
-            if c == "\\" and i + 1 < n:
-                out.append(text[i:i + 2])
-                i += 2
-                continue
-            if c == '"':
-                j = i + 1
-                while j < n and text[j] in " \t\r\n":
-                    j += 1
-                nxt = text[j] if j < n else ""
-                if nxt in ",}]:":
-                    in_str = False
-                    out.append(c)
-                else:
-                    out.append('\\"')
-                i += 1
-                continue
-            out.append(c)
-            i += 1
-            continue
-        if c == '"':
-            in_str = True
-        out.append(c)
-        i += 1
-    return json.loads("".join(out))
-
-
-def extract_json(text):
-    """从模型回复中提取 JSON：直接解析 → ```json 围栏 → 平衡花括号扫描。"""
-    if not text:
-        return None
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except Exception:
-            pass
-        try:
-            return _loads_lenient(m.group(1))
-        except Exception:
-            pass
-    start = text.find("{")
-    while start != -1:
-        depth = 0
-        for i in range(start, len(text)):
-            c = text[i]
-            if c == "{":
-                depth += 1
-            elif c == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[start:i + 1])
-                    except Exception:
-                        break
-        start = text.find("{", start + 1)
-    return None
-
-
-def as_scores(gj):
-    """评审解析第二道网：花括号兜底扫描会掉进第一个可平衡的子对象——
-    外层 JSON 病得重时返回的是「维度→分数」本体（无 scores 键），这里包回
-    评审形状，否则良评审被误判成「输出不可解析」（2026-09-18 七猫案：
-    kimi 正常出分却因内嵌引号整轮判评审全挂，连环白烧自动续跑）。"""
-    if isinstance(gj, dict) and not isinstance(gj.get("scores"), dict):
-        vals = {k: v for k, v in gj.items()
-                if isinstance(v, (int, float)) and not isinstance(v, bool)}
-        if vals and len(vals) == len(gj) and len(vals) >= 3:
-            return {"scores": vals, "issues": [], "summary": ""}
-    return gj if isinstance(gj, dict) else None
-
-
-def extract_scores_from_text(text):
-    """评审解析第四道网（借鉴 BAML 的宽容提取）：模型把分数写成散文键值对
-    完全不出 JSON 时（2026-09-18 真实案例：kimi 正文提分），从文本直接抓
-    「维度：N 分」模式。返回 scores dict 或 {}。
-    2026-09-25 批1 补：分隔符不止冒号——短横线「正确性 - 9 分」、全角等号
-    「＝」、箭头「→」三种真实输出形态此前全漏，格式错被误判质量差白烧修复轮。"""
-    if not text:
-        return {}
-    scores = {}
-    for m in re.finditer(
-            r"([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9 ]{0,11})"
-            r"\s*[:：\-＝=→]\s*(\d{1,2}(?:\.\d)?)\s*分?", text):
-        dim = m.group(1).strip()
-        try:
-            val = float(m.group(2))
-        except ValueError:
-            continue
-        if not dim or dim in scores or not (1.0 <= val <= 10.0):
-            continue
-        scores[dim] = round(val, 1)
-    return scores if len(scores) >= 3 else {}
-
-
-def scores_from_prose(text, dims):
-    """评审解析第三道网：agentic CLI 有时把 JSON 写进文件、stdout 只留中文
-    总结（「情节 8 / 人物 8 / …」）。JSON 全灭后按维度名从正文提分；
-    至少命中 3 个维度才认（防普通行文里的巧合数字）。"""
-    if not text or not dims:
-        return {}
-    found = {}
-    for d in dims:
-        m = re.search(re.escape(d) + r"\s*[:：/是]?\s*([0-9]+(?:\.[0-9]+)?)", text)
-        if m:
-            try:
-                found[d] = float(m.group(1))
-            except (TypeError, ValueError):
-                pass
-    return found if len(found) >= 3 else {}

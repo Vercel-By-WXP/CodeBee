@@ -7,7 +7,7 @@ import json
 import threading
 import time
 
-from . import paths, retrieval
+from . import atomic, paths, retrieval
 
 _REPORT_FILE = paths.DATA_DIR / "knowledge_pipeline.json"
 _LOCK = threading.RLock()
@@ -73,10 +73,7 @@ def ingest(source, text, metadata=None, *, chunk_size=1200, overlap=120):
     with _LOCK:
         data = _load()
         data[ingest_id] = report
-        _REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _REPORT_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(_REPORT_FILE)
+        atomic.write_json(_REPORT_FILE, data, mode=0o600)
     return report
 
 

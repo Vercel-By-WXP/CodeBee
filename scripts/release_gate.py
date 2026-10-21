@@ -64,6 +64,16 @@ def require_clean(label: str = "工作区") -> None:
                         (label, status))
 
 
+def check_versions() -> None:
+    """Require VERSION and every published package manifest to agree."""
+    checker = ROOT / "scripts" / "sync_version.py"
+    result = _run((sys.executable, str(checker)), timeout=60)
+    if result.returncode != 0:
+        detail = ((result.stdout or "") + "\n" +
+                  (result.stderr or "")).strip()
+        raise GateError("VERSION 与 package metadata 不一致：\n%s" % detail)
+
+
 def run_tests() -> None:
     # The release gate runs on Linux, while the launch contract tests exercise
     # Windows console argv and isolated temporary CLI homes. Keep that
@@ -187,6 +197,7 @@ def pack_and_smoke() -> Path:
 
 def run_gate(*, publish: bool = False) -> None:
     require_clean("发版前工作区")
+    check_versions()
     run_tests()
     require_clean("全量测试后的工作区")
     pack_and_smoke()

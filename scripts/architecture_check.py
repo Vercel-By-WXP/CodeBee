@@ -2,9 +2,10 @@
 """架构基线检查器（借鉴 zai-org/ZCode 开源的 architecture-policy 体系）。
 
 机器可执行的三道守护，防多代理并行写入时代码架构漂移：
-    1. **层序单向**：policy.layers 定义的层号小→大单向依赖（L_i 只准 import
-   L_j, j>=i）——数据层不得反手依赖编排层。未列入策略的模块不参与层序
-   判断，但仍参与依赖环检查，避免把未分层模块误报成最高层。
+    1. **层序单向**：policy.layers 定义的层号小→大，较高层只依赖同层或
+   更低层（L_i 只准 import L_j，j<=i）——数据层不得反手依赖编排层。未列入
+   策略的模块不参与层序判断，但仍参与依赖环检查，避免把未分层模块误报成
+   某一具体层。
 2. **禁环**：import 图 DFS 找环；基线里的存量环豁免，新边成环即拦。
 3. **行数基线**：超过 maxFileLines 且超过自己历史最高才违规——存量千行
    文件不被挡路，但「越写越长」的漂移即刻点名。
@@ -70,21 +71,38 @@ def module_name(py_file):
     return name[:-9] if name.endswith(".__init__") else name
 
 
-def module_deps(py_file):
-    """AST 解析一个 py 文件的内部依赖（from . import x / from .x import y /
-    core 层文件里的 from core import x）。"""
+def _internal_module_name(name):
+    """Normalize supported absolute imports to the app/core module namespace."""
+    value = str(name or "")
+    for prefix in ("app.core.", "core."):
+        if value.startswith(prefix):
+            return value[len(prefix):]
+    if value in ("app.core", "core"):
+        return ""
+    return None
+
+
+def module_deps(py_file, known_modules=None):
+    """Parse imports into canonical app/core module names.
+
+    Relative imports are resolved from their package, so ``publish.auto``
+    importing ``.ledger`` becomes ``publish.ledger`` instead of colliding with
+    a same-named top-level module. ``known_modules`` distinguishes a local
+    submodule in ``from package import item`` from an exported attribute.
+    """
     name = module_name(py_file)
     deps = set()
+    known_modules = set(known_modules or ())
     try:
         tree = ast.parse(py_file.read_text(encoding="utf-8", errors="replace"))
     except SyntaxError as e:
         return name, deps, [("syntax", "%s 解析失败 %s" % (name, e))]
-    in_core = py_file.relative_to(ROOT).parts[:1] == ("app",) and \
-        "core" in py_file.relative_to(ROOT).parts[:2]
-    # 只把模块初始化阶段的导入纳入架构图。函数/方法内部的导入是
-    # 项目刻意使用的惰性依赖（常用于打断运行时循环），把它们当成模块
-    # 级边会把已经隔离的运行时路径重新拼成假环。模块顶层的 try/if
-    # 仍通过递归保留；函数、类和 lambda 的代码块不会进入这里。
+    package_parts = (name.split(".") if py_file.name == "__init__.py"
+                     else name.split(".")[:-1])
+
+    # Only module-initialization imports belong in the architecture graph.
+    # Function-local imports are deliberate lazy dependencies used to break
+    # runtime cycles. Top-level if/try/with bodies remain visible.
     def top_level_nodes(nodes):
         for node in nodes:
             yield node
@@ -99,34 +117,63 @@ def module_deps(py_file):
                     yield from top_level_nodes((child,))
 
     for node in top_level_nodes(tree.body):
-        if isinstance(node, ast.ImportFrom) and node.level == 1:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imported = _internal_module_name(alias.name)
+                if imported and (not known_modules or imported in known_modules):
+                    deps.add(imported)
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+
+        if node.level:
+            # One dot selects the current package; each additional dot ascends
+            # one package (``from .. import paths`` resolves at core root).
+            ascend = node.level - 1
+            if ascend > len(package_parts):
+                continue
+            parts = package_parts[:len(package_parts) - ascend]
             if node.module:
-                deps.add(node.module.split(".")[0])
+                parts.extend(node.module.split("."))
+            base = ".".join(parts)
+            if base and base in known_modules and base != name:
+                deps.add(base)
+            if node.module:
+                if base:
+                    deps.add(base)
             else:
-                for a in node.names:
-                    deps.add(a.name)          # from . import x, y
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and in_core:
-            m = node.module or ""
-            if m == "core" or m.startswith("core."):
-                rest = m.split(".")[1] if "." in m else ""
-                if rest:
-                    deps.add(rest)
-                else:
-                    for a in node.names:      # from core import x, y
-                        deps.add(a.name)
+                for alias in node.names:
+                    candidate = ".".join(filter(None, (base, alias.name)))
+                    if not known_modules or candidate in known_modules:
+                        deps.add(candidate)
+                    elif base and base in known_modules and base != name:
+                        deps.add(base)
+            continue
+
+        base = _internal_module_name(node.module)
+        if base is None:
+            continue
+        if base and base in known_modules:
+            deps.add(base)
+        for alias in node.names:
+            candidate = ".".join(filter(None, (base, alias.name)))
+            if candidate and candidate in known_modules:
+                deps.add(candidate)
     return name, {d for d in deps if d != name and d not in ("core",)}, []
 
 
 def build_graph(policy, only_files=None):
     """扫 checkGlobs 建 {module: set(deps)}；only_files 非空时只收这些文件。"""
     graph, problems = {}, []
-    for pat in policy.get("checkGlobs", ["app/**/*.py"]):
-        for py in sorted(ROOT.glob(pat)):
-            if only_files is not None and str(_resolved_path(py)).replace("\\", "/") not in only_files:
-                continue
-            name, deps, errs = module_deps(py)
-            graph[name] = deps
-            problems.extend(errs)
+    files = sorted({py for pat in policy.get("checkGlobs", ["app/**/*.py"])
+                    for py in ROOT.glob(pat)})
+    known_modules = {module_name(py) for py in files}
+    for py in files:
+        if only_files is not None and str(_resolved_path(py)).replace("\\", "/") not in only_files:
+            continue
+        name, deps, errs = module_deps(py, known_modules)
+        graph[name] = deps
+        problems.extend(errs)
     return graph, problems
 
 
@@ -138,7 +185,7 @@ def layer_of(policy, mod):
 
 
 def check_layers(policy, graph):
-    """层序单向：L_i import L_j 且 j<i 即违规。"""
+    """Higher layers may depend on the same or a lower-numbered layer."""
     out = []
     for mod, deps in sorted(graph.items()):
         mi = layer_of(policy, mod)
@@ -146,7 +193,7 @@ def check_layers(policy, graph):
             continue
         for d in sorted(deps):
             di = layer_of(policy, d)
-            if di is not None and di < mi:
+            if di is not None and di > mi:
                 out.append("layer: %s(L%d) -> %s(L%d) 反向依赖" %
                            (mod, mi, d, di))
     return out

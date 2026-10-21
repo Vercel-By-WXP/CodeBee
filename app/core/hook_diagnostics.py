@@ -8,6 +8,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import atomic
 from .redact import scrub_text
 
 _LOCK = threading.RLock()
@@ -58,13 +59,7 @@ def record(data_dir, hook, payload, *, status, exit_code=None, duration_ms=0, er
                 (x.get("hook_id"), x.get("event")) != (row["hook_id"], row["event"])]
         data = {"version": 1, "recent": recent[:100], "last_errors": errors[:50]}
         path = _path(data_dir)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        try:
-            tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, path)
-        finally:
-            tmp.unlink(missing_ok=True)
+        atomic.write_json(path, data, mode=0o600, indent=None)
     return row
 
 

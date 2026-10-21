@@ -11,6 +11,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import atomic
 from .redact import scrub_text
 
 _LOCK = threading.RLock()
@@ -70,13 +71,10 @@ def _load():
 
 def _persist(state):
     path = _file()
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    try:
-        os.chmod(str(tmp), 0o600)
-    except OSError:
-        pass
-    os.replace(str(tmp), str(path))
+    # Authorization rules and command previews are security-sensitive.  Use a
+    # unique temp inode so concurrent writers cannot clobber one another, and
+    # publish it with restrictive permissions before the rename.
+    atomic.write_json(path, state, mode=0o600)
 
 
 def _hash(value):

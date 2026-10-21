@@ -20,7 +20,7 @@
 - **编排引擎**：`app/core/pipeline.py` 负责规划后的步骤执行、取消/暂停、预算与修复轮次；`jobs.py` 提供后台任务队列和 worker 生命周期。
 - **CLI 适配器层**：`registry.py`、`catalog.py` 和 `manager.py` 保存 CLI 能力/绑定信息；`router.py` 根据角色、任务类型、历史统计和健康状态选择实现者或评审者；`runner.py` 以参数列表启动外部进程并解析输出。
 - **评审模块**：`pipeline.py` 的评审阶段调用 `quality_gate.py`、`evaluation.py` 和评审路由，规范化维度评分、共识与通过条件。人工评审流转由 `review_requests.py` 记录。
-- **持久化层**：`store.py` 负责任务、运行、步骤、消息和报告；`paths.py` 集中管理数据目录；运行日志与产物放在每次 run 的目录中。具体文件布局和迁移规则若需对外稳定化仍【需确认】。
+- **持久化层**：`store.py` 负责任务、运行、步骤、消息和报告；`paths.py` 集中管理数据目录；运行日志与产物放在每次 run 的目录中。JSON 状态（包括自动化、资产、presence、模板和项目权限登记）统一经 `atomic.py` 的唯一临时文件 + 原子替换写入，并在 POSIX 收紧为进程私有权限；评审历史由 `review_storage.py` 使用标准库 SQLite 保存，WAL sidecar 同样收紧权限。具体文件布局和迁移规则若需对外稳定化仍【需确认】。
 - **Web UI**：`app/main.py` 使用 Python 标准库 `ThreadingHTTPServer` 提供 HTTP API 和静态资源，前端位于 `app/ui/`。默认绑定回环地址；远程访问必须显式配置。
 
 ## 关键数据流
@@ -35,11 +35,13 @@
 
 ### 添加 CLI 适配器
 
-在 `app/core/registry.py`/`catalog.py` 的 CLI 描述表中登记可执行文件、能力和模型字段；在 `runner.py` 增加必要的 argv/输出解析分支；通过 `manager.py` 接入检测、绑定和健康状态，并为成功、超时、鉴权失败和降级补充 unittest。稳定的适配器接口名称目前【需确认】，应以现有注册项和测试约定为准。
+CLI 元数据仍由 `catalog.py`/`registry.py` 管理，启动和能力检测由 `manager.py` 协调，执行兼容分支仍集中在 `runner.py`。已拆出的 `cli_commands.py`、`cli_parsers.py`、`cli_text.py` 分别处理命令发现、供应商输出解析和文本清洗；它们保留 `runner.py` 的旧入口以兼容现有调用。当前尚无覆盖所有供应商的统一运行时 adapter protocol：`adapter_scaffold.py` 生成的是接入起点和可发现的测试样例，不会自动替代 runner 分支。
+
+可从仓库根目录运行 `python app/main.py scaffold-adapter --name "Example CLI" --executable example-cli` 生成文件，再按目标 CLI 补齐参数、输出和错误码处理。接入时保留现有 catalog ID、调用模板和结果字典形状；先增加 fake CLI 契约测试，再逐步把对应分支迁入统一 adapter protocol，避免要求用户同时升级所有已有 CLI 配置。
 
 ### 自定义路由策略
 
-当前默认选择逻辑位于 `router.py`（`pick`、`pick_reviewer`、`route_plan`），会综合角色、任务类型、绑定、在线状态、历史统计和候选排除列表。要替换策略，建议实现 `docs/routing_strategy.md` 定义的接口，并在配置层选择策略；配置键名与运行时加载入口尚未固定，标记为【需确认】。
+当前默认选择逻辑位于 `router.py`（`pick`、`pick_reviewer`、`route_plan`），会综合角色、任务类型、绑定、在线状态、历史统计和候选排除列表。`routing_strategy.py` 提供进程内显式注册表；嵌入式调用方可调用 `register()`/`set_default()`，或在启动时用 `CODEBEE_ROUTING_STRATEGY` 选择已注册名称。未知策略和策略异常回落到内置打分。任务数据不能提供 Python 导入路径。
 
 ## 运行边界
 

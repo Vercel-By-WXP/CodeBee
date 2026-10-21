@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from . import atomic
+
 
 # These tags are part of the reviewer protocol in pipeline.py. They are
 # persisted separately under .codebee and must never cross into chapter text.
@@ -51,14 +53,5 @@ def atomic_write_chapter(workdir, i, text):
     # 一并拒绝：workdir 必须是已存在的目录）
     if root not in p.parents or not root.is_dir():
         raise ValueError("章节路径越界: chapter-%02d.md" % int(i))
-    tmp = Path(str(p) + ".tmp")
-    try:
-        tmp.write_text(strip_internal_blocks(text), encoding="utf-8", errors="replace")
-        tmp.replace(p)
-    except BaseException:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+    atomic.write_text(p, strip_internal_blocks(text))
     return p

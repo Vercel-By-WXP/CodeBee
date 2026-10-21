@@ -24,7 +24,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional, Tuple, cast
 from urllib.parse import urlsplit
 
 from .. import atomic, chaptersafe, operations, paths, quality_gate
@@ -68,7 +68,7 @@ def automatic_release_kwargs(auto_submit, force=False, force_confirmed=False,
             "force_confirmed": bool(force_confirmed),
             "force_reason": str(force_reason or "")}
 _state = {"platforms": {}}      # {plat: {status, port, at, error, last_login, last_action}}
-_browsers = {}                  # plat → Browser（进程内缓存，alive 校验兜底）
+_browsers: Dict[str, Browser] = {}  # plat → Browser（进程内缓存，alive 校验兜底）
 _AUTH_WATCH_LOCK = threading.Lock()
 _AUTH_WATCH_STOP = threading.Event()
 _AUTH_WATCH_THREAD = None
@@ -289,7 +289,7 @@ def _auth_script_entries(slot):
     return entries
 
 
-def _auth_page_for_target(slot, target, current_page):
+def _auth_page_for_target(slot: str, target: str, current_page: Any) -> Any:
     if str(getattr(current_page, "_target_id", "") or "") == str(target):
         return current_page
     browser = _browsers.get(slot)
@@ -302,7 +302,7 @@ def _auth_page_for_target(slot, target, current_page):
     return None
 
 
-def _remove_auth_scripts(slot, page, entries):
+def _remove_auth_scripts(slot: str, page: Any, entries: Any) -> None:
     """Remove imported scripts and keys from every still-live target."""
     for target, item in (entries or {}).items():
         target_page = _auth_page_for_target(slot, target, page)
@@ -320,7 +320,7 @@ def _remove_auth_scripts(slot, page, entries):
                 pass
 
 
-def _seed_auth_state(plat, slot, page):
+def _seed_auth_state(plat: str, slot: str, page: Any) -> bool:
     """Inject a provisioned auth state into this page, if one is configured.
 
     Only cookies/localStorage belonging to the platform's own host (including
@@ -436,7 +436,7 @@ def _auth_state_changed(slot):
         return False
     previous = _st(slot).get("auth_state_fingerprint")
     try:
-        previous = tuple(int(value) for value in previous)
+        previous = tuple(int(value) for value in (previous or ()))
     except (TypeError, ValueError):
         previous = ()
     return tuple(fingerprint) != previous
@@ -980,7 +980,7 @@ def remove_account(plat, acc_id):
     return True, ""
 
 
-def _ensure_browser(plat):
+def _ensure_browser(plat: str) -> Browser:
     """attach-or-launch：进程内缓存 → 记住的端口 → 全新 launch。"""
     with LOCK:
         b = _browsers.get(plat)
@@ -1000,7 +1000,7 @@ def _ensure_browser(plat):
         return b
 
 
-def _open_page(plat, preserve_tabs=False):
+def _open_page(plat: str, preserve_tabs: bool = False) -> Tuple[Browser, Page]:
     b = _ensure_browser(plat)
     if preserve_tabs:
         # A platform challenge may live in a tab other than the first one.
@@ -1011,6 +1011,7 @@ def _open_page(plat, preserve_tabs=False):
         if target_id and callable(page_for_target):
             try:
                 page = page_for_target(target_id)
+                page = cast(Optional[Page], page)
                 if page is not None:
                     _seed_auth_state(base_plat(plat), plat, page)
                     return b, page
@@ -1042,6 +1043,8 @@ def _open_page(plat, preserve_tabs=False):
         except Exception:
             pass
     page = b.first_page(create=True)
+    if page is None:
+        raise BrowserError("浏览器没有可用页面")
     _seed_auth_state(base_plat(plat), plat, page)
     return b, page
 
@@ -2128,7 +2131,7 @@ def _reconcile_upload_before_retry(pending):
 
 
 def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
-                           chapter_no, title, error=""):
+                           chapter_no, title, error: object = ""):
     """Durably retry a direct upload after login/browser recovery."""
     slot = slot_of(plat, account)
     options = dict(options or {})
@@ -2439,6 +2442,7 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
             reconcile = getattr(mod, "reconcile_book_id", None)
             if not callable(reconcile):
                 raise RuntimeError("平台不支持建书前可靠对账，已停止以避免重复建书")
+            reconcile = cast(Callable[..., Tuple[Any, Any, Any]], reconcile)
             found, book_id, detail = reconcile(page, {"title": book_name})
             if not found and detail:
                 raise RuntimeError("建书前作品对账失败：%s" % detail)

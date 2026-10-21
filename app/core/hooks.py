@@ -23,7 +23,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import hook_diagnostics
+from . import atomic, hook_diagnostics
 
 from . import paths
 
@@ -81,9 +81,7 @@ def save_list(items):
                     "event": event, "cmd": cmd,
                     "enabled": bool(h.get("enabled", True)),
                     "timeout_s": timeout})
-    tmp = _path().with_suffix(".tmp")
-    tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(_path())
+    atomic.write_json(_path(), out, mode=0o600, indent=1)
     return out
 
 

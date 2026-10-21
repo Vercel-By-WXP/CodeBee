@@ -10,7 +10,7 @@ import copy
 import hashlib
 import json
 
-from . import paths, flows
+from . import atomic, paths, flows
 
 
 _EXPERTS = {
@@ -120,10 +120,7 @@ def import_expert(expert):
     if not isinstance(raw, dict):
         raw = {}
     raw[expert_id] = expert
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(path)
+    atomic.write_json(path, raw, mode=0o600)
     return _copy(expert)
 
 

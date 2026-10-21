@@ -2072,6 +2072,7 @@ function applyState(d) {
   restoreLastTask();    // 刷新/重开后回到最近打开的任务对话（只在首帧尝试一次）
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
   memoryCenterMaybeRefresh();
+  updateStatusSidebar(); // 暖色皮肤状态侧栏
   if (S.tab === "browser") {
     browserRenderTaskContext();
     browserLoadPublishState(browserCurrentTask());
@@ -7615,9 +7616,11 @@ function bmStatusChip(st) {
 
 /* 作品信息 TAB：所有连载任务都展示（一本书一份开书资料，都是用第一个）。
  * 续写批次（serial.continues 指向首批）只读沿用根任务的资料，生成/重生成回
- * 首批任务做——面板上给指路入口。非连载任务不渲染。 */
+ * 首批任务做——面板上给指路入口。serial_novel 类型但未配连载批次（如只建书
+ * 投稿的任务，2026-10-21 实案）同样展示，否则任务详情里找不到作品信息页签。 */
 function bmNeedsPanel(task) {
-  return !!((task || {}).serial);
+  const t = task || {};
+  return !!(t.serial || t.type === "serial_novel");
 }
 
 /* 连载链根任务：沿 serial.continues 上溯（环/断链停在当前）。状态里找不到
@@ -13672,6 +13675,7 @@ const SKINS = [
   { id: "paper", name: t("简白"), desc: t("纯白画布 + 浅灰分区 + 克制蓝强调，Codex 式极简明亮") },
   { id: "forest", name: t("森野"), desc: t("墨绿底色 + 青翠强调，偏自然的护眼配色") },
   { id: "amber", name: t("暖阳"), desc: t("暖棕底色 + 琥珀强调，纸感暖调") },
+  { id: "warm", name: t("暖纸"), desc: t("米白底色 + 琥珀强调，护眼工作台风格") },
   { id: "violet", name: t("霓虹"), desc: t("暗紫底色 + 品红强调，霓虹感强") },
   { id: "contrast", name: t("高对比"), desc: t("纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰") },
 ];
@@ -13746,6 +13750,56 @@ window.addEventListener("storage", (event) => {
   renderAppearance();
   renderCodePreviews();
 });
+
+/* 暖色皮肤主页：渲染日期 + 最近任务 */
+function renderHome() {
+  // 日期
+  const dateEl = $("rd-home-date");
+  if (dateEl) {
+    const now = new Date();
+    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+    const month = now.getMonth() + 1;
+    const day = now.getDate();
+    const weekday = weekdays[now.getDay()];
+    dateEl.textContent = `${month} 月 ${day} 日 · 星期${weekday}`;
+  }
+
+  // 最近任务
+  const listEl = $("rd-recent-list");
+  if (listEl) {
+    const runs = (S.state && S.state.runs) || [];
+    const recent = runs.slice(0, 5);
+    if (recent.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px" data-i18n="暂无任务">暂无任务</div>';
+    } else {
+      listEl.innerHTML = recent.map((r) => {
+        const status = r.status || "completed";
+        const dotClass = status === "running" ? "running" : status === "queued" ? "waiting" : status === "failed" ? "failed" : "completed";
+        const progress = r.progress ? Math.round(r.progress) + "%" : "—";
+        const meta = [r.project_name || "", r.flow_name || "", r.created_at ? formatRelativeTime(r.created_at) : ""].filter(Boolean).join(" · ");
+        return '<div class="rd-task-item" onclick="openTask(\'' + esc(r.id || "") + '\')">'
+          + '<span class="rd-task-dot ' + dotClass + '"></span>'
+          + '<div class="rd-task-info">'
+          + '<div class="rd-task-title">' + esc(r.title || r.id || "") + '</div>'
+          + '<div class="rd-task-meta">' + esc(meta) + '</div>'
+          + '</div>'
+          + '<span class="rd-task-progress">' + progress + '</span>'
+          + '<svg class="ico rd-task-arrow" aria-hidden="true"><use href="#i-chevron-r"></use></svg>'
+          + '</div>';
+      }).join("");
+    }
+  }
+}
+
+function showHome() {
+  // 隐藏所有页面，显示主页
+  document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
+  const homePage = $("page-home");
+  if (homePage) homePage.classList.remove("hidden");
+  // 更新页面标题
+  const pageTitle = $("page-title");
+  if (pageTitle) pageTitle.textContent = t("工作台");
+}
 
 /* 外观页：皮肤卡片（点选即换） + 明暗分段控。选中态同时给描边与勾选，
  * 不只靠颜色深浅传达，保证在高对比等皮肤下也一眼可辨。 */
@@ -15167,6 +15221,1008 @@ function memoryCenterSignature() {
 function memoryCenterMaybeRefresh() {
   if (S.tab === "memory" && MEMORY_CENTER.stateSignature !== memoryCenterSignature()) loadMemoryCenter();
 }
+
+/* ==================== 记忆图谱 (Memory Atlas) ==================== */
+const ATLAS = { data: null, items: [], sky: [], ready: false };
+window.loadAtlas = async function loadAtlas() {
+  if (ATLAS._stop) { try { ATLAS._stop(); } catch(e){} ATLAS._stop = null; }
+  if (ATLAS.ready) return;
+  try {
+    const data = await api("/api/memory");
+    ATLAS.data = data;
+    ATLAS.ready = true;
+    ATLAS._init(data);
+  } catch (e) {
+    ATLAS.data = null;
+    ATLAS.ready = false;
+    const el = $("atlas-stream-list");
+    if (el) el.innerHTML = '<div class="a-empty-inj" style="padding:24px;text-align:center">' + esc(e.message) + '</div>';
+  }
+};
+
+ATLAS._init = function(data) {
+  (function() {
+    'use strict';
+    const $a = (s, r) => (r || document).querySelector(s);
+    const $$a = (s, r) => Array.from((r || document).querySelectorAll(s));
+    const TAU = Math.PI * 2;
+    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+
+    /* --- data transform --- */
+    const g = data.global || {};
+    const sk = g.skills || {};
+    const kb = g.knowledge || {};
+    const projs = data.projects || [];
+
+    const SCOPE_LABEL = { novel: '长篇', serial_novel: '连载', code: '代码', research: '调研', article: '文章', '*': '通用' };
+    const scopeText = (arr) => { if (!arr || !arr.length) return '通用'; return arr.map(s => SCOPE_LABEL[s] || s).join(' / '); };
+    const normScope = (s) => { if (!s) return ['*']; if (typeof s === 'string') return s === '*' ? ['*'] : [s]; return Array.isArray(s) ? s : ['*']; };
+    const calcKarma = (hits, won, lost) => { const base = Math.min(1, (hits || 0) * 0.02 + (won || 0) * 0.08); return Math.max(0.1, Math.min(0.99, base - (lost || 0) * 0.04)); };
+    const calcChars = (t, b) => (t || '').length + (b || '').length;
+
+    const packs = (sk.packs || []).map(p => ({
+      id: 'pk_' + (p.id || p.name), source: 'pack', title: p.name || p.id, body: p.note || '',
+      category: '经验包', scope: normScope(p.scopes), tags: [], karma: 0.9, hits: p.hits || 0,
+      won: 0, lost: 0, seen: 1, stale: false, enabled: p.enabled !== false, star: true, asOf: null,
+      chars: p.chars || calcChars(p.name, p.note)
+    }));
+
+    const lessons = (sk.lessons || []).map(x => ({
+      id: 'l_' + (x.id || x.title), source: 'lesson', title: x.title || '', body: x.content || '',
+      category: x.category || '未分类', scope: normScope(x.scope), tags: [],
+      karma: calcKarma(x.hits, x.won, x.lost), hits: x.hits || 0, won: x.won || 0, lost: x.lost || 0,
+      seen: x.seen || 1, stale: false, enabled: x.enabled !== false, star: true, asOf: null,
+      chars: calcChars(x.title, x.content)
+    }));
+
+    const knowledge = (kb.entries || []).map(x => ({
+      id: 'k_' + (x.id || x.title), source: 'knowledge', title: x.title || '', body: x.body || '',
+      category: '领域事实', scope: normScope(x.scope), tags: x.tags || [],
+      karma: calcKarma(x.hits, 0, 0), hits: x.hits || 0, won: 0, lost: 0,
+      seen: x.seen || 1, stale: !!x.stale, enabled: x.enabled !== false, star: true,
+      asOf: x.as_of || '', chars: calcChars(x.title, x.body)
+    }));
+
+    const projects = [];
+    (projs || []).forEach(proj => {
+      (proj.entries || []).forEach(e => {
+        projects.push({
+          id: 'p_' + (e.id || e.title), source: 'project', title: e.title || '', body: e.content || '',
+          category: '项目记忆', scope: ['*'], tags: [],
+          karma: calcKarma(0, 0, 0), hits: 0, won: 0, lost: 0,
+          seen: 1, stale: !!e.expired, enabled: e.status === 'approved', star: true, asOf: null,
+          chars: calcChars(e.title, e.content)
+        });
+      });
+    });
+
+    const allItems = [].concat(packs, lessons, knowledge, projects);
+    const byId = new Map(allItems.map(it => [it.id, it]));
+
+    const SOURCE_LABEL = { pack: '经验包', lesson: '经验', knowledge: '知识', project: '项目' };
+    const SOURCE_COLOR = { pack: 'var(--text)', lesson: 'var(--accent)', knowledge: 'var(--ok)', project: 'var(--warn)' };
+    const SOURCE_COLOR_RAW = { pack: '#e7eefb', lesson: '#3ba9f5', knowledge: '#35c99b', project: '#f0b429' };
+
+    const TOTALS = {
+      lessons: lessons.length, knowledge: knowledge.length, projects: projects.length,
+      packs: packs.length, all: allItems.length,
+      never: lessons.filter(x => !x.hits).length,
+      stale: knowledge.filter(x => x.stale).length,
+      lost: lessons.filter(x => x.lost > 0).length,
+      dup: lessons.filter(x => x.seen > 1).length,
+      won: lessons.filter(x => x.won > 0).length,
+      hit: lessons.filter(x => x.hits > 0).length
+    };
+
+    ATLAS.items = allItems;
+    ATLAS.totals = TOTALS;
+
+    /* --- state --- */
+    const state = {
+      q: '', source: 'all', gfilter: null, selectedId: null, hoverId: null,
+      mode: 'source', scenario: 'code', goal: '', excluded: new Set(),
+      matches: null, beam: null, mouse: { x: 0, y: 0, tx: 0, ty: 0 },
+      pointer: { x: 0, y: 0, inside: false }, time: 0, ping: -9999,
+      govLost: TOTALS.lost, govStale: TOTALS.stale, govDup: TOTALS.dup
+    };
+
+    const SCENARIOS = {
+      code: { label: '代码修复', scopes: ['code'], goal: '', keys: ['复现', '日志', '测试', '端口', '根因', '回归', '幂等', '队列'] },
+      novel: { label: '长篇写作', scopes: ['novel', 'serial_novel'], goal: '', keys: ['章节', '衔接', '钩子', '伏笔', '签约', '平台', '人物', '开篇', '卷末'] },
+      research: { label: '调研报告', scopes: ['research', 'article', '*'], goal: '', keys: ['来源', '证据', '结论', '时效', '抽样', '对比'] }
+    };
+
+    /* --- helpers --- */
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const norm = (s) => String(s || '').toLowerCase();
+
+    function searchScore(it, q) {
+      const needle = norm(q);
+      if (!needle) return 0;
+      const t = norm(it.title), b = norm(it.body), tags = norm((it.tags || []).join(' '));
+      let s = 0;
+      if (t.includes(needle)) s += 140 + Math.max(0, 36 - t.indexOf(needle));
+      if (b.includes(needle)) s += 45;
+      if (tags.includes(needle)) s += 70;
+      const parts = needle.split(/[\s,，、]+/).filter(x => x.length > 1);
+      for (const p of parts) { if (t.includes(p)) s += 60; else if (b.includes(p)) s += 22; }
+      return s > 0 ? s * (.6 + it.karma) : 0;
+    }
+
+    function healthOf(it) {
+      if (it.source === 'knowledge' && it.stale) return ['warn', '过期'];
+      if (it.lost >= 2 && it.lost > it.won) return ['bad', '失守 ' + it.lost];
+      if (it.won > 0) return ['ok', '有效 ' + it.won];
+      if (!it.hits && it.source !== 'pack') return ['dim', '未上场'];
+      return null;
+    }
+
+    function healthColor(it) {
+      if (it.source === 'knowledge' && it.stale) return '#e2a24a';
+      if (it.lost > it.won) return '#e26d5a';
+      if (it.won > 0) return '#6fbf85';
+      if (!it.hits) return '#6b6257';
+      return '#3ba9f5';
+    }
+
+    const GP = {
+      never: (it) => !it.hits && it.source !== 'pack',
+      stale: (it) => it.source === 'knowledge' && it.stale,
+      lost: (it) => it.source === 'lesson' && it.lost > 0,
+      dup: (it) => it.source === 'lesson' && it.seen > 1
+    };
+    const GF_LABEL = { never: '从未上场', stale: '可能过期', lost: '失守记录', dup: '近似重复' };
+
+    function currentList() {
+      let arr = allItems;
+      if (state.source !== 'all') arr = arr.filter(x => x.source === state.source);
+      if (state.gfilter) arr = arr.filter(GP[state.gfilter]);
+      if (state.q) {
+        arr = arr.map(it => [it, searchScore(it, state.q)]).filter(x => x[1] > 0)
+          .sort((a, b) => b[1] - a[1]).map(x => x[0]);
+      } else {
+        arr = arr.slice().sort((a, b) => b.karma - a.karma);
+      }
+      return arr;
+    }
+
+    function groupRows(list) {
+      const map = new Map(); const out = [];
+      list.forEach(it => {
+        const key = it.title.split(' · ')[0];
+        let g = map.get(key);
+        if (!g) { g = { key, it, items: [] }; map.set(key, g); out.push(g); }
+        g.items.push(it);
+      });
+      return out;
+    }
+
+    function refreshMatches() {
+      const active = state.q || state.source !== 'all' || state.gfilter;
+      if (!active) { state.matches = null; state.beam = null; return; }
+      const list = currentList();
+      state.matches = new Set(list.map(x => x.id));
+      state.beam = state.q ? state.matches : null;
+      if (state.selectedId && !state.matches.has(state.selectedId)) state.selectedId = null;
+    }
+
+    function toast(msg) {
+      let el = $a('.a-toast');
+      if (!el || !document.body.contains(el)) {
+        el = document.createElement('div');
+        el.className = 'a-toast';
+        el.setAttribute('role', 'status');
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove('show'), 2400);
+    }
+
+    /* --- stream --- */
+    const FILTERS = [
+      ['all', '全部', () => TOTALS.all],
+      ['lesson', '经验', () => TOTALS.lessons],
+      ['knowledge', '知识', () => TOTALS.knowledge],
+      ['project', '项目', () => TOTALS.projects],
+      ['pack', '经验包', () => TOTALS.packs]
+    ];
+
+    function renderChips() {
+      const el = $a('#atlas-source-chips');
+      if (!el) return;
+      el.innerHTML = FILTERS.map(([v, label, cnt]) =>
+        '<button class="a-chip' + (state.source === v ? ' active' : '') + '" data-src="' + v + '">' +
+        esc2(label) + '<b>' + fmt(cnt()) + '</b></button>').join('');
+    }
+
+    function renderStream() {
+      const full = currentList();
+      const grouped = (state.q || state.gfilter) && state.gfilter !== 'dup';
+      const entries = grouped ? groupRows(full) : full.map(it => ({ key: it.title, it, items: [it] }));
+      const rows = entries.slice(0, state.q || state.gfilter ? 60 : 24);
+      const totalForSource = state.source === 'all' ? TOTALS.all : TOTALS[state.source === 'lesson' ? 'lessons' : state.source === 'knowledge' ? 'knowledge' : state.source === 'project' ? 'projects' : 'packs'];
+
+      const cntEl = $a('#atlas-stream-count');
+      if (cntEl) cntEl.textContent = state.q || state.gfilter
+        ? '命中 ' + fmt(full.length) + ' 条' + (grouped ? ' · ' + fmt(entries.length) + ' 组' : '')
+        : 'Top ' + rows.length + ' · 全库 ' + fmt(totalForSource);
+
+      const noteEl = $a('#atlas-filter-note');
+      if (noteEl) noteEl.innerHTML = state.gfilter
+        ? '<div class="a-filter-note"><span>治理筛选 · ' + esc2(GF_LABEL[state.gfilter]) + '</span><button data-clear-filter="1">清除 ×</button></div>'
+        : '';
+
+      const listEl = $a('#atlas-stream-list');
+      if (listEl) listEl.innerHTML = rows.map(g => {
+        const it = g.it; const count = g.items.length;
+        const hits = g.items.reduce((a, x) => a + x.hits, 0);
+        const h = healthOf(it);
+        const col = SOURCE_COLOR_RAW[it.source] || '#3ba9f5';
+        const active = g.items.some(x => x.id === state.selectedId);
+        const sub = SOURCE_LABEL[it.source] + ' · ' + (it.source === 'knowledge' ? scopeText(it.scope) : it.category) +
+          ' · 注入 ' + hits + (count > 1 ? ' · 组内 ' + count + ' 条' : '');
+        const tail = count > 1
+          ? '<span class="a-sbadge dim">×' + count + '</span>'
+          : (h ? '<span class="a-sbadge ' + h[0] + '">' + esc2(h[1]) + '</span>' : '');
+        return '<button class="a-srow' + (active ? ' active' : '') + '" data-id="' + it.id + '" style="--c:' + col + '" title="' + esc2(it.title) + '">' +
+          '<span class="a-sdot"></span>' +
+          '<span class="a-sbody"><span class="a-stitle">' + esc2(g.key) + '</span><span class="a-ssub">' + esc2(sub) + '</span></span>' +
+          tail + '</button>';
+      }).join('') || '<div class="a-empty-inj" style="padding:24px 8px;text-align:center">没有命中的记忆<br><span style="color:var(--muted)">试试搜索关键词</span></div>';
+
+      const footEl = $a('#atlas-foot-left');
+      if (footEl) footEl.innerHTML = state.q || state.gfilter
+        ? '命中 <b>' + fmt(full.length) + '</b> 条' + (grouped ? ' · 归并 <b>' + fmt(entries.length) + '</b> 组' : ' · 逐条列出')
+        : '载入 <b>Top ' + rows.length + '</b> · 按 karma 排序';
+
+      const libEl = $a('#atlas-lib-total');
+      if (libEl) libEl.textContent = fmt(TOTALS.all);
+
+      const chipsEl = $a('#atlas-source-chips');
+      if (chipsEl) chipsEl.querySelectorAll('[data-src]').forEach(b => b.classList.toggle('active', b.dataset.src === state.source));
+    }
+
+    /* --- detail --- */
+    function renderDetail() {
+      const card = $a('#atlas-node-card');
+      const tel = $a('#atlas-telemetry');
+      if (!card) return;
+      if (!state.selectedId) { card.classList.remove('show'); if (tel) tel.classList.remove('hidden'); return; }
+      const it = byId.get(state.selectedId);
+      if (!it) return;
+      if (tel) tel.classList.add('hidden');
+      const h = healthOf(it);
+      const excluded = state.excluded.has(it.id);
+      card.innerHTML =
+        '<div class="a-nc-top"><span class="a-nc-src">' + esc2(SOURCE_LABEL[it.source]) + '</span>' +
+        '<span class="a-nc-cat">' + esc2(it.category) + ' · ' + esc2(scopeText(it.scope)) + '</span>' +
+        '<button class="a-nc-close" data-close="1" aria-label="关闭"><svg class="ico" style="width:11px;height:11px"><use href="#i-x"/></svg></button></div>' +
+        '<h3 class="a-nc-title">' + esc2(it.title) + '</h3>' +
+        '<p class="a-nc-body">' + esc2(it.body) + '</p>' +
+        '<div class="a-nc-karma"><span>KARMA</span><div class="a-kbar"><i style="width:' + Math.round(it.karma * 100) + '%"></i></div><b>' + it.karma.toFixed(2) + '</b></div>' +
+        '<div class="a-nc-stats">' +
+          '<div><b>' + fmt(it.hits) + '</b><span>注入</span></div>' +
+          '<div><b style="color:' + (it.won ? 'var(--ok)' : 'var(--muted)') + '">' + fmt(it.won) + '</b><span>有效</span></div>' +
+          '<div><b style="color:' + (it.lost ? 'var(--bad)' : 'var(--muted)') + '">' + fmt(it.lost) + '</b><span>失守</span></div>' +
+        '</div>' +
+        '<div class="a-nc-acts">' +
+          (it.source === 'pack' ? '<button class="a-btn-ghost" disabled>整包注入 · ' + fmt(it.chars) + ' 字</button>' :
+            '<button class="a-btn-gold" data-exclude="' + it.id + '">' + (excluded ? '恢复注入' : '排除预演') + '</button>') +
+          '<button class="a-btn-ghost" data-review="' + it.id + '">已复核</button>' +
+        '</div>' +
+        (h ? '<div class="a-tel-hint" style="margin-top:7px"><i style="background:' + (h[0] === 'bad' ? 'var(--bad)' : h[0] === 'warn' ? 'var(--warn)' : 'var(--accent)') + '"></i>' + esc2(h[1]) + (it.stale && it.asOf ? ' · 截至 ' + esc2(it.asOf) : '') + '</div>' : '');
+      card.classList.add('show');
+    }
+
+    function selectItem(id) {
+      state.selectedId = state.selectedId === id ? null : id;
+      renderDetail(); renderStream();
+      const it = state.selectedId && byId.get(state.selectedId);
+      if (it) toast('已聚焦 · ' + it.title);
+    }
+
+    /* --- injection preview --- */
+    function goalTerms() {
+      const scen = SCENARIOS[state.scenario];
+      const extra = [];
+      const clean = state.goal.replace(/[，。：；、,.!?！？：；\s]/g, '');
+      for (let i = 0; i < clean.length - 1 && extra.length < 14; i++) {
+        const t = clean.slice(i, i + 2);
+        if (!['我们', '这个', '一个', '上一', '一章', '并补', '确认'].includes(t)) extra.push(t);
+      }
+      return Array.from(new Set((scen ? scen.keys : []).concat(extra)));
+    }
+
+    function scoreFor(it, terms) {
+      const hay = it.title + ' ' + it.body + ' ' + (it.tags || []).join(' ');
+      const hits = terms.filter(t => hay.includes(t));
+      let s = it.karma * 46 + Math.min(it.hits, 22) * .85 + it.won * 4.2 - it.lost * 2.3;
+      for (const t of hits) s += t.length > 1 ? 17 : 9;
+      return { s, hits };
+    }
+
+    function computeInjection() {
+      const scen = SCENARIOS[state.scenario] || SCENARIOS.code;
+      const terms = goalTerms();
+      const packList = packs.filter(p => p.scope.some(s => scen.scopes.includes(s)));
+      const cands = allItems.filter(it => it.source !== 'pack' && !state.excluded.has(it.id) &&
+        (it.scope.includes('*') || it.scope.some(s => scen.scopes.includes(s))))
+        .map(it => ({ it, ...scoreFor(it, terms) })).sort((a, b) => b.s - a.s);
+      const pick = (src, n, cap) => {
+        const out = []; let chars = 0;
+        for (const c of cands) {
+          if (c.it.source !== src) continue;
+          const len = c.it.chars;
+          if (out.length >= n) break;
+          if (cap && chars + len > cap) continue;
+          out.push(c); chars += len;
+        }
+        return { rows: out, chars };
+      };
+      const packChars = packList.reduce((a, p) => a + p.chars, 0);
+      const lessonPick = pick('lesson', 8, Math.max(900, 9000 - packChars));
+      const knowledgePick = pick('knowledge', 6, 3000);
+      const projectPick = pick('project', 3, 1200);
+      return { scen, terms, packList, packChars, lessons: lessonPick, knowledge: knowledgePick, project: projectPick,
+        expChars: packChars + lessonPick.chars, knowChars: knowledgePick.chars, expBudget: 9000, knowBudget: 3000 };
+    }
+
+    function whyChips(c) {
+      const chips = [];
+      if (c.hits.length) chips.push('<i class="hit">命中「' + esc2(c.hits[0]) + '」</i>');
+      if (c.it.won) chips.push('<i class="good">有效 ' + c.it.won + '</i>');
+      if (c.it.lost) chips.push('<i>失守 ' + c.it.lost + '</i>');
+      if (!chips.length) chips.push('<i>karma ' + c.it.karma.toFixed(2) + '</i>');
+      return chips.join('');
+    }
+
+    function renderInjection() {
+      const R = computeInjection();
+      const pct = (v, cap) => Math.min(100, Math.round(v / cap * 100));
+      const bEl = $a('#atlas-budgets');
+      if (bEl) bEl.innerHTML =
+        '<div class="a-budget"><div class="b-head"><span>经验注入</span><b>' + fmt(R.expChars) + ' <i>/ 9,000</i></b></div>' +
+          '<div class="a-b-track"><i style="width:' + pct(R.expChars, 9000) + '%"></i></div></div>' +
+        '<div class="a-budget k"><div class="b-head"><span>知识注入</span><b>' + fmt(R.knowChars) + ' <i>/ 3,000</i></b></div>' +
+          '<div class="a-b-track"><i style="width:' + pct(R.knowChars, 3000) + '%"></i></div></div>';
+
+      const rowsHtml = (rows, start) => rows.map((c, i) =>
+        '<div class="a-inj-row" style="animation-delay:' + Math.min(280, (start + i) * 22) + 'ms">' +
+          '<span class="a-ir-idx">' + String(start + i + 1).padStart(2, '0') + '</span>' +
+          '<span class="a-ir-main"><span class="a-ir-title">' + esc2(c.it.title) + '</span>' +
+          '<span class="a-ir-why">' + whyChips(c) + '</span></span>' +
+          '<button class="a-eye" data-ex="' + c.it.id + '" title="排除并补位"><svg><use href="#i-eye"/></svg></button>' +
+        '</div>').join('');
+
+      const packHtml = R.packList.length
+        ? '<div class="a-pack-chips">' + R.packList.map(p =>
+            '<button class="a-pack-chip" data-pack="' + p.id + '" title="' + esc2(p.title) + ' · ' + fmt(p.chars) + ' 字">' +
+            '<span>' + esc2(p.title) + '</span><b>' + fmt(p.chars) + ' 字</b></button>').join('') + '</div>'
+        : '<div class="a-empty-inj">该任务类型无匹配经验包</div>';
+
+      const injEl = $a('#atlas-inj-groups');
+      if (injEl) injEl.innerHTML =
+        '<div class="a-igroup"><div class="a-ig-head"><span class="a-ig-name"><i></i>经验包</span><span class="a-ig-meta">' + R.packList.length + ' 个 · ' + fmt(R.packChars) + ' 字</span></div>' + packHtml + '</div>' +
+        '<div class="a-igroup"><div class="a-ig-head"><span class="a-ig-name"><i></i>教训</span><span class="a-ig-meta">' + R.lessons.rows.length + ' 条 · ' + fmt(R.lessons.chars) + ' 字</span></div>' +
+          (rowsHtml(R.lessons.rows, 0) || '<div class="a-empty-inj">无匹配教训</div>') + '</div>' +
+        '<div class="a-igroup"><div class="a-ig-head"><span class="a-ig-name"><i></i>知识</span><span class="a-ig-meta">' + R.knowledge.rows.length + ' 条 · ' + fmt(R.knowledge.chars) + ' 字</span></div>' +
+          (rowsHtml(R.knowledge.rows, 0) || '<div class="a-empty-inj">无匹配知识</div>') + '</div>' +
+        '<div class="a-igroup"><div class="a-ig-head"><span class="a-ig-name"><i></i>项目记忆</span><span class="a-ig-meta">' + R.project.rows.length + ' 条 · ' + fmt(R.project.chars) + ' 字</span></div>' +
+          (rowsHtml(R.project.rows, 0) || '<div class="a-empty-inj">无匹配项目记忆</div>') + '</div>';
+
+      const footEl = $a('#atlas-inj-foot');
+      if (footEl) footEl.innerHTML = state.excluded.size
+        ? '<span>已排除 ' + state.excluded.size + ' 条 · 候选自动补位</span><button data-reset-ex="1">全部恢复</button>'
+        : '<span>排序 = karma × 目标相关度</span><span>预算独立 · 不挤占正文</span>';
+    }
+
+    function renderScen() {
+      const el = $a('#atlas-scen');
+      if (!el) return;
+      el.innerHTML = Object.entries(SCENARIOS).map(([k, s]) =>
+        '<button data-scen="' + k + '" class="' + (state.scenario === k ? 'active' : '') + '">' + esc2(s.label) + '</button>').join('');
+      const goalEl = $a('#atlas-goal');
+      if (goalEl) goalEl.value = state.goal;
+    }
+
+    let goalTimer = null;
+    function sweepAndRender() {
+      const pv = $a('#atlas-preview');
+      if (pv) pv.classList.add('scanning');
+      setTimeout(() => { renderInjection(); setTimeout(() => { if (pv) pv.classList.remove('scanning'); }, 280); }, 180);
+    }
+
+    /* --- governance --- */
+    function renderGov() {
+      const tiles = [
+        { k: 'never', label: '从未上场', value: fmt(TOTALS.never), sub: '/ ' + fmt(TOTALS.lessons), pct: TOTALS.never / Math.max(1, TOTALS.lessons) * 100, cls: 'warn' },
+        { k: 'stale', label: '事实可能过期', value: fmt(state.govStale), sub: '/ ' + fmt(TOTALS.knowledge) + ' 知识', pct: state.govStale / Math.max(1, TOTALS.knowledge) * 100, cls: 'warn' },
+        { k: 'lost', label: '失守记录', value: fmt(state.govLost), sub: '条教训', pct: state.govLost / Math.max(1, TOTALS.lessons) * 100, cls: 'bad' },
+        { k: 'dup', label: '近似重复', value: fmt(state.govDup), sub: '条待合并', pct: state.govDup / Math.max(1, TOTALS.lessons) * 100, cls: '' }
+      ];
+      const gEl = $a('#atlas-gov-grid');
+      if (gEl) gEl.innerHTML = tiles.map(t =>
+        '<button class="a-gov-tile ' + t.cls + '" data-gov="' + t.k + '">' +
+          '<b>' + t.value + '</b><span>' + esc2(t.label) + '</span><em>' + t.sub + '</em>' +
+          '<div class="gbar" style="width:' + Math.max(4, Math.min(100, t.pct)) + '%"></div>' +
+        '</button>').join('');
+
+      const qEl = $a('#atlas-queue');
+      if (qEl) qEl.innerHTML = '<div class="a-q-row"><div><b style="color:var(--muted);font-size:9px">治理操作需到对应管理页执行</b></div></div>';
+    }
+
+    /* --- canvas atlas --- */
+    const canvas = $a('#atlas-sky');
+    const atlasWrap = $a('#atlas-canvas-wrap');
+    if (!canvas || !atlasWrap) return;
+    const ctx = canvas.getContext('2d');
+    let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, R = 0;
+    const TILT = .62;
+    const BANDS = {
+      pack: { r: .34, speed: -.000034 },
+      lesson: { r: .585, speed: .000019 },
+      knowledge: { r: .805, speed: -.000015 },
+      project: { r: 1.015, speed: .000011 }
+    };
+    const sky = [];
+    const sprites = new Map();
+    const stars = [];
+    const pulses = [];
+    let nextPulse = 0, nextShot = 0;
+    const shots = [];
+    let animId = null;
+
+    function hash01(str) {
+      let h = 2166136261;
+      for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return ((h >>> 0) % 10000) / 10000;
+    }
+
+    function buildSky() {
+      sky.length = 0;
+      const top = (arr, n) => arr.slice().sort((a, b) => b.karma - a.karma).slice(0, n);
+      const chosen = [].concat(packs, top(lessons, 46), top(knowledge, 18), top(projects, 12));
+      const groups = { pack: [], lesson: [], knowledge: [], project: [] };
+      chosen.forEach(it => groups[it.source].push(it));
+      Object.keys(groups).forEach(src => {
+        const arr = groups[src].sort((a, b) => String(a.category).localeCompare(String(b.category), 'zh'));
+        arr.forEach((it, i) => {
+          const h = hash01(it.id);
+          sky.push({
+            it, source: src, id: it.id,
+            a0: (i / Math.max(1, arr.length)) * TAU + .4 + (h - .5) * .05,
+            spin: (hash01(it.id + 's') - .5) * .000004,
+            rj: 1 + (hash01(it.id + 'r') - .5) * .055,
+            x: 0, y: 0
+          });
+        });
+      });
+    }
+
+    function makeSprite(color) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d');
+      const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      const toRgba = (hex, a) => {
+        const n = parseInt(hex.slice(1), 16);
+        return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+      };
+      grd.addColorStop(0, toRgba(color, 1));
+      grd.addColorStop(.22, toRgba(color, .7));
+      grd.addColorStop(.55, toRgba(color, .22));
+      grd.addColorStop(1, toRgba(color, 0));
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 64, 64);
+      return c;
+    }
+    function spriteFor(color) {
+      if (!sprites.has(color)) sprites.set(color, makeSprite(color));
+      return sprites.get(color);
+    }
+
+    function makeStars() {
+      stars.length = 0;
+      const n = Math.min(200, Math.round(W * H / 5000));
+      for (let i = 0; i < n; i++) stars.push({ x: Math.random(), y: Math.random(), r: .3 + Math.random() * 1, p: Math.random() * TAU, s: .3 + Math.random() * .8 });
+    }
+
+    function resize() {
+      const r = atlasWrap.getBoundingClientRect();
+      W = Math.max(200, r.width); H = Math.max(200, r.height);
+      DPR = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      cx = W / 2; cy = H * .52;
+      R = Math.min(W * .45, H * .44);
+      makeStars();
+    }
+
+    function layout(now) {
+      const rot = -.15 + state.mouse.x * .045;
+      sky.forEach(n => {
+        const band = BANDS[n.source];
+        const r = R * band.r * n.rj;
+        const a = n.a0 + now * (band.speed + n.spin);
+        const x0 = Math.cos(a) * r;
+        const y0 = Math.sin(a) * r * TILT;
+        n.x = cx + x0 * Math.cos(rot) - y0 * Math.sin(rot);
+        n.y = cy + x0 * Math.sin(rot) + y0 * Math.cos(rot);
+        n.a = a; n.r = r; n.rot = rot;
+      });
+    }
+
+    function matchOf(n) { return !state.matches || state.matches.has(n.id); }
+
+    function nodeColor(n) {
+      if (state.mode === 'health') return healthColor(n.it);
+      return SOURCE_COLOR_RAW[n.source] || '#3ba9f5';
+    }
+
+    function drawOrbits(now) {
+      const rot = -.15 + state.mouse.x * .045;
+      Object.keys(BANDS).forEach((src, bi) => {
+        const rr = R * BANDS[src].r;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rr, rr * TILT, rot, 0, TAU);
+        ctx.strokeStyle = bi === 3 ? 'rgba(59,169,245,.16)' : 'rgba(59,169,245,.09)';
+        ctx.lineWidth = .7;
+        ctx.stroke();
+        const ticks = 72;
+        for (let i = 0; i < ticks; i++) {
+          const a = (i / ticks) * TAU + now * .000004;
+          const x0 = Math.cos(a) * rr, y0 = Math.sin(a) * rr;
+          const x1 = cx + x0 * Math.cos(rot) - y0 * Math.sin(rot);
+          const y1 = cy + x0 * Math.sin(rot) + y0 * Math.cos(rot);
+          const x2 = Math.cos(a) * (rr + (i % 7 === 0 ? 4 : 2));
+          const y2 = Math.sin(a) * (rr + (i % 7 === 0 ? 4 : 2));
+          const x3 = cx + x2 * Math.cos(rot) - y2 * Math.sin(rot);
+          const y3 = cy + x2 * Math.sin(rot) + y2 * Math.cos(rot);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x3, y3);
+          ctx.strokeStyle = i % 7 === 0 ? 'rgba(59,169,245,.18)' : 'rgba(59,169,245,.06)';
+          ctx.lineWidth = .5; ctx.stroke();
+        }
+      });
+      ctx.strokeStyle = 'rgba(59,169,245,.04)'; ctx.lineWidth = .5;
+      ctx.beginPath(); ctx.moveTo(cx - R * 1.04, cy); ctx.lineTo(cx + R * 1.04, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy - R * .64); ctx.lineTo(cx, cy + R * .64); ctx.stroke();
+    }
+
+    function drawSweep(now) {
+      const rot = -.15 + state.mouse.x * .045;
+      const ang = (reduced ? 12000 : now) * .00016;
+      ctx.save();
+      ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(1, TILT);
+      const rr = R * 1.08;
+      const g = ctx.createRadialGradient(0, 0, R * .06, 0, 0, rr);
+      g.addColorStop(0, 'rgba(59,169,245,.05)');
+      g.addColorStop(.72, 'rgba(59,169,245,.025)');
+      g.addColorStop(1, 'rgba(59,169,245,0)');
+      ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.arc(0, 0, rr, ang - .34, ang); ctx.closePath();
+      ctx.fillStyle = g; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr);
+      ctx.strokeStyle = 'rgba(107,192,247,.08)'; ctx.lineWidth = .6; ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawLinks() {
+      const groups = new Map();
+      sky.forEach(n => {
+        if (!matchOf(n)) return;
+        const key = n.source + '|' + n.it.category;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(n);
+      });
+      ctx.lineWidth = .6;
+      groups.forEach(arr => {
+        arr.sort((a, b) => a.a - b.a);
+        for (let i = 0; i < arr.length - 1; i++) {
+          const a = arr[i], b = arr[i + 1];
+          if (Math.abs(b.a - a.a) > .5) continue;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+          const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+          g.addColorStop(0, 'rgba(59,169,245,.12)');
+          g.addColorStop(.5, 'rgba(59,169,245,.04)');
+          g.addColorStop(1, 'rgba(59,169,245,.12)');
+          ctx.strokeStyle = g; ctx.stroke();
+        }
+      });
+    }
+
+    function drawBeams(now) {
+      if (state.beam) {
+        let count = 0;
+        sky.forEach(n => {
+          if (!state.beam.has(n.id) || count++ > 40) return;
+          const col = nodeColor(n);
+          ctx.beginPath(); ctx.setLineDash([2, 7]);
+          ctx.lineDashOffset = -(now * .035);
+          ctx.moveTo(cx, cy); ctx.lineTo(n.x, n.y);
+          ctx.strokeStyle = 'rgba(59,169,245,.3)'; ctx.lineWidth = .8; ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(n.x, n.y, 2.2, 0, TAU);
+          ctx.fillStyle = col; ctx.fill();
+        });
+      }
+      if (state.selectedId) {
+        const n = sky.find(x => x.id === state.selectedId);
+        if (n) {
+          const g = ctx.createLinearGradient(cx, cy, n.x, n.y);
+          g.addColorStop(0, 'rgba(107,192,247,.5)');
+          g.addColorStop(1, 'rgba(59,169,245,.04)');
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(n.x, n.y);
+          ctx.strokeStyle = g; ctx.lineWidth = .9; ctx.stroke();
+        }
+      }
+    }
+
+    function drawPulses(now) {
+      for (let i = pulses.length - 1; i >= 0; i--) {
+        const p = pulses[i];
+        const t = (now - p.t0) / 1500;
+        if (t >= 1) { pulses.splice(i, 1); continue; }
+        const n = p.n;
+        const px = n.x + (cx - n.x) * t;
+        const py = n.y + (cy - n.y) * t;
+        const g = ctx.createLinearGradient(n.x, n.y, cx, cy);
+        g.addColorStop(0, 'rgba(59,169,245,.12)');
+        g.addColorStop(1, 'rgba(59,169,245,.02)');
+        ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(cx, cy);
+        ctx.strokeStyle = g; ctx.lineWidth = .6; ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 1.6, 0, TAU);
+        ctx.fillStyle = 'rgba(107,192,247,' + (.7 * (1 - t) + .15) + ')'; ctx.fill();
+      }
+    }
+
+    function drawCorePing(now) {
+      const age = (now - state.ping) / 900;
+      if (age < 0 || age >= 1) return;
+      ctx.beginPath(); ctx.arc(cx, cy, 40 + age * (R * .5), 0, TAU);
+      ctx.strokeStyle = 'rgba(59,169,245,' + (.25 * (1 - age)) + ')'; ctx.lineWidth = .8; ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, 30 + age * (R * .3), 0, TAU);
+      ctx.strokeStyle = 'rgba(107,192,247,' + (.14 * (1 - age)) + ')'; ctx.stroke();
+    }
+
+    function drawStars(now) {
+      stars.forEach(s => {
+        const tw = .35 + .65 * (.5 + .5 * Math.sin(now * .001 * s.s + s.p));
+        ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, TAU);
+        ctx.fillStyle = 'rgba(231,238,251,' + (.08 + tw * .25) + ')'; ctx.fill();
+      });
+      for (let i = shots.length - 1; i >= 0; i--) {
+        const s = shots[i];
+        const t = (now - s.t0) / s.dur;
+        if (t >= 1) { shots.splice(i, 1); continue; }
+        const x = s.x * W + s.vx * t * 40;
+        const y = s.y * H + s.vy * t * 40;
+        const g = ctx.createLinearGradient(x, y, x - s.vx * 80, y - s.vy * 80);
+        g.addColorStop(0, 'rgba(107,192,247,' + (.45 * (1 - t)) + ')');
+        g.addColorStop(1, 'rgba(107,192,247,0)');
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - s.vx * 80, y - s.vy * 80);
+        ctx.strokeStyle = g; ctx.lineWidth = .8; ctx.stroke();
+      }
+    }
+
+    function drawNodes(now) {
+      const t = reduced ? 0 : now;
+      sky.forEach((n, idx) => {
+        const matched = matchOf(n);
+        const hover = state.hoverId === n.id;
+        const selected = state.selectedId === n.id;
+        const alpha = matched ? 1 : .12;
+        const col = nodeColor(n);
+        const size = 1.5 + n.it.karma * 4.5 + (selected ? 1.2 : 0);
+        const pulse = state.beam && state.beam.has(n.id) ? 1 + .16 * Math.sin(t * .005 + idx) : 1;
+        const gs = (9 + size * 3) * pulse;
+        ctx.globalAlpha = alpha;
+        if (matched && (n.it.karma > .55 || (state.matches && state.matches.has(n.id)))) {
+          ctx.drawImage(spriteFor(col), n.x - gs / 2, n.y - gs / 2, gs, gs);
+        }
+        ctx.beginPath(); ctx.arc(n.x, n.y, size, 0, TAU);
+        ctx.fillStyle = col; ctx.fill();
+        if (n.it.won > 0 && state.mode === 'source') {
+          ctx.beginPath(); ctx.arc(n.x, n.y, size + 2.2, 0, TAU);
+          ctx.strokeStyle = 'rgba(53,201,155,.25)'; ctx.lineWidth = .6; ctx.stroke();
+        } else if (n.it.lost > n.it.won && state.mode === 'source') {
+          ctx.beginPath(); ctx.arc(n.x, n.y, size + 2.2, 0, TAU);
+          ctx.strokeStyle = 'rgba(242,99,122,.3)'; ctx.lineWidth = .6; ctx.stroke();
+        }
+        if (hover || selected) {
+          ctx.beginPath(); ctx.arc(n.x, n.y, size + 5 + (selected ? 2 * Math.sin(t * .004) : 0), 0, TAU);
+          ctx.strokeStyle = selected ? 'rgba(107,192,247,.75)' : 'rgba(107,192,247,.5)';
+          ctx.lineWidth = .8; ctx.stroke();
+          ctx.beginPath(); ctx.arc(n.x, n.y, size + 9, 0, TAU);
+          ctx.strokeStyle = 'rgba(59,169,245,.14)';
+          ctx.setLineDash([1.5, 3.5]); ctx.stroke(); ctx.setLineDash([]);
+        }
+        ctx.globalAlpha = 1;
+      });
+    }
+
+    function draw(now) {
+      ctx.clearRect(0, 0, W, H);
+      drawStars(now);
+      drawSweep(now);
+      drawOrbits(now);
+      drawLinks();
+      drawCorePing(now);
+      drawPulses(now);
+      drawBeams(now);
+      drawNodes(now);
+    }
+
+    function nearestNode(x, y) {
+      let best = null, bd = 18 * 18;
+      sky.forEach(n => {
+        if (!matchOf(n) && !state.q) return;
+        const d = (n.x - x) ** 2 + (n.y - y) ** 2;
+        if (d < bd) { bd = d; best = n; }
+      });
+      return best;
+    }
+
+    function showTip(n, clientX, clientY) {
+      const tip = $a('#atlas-tip');
+      if (!tip) return;
+      if (!n) { tip.classList.remove('show'); return; }
+      const it = n.it;
+      tip.innerHTML = '<div class="a-tt-src">' + esc2(SOURCE_LABEL[it.source]) + ' · ' + esc2(it.category) + '</div>' +
+        '<div class="a-tt-title">' + esc2(it.title) + '</div>' +
+        '<div class="a-tt-meta">KARMA ' + it.karma.toFixed(2) + ' · 注入 ' + it.hits + ' · 有效 ' + it.won + ' · 失守 ' + it.lost + '</div>';
+      const r = atlasWrap.getBoundingClientRect();
+      const x = clientX - r.left, y = clientY - r.top;
+      tip.style.left = Math.min(W - 220, x + 12) + 'px';
+      tip.style.top = Math.min(H - 64, y + 14) + 'px';
+      tip.classList.add('show');
+    }
+
+    function frame(now) {
+      state.time = now;
+      state.mouse.x += (state.mouse.tx - state.mouse.x) * .06;
+      state.mouse.y += (state.mouse.ty - state.mouse.y) * .06;
+      if (!reduced) {
+        if (!state.q && now > nextPulse && sky.length) {
+          nextPulse = now + 4200 + Math.random() * 2200;
+          const n = sky[Math.floor(Math.random() * sky.length)];
+          pulses.push({ n, t0: now });
+          const coreEl = $a('#atlas-core');
+          if (coreEl) { coreEl.classList.add('ping'); setTimeout(() => coreEl.classList.remove('ping'), 420); }
+        }
+        if (now > nextShot) {
+          nextShot = now + 6800 + Math.random() * 5400;
+          shots.push({ x: .18 + Math.random() * .62, y: .08 + Math.random() * .26, vx: .55, vy: .34, t0: now, dur: 880 });
+        }
+      }
+      layout(now);
+      if (state.pointer.inside) {
+        const n = nearestNode(state.pointer.x, state.pointer.y);
+        const id = n ? n.id : null;
+        if (id !== state.hoverId) {
+          state.hoverId = id;
+          canvas.style.cursor = n ? 'pointer' : 'default';
+          if (n) {
+            const rr = canvas.getBoundingClientRect();
+            showTip(n, rr.left + state.pointer.x, rr.top + state.pointer.y);
+          } else showTip(null);
+        }
+      }
+      draw(now);
+      animId = requestAnimationFrame(frame);
+    }
+
+    /* --- chrome updates --- */
+    function updateAtlasChrome() {
+      const m = state.matches;
+      const inSky = m ? sky.filter(n => m.has(n.id)).length : 0;
+      const total = m ? m.size : TOTALS.all;
+      const coreNumEl = $a('#atlas-core-num');
+      const coreLabelEl = $a('#atlas-core-label');
+      if (coreNumEl) coreNumEl.textContent = fmt(total);
+      if (coreLabelEl) coreLabelEl.textContent = m ? 'MATCHES' : 'MEMORY';
+      const statusEl = $a('#atlas-status');
+      if (statusEl) {
+        if (state.q) statusEl.innerHTML = '命中 <b>' + fmt(m ? m.size : 0) + '</b> 条 · 星图 <b>' + fmt(inSky) + '</b> 体';
+        else if (state.gfilter) statusEl.innerHTML = '治理 · <b>' + esc2(GF_LABEL[state.gfilter]) + '</b> · <b>' + fmt(inSky) + '</b> 体';
+        else if (state.source !== 'all') statusEl.innerHTML = '来源 · <b>' + esc2(SOURCE_LABEL[state.source]) + '</b> · <b>' + fmt(inSky) + '</b> 体';
+        else statusEl.innerHTML = '载入 <b>' + sky.length + '</b> 个记忆体';
+      }
+    }
+
+    function renderLegend() {
+      const el = $a('#atlas-legend');
+      if (!el) return;
+      const rows = state.mode === 'source'
+        ? [['#e7eefb', '经验包'], ['#3ba9f5', '经验/教训'], ['#35c99b', '知识'], ['#f0b429', '项目记忆']]
+        : [['#35c99b', '有效'], ['#f2637a', '失守'], ['#f0b429', '过期'], ['#6b6257', '未上场']];
+      el.innerHTML = '<div class="a-lg-title">' + (state.mode === 'source' ? 'SOURCE' : 'HEALTH') + '</div>' +
+        rows.map(([c, l]) => '<div class="a-lg-row"><i class="a-lg-dot" style="--c:' + c + '"></i><span>' + esc2(l) + '</span></div>').join('');
+    }
+
+    function refreshAll() {
+      refreshMatches(); renderStream(); renderDetail(); updateAtlasChrome(); renderLegend();
+    }
+
+    /* --- event binding --- */
+    function bind() {
+      const qEl = $a('#atlas-q');
+      if (qEl) qEl.addEventListener('input', e => { state.q = e.target.value.trim(); state.gfilter = null; state.ping = performance.now(); refreshAll(); });
+
+      const chipsEl = $a('#atlas-source-chips');
+      if (chipsEl) chipsEl.addEventListener('click', e => { const b = e.target.closest('[data-src]'); if (!b) return; state.source = b.dataset.src; state.gfilter = null; refreshAll(); });
+
+      const noteEl = $a('#atlas-filter-note');
+      if (noteEl) noteEl.addEventListener('click', e => { if (e.target.closest('[data-clear-filter]')) { state.gfilter = null; state.q = ''; const qEl = $a('#atlas-q'); if (qEl) qEl.value = ''; refreshAll(); } });
+
+      const listEl = $a('#atlas-stream-list');
+      if (listEl) {
+        listEl.addEventListener('click', e => { const row = e.target.closest('[data-id]'); if (row) selectItem(row.dataset.id); });
+        listEl.addEventListener('mouseover', e => { const row = e.target.closest('[data-id]'); if (row) state.hoverId = row.dataset.id; });
+        listEl.addEventListener('mouseleave', () => { state.hoverId = null; });
+      }
+
+      const cardEl = $a('#atlas-node-card');
+      if (cardEl) cardEl.addEventListener('click', e => {
+        const close = e.target.closest('[data-close]');
+        if (close) { state.selectedId = null; renderDetail(); renderStream(); return; }
+        const ex = e.target.closest('[data-exclude]');
+        if (ex) {
+          const id = ex.dataset.exclude;
+          if (state.excluded.has(id)) { state.excluded.delete(id); toast('已恢复注入资格'); }
+          else { state.excluded.add(id); toast('已从注入预演排除'); }
+          renderInjection(); renderDetail(); return;
+        }
+        const rv = e.target.closest('[data-review]');
+        if (rv) toast('已复核 · ' + (byId.get(rv.dataset.review) || {}).title);
+      });
+
+      const modeEl = $a('#atlas-mode');
+      if (modeEl) modeEl.addEventListener('click', e => {
+        const b = e.target.closest('[data-mode]');
+        if (!b) return;
+        state.mode = b.dataset.mode;
+        $$a('#atlas-mode button').forEach(x => { x.classList.toggle('active', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        renderLegend();
+        toast(state.mode === 'source' ? '按来源着色' : '按健康度着色');
+      });
+
+      const scenEl = $a('#atlas-scen');
+      if (scenEl) scenEl.addEventListener('click', e => {
+        const b = e.target.closest('[data-scen]');
+        if (!b) return;
+        state.scenario = b.dataset.scen;
+        state.goal = SCENARIOS[state.scenario].goal;
+        state.excluded.clear();
+        renderScen(); sweepAndRender(); state.ping = performance.now();
+        toast('切换到「' + SCENARIOS[state.scenario].label + '」');
+      });
+
+      const goalEl = $a('#atlas-goal');
+      if (goalEl) goalEl.addEventListener('input', e => {
+        state.goal = e.target.value;
+        clearTimeout(goalTimer);
+        goalTimer = setTimeout(() => { renderInjection(); state.ping = performance.now(); }, 320);
+      });
+
+      const recalcEl = $a('#atlas-recalc');
+      if (recalcEl) recalcEl.addEventListener('click', () => { sweepAndRender(); toast('重新演算完成'); });
+
+      const buildEl = $a('#atlas-build');
+      if (buildEl) buildEl.addEventListener('click', () => { sweepAndRender(); toast('演算完成'); });
+
+      const injEl = $a('#atlas-inj-groups');
+      if (injEl) injEl.addEventListener('click', e => {
+        const pk = e.target.closest('[data-pack]');
+        if (pk) { selectItem(pk.dataset.pack); return; }
+        const btn = e.target.closest('[data-ex]');
+        if (!btn) return;
+        state.excluded.add(btn.dataset.ex);
+        renderInjection(); renderDetail();
+        toast('已排除一条');
+      });
+
+      const footEl = $a('#atlas-inj-foot');
+      if (footEl) footEl.addEventListener('click', e => {
+        if (e.target.closest('[data-reset-ex]')) { state.excluded.clear(); renderInjection(); renderDetail(); toast('已恢复全部'); }
+      });
+
+      const govEl = $a('#atlas-gov-grid');
+      if (govEl) govEl.addEventListener('click', e => {
+        const t = e.target.closest('[data-gov]');
+        if (!t) return;
+        state.gfilter = state.gfilter === t.dataset.gov ? null : t.dataset.gov;
+        state.q = ''; const qEl = $a('#atlas-q'); if (qEl) qEl.value = '';
+        refreshAll();
+        toast(state.gfilter ? '治理筛选 · ' + GF_LABEL[state.gfilter] : '已清除筛选');
+      });
+
+      canvas.addEventListener('mousemove', e => {
+        const r = canvas.getBoundingClientRect();
+        state.pointer.x = e.clientX - r.left;
+        state.pointer.y = e.clientY - r.top;
+        state.pointer.inside = true;
+        const n = nearestNode(state.pointer.x, state.pointer.y);
+        if (n && state.hoverId !== n.id) { state.hoverId = n.id; showTip(n, e.clientX, e.clientY); }
+        else if (!n) { state.hoverId = null; showTip(null); }
+        else if (n) showTip(n, e.clientX, e.clientY);
+      });
+      canvas.addEventListener('mouseleave', () => { state.pointer.inside = false; state.hoverId = null; showTip(null); });
+      canvas.addEventListener('click', e => {
+        const r = canvas.getBoundingClientRect();
+        const n = nearestNode(e.clientX - r.left, e.clientY - r.top);
+        if (n) selectItem(n.id); else { state.selectedId = null; renderDetail(); renderStream(); }
+      });
+      atlasWrap.addEventListener('mousemove', e => {
+        const r = atlasWrap.getBoundingClientRect();
+        state.mouse.tx = ((e.clientX - r.left) / r.width) * 2 - 1;
+        state.mouse.ty = ((e.clientY - r.top) / r.height) * 2 - 1;
+      });
+      atlasWrap.addEventListener('mouseleave', () => { state.mouse.tx = 0; state.mouse.ty = 0; });
+
+      document.addEventListener('keydown', e => {
+        if (S.tab !== 'atlas') return;
+        if (e.key === '/' && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); qEl.select(); }
+        if (e.key === 'Escape') {
+          if (document.activeElement === qEl || state.q) { const qEl2 = $a('#atlas-q'); if (qEl2) { qEl2.value = ''; } state.q = ''; refreshAll(); }
+          else { state.selectedId = null; renderDetail(); renderStream(); }
+        }
+      });
+
+      const ro = new ResizeObserver(() => resize());
+      ro.observe(atlasWrap);
+      window.addEventListener('resize', resize);
+    }
+
+    /* --- init --- */
+    function countUp(el, target) {
+      if (!el) return;
+      const start = performance.now(), dur = 1200;
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / dur);
+        const e = 1 - Math.pow(1 - t, 3);
+        el.textContent = fmt(Math.round(target * e));
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+    /* --- boot --- */
+    const subEl = $a('#sub-atlas');
+    if (subEl) subEl.classList.add('atlas-live');
+
+    buildSky();
+    resize();
+    renderChips();
+    renderScen();
+    refreshAll();
+    renderInjection();
+    renderGov();
+    renderDetail();
+    renderLegend();
+    countUp($a('#atlas-total'), TOTALS.all);
+
+    const hitEl = $a('#atlas-tel-hit');
+    if (hitEl && TOTALS.lessons > 0) hitEl.textContent = (TOTALS.hit / TOTALS.lessons * 100).toFixed(1) + '%';
+    const wonEl = $a('#atlas-tel-won');
+    if (wonEl) wonEl.textContent = fmt(TOTALS.won);
+    const lostEl = $a('#atlas-tel-lost');
+    if (lostEl) lostEl.textContent = fmt(TOTALS.lost);
+
+    bind();
+    animId = requestAnimationFrame(frame);
+
+    ATLAS._stop = function() {
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+      const subEl = $a('#sub-atlas');
+      if (subEl) subEl.classList.remove('atlas-live');
+    };
+  })();
+};
+
 
 window.loadMemoryCenter = async function () {
   const requestSeq = MEMORY_CENTER.requestSeq = (MEMORY_CENTER.requestSeq || 0) + 1;
@@ -19507,6 +20563,7 @@ async function sideUsageLoad(force) {
 function sideUsageRefresh() {
   sideUsageRender();          // 计数徽章靠 S.state，同步重画
   sideUsageLoad();            // 台账按节奏异步补（忙 3s / 闲 60s，见 sideUsageLoad）
+  updateStatusSidebar();      // 暖色皮肤状态侧栏
 }
 
 function sideUsageRender() {
@@ -19562,6 +20619,63 @@ function sideUsageRenderRuns() {
   el.textContent = n > 99 ? "99+" : String(n);
   el.classList.toggle("hidden", n === 0);
   el.title = n ? t("正在运行或排队 ") + n + t(" 个任务") : "";
+}
+
+/* 状态侧栏更新（暖色皮肤专属）：正在运行 / 待处理 / 本月用量 */
+function updateStatusSidebar() {
+  // 正在运行
+  const runningList = $("status-running-list");
+  const runningCount = $("status-running-count");
+  if (runningList && runningCount) {
+    const runs = (S.state && S.state.runs) || [];
+    const running = runs.filter((r) => r.status === "running");
+    runningCount.textContent = String(running.length);
+    if (running.length === 0) {
+      runningList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0" data-i18n="暂无运行中的任务">暂无运行中的任务</div>';
+    } else {
+      runningList.innerHTML = running.slice(0, 5).map((r) => {
+        const progress = r.progress || 0;
+        const step = r.current_step || 0;
+        const total = r.total_steps || 0;
+        const mins = Math.floor((Date.now() - new Date(r.started_at || Date.now()).getTime()) / 60000);
+        return '<div class="running-item">'
+          + '<div class="running-item-title">' + esc(r.title || r.id || "") + '</div>'
+          + '<div class="running-item-meta">'
+          + '<span>' + (total ? t("第 ") + step + t("/") + total + t(" 步") : "") + (mins ? " · " + mins + t(" 分") : "") + '</span>'
+          + '<span class="running-item-progress">' + Math.round(progress) + '%</span>'
+          + '</div>'
+          + '<div class="progress-track"><div class="progress-fill" style="width:' + Math.round(progress) + '%"></div></div>'
+          + '</div>';
+      }).join("");
+    }
+  }
+
+  // 待你处理（简化：显示需要用户确认的任务）
+  const pendingList = $("status-pending-list");
+  const pendingCount = $("status-pending-count");
+  if (pendingList && pendingCount) {
+    // 这里简化处理，实际应根据任务状态判断
+    pendingCount.textContent = "0";
+    pendingList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0" data-i18n="暂无待处理项">暂无待处理项</div>';
+  }
+
+  // 本月用量
+  const u = S.sideUsage;
+  const tokensEl = $("status-usage-tokens");
+  const costEl = $("status-usage-cost");
+  const runsEl = $("status-usage-runs");
+  if (tokensEl && costEl && runsEl && u && u.by_day && u.by_day.length) {
+    const now = new Date();
+    const ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    const monthDays = u.by_day.filter((d) => String(d.day || "").slice(0, 7) === ym);
+    const sum = (k) => monthDays.reduce((s, d) => s + (Number(d[k]) || 0), 0);
+    const calls = sum("calls");
+    const tokens = sum("tokens");
+    const cost = sum("cost_usd");
+    tokensEl.textContent = fmtTok(tokens);
+    costEl.textContent = fmtUsd(cost);
+    runsEl.textContent = fmtTok(calls);
+  }
 }
 
 /* ---------------------------------------------------------- 手机连接（扫码） */
@@ -20027,6 +21141,7 @@ function collapseDrawerIfMobile() {
 function switchTab(name, shell) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
+  if (name === "home") { renderHome(); showHome(); return; }  // 暖色皮肤主页
   // 详情开着时切去别的页：详情一并关掉（它是 runs 子页的住户，name==="runs" 除外）。
   // 不关会留两个残留：S.detailRunId 让顶栏标题卡在「运行详情」；对话态详情给 main
   // 挂的 chat-fill（overflow:hidden 锁滚动，见 renderChatNav）留在原地——设置/概览
@@ -20059,6 +21174,8 @@ function switchTab(name, shell) {
   if (name === "availability") loadAvailability();   // 进通道体检页：拉可用性聚合
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
+  if (name === "atlas") loadAtlas();          // 记忆图谱：星图可视化 + 全域搜索 + 注入预演 + 治理台
+  else if (ATLAS._stop && S.tab !== "atlas") { try { ATLAS._stop(); } catch(e){} ATLAS._stop = null; }  // 离开图谱页停动画
   if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
@@ -20081,6 +21198,12 @@ function switchTab(name, shell) {
 /* 退出设置/回到新建任务表单：左栏恢复任务树，主栏回到任务页 */
 function exitSettings() {
   if (S.detailRunId || S.detailTaskKey) closeRun();   // 设置运行列表开着详情就回表单：一并关掉，防 chat-fill 锁滚动与标题残留
+  // 暖色皮肤回到主页，其他皮肤回到任务页
+  if (currentSkin() === "warm") {
+    renderHome();
+    showHome();
+    return;
+  }
   S.tab = "tasks";
   $("sub-tasks").classList.remove("mobile-composing");
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
@@ -20950,6 +22073,11 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSettings();          // 启动即拉设置：新建表单「默认选中默认路径」依赖它
   suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
   maybeWelcome();          // 首次启动弹欢迎引导（orch.welcomed 记账，只弹一次）
+  // 暖色皮肤默认显示主页
+  if (currentSkin() === "warm") {
+    renderHome();
+    showHome();
+  }
 });
 
 /* ===== 命令面板（Ctrl+K / 侧栏搜索行）：任务直达 + 快捷命令 ===== */

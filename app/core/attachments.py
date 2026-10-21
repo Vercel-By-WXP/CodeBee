@@ -23,7 +23,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from . import paths
+from . import atomic, paths
 
 MAX_FILES = 12
 MAX_BYTES = 8 * 1024 * 1024  # 单文件 8MB：截图/文本足够，挡恶意大包
@@ -105,12 +105,21 @@ def save_pending(name, data_b64, relative_path=None):
     rel = _safe_relative_path(relative_path) if relative_path else ""
     fid = secrets.token_hex(8)
     mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
-    (_pending_dir() / fid).write_bytes(data)
     meta = {"id": fid, "name": name, "size": len(data), "mime": mime}
     if rel:
         meta["relative_path"] = rel
-    (_pending_dir() / (fid + ".json")).write_text(
-        json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    pending = _pending_dir()
+    payload_path = pending / fid
+    meta_path = pending / (fid + ".json")
+    atomic.write_bytes(payload_path, data)
+    try:
+        atomic.write_json(meta_path, meta, indent=None)
+    except Exception:
+        # Do not leave an untracked attachment body if publishing its
+        # discoverability metadata fails.
+        payload_path.unlink(missing_ok=True)
+        meta_path.unlink(missing_ok=True)
+        raise
     return meta
 
 
@@ -416,6 +425,7 @@ def commit_to_workdir(workdir, ids):
             # boundary is repaired; never discard an attachment on a safety
             # rejection.
             continue
+        moved = False
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -425,11 +435,12 @@ def commit_to_workdir(workdir, ids):
                 # 抛 WinError 17——回落必须在此处就地收口。2026-10-16 实案：回落
                 # 原本写在 replace 之后，跨盘时 replace 先抛、回落永远执行不到，
                 # 目录建了文件没落，异常再被调用方吞掉，消息不带附件照发。
-                target.write_bytes(f.read_bytes())
+                atomic.write_bytes(target, f.read_bytes())
                 f.unlink(missing_ok=True)
+            moved = True
         except OSError:
             continue
-        finally:
+        if moved:
             (pend / (fid + ".json")).unlink(missing_ok=True)
         item = {"name": name.rsplit("/", 1)[-1],
                 "size": meta.get("size") or (adir / name).stat().st_size,
@@ -448,7 +459,7 @@ def commit_to_workdir(workdir, ids):
             if body:
                 side = name + ".txt"
                 try:
-                    (adir / side).write_text(body, encoding="utf-8")
+                    atomic.write_text(adir / side, body)
                     item["text_path"] = "_attachments/" + side
                 except OSError:
                     pass

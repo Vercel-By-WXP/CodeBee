@@ -172,8 +172,10 @@ def commit_chapter(workdir, chapter_no, outline, prose, *, facts=None, character
     (root / chapter_dir).mkdir(parents=True, exist_ok=True)
     # 字节落盘钉死 LF：文本模式写会把已含 CRLF 的章稿二次翻译成 \r\r\n，
     # 磁盘稿与状态摘要永久错位，续写批开场漂移闸必拦（2026-10-03 实案）
-    (root / chapter_dir / "outline.md").write_bytes((outline + "\n").encode("utf-8"))
-    (root / chapter_dir / "prose.md").write_bytes((prose + "\n").encode("utf-8"))
+    atomic.write_bytes(root / chapter_dir / "outline.md",
+                       (outline + "\n").encode("utf-8"))
+    atomic.write_bytes(root / chapter_dir / "prose.md",
+                       (prose + "\n").encode("utf-8"))
     _save(root, state)
     _render(root, state)
     return state
@@ -214,7 +216,8 @@ def refresh_prose(workdir, chapter_no, prose):
     state["updated_at"] = _now()
     chapter_dir = _CHAPTERS / ("%04d" % number)
     (root / chapter_dir).mkdir(parents=True, exist_ok=True)
-    (root / chapter_dir / "prose.md").write_bytes((prose + "\n").encode("utf-8"))
+    atomic.write_bytes(root / chapter_dir / "prose.md",
+                       (prose + "\n").encode("utf-8"))
     _save(root, state)
     return state
 
@@ -235,12 +238,12 @@ def _render(root, state):
     lines += ["## 作者真相", ""] + ["- " + x for x in state.get("author_truth", [])] + [""]
     lines += ["## 读者已知", ""] + ["- " + x for x in state.get("reader_known", [])] + [""]
     context = "\n".join(lines).rstrip() + "\n"
-    (derived / "context.md").write_text(context, encoding="utf-8")
-    (derived / "foreshadowing.md").write_text("# 伏笔\n\n" + "\n".join(
+    atomic.write_text(derived / "context.md", context)
+    atomic.write_text(derived / "foreshadowing.md", "# 伏笔\n\n" + "\n".join(
         "- %s｜%s｜%s" % (x.get("id"), x.get("text"), x.get("status"))
-        for x in state.get("foreshadowing", [])) + "\n", encoding="utf-8")
-    (derived / "timeline.md").write_text("# 时间线\n\n" + "\n".join(
-        "- " + x for x in state.get("timeline", [])) + "\n", encoding="utf-8")
+        for x in state.get("foreshadowing", [])) + "\n")
+    atomic.write_text(derived / "timeline.md", "# 时间线\n\n" + "\n".join(
+        "- " + x for x in state.get("timeline", [])) + "\n")
     state["derived_digests"] = {}
     for name in ("context.md", "foreshadowing.md", "timeline.md"):
         state["derived_digests"][name] = _digest((derived / name).read_text(encoding="utf-8"))

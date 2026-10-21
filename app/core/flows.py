@@ -16,7 +16,7 @@ import re
 import threading
 import time
 
-from . import paths, volumes
+from . import atomic, paths, volumes
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "flows.json"
@@ -165,10 +165,7 @@ def _read():
 
 
 def _write(data):
-    _FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(_FILE)
+    atomic.write_json(_FILE, data, indent=2)
 
 
 def _norm_serial(serial):
@@ -558,10 +555,7 @@ def _history_read():
 
 
 def _history_write(data):
-    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = paths.DATA_DIR / "flows_history.json.tmp"
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(paths.DATA_DIR / "flows_history.json")
+    atomic.write_json(paths.DATA_DIR / "flows_history.json", data, indent=2)
 
 
 def _push_history(fid, new_flow, source):

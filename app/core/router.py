@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 
@@ -156,8 +157,8 @@ def score(agent, role, ttype, stats=None):
         base, affinity_txt, btxt, htxt, online_txt, quota_txt, round(total, 1))
 
 
-def pick(agents, role, ttype, stats=None, exclude=()):
-    """按分选出最优智能体。返回 (agent, 理由) 或 (None, "")。"""
+def _pick_scored(agents, role, ttype, stats=None, exclude=()):
+    """Legacy score picker used by the built-in strategy."""
     stats = stats or history.agent_stats()
     best, best_reason = None, ""
     for a in agents:
@@ -169,6 +170,51 @@ def pick(agents, role, ttype, stats=None, exclude=()):
     if best is None:
         return None, ""
     return best[1], best_reason
+
+
+def pick(agents, role, ttype, stats=None, exclude=()):
+    """Use the registered policy to select a CLI; retain the legacy return shape."""
+    from . import routing_strategy
+
+    pool = list(agents or [])
+    stats = stats or history.agent_stats()
+    context = {
+        "role": role,
+        "type": _task_type(ttype),
+        "task_type": ttype,
+        "stats": stats,
+        "exclude": tuple(exclude or ()),
+    }
+    try:
+        strategy = routing_strategy.get()
+        result = strategy.select_cli(context, pool)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "routing strategy selection failed; using builtin: %s",
+            type(exc).__name__)
+        return _pick_scored(pool, role, ttype, stats, exclude=exclude)
+
+    if result is None:
+        return None, ""
+    reason = ""
+    if isinstance(result, tuple) and len(result) == 2:
+        result, reason = result
+    if not isinstance(result, dict) or not result.get("id"):
+        logging.getLogger(__name__).warning(
+            "routing strategy returned an invalid CLI; using builtin")
+        return _pick_scored(pool, role, ttype, stats, exclude=exclude)
+    selected_id = str(result.get("id"))
+    excluded = {str(value) for value in (exclude or ())}
+    selected = next((agent for agent in pool
+                     if isinstance(agent, dict)
+                     and str(agent.get("id") or "") == selected_id
+                     and selected_id not in excluded), None)
+    if selected is None:
+        logging.getLogger(__name__).warning(
+            "routing strategy selected a CLI outside its candidate pool; using builtin")
+        return _pick_scored(pool, role, ttype, stats, exclude=exclude)
+    fallback_reason = "策略 %s" % type(strategy).__name__
+    return selected, str(reason or fallback_reason)
 
 
 # 空链 CLI 的真实上游在各自本机配置里（注册表里的 provider_id 是 UI 残留，
@@ -285,14 +331,57 @@ def agent_upstreams(agent_id, difficulty="default", task_type="", role=""):
 
 def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
                           dead_upstreams=(), difficulty="default",
-                          blocked_upstreams=()):
+                          blocked_upstreams=(), failed_cli=None, error=None):
     """换将选将。配额类死亡背景下：与死者同上游的候选依次让位，直到找到
     异上游/上游未知的候选（2026-09-22 实案：kimi 与 claude 同骑智谱，0.1 分
     之差把异上游 qwencode 压在下面，换将=换壳不换命）。异上游耗尽后同上游
     候选捡回分数最高者——聊胜于无。403 明确拒绝的上游始终阻断，不捡回重试。"""
+    from . import routing_strategy
+
     exclude = set(exclude)
     blocked_sets = [set(d) for d in (blocked_upstreams or ()) if d]
-    best, reason = pick(agents, role, ttype, stats, exclude=exclude)
+    try:
+        strategy = routing_strategy.get()
+    except Exception:
+        strategy = routing_strategy.BuiltinStrategy()
+    if error is not None:
+        try:
+            allow_fallback = bool(strategy.should_fallback(error))
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "routing strategy fallback check failed; using builtin: %s",
+                type(exc).__name__)
+            allow_fallback = routing_strategy.BuiltinStrategy().should_fallback(error)
+        if not allow_fallback:
+            code = (error.get("error_code") or ""
+                    if isinstance(error, dict) else "")
+            return None, "策略判定错误无需跨 CLI 降级%s" % (
+                ("（%s）" % code) if code else "")
+
+    preferred_ids = []
+    if isinstance(failed_cli, dict):
+        try:
+            chain = strategy.get_fallback_chain(failed_cli)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "routing strategy fallback chain failed: %s", type(exc).__name__)
+            chain = ()
+        for item in chain or ():
+            ident = item.get("id") if isinstance(item, dict) else item
+            ident = str(ident or "").strip()
+            if ident and ident not in preferred_ids:
+                preferred_ids.append(ident)
+    agents_by_id = {str(agent.get("id") or ""): agent for agent in agents
+                    if isinstance(agent, dict) and agent.get("id")}
+
+    def _choose(omitted):
+        for index, ident in enumerate(preferred_ids, 1):
+            candidate = agents_by_id.get(ident)
+            if candidate is not None and ident not in omitted:
+                return candidate, "策略后备链第 %d 位" % index
+        return pick(agents, role, ttype, stats, exclude=omitted)
+
+    best, reason = _choose(exclude)
     if best is None or (not dead_upstreams and not blocked_sets):
         return best, reason
     deferred = []
@@ -303,12 +392,12 @@ def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
             # 明确的 403 权限拒绝：同一上游没有换模型/换 CLI 再试的价值，
             # 即使异上游候选耗尽也不把它捡回来（与可换账号的配额错误不同）。
             exclude.add(best.get("id"))
-            best, reason = pick(agents, role, ttype, stats, exclude=exclude)
+            best, reason = _choose(exclude)
             continue
         if not (ups and any(ups & dead for dead in dead_upstreams)):
             break  # 异上游或上游未知：就用它
         deferred.append((best, reason))
-        best, reason = pick(agents, role, ttype, stats, exclude=exclude | {
+        best, reason = _choose(exclude | {
             x.get("id") for x, _ in deferred})
     if best is None and deferred:
         best, reason = deferred[0]  # 异上游全灭：同上游里挑最高的顶上
@@ -362,6 +451,81 @@ def route_plan(agents, role, task_spec, stats=None, exclude=(), selected=None,
                          if x["agent_id"] not in active_ids]}
 
 
+def _review_identity(agent, ttype, difficulty="default"):
+    """Collect all known model/provider/upstream identities for one agent.
+
+    Fallback call-chain rows matter: if a primary model is unavailable, a
+    reviewer can silently move to a model or gateway shared with the author.
+    Keep identities ephemeral and conservatively compare every configured row.
+    """
+    primary_family = str(agent.get("model_family") or "").strip()
+    if primary_family.lower() == "unknown":
+        primary_family = ""
+    families = {primary_family} if primary_family else set()
+    providers = set()
+    configured_provider = str(agent.get("provider_id") or "").strip()
+    if configured_provider:
+        providers.add(configured_provider)
+    upstreams = set()
+    try:
+        binding = modelhub.resolve_binding(agent.get("id"), difficulty) or {}
+        for row in binding.get("call_chain") or []:
+            if not isinstance(row, dict):
+                continue
+            model = str(row.get("model") or "").strip()
+            if model:
+                family = model_family.family(model)
+                if family.lower() != "unknown":
+                    families.add(family)
+                    if not primary_family:
+                        primary_family = family
+            provider_id = str(row.get("provider_id") or "").strip()
+            if provider_id:
+                providers.add(provider_id)
+            try:
+                host = _host_of((row.get("provider") or {}).get("base_url"))
+                if host:
+                    upstreams.add(host)
+            except (AttributeError, TypeError):
+                pass
+    except Exception:
+        # Preserve routing availability if an optional binding is damaged.
+        pass
+    if not upstreams:
+        try:
+            upstreams = agent_upstreams(
+                agent.get("id"), difficulty=difficulty,
+                task_type=ttype, role="review")
+        except Exception:
+            upstreams = set()
+    if not families:
+        legacy_kind = str(agent.get("kind") or "").strip()
+        if legacy_kind.lower() != "unknown":
+            primary_family = legacy_kind
+            families.add(legacy_kind)
+    return {"family": primary_family, "families": families,
+            "providers": providers, "upstreams": upstreams}
+
+
+def _review_separation(left, right):
+    """Return (isolated, reason), treating any shared fallback as same-source."""
+    left_families = {str(item).casefold() for item in left["families"]}
+    right_families = {str(item).casefold() for item in right["families"]}
+    shared = left_families & right_families
+    if shared:
+        label = sorted(shared)[0]
+        return False, "模型族相同（%s）" % label
+    left_providers = {str(item).casefold() for item in left["providers"]}
+    right_providers = {str(item).casefold() for item in right["providers"]}
+    shared = left_providers & right_providers
+    if shared:
+        return False, "供应商相同（%s）" % sorted(shared)[0]
+    shared = left["upstreams"] & right["upstreams"]
+    if shared:
+        return False, "上游相同（%s）" % sorted(shared)[0]
+    return True, "模型族/供应商/上游均隔离"
+
+
 def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
                   dead_upstreams=(), difficulty="default"):
     """评审者：跨厂商是硬规则（Codeband 的对抗式配对）——同族评审有同款盲区，
@@ -386,74 +550,13 @@ def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
 
     impl_kind = impl.get("kind")
 
+    impl_identity = _review_identity(impl, ttype, difficulty)
+
     def _identity(agent):
-        """Return the best available reviewer isolation identity.
+        return _review_identity(agent, ttype, difficulty)
 
-        Registry entries intentionally stay lightweight.  The configured
-        model/provider lives in modelhub, so resolve it at selection time and
-        keep the result in memory only.  Older/custom agents without a
-        binding still participate through their legacy ``kind`` value.
-        """
-        configured_family = str(agent.get("model_family") or "").strip()
-        if configured_family.lower() == "unknown":
-            configured_family = ""
-        out = {
-            "family": configured_family,
-            "provider": str(agent.get("provider_id") or "").strip(),
-            "upstreams": set(),
-        }
-        try:
-            binding = modelhub.resolve_binding(agent.get("id"), difficulty) or {}
-            chain = binding.get("call_chain") or []
-            for row in chain:
-                if not isinstance(row, dict):
-                    continue
-                model = str(row.get("model") or "").strip()
-                provider = str(row.get("provider_id") or "").strip()
-                if provider and not out["provider"]:
-                    out["provider"] = provider
-                if model and not out["family"]:
-                    family = model_family.family(model)
-                    if family.lower() != "unknown":
-                        out["family"] = family
-                # The first usable route is the primary identity.  Fallback
-                # routes are intentionally still considered by upstream
-                # isolation below, but do not overwrite the primary family.
-                try:
-                    host = _host_of((row.get("provider") or {}).get("base_url"))
-                    if host:
-                        out["upstreams"].add(host)
-                except (AttributeError, TypeError):
-                    pass
-            if not out["upstreams"]:
-                out["upstreams"] = agent_upstreams(
-                    agent.get("id"), difficulty=difficulty,
-                    task_type=ttype, role="review")
-        except Exception:
-            # Routing must remain available when a damaged optional binding is
-            # present.  The caller will use the legacy kind fallback.
-            pass
-        if not out["family"]:
-            legacy_kind = str(agent.get("kind") or "").strip()
-            if legacy_kind.lower() != "unknown":
-                out["family"] = legacy_kind
-        return out
-
-    impl_identity = _identity(impl)
-
-    def _separation(a):
-        """Return (safe, reason), conservatively refusing same-source pairs."""
-        ident = _identity(a)
-        if (impl_identity["family"] and ident["family"] and
-                impl_identity["family"].lower() == ident["family"].lower()):
-            return False, "模型族相同（%s）" % ident["family"]
-        if (impl_identity["provider"] and ident["provider"] and
-                impl_identity["provider"] == ident["provider"]):
-            return False, "供应商相同（%s）" % ident["provider"]
-        if (impl_identity["upstreams"] and ident["upstreams"] and
-                impl_identity["upstreams"] & ident["upstreams"]):
-            return False, "上游相同"
-        return True, "模型族/供应商/上游均隔离"
+    def _separation(agent):
+        return _review_separation(impl_identity, _identity(agent))
     real = [a for a in agents
             if a.get("mode") == "real" and a["id"] != impl["id"] and _alive(a)]
     isolated = []
@@ -498,14 +601,38 @@ def pick_critics(agents, ttype, stats=None, impl=None):
     任务拖长数分钟。两名保留交叉判断并封顶默认调用数；手工模式不走这里。
     """
     stats = stats or history.agent_stats()
-    real = [a for a in agents if a.get("mode") == "real" and (not impl or a["id"] != impl["id"])]
+    real = [a for a in agents if a.get("mode") == "real" and
+            (not impl or a["id"] != impl["id"])]
     if real:
-        ranked = sorted(real, key=lambda a: score(a, "review", ttype, stats)[0], reverse=True)
-        real = ranked[:AUTO_CRITIC_LIMIT]
-        note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (len(real), len(ranked))
-        if impl and impl.get("mode") == "real" \
-                and all(a.get("kind") == impl.get("kind") for a in real):
+        ranked = sorted(real, key=lambda a: score(a, "review", ttype, stats)[0],
+                        reverse=True)
+        if impl and impl.get("mode") == "real":
+            author_identity = _review_identity(impl, ttype)
+            isolated, fallback = [], []
+            for agent in ranked:
+                safe, why = _review_separation(
+                    author_identity, _review_identity(agent, ttype))
+                (isolated if safe else fallback).append((agent, why))
+            chosen = [agent for agent, _ in isolated[:AUTO_CRITIC_LIMIT]]
+            fallback_used = []
+            if len(chosen) < AUTO_CRITIC_LIMIT:
+                count = AUTO_CRITIC_LIMIT - len(chosen)
+                fallback_used = fallback[:count]
+                chosen.extend(agent for agent, _ in fallback_used)
+            note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (
+                len(chosen), len(ranked))
+            if isolated:
+                note += "；跨模型族隔离优先（并排除同供应商/同上游）"
+            if fallback_used:
+                detail = "; ".join("%s: %s" % (agent.get("id"), why)
+                                    for agent, why in fallback_used[:3])
+                note += "；同源候选兼容回退（原因：%s）" % detail
+            return chosen, note
+        chosen = ranked[:AUTO_CRITIC_LIMIT]
+        note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (
+            len(chosen), len(ranked))
+        if impl and all(a.get("kind") == impl.get("kind") for a in chosen):
             note += "；评审组与作者同为 %s，建议启用其他厂商 CLI 交叉评审" % impl.get("kind")
-        return real, note
+        return chosen, note
     mocks = [a for a in agents if a.get("mode") == "mock"] or agents[:2]
     return mocks, "（无真实智能体，用内置 mock 演示）"
