@@ -24,6 +24,7 @@ from . import artifacts, atomic, audit, cli_text, paths, tracing, volumes
 
 from .store_serial import (  # noqa: F401 - 旧调用面再导出
     _CH_FILE_RE, early_finish_existing_task, early_finish_info, early_finish_task, serial_book_chapter_numbers,
+    _norm_early_finish,
     serial_book_progress, serial_early_finish_plan, update_early_finish_task,
 )
 from .store_messages import (  # noqa: F401 - 旧调用面再导出
@@ -152,30 +153,6 @@ def _default_timeout_s(task):
     return DEFAULT_TASK_TIMEOUT_S
 
 
-def _norm_early_finish(value):
-    """Normalize the durable early-finish plan carried by a serial batch."""
-    if not isinstance(value, dict):
-        return None
-    try:
-        target = int(value.get("target_chapter") or 0)
-    except (TypeError, ValueError):
-        return None
-    # Persisted payloads can come from older clients or manual edits. Do not
-    # silently rewrite an invalid target into a different ending chapter;
-    # dropping the malformed plan lets the caller repair it explicitly.
-    if target < 1 or target > 500:
-        return None
-    out: dict = {"target_chapter": target}
-    source = str(value.get("source_task") or "").strip()
-    if re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", source):
-        out["source_task"] = source
-    reason = str(value.get("reason") or "").strip()
-    if reason:
-        out["reason"] = reason[:240]
-    requested_at = str(value.get("requested_at") or "").strip()
-    if requested_at:
-        out["requested_at"] = requested_at[:32]
-    return out
 
 
 # ---------------------------------------------------------------- 任务

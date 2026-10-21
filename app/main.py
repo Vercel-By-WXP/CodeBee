@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import pick_dialog  # noqa: F401 - desktop_host 动态经 main.pick_dialog 访问
 import logging
 import math
 import os
@@ -37,7 +38,6 @@ from core import paths
 from core import health
 from core import usage as usage_ledger
 from core.http_logging import log_request_exception
-import pick_dialog
 import pet
 from main_handlers import HandlerPublishApi
 

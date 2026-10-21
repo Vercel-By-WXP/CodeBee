@@ -7,12 +7,41 @@
 from __future__ import annotations
 
 
+import re
+
+
 def _store():
     from . import store
     return store
 
 
-_CH_FILE_RE = _store().re.compile(r"^chapter-(\d{1,4})\.md$")
+_CH_FILE_RE = re.compile(r"^chapter-(\d{1,4})\.md$")
+
+
+def _norm_early_finish(value):
+    """Normalize the durable early-finish plan carried by a serial batch."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        target = int(value.get("target_chapter") or 0)
+    except (TypeError, ValueError):
+        return None
+    # Persisted payloads can come from older clients or manual edits. Do not
+    # silently rewrite an invalid target into a different ending chapter;
+    # dropping the malformed plan lets the caller repair it explicitly.
+    if target < 1 or target > 500:
+        return None
+    out: dict = {"target_chapter": target}
+    source = str(value.get("source_task") or "").strip()
+    if re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", source):
+        out["source_task"] = source
+    reason = str(value.get("reason") or "").strip()
+    if reason:
+        out["reason"] = reason[:240]
+    requested_at = str(value.get("requested_at") or "").strip()
+    if requested_at:
+        out["requested_at"] = requested_at[:32]
+    return out
 
 
 def serial_book_chapter_numbers(task):

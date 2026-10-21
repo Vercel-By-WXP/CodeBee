@@ -182,6 +182,9 @@
       "publish.flow_fanqie",
       "publish.flow_helpers",
       "publish.manager",
+      "publish.publish_auth",
+      "publish.publish_browser",
+      "publish.publish_create",
       "remotesync",
       "runner",
       "runner_parsing",
@@ -201,6 +204,9 @@
       "main_handlers",
       "mcp_server",
       "pipeline",
+      "pipeline_code",
+      "pipeline_content",
+      "pipeline_review",
       "selection",
       "selection_launch"
     ]
