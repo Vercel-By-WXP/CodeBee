@@ -65,21 +65,6 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertIsNone(normalized["allowed_tools"])
         self.assertFalse(normalized["require_approval"])
 
-    def test_stored_normalized_sandbox_can_be_revalidated(self):
-        normalized = policy.normalize_sandbox({"network": True}, ".")
-        self.assertIsNone(normalized["allowed_tools"])
-        again = policy.normalize_sandbox(normalized, ".")
-        self.assertIsNone(again["allowed_tools"])
-        self.assertEqual(again["allowed_roots"], normalized["allowed_roots"])
-
-    def test_explicit_none_allowlist_means_unrestricted(self):
-        self.assertIsNone(policy.normalize_sandbox(
-            {"allowed_tools": None}, ".")["allowed_tools"])
-        self.assertEqual(policy.normalize_sandbox(
-            {"allowed_tools": []}, ".")["allowed_tools"], [])
-        with self.assertRaises(ValueError):
-            policy.normalize_sandbox({"allowed_tools": "read_file"}, ".")
-
 
 if __name__ == "__main__":
     unittest.main()

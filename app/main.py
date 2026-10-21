@@ -4832,13 +4832,6 @@ def main():
     except Exception as _free_err:
         print("[CodeBee] Our Free Model 接入跳过（不影响启动）：%s: %s"
               % (type(_free_err).__name__, _free_err), flush=True)
-    # ensure_builtin_free_provider may automatically disable the local
-    # provider when standalone is unavailable; remove any alert from the
-    # previous enabled session before exposing the first health snapshot.
-    try:
-        health.clear_inactive()
-    except Exception:
-        pass
     # Node 首次启动偶尔会超过进程就绪等待窗口；继续后台重试一次供应商
     # 接线，避免本次 CodeBee 会话一直停留在“未启动”。手动停用仍由
     # modelhub 的 builtin_auto_enable 标记保护，不会被后台重启覆盖。
