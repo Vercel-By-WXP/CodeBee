@@ -39,6 +39,12 @@ STATUS_FILE = paths.PUBLISH_DIR / "state.json"
 # another click on “连接平台”.  It never navigates a non-empty challenge tab
 # and never attempts to solve credentials or CAPTCHA controls.
 AUTH_WATCH_INTERVAL_S = 30.0
+# A waiting_login profile with no live browser may not be woken by every
+# unattended retry: the login window would pop back up on each scheduler
+# tick and service restart (2026-10-21 实案). Unattended verification still
+# needs a launch to re-check the saved cookies, so allow it at most once per
+# this window; a human「连接」click always launches immediately.
+LOGIN_REPROBE_MIN_S = 6 * 3600
 # Optional, already-issued browser auth state for unattended deployments.
 # The default directory is outside the repository and is intentionally not
 # created by the app.  A state file is a secret-bearing artifact: callers

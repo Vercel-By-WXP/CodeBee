@@ -718,6 +718,78 @@ class PublishAuthRecoveryTests(unittest.TestCase):
             self.assertEqual(manager._auth_watch_once(), 0)
         connect.assert_not_called()
 
+    def test_unattended_connect_does_not_wake_a_closed_waiting_profile(self):
+        from core.publish import manager
+
+        dead = mock.Mock()
+        dead.alive.return_value = False
+        waiting_error = ("平台等待登录或安全验证，验证完成后自动重试："
+                         "https://zuozhe.qimao.com/front/register-login")
+        with mock.patch.object(manager, "_state", {
+                "platforms": {"qimao": {
+                    "status": "waiting_login", "error": waiting_error,
+                    "launch_probe_at": manager.time.time()}}}), \
+                mock.patch.object(manager, "_browsers", {"qimao": dead}), \
+                mock.patch.object(manager, "_open_page") as opened:
+            ok, error = manager._connect_unattended("qimao", "", "qimao")
+        self.assertFalse(ok)
+        self.assertEqual(error, waiting_error)
+        opened.assert_not_called()
+
+    def test_unattended_connect_fails_fast_after_restart_without_browser(self):
+        from core.publish import manager
+
+        with mock.patch.object(manager, "_state", {
+                "platforms": {"qimao": {
+                    "status": "waiting_login",
+                    "error": "平台等待登录或安全验证，验证完成后自动重试",
+                    "launch_probe_at": manager.time.time()}}}), \
+                mock.patch.object(manager, "_browsers", {}), \
+                mock.patch.object(manager, "_open_page") as opened:
+            ok, error = manager._connect_unattended("qimao", "", "qimao")
+        self.assertFalse(ok)
+        self.assertIn("平台等待登录", error)
+        opened.assert_not_called()
+
+    def test_unattended_connect_still_verifies_once_before_throttling(self):
+        from core.publish import manager
+
+        page = AuthPage(manager.qimao.CONFIG["home"])
+
+        def fake_open_page(slot, preserve_tabs=False):
+            browser = mock.Mock()
+            browser.alive.return_value = True
+            manager._browsers[slot] = browser  # 像真 _ensure_browser 一样登记
+            return browser, page
+
+        with mock.patch.object(manager, "_state", {
+                "platforms": {"qimao": {
+                    "status": "waiting_login",
+                    "error": "平台等待登录或安全验证，验证完成后自动重试"}}}), \
+                mock.patch.object(manager, "_browsers", {}), \
+                mock.patch.object(manager, "STATUS_FILE",
+                                  Path("nul") / "unused-state.json"), \
+                mock.patch.object(manager, "_save"), \
+                mock.patch.object(manager, "_open_page",
+                                  side_effect=fake_open_page) as opened, \
+                mock.patch.object(manager, "_probe_login_pages",
+                                  return_value=(False,
+                                                "https://zuozhe.qimao.com/front/register-login",
+                                                page)):
+            ok, error = manager._connect_unattended("qimao", "", "qimao")
+            self.assertFalse(ok)
+            opened.assert_called_once()
+            launched_at = manager._state["platforms"]["qimao"]["launch_probe_at"]
+            self.assertGreater(launched_at, 0)
+
+            # 第二次紧跟着的重试在限频窗口内：不再开页。
+            with mock.patch.object(manager, "_browsers", {}), \
+                    mock.patch.object(manager, "_open_page") as reopened:
+                ok2, error2 = manager._connect_unattended("qimao", "", "qimao")
+            self.assertFalse(ok2)
+            self.assertIn("平台等待登录", error2)
+            reopened.assert_not_called()
+
     def test_auth_watchdog_retries_error_slot_after_auth_state_rotation(self):
         from core.publish import manager
 
