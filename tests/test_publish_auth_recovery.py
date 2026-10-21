@@ -674,12 +674,15 @@ class PublishAuthRecoveryTests(unittest.TestCase):
     def test_auth_watchdog_recovers_after_interactive_waiter_expires(self):
         from core.publish import manager
 
+        browser = mock.Mock()
+        browser.alive.return_value = True
         with mock.patch.object(manager, "_load"), \
                 mock.patch.object(manager, "_state", {
                     "platforms": {
                         "fanqie": {"status": "waiting_login"},
                         "qimao@alt": {"status": "connected"},
                     }}), \
+                mock.patch.object(manager, "_browsers", {"fanqie": browser}), \
                 mock.patch.object(manager, "_ACTION_LOCKS", {}), \
                 mock.patch.object(manager, "_connect_unattended",
                                   return_value=(True, "")) as connect:
@@ -689,10 +692,28 @@ class PublishAuthRecoveryTests(unittest.TestCase):
     def test_auth_watchdog_does_not_duplicate_an_interactive_waiter(self):
         from core.publish import manager
 
+        browser = mock.Mock()
+        browser.alive.return_value = True
         with mock.patch.object(manager, "_load"), \
                 mock.patch.object(manager, "_state", {
                     "platforms": {"fanqie": {"status": "waiting_login"}}}), \
+                mock.patch.object(manager, "_browsers", {"fanqie": browser}), \
                 mock.patch.object(manager, "_LOGIN_WAITERS", {"fanqie"}), \
+                mock.patch.object(manager, "_connect_unattended") as connect:
+            self.assertEqual(manager._auth_watch_once(), 0)
+        connect.assert_not_called()
+
+    def test_auth_watchdog_never_relaunches_a_closed_browser(self):
+        from core.publish import manager
+
+        dead = mock.Mock()
+        dead.alive.return_value = False
+        with mock.patch.object(manager, "_load"), \
+                mock.patch.object(manager, "_state", {
+                    "platforms": {"fanqie": {"status": "waiting_login"},
+                                  "qimao": {"status": "waiting_login"}}}), \
+                mock.patch.object(manager, "_browsers", {"fanqie": dead}), \
+                mock.patch.object(manager, "_ACTION_LOCKS", {}), \
                 mock.patch.object(manager, "_connect_unattended") as connect:
             self.assertEqual(manager._auth_watch_once(), 0)
         connect.assert_not_called()
@@ -715,6 +736,8 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                             }}}), \
                     mock.patch.object(manager, "_ACTION_LOCKS", {}), \
                     mock.patch.object(manager, "_LOGIN_WAITERS", set()), \
+                    mock.patch.object(manager, "_browsers", {
+                        "fanqie": mock.Mock(**{"alive.return_value": True})}), \
                     mock.patch.object(manager, "_connect_unattended",
                                       return_value=(True, "")) as connect:
                 self.assertEqual(manager._auth_watch_once(), 1)

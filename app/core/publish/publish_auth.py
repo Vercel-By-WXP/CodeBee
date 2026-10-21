@@ -639,6 +639,14 @@ def _auth_watch_once():
         if lock is None:
             continue
         try:
+            browser = _mgr()._browsers.get(slot)
+            if browser is None or not browser.alive():
+                # The operator closed the browser window. Relaunching it from
+                # this 30-second watchdog turns "waiting for a login" into a
+                # visible window popping back up forever. Leave the durable
+                # waiting_login state alone; the next real publish request
+                # attaches or launches on demand and rechecks the session.
+                continue
             with _mgr()._LOGIN_WAITERS_GUARD:
                 if slot in _mgr()._LOGIN_WAITERS:
                     # The interactive connect request is already passively

@@ -1186,11 +1186,6 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
 
     def _route_post(self):
         path = urlparse(self.path).path
-        # MCP Harness 自带 Bearer 认证（外部 AI 客户端，无站点令牌/同源概念），
-        # 必须在站点 auth 与通用 _body() 之前分流，否则 POST 全部落 404（2026-10-21 实测）。
-        if path == "/mcp/orchestration":
-            from core import mcp_harness
-            return self._handle_mcp_harness(mcp_harness)
         m = None
         if not self._authed():
             return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
@@ -3815,7 +3810,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         elif method == "POST":
             # Parse request body
             try:
-                request = self._body()
+                body = self._read_body()
+                request = json.loads(body)
             except Exception as exc:
                 return self._json(400, {"error": f"Invalid JSON: {exc}"})
             
@@ -3843,21 +3839,6 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     "id": rpc_id,
                     "result": result,
                 })
-            elif rpc_method == "initialize":
-                # MCP 规范握手：标准客户端（Claude Desktop 等）首连先发 initialize，
-                # 缺它则握手即失败（2026-10-21 冒烟实测）。
-                return self._json(200, {
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {"tools": {"listChanged": False}},
-                        "serverInfo": {"name": "CodeBee", "version": "1.0"},
-                    },
-                })
-            elif rpc_method == "notifications/initialized":
-                # 通知无 id，按规范回 202（客户端不读体）
-                return self._json(202, {})
             else:
                 return self._json(400, {"error": f"Unknown method: {rpc_method}"})
         else:
