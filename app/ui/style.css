@@ -597,7 +597,7 @@ body.side-resizing iframe { pointer-events: none; }
 .sdir summary {
   display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px;
   cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600;
-  list-style: none; user-select: none;
+  list-style: none; user-select: none; position: relative;
 }
 .sdir summary::-webkit-details-marker { display: none; }
 .sdir summary:hover { background: var(--panel2); color: var(--text); }
@@ -615,8 +615,23 @@ body.side-resizing iframe { pointer-events: none; }
 .sdir summary .cnt {
   flex: none; color: var(--muted); font-size: 10.5px; line-height: 16px; padding: 0 6px;
   background: var(--panel2); border-radius: 999px; font-variant-numeric: tabular-nums;
+  transition: opacity .12s;
 }
 .sdir > .dirbody { margin: 1px 0 6px 12px; padding-left: 6px; border-left: 1px solid var(--border); }
+/* 置顶块与拖动：置顶行的目录图标换成图钉并染主色，让「块边界」不靠猜也能看出来。
+ * 把手浮在计数徽标位（计数 hover 让位），不占行宽、不撑高，避免整列文字抖动；
+ * 落点用内描边而非 border，同样是为了不改变 summary 尺寸 */
+.sdir.pinned > summary .fico { color: var(--accent); }
+.sdir summary .drag {
+  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; color: var(--muted); opacity: 0;
+}
+.sdir summary .drag svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; fill: none; }
+.sdir summary:hover .cnt { opacity: 0; }
+.sdir summary:hover .drag { opacity: .8; }
+.sdir summary[draggable="true"]:active { cursor: grabbing; }
+.sdir.dragging > summary { opacity: .4; }
+.sdir.drag-over > summary { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* ---------------- 右键菜单 ---------------- */
 .ctx-menu {

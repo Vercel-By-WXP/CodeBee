@@ -5126,7 +5126,8 @@ function bindCtxMenus() {
     openCtxMenu(e.clientX, e.clientY, taskContextItems(det));
     return;
     }
-    // 文件夹行（ZCode 桌面端式样）：新建任务到该目录 / 打开工作目录 / 复制路径 / 移除。
+    // 文件夹行（ZCode 桌面端式样）：查看文件 / 新建任务到该目录 / 打开工作目录 / 复制路径 /
+    // 置顶切换 / 移除。
     // 「其他」是兜底展示（无主运行的聚合），不是真实目录，不弹菜单。
     const dirEl = e.target.closest(".sdir");
     if (!dirEl) return;
@@ -5146,14 +5147,68 @@ function bindCtxMenus() {
       { label: t("打开工作目录"), fn: () => { if (ids[0]) revealPath("tasks", ids[0], true); } },
       { label: t("复制工作目录路径"), fn: () => { if (ids[0]) revealPath("tasks", ids[0], false); } },
       "-",
-      { label: t("移除该文件夹"), danger: true, fn: () => removeSideDir(ids, dir) },
     ];
+    const pinned = sidePinnedSet().has(dir);
+    items.push({ label: pinned ? t("取消置顶") : t("置顶该文件夹"),
+      fn: () => setSidePin(dir, !pinned) });
+    items.push("-");
+    items.push({ label: t("移除该文件夹"), danger: true, fn: () => removeSideDir(ids, dir) });
     openCtxMenu(e.clientX, e.clientY, items);
   });
   // 文件夹展开/折叠：toggle 事件不冒泡，用捕获监听整个侧栏，实时写回 localStorage
   $("side-tasks").addEventListener("toggle", (e) => {
     if (e.target && e.target.classList && e.target.classList.contains("sdir")) saveOpenDirs();
   }, true);
+  // 侧栏文件夹拖动只管置顶块：summary 整行可拖（单击仍走折叠，浏览器只在真拖起时吞掉 click）。
+  // 事件委托挂在常驻的 #side-tasks 上，重绘 innerHTML 后无需重新绑定。
+  const sideBox = $("side-tasks");
+  const sideDragTarget = (ev) => {
+    const el = ev.target && ev.target.closest && ev.target.closest(".sdir");
+    if (!el) return null;
+    const dir = el.dataset.dir;
+    return dir && dir !== ORPHAN_DIR ? el : null;
+  };
+  const sideDragPair = (ev) => {
+    if (!S.sideDragDir) return null;
+    const el = sideDragTarget(ev);
+    if (!el) return null;
+    const to = el.dataset.dir;
+    if (!sideDropAccepted(S.sideDragDir, to)) return null;
+    return { el, from: S.sideDragDir, to };
+  };
+  sideBox.addEventListener("dragstart", (e) => {
+    if (!(e.target.closest && e.target.closest("summary"))) return;
+    const el = sideDragTarget(e);
+    if (!el) return;
+    S.sideDragDir = el.dataset.dir;
+    el.classList.add("dragging");
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", el.dataset.dir);
+    }
+  });
+  sideBox.addEventListener("dragover", (e) => {
+    const pair = sideDragPair(e);
+    if (!pair) return;          // 落点无效时不 preventDefault，浏览器自己给出禁止光标
+    e.preventDefault();
+    sideBox.querySelectorAll(".sdir.drag-over").forEach((n) => n.classList.remove("drag-over"));
+    pair.el.classList.add("drag-over");
+  });
+  sideBox.addEventListener("dragleave", (e) => {
+    const el = sideDragTarget(e);
+    if (el) el.classList.remove("drag-over");
+  });
+  sideBox.addEventListener("drop", (e) => {
+    const pair = sideDragPair(e);
+    const from = S.sideDragDir;
+    S.sideDragDir = "";  // 落点会触发重绘并摘掉源节点，之后的 dragend 冒泡不到这里
+    if (from) e.preventDefault();  // 无效落点也要吞掉，否则浏览器会去导航被丢进来的文本/链接
+    if (pair) applySideDrop(pair.from, pair.to);
+  });
+  sideBox.addEventListener("dragend", () => {
+    S.sideDragDir = "";
+    sideBox.querySelectorAll(".sdir.dragging, .sdir.drag-over").forEach((d) => d.classList.remove("dragging", "drag-over"));
+  });
   document.addEventListener("click", closeCtxMenu, true);
   window.addEventListener("blur", closeCtxMenu);
   window.addEventListener("scroll", closeCtxMenu, true);
@@ -5858,6 +5913,51 @@ function saveOpenDirs() {
   } catch (e) { /* 隐私模式忽略 */ }
 }
 
+/* 侧栏「置顶块 + 活跃度尾」：置顶的项目按用户摆的顺序恒在上，其余仍按最近活动倒序自动浮沉。
+ * 只存置顶目录的有序数组（目录绝对路径才是稳定身份，dirs 每轮从任务重算，存下标会飘），
+ * 空数组＝纯活跃度排序（改造前的默认行为）。「其他」是兜底聚合，恒垫底且不可置顶。 */
+const SIDE_PIN_KEY = "orch.sidePinned";
+function loadSidePins() {
+  try {
+    const a = JSON.parse(localStorage.getItem(SIDE_PIN_KEY) || "[]");
+    return Array.isArray(a) ? a.filter((d) => typeof d === "string") : [];
+  } catch (e) { return []; }
+}
+function sidePinnedSet() { return new Set(loadSidePins()); }
+function saveSidePins(pins) {
+  try { localStorage.setItem(SIDE_PIN_KEY, JSON.stringify(pins)); } catch (e) { /* 隐私模式忽略 */ }
+  S.sideSig = ""; renderSideTasks();
+}
+function sortSideDirs(dirs, orphanDir) {
+  const byTime = (a, b) => String(b.time || "").localeCompare(String(a.time || ""));
+  const byOrphan = (a, b) => (a.dir === orphanDir ? 1 : 0) - (b.dir === orphanDir ? 1 : 0);
+  const rank = {};
+  loadSidePins().forEach((d, i) => { if (!(d in rank)) rank[d] = i; });
+  const pk = (d) => (d.dir in rank ? rank[d.dir] : Number.MAX_SAFE_INTEGER);
+  dirs.sort((a, b) => byOrphan(a, b) || (pk(a) - pk(b)) || byTime(a, b));
+}
+/* 右键菜单的显式开关：置顶＝插到置顶块最前，取消＝从块里摘掉、落回活跃度尾 */
+function setSidePin(dir, on) {
+  const pins = loadSidePins().filter((d) => d !== dir);
+  if (on) pins.unshift(dir);
+  saveSidePins(pins);
+}
+/* 拖动落点只管置顶块，其余交给活跃度：
+ * 落在置顶行上 → 插到该行之前（块内改序，或把外面的项目拖进来顺手置顶）；
+ * 落在非置顶行上 → 摘掉拖动的置顶项（把它拖出块）。
+ * 两边都不在块里时没有可表达的顺序，dragover 直接不接受，浏览器显示禁止光标。 */
+function sideDropAccepted(fromDir, toDir) {
+  if (!fromDir || fromDir === toDir) return false;
+  const pins = sidePinnedSet();
+  return pins.has(toDir) || pins.has(fromDir);
+}
+function applySideDrop(fromDir, toDir) {
+  const pins = loadSidePins().filter((d) => d !== fromDir);
+  const at = pins.indexOf(toDir);
+  if (at >= 0) pins.splice(at, 0, fromDir);
+  saveSidePins(pins);
+}
+
 /* 侧栏「任务」树：文件夹（工作目录）→ 任务，两级。
  * 一级文件夹 = 任务 workdir 末段名（无主运行归「其他」垫底）；二级任务行 = 单行按钮：
  * 状态字形 + 单行省略标题 + 徽章 + 相对时间，点击主栏直开任务详情。
@@ -6050,13 +6150,10 @@ function renderSideTasks() {
   // 已移除（隐藏）的目录不上侧栏；「其他」兜底永远保留
   const hid = sideHiddenDirs();
   for (let i = dirs.length - 1; i >= 0; i--) if (hid.has(dirs[i].dir)) dirs.splice(i, 1);
-  // 组内任务按活动时间倒序；文件夹：无主运行「其他」恒垫底，其余按最近活动倒序（活跃项目浮上来）
+  // 组内任务按活动时间倒序；文件夹：无主运行「其他」恒垫底，其余按自动（最近活动倒序，
+  // 活跃项目浮上来）或用户拖动后的手动顺序
   dirs.forEach((d) => d.groups.sort((a, b) => String(b.time || "").localeCompare(String(a.time || ""))));
-  dirs.sort((a, b) => {
-    const ao = a.dir === ORPHAN ? 1 : 0, bo = b.dir === ORPHAN ? 1 : 0;
-    if (ao !== bo) return ao - bo;
-    return String(b.time || "").localeCompare(String(a.time || ""));
-  });
+  sortSideDirs(dirs, ORPHAN);
   // 文件夹展开态：会话内已渲染过 → 以 DOM 为准（保留用户点击）；首轮 → 读 localStorage，无则启发式
   const paintedDirs = !!box.querySelector("details.sdir");
   let openDirs;
@@ -6089,17 +6186,24 @@ function renderSideTasks() {
       '<button class="stask-more" type="button" aria-haspopup="menu" aria-label="' + esc(t("任务操作")) + '" title="' + esc(t("任务操作")) +
       '" onclick="event.stopPropagation();openTaskActions(this.closest(\'.stask\'), event)">⋯</button></div>';
   };
-  // 一级文件夹行：折叠箭头 + 目录图标 + 末段名（hover 显全路径）+ 任务计数徽标
+  // 一级文件夹行：折叠箭头 + 目录图标（已置顶的换成图钉，让置顶块边界一眼可辨）
+  // + 末段名（hover 显全路径）+ 任务计数徽标
+  const pinnedDirs = sidePinnedSet();
   box.innerHTML = dirs.map((d) => {
     const isOrphan = d.dir === ORPHAN;
     const label = isOrphan ? t("其他") : dirName(d.dir);
     const inner = d.groups.map(row).join("");
     const isOpen = openDirs.has(d.dir);
-    return '<details class="sdir" data-dir="' + esc(d.dir) + '"' + (isOpen ? " open" : "") + "><summary>" +
+    const isPinned = pinnedDirs.has(d.dir);
+    const canDrag = !isOrphan;
+    return '<details class="sdir' + (isPinned ? " pinned" : "") + '" data-dir="' + esc(d.dir) + '"' +
+      (isOpen ? " open" : "") + "><summary" + (canDrag ? ' draggable="true"' : "") + ">" +
       '<svg class="chev"><use href="#i-chevron-r"/></svg>' +
-      '<svg class="fico"><use href="#i-folder"/></svg>' +
+      '<svg class="fico"><use href="' + (isPinned ? "#i-pin" : "#i-folder") + '"/></svg>' +
       '<span class="t"' + (isOrphan ? "" : ' title="' + esc(d.dir) + '"') + ">" + esc(label) + "</span>" +
-      '<span class="cnt">' + d.groups.length + "</span></summary>" +
+      '<span class="cnt">' + d.groups.length + "</span>" +
+      (canDrag ? '<span class="drag" title="' + esc(t("拖动调整顺序")) + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"/></svg></span>' : "") +
+      "</summary>" +
       '<div class="dirbody">' + inner + "</div></details>";
   }).join("") || ('<div class="side-empty">' + (q ? t("无匹配任务") : t("暂无任务")) + "</div>");
   renderMobileWorkspaces(dirs);
