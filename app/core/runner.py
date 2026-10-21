@@ -1869,6 +1869,30 @@ def _opencode_fast_banner_death(res):
     return bool(lines) and all(_OC_BANNER_LINE_RE.match(ln) for ln in lines)
 
 
+def _opencode_salvage_complete_run(res):
+    """opencode 退出码 1 但主输出已完整时的收账判定，返回可收账文本或空串。
+
+    2026-10-21 实案：主回答流式完成后，CLI 收尾的会话标题小模型调用撞上游
+    不可用（Endpoint is unavailable），重试 3 次失败把整个进程拖成退出码 1
+    （opencode#30662 同款）——正文早已完整，按失败丢弃只会让链路原样重跑。
+    只收非终止类失败：输出有实质内容、且 stdout/stderr 尾段没有任何错误信号
+    （中途真炸的输出尾段必带错误行或上游措辞，不会误收）。"""
+    if (res.get("exit_code") != 1
+            or res.get("timed_out") or res.get("cancelled")
+            or res.get("stalled") or res.get("deadline_exceeded")
+            or res.get("output_truncated")):
+        return ""
+    text = clean_cli_text(res.get("stdout") or "").strip()
+    if len(text) < 200:
+        return ""
+    tail = text[-2000:]
+    if (_cli_error_lines(tail)
+            or _cli_error_lines(clean_cli_text(res.get("stderr") or "")[-2000:])
+            or classify_error_text(tail)):
+        return ""
+    return text
+
+
 def run_agent(agent, prompt, workdir=None, readonly=True,
               timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
               images=None, require_tools=False, deadline=None, command_context=None,
@@ -2189,7 +2213,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                    "provider": att.get("provider") or {},
                    "stream_retries": stream_retries,
                    "attempt_ordinal": attempt + 1}
-            if not res["ok"]:
+            if not res["ok"] and kind == "opencode":
+                salvaged = _opencode_salvage_complete_run(res)
+                if salvaged:
+                    out["ok"] = True
+                    out["text"] = salvaged
+                    out["salvaged"] = True
+                    _log_note(log_path,
+                              "opencode 退出码 1 但主输出完整（收尾标题调用失败所致），按成功收账")
+            if not out["ok"]:
                 if res.get("launch_budget_exhausted"):
                     out["error"] = ((res.get("stderr") or
                                      "dsh 启动预算耗尽，已停止继续拉起子进程") +

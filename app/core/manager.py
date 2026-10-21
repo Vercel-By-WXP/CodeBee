@@ -1274,6 +1274,28 @@ def _sync_mimo_settings(entry, model, prov):
         return "写入 mimocode.jsonc 失败：%s" % str(e)[:80]
 
 
+# opencode 主回答跑完后还会用 small model 发会话标题等轻量调用；不钉扎时它
+# 跟随主模型——免费池主模型收尾抖一下（Endpoint is unavailable），标题调用
+# 重试 3 次失败就把整个进程拖成退出码 1，完整产出被判失败（2026-10-21 实案，
+# opencode#30662 同款）。从该供应商自己的模型名单里挑一个异于主模型的备胎钉上。
+_OPENCODE_SMALL_PREFS = ("glm", "longcat", "nemotron", "deepseek", "mimo")
+
+
+def _opencode_small_model(model, prov):
+    """给 native 免费池绑定挑 small_model：偏好名单 × 供应商模型名单，异于主模型。"""
+    main = (model or "").strip()
+    names = [str(m.get("name") or "").strip()
+             for m in (prov.get("models") or []) if isinstance(m, dict)]
+    names = [n for n in names if n and n != main]
+    if not names:
+        return ""
+    for key in _OPENCODE_SMALL_PREFS:
+        for n in names:
+            if key in n.lower():
+                return n
+    return names[0]
+
+
 def _sync_opencode_settings(entry, model, prov):
     """opencode 专属：把绑定供应商写进其配置的 provider.orch 段 + 顶层 model
     （opencode 交互 TUI 只认自家配置文件里的凭据，ORCH_API_KEY env 对它等于
@@ -1316,11 +1338,21 @@ def _sync_opencode_settings(entry, model, prov):
                     if isinstance(data.get("provider"), dict):
                         data["provider"].pop("orch", None)
                     data["model"] = model or ""
+                    small = _opencode_small_model(model, prov)
+                    if small:
+                        data["small_model"] = small
+                    elif isinstance(data.get("small_model"), str):
+                        # 名单缩到只剩主模型时清掉旧钉扎，避免指向已下线模型
+                        data.pop("small_model", None)
                     data["permission"] = top_perms
                     new_text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
                 else:
                     new_text, _ = _jsonc_delete(text, ("provider", "orch"))
                     new_text, _ = _jsonc_set(new_text, ("model",), json.dumps(model or ""))
+                    small = _opencode_small_model(model, prov)
+                    if small:
+                        new_text, _ = _jsonc_set(new_text, ("small_model",),
+                                                 json.dumps(small))
                     new_text, _ = _jsonc_set(new_text, ("permission",),
                                              json.dumps(top_perms))
                 if os.path.isfile(path):

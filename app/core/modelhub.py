@@ -1971,11 +1971,17 @@ def auto_wire_native_channels():
             if manual:
                 out[slot] = "已有人工绑定，保持不动"
                 continue
+            # 免费池上游间歇抖（2026-10-21 实案：deepseek-v4.1-flash-free 单模型
+            # 独扛全部调用，「Endpoint is unavailable」一炸整通道 82% 记失败）——
+            # 链上前三个启用模型轮换，挂一个滑下一个，不再单点。
+            picks = [str(m.get("name") or "").strip()
+                     for m in models[:3] if m.get("name")]
+            chain = [{"provider_id": have.get("id"), "model": name}
+                     for name in dict.fromkeys(picks)]
             # 走 set_binding 规范写入：chain 是唯一真源，冗余字段同步重建。
-            set_binding(slot, chain=[{"provider_id": have.get("id"),
-                                      "model": models[0].get("name")}])
+            set_binding(slot, chain=chain)
             out[slot] = "%s %s → %s" % ("导入并绑定" if imported else "自动绑定",
-                                        have.get("id"), models[0].get("name"))
+                                        have.get("id"), " / ".join(picks))
         except Exception as e:
             out[slot] = "%s: %s" % (type(e).__name__, e)
     return out
