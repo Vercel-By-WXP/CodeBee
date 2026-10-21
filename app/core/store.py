@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -19,7 +20,18 @@ import time
 from concurrent import futures
 from pathlib import Path
 
-from . import artifacts, atomic, audit, paths, runner, tracing, volumes
+from . import artifacts, atomic, audit, cli_text, paths, tracing, volumes
+
+from .store_serial import (  # noqa: F401 - 旧调用面再导出
+    _CH_FILE_RE, early_finish_existing_task, early_finish_info, early_finish_task, serial_book_chapter_numbers,
+    serial_book_progress, serial_early_finish_plan, update_early_finish_task,
+)
+from .store_messages import (  # noqa: F401 - 旧调用面再导出
+    _ensure_messages, add_message, append_run_inject, drain_messages, mark_pause_reached,
+    pause_control, pause_observability, peek_messages, pending_message, pop_run_inject,
+    retract_message, set_paused, set_paused_all,
+)
+
 
 LOCK = threading.RLock()
 _TASKS = {}
@@ -153,7 +165,7 @@ def _norm_early_finish(value):
     # dropping the malformed plan lets the caller repair it explicitly.
     if target < 1 or target > 500:
         return None
-    out = {"target_chapter": target}
+    out: dict = {"target_chapter": target}
     source = str(value.get("source_task") or "").strip()
     if re.match(r"^[A-Za-z][0-9A-Za-z_-]*$", source):
         out["source_task"] = source
@@ -808,17 +820,17 @@ def _sanitize_run_text(r):
     for k in ("error", "summary"):
         v = r.get(k)
         if isinstance(v, str) and v:
-            r[k] = runner.clean_cli_text(v)
+            r[k] = cli_text.clean_cli_text(v)
     for s in r.get("steps") or []:
         if not isinstance(s, dict):
             continue
         for k in ("summary", "error"):
             v = s.get(k)
             if isinstance(v, str) and v:
-                s[k] = runner.clean_cli_text(v)
+                s[k] = cli_text.clean_cli_text(v)
         # output 是智能体正文：只剥 ANSI（同 finish_step 的口径）
         if isinstance(s.get("output"), str) and s["output"]:
-            s["output"] = runner.strip_ansi(s["output"])
+            s["output"] = cli_text.strip_ansi(s["output"])
 
 
 def load_all():
@@ -829,7 +841,8 @@ def load_all():
     # 对账/落盘——入账顺序、收尸口径、异常吞掉策略与串行版完全一致。
     def _read_json(p):
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            payload = json.loads(p.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else None
         except Exception:
             return None
 
@@ -842,11 +855,15 @@ def load_all():
     with LOCK:
         for t in task_blobs:
             try:
+                if not isinstance(t, dict) or not t.get("id"):
+                    continue
                 _TASKS[t["id"]] = t
             except Exception:
                 pass
         for p, r in zip(run_files, run_blobs):
             try:
+                if not isinstance(r, dict) or not r.get("id"):
+                    continue
                 r.pop("cancel_event", None)
                 # 存量清洗：早期版本把 CLI 的 ANSI 转义/控制字符原样写进了摘要与
                 # 错误串（`[91m[1mError:`、U+FFFD 乱码墙），读盘时统一洗一遍——
@@ -1297,13 +1314,48 @@ def task_side(task_id):
     }
 
 
+def _update_run_core(run, fields, prev_status):
+    """核心更新逻辑（不获取锁）。更新字段、终态清理、任务同步。返回 (audit, failure_audit)。"""
+    audit = None
+    failure_audit = None
+    for k in ("error", "summary"):
+        if isinstance(fields.get(k), str):
+            fields[k] = cli_text.clean_cli_text(fields[k])
+    run.update(fields)
+    # 终态收尸：run 已结束却还挂 queued/running 的步骤统一落 cancelled
+    st = fields.get("status")
+    if st in ("done", "failed", "cancelled", "timeout"):
+        run["pause_phase"] = "none"
+        run["pause_requested_at"] = None
+        run["pause_reached_at"] = None
+        end_s = time.strftime("%H:%M:%S")
+        for s in run["steps"]:
+            if s.get("status") in ("queued", "running"):
+                s["status"] = "timeout" if st == "timeout" else "cancelled"
+                s["ended_at"] = s.get("ended_at") or end_s
+                if not s.get("summary"):
+                    s["summary"] = ("步骤未正常收尾（任务总时限已到）"
+                                     if st == "timeout" else
+                                     "步骤未正常收尾（终态自动恢复）")
+    # 状态回填：起跑与结束都同步任务状态
+    if st in ("running", "done", "failed", "cancelled", "timeout"):
+        tid = run.get("task_id")
+        task = _TASKS.get(tid) if tid else None
+        if task:
+            task["status"] = st
+            _save_json(paths.TASKS_DIR / (tid + ".json"), task)
+    if st in TERMINAL_STATUSES and prev_status not in TERMINAL_STATUSES:
+        audit = dict(run)
+        if st in ("failed", "timeout"):
+            failure_audit = dict(run)
+    return audit, failure_audit
+
+
 def update_run(run_id, expected_status=None, **fields):
     """更新运行字段。expected_status 非 None 时做 CAS（§2C）：
     当前状态不等于 expected_status 则拒绝写入并返回 None，
     防止陈旧执行方（被取消的 worker、崩溃恢复前的旧线程）覆盖新状态
     ——防御模式「异步状态不是同步状态」。不传则保持原行为。"""
-    audit = None
-    failure_audit = None
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -1311,50 +1363,14 @@ def update_run(run_id, expected_status=None, **fields):
         if expected_status is not None and run.get("status") != expected_status:
             return None
         prev_status = str(run.get("status") or "")
-        for k in ("error", "summary"):
-            if isinstance(fields.get(k), str):
-                # 错误串多是我们自己拼的 CLI 尾巴（含 ANSI/覆写/乱码墙）：
-                # 落内存前洗一遍，UI/台账读到的就是干净文本
-                fields[k] = runner.clean_cli_text(fields[k])
-        run.update(fields)
-        # 终态收尸：run 已结束却还挂 queued/running 的步骤统一落 cancelled，
-        # 语义与 recover_orphaned_runs 的启动清扫对齐（那套清跨进程遗留，
-        # 这套在落终态瞬间即时收口——打磨组长被取消/异常打断时 UI 不闪
-        # 假「工作中」）。run 终态后不可能还有步骤在真跑。
-        st = fields.get("status")
-        if st in ("done", "failed", "cancelled", "timeout"):
-            # A terminal run can retain the legacy ``paused`` intent for
-            # recovery/audit compatibility, but it must never look like a
-            # live run waiting at a gate.
-            run["pause_phase"] = "none"
-            run["pause_requested_at"] = None
-            run["pause_reached_at"] = None
-            end_s = time.strftime("%H:%M:%S")
-            for s in run["steps"]:
-                if s.get("status") in ("queued", "running"):
-                    s["status"] = "timeout" if st == "timeout" else "cancelled"
-                    s["ended_at"] = s.get("ended_at") or end_s
-                    if not s.get("summary"):
-                        s["summary"] = ("步骤未正常收尾（任务总时限已到）"
-                                         if st == "timeout" else
-                                         "步骤未正常收尾（终态自动恢复）")
-        # 状态回填：起跑与结束都同步任务状态。只回填终态的话，run 在跑、
-        # 任务永远显示「排队中」（2026-09-18 实案：「# 重写·续」run 已 running
-        # 写了一小时，任务卡 queued，用户以为卡死连点重试）。
-        if st in ("running", "done", "failed", "cancelled", "timeout"):
-            tid = run.get("task_id")
-            task = _TASKS.get(tid) if tid else None
-            if task:
-                task["status"] = st
-                _save_json(paths.TASKS_DIR / (tid + ".json"), task)
-        if st in TERMINAL_STATUSES:
+        audit, failure_audit = _update_run_core(run, fields, prev_status)
+        # Acceptance/contracts/hooks 在锁外执行，避免自锁
+        if fields.get("status") in TERMINAL_STATUSES:
             try:
                 from . import acceptance
                 run["acceptance"] = acceptance.evaluate_run(
                     run, (_TASKS.get(run.get("task_id")) if run.get("task_id") else None) or {})
             except Exception:
-                # Acceptance reporting is evidence enrichment; it must not
-                # prevent the primary run from reaching a terminal state.
                 pass
             try:
                 from . import contracts
@@ -1373,38 +1389,24 @@ def update_run(run_id, expected_status=None, **fields):
             except Exception:
                 pass
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-        if st in TERMINAL_STATUSES and prev_status not in TERMINAL_STATUSES:
-            # 事后对账：只有「非终态 → 终态」这一次翻转才记账，重复写终态
-            # （UI 补写、迟到写手）不得二次入账。快照在锁内浅拷，锁外调用
-            # 审计器——审计器会回读 store，锁内调用即自锁。
-            audit = dict(run)
-            if st in ("failed", "timeout"):
-                failure_audit = dict(run)
-        if st in ("done", "failed", "cancelled", "timeout"):
-            # run_end 钩子（2026-09-22）：终态即触发，后台跑副作用型脚本
-            # （回写知识库等）；失败/超时静默，绝不拖慢收尾路径
+        if fields.get("status") in TERMINAL_STATUSES:
             try:
                 import threading
                 from . import hooks
                 threading.Thread(
                     target=hooks.run_event, args=("run_end",), daemon=True,
                     kwargs={"task_id": run.get("task_id") or "", "run_id": run_id,
-                            "ctx": {"status": st, "title": run.get("title") or "",
+                            "ctx": {"status": fields.get("status"), "title": run.get("title") or "",
                                     "error": str(run.get("error") or "")[:300]}}).start()
             except Exception:
                 pass
-    # 每次成功写入都唤醒 SSE：run 的状态/步骤变化从前只能靠无关操作
-    # （自动化落盘、删记录）顺带广播，空闲时侧栏 task_latest 会冻在
-    # 「在跑」直到下一次无关 bump（2026-09-22 侧栏假在跑案）。
-    # 调用都是步骤级边界，不会形成推送风暴；CAS 拒绝/无此 run 的早退
-    # 路径不动版本号。
     if failure_audit is not None:
         _record_run_failure(failure_audit)
     if audit is not None and _RUN_AUDITOR is not None:
         try:
             _RUN_AUDITOR(audit)
         except Exception:
-            pass    # 对账永远不能拖垮终态收尾
+            pass
     bump_state()
     return run
 
@@ -1658,7 +1660,7 @@ def _write_initial_story_bible(workdir, text):
             if p.exists():
                 if not p.is_file():
                     raise ValueError("故事圣经写入失败：目标路径不是文件")
-                existing = runner.read_text_any_enc(p).strip()
+                existing = cli_text.read_text_any_enc(p).strip()
                 if existing:
                     if existing == text:
                         return
@@ -1673,7 +1675,7 @@ def _write_initial_story_bible(workdir, text):
                 # 其他进程可能刚创建了文件。相同内容可幂等返回；空文件仍可
                 # 完成播种，非空不同内容绝不静默覆盖。
                 if p.is_file():
-                    existing = runner.read_text_any_enc(p).strip()
+                    existing = cli_text.read_text_any_enc(p).strip()
                     if existing == text:
                         return
                     if not existing:
@@ -1698,7 +1700,7 @@ def read_story_bible(task_id):
         return None, None, "工作目录不存在或路径越界"
     try:
         if p.is_file():
-            return str(p), runner.read_text_any_enc(p), None
+            return str(p), cli_text.read_text_any_enc(p), None
         return str(p), "", None   # 文件未创建：空内容
     except OSError as e:
         return None, None, "读取失败: %s" % e
@@ -1843,6 +1845,15 @@ def delete_task(task_id, actor=""):
     for rid in run_ids:
         _schedule_run_dir_cleanup(rid)
     (paths.TASKS_DIR / (task_id + ".json")).unlink(missing_ok=True)
+    try:
+        from . import review_storage
+        review_storage.delete_task_reviews(task_id)
+    except Exception as exc:
+        # Review history follows the same destructive task lifecycle, but a
+        # damaged optional history database must not undo an accepted delete.
+        logging.getLogger(__name__).warning(
+            "review history cleanup failed for task %s: %s",
+            task_id, type(exc).__name__)
     audit.record("task_delete", {
         "task_id": task_id,
         "title": task.get("title") or "",
@@ -2145,64 +2156,6 @@ def retry_task(task_id):
     return True, "", run
 
 
-_CH_FILE_RE = re.compile(r"^chapter-(\d{1,4})\.md$")
-
-
-def serial_book_chapter_numbers(task):
-    """Return chapter numbers currently present in the serial work directory."""
-    wd = str((task or {}).get("workdir") or "")
-    if not wd:
-        return []
-    try:
-        return sorted({int(m.group(1)) for p in Path(wd).glob("chapter-*.md")
-                       if (m := _CH_FILE_RE.match(p.name))})
-    except OSError:
-        return []
-
-
-def serial_book_progress(task):
-    """这本书已经写到第几章：工作目录里的 chapter-*.md 是事实标准（续写批次
-    共用同一目录，天然包含全部历史章）；文件缺失时沿 continues 链推算兜底。"""
-    chapters = serial_book_chapter_numbers(task)
-    last = max(chapters, default=0)
-    if last:
-        return last
-    seen = set()
-    cur = task
-    while cur and cur.get("serial") and cur["id"] not in seen and len(seen) < 20:
-        seen.add(cur["id"])
-        s = cur["serial"]
-        try:
-            start = int(s.get("start_chapter") or 1)
-        except Exception:
-            start = 1
-        runs = task_runs(cur["id"])
-        batch = 0
-        for r in runs:
-            o = r.get("outline")
-            if o and o.get("chapters") and not o.get("degraded"):
-                batch = len(o["chapters"])
-                break
-        # 从没跑过的任务不计入进度：计划章数 ≠ 已写成章数
-        if runs:
-            batch = batch or int(s.get("chapters") or 0)
-        if batch:
-            last = max(last, start + batch - 1)
-        cur = get_task(str(s.get("continues") or ""))
-    return last
-
-
-def serial_early_finish_plan(task):
-    """Return the active shortened-ending plan for a serial chain, if any."""
-    cur, seen = task, set()
-    while cur and cur.get("id") not in seen and len(seen) < 50:
-        seen.add(cur.get("id"))
-        plan = _norm_early_finish((cur.get("serial") or {}).get("early_finish"))
-        if plan:
-            return plan
-        parent = str((cur.get("serial") or {}).get("continues") or "")
-        cur = get_task(parent) if parent else None
-    return None
 
 
 def continue_info(task_id):
@@ -2465,208 +2418,6 @@ def continue_task(task_id, chapters=None):
     return True, "", new
 
 
-def early_finish_info(task_id):
-    """Return the current ending-plan state for the early-finish UI."""
-    info = continue_info(task_id)
-    if info is None:
-        return None
-    info["can"] = bool(info.get("can") and not info.get("early_finish"))
-    if info.get("early_finish"):
-        info["reason"] = "已有提前完结规划；后续批次会按最终章继续完成"
-    return info
-
-
-def early_finish_existing_task(task_id, target_chapter):
-    """Return an existing ending batch for an idempotent repeated request."""
-    task = get_task(task_id)
-    if not task:
-        return None
-    plan = serial_early_finish_plan(task)
-    if not plan:
-        return None
-    try:
-        target = int(target_chapter)
-    except (TypeError, ValueError):
-        return None
-    if target != int(plan.get("target_chapter") or 0):
-        return None
-    chain = serial_chain_ids(task_id)
-    return get_task(chain[-1]) if chain else task
-
-
-def early_finish_task(task_id, target_chapter, reason=""):
-    """Create the first shortened-ending continuation batch.
-
-    Existing chapter files remain the source of truth. The new batch carries a
-    durable target so later continuation cannot accidentally grow the book past
-    the replanned ending.
-    """
-    task = get_task(task_id)
-    if not task:
-        return False, "任务不存在", None
-    if not task.get("serial"):
-        return False, "只有连载任务支持提前完结", None
-    if serial_early_finish_plan(task):
-        return False, "该连载已经有提前完结规划", None
-    info = continue_info(task_id)
-    if not info or not info.get("can"):
-        return False, (info or {}).get("reason") or "当前不能提前完结", None
-    try:
-        target = int(target_chapter)
-    except (TypeError, ValueError):
-        return False, "最终章号必须是整数", None
-    if target > 500:
-        return False, "最终章号不能超过 500", None
-    if target < 1:
-        return False, "最终章号必须是正整数", None
-    if target <= int(info.get("last_chapter") or 0):
-        return False, "最终章号必须大于当前已完成章节", None
-    plan = {"target_chapter": target, "source_task": task_id,
-            "requested_at": time.strftime("%Y-%m-%d %H:%M:%S")}
-    if str(reason or "").strip():
-        plan["reason"] = str(reason).strip()[:240]
-    batch = min(20, target - int(info["last_chapter"]))
-    # Pin the plan on the current task and chain root before creating the child
-    # batch. This closes the bypass where an older batch's entry could start an
-    # uncapped branch after early-finish was requested. Re-check under LOCK so
-    # two rapid clicks cannot create competing ending plans.
-    pinned_ids = []
-    previous = {}
-    with LOCK:
-        current = _TASKS.get(task_id) or get_task(task_id)
-        if not current:
-            return False, "任务不存在", None
-        if serial_early_finish_plan(current):
-            return False, "该连载已经有提前完结规划", None
-        root = current
-        seen = set()
-        while root and root.get("id") not in seen:
-            seen.add(root.get("id"))
-            parent_id = str((root.get("serial") or {}).get("continues") or "")
-            parent = get_task(parent_id) if parent_id else None
-            if not parent:
-                break
-            root = parent
-        for item in (root, current):
-            if not item or item.get("id") in pinned_ids:
-                continue
-            tid = item["id"]
-            pinned_ids.append(tid)
-            previous[tid] = dict((item.get("serial") or {}).get("early_finish") or {})
-            item["serial"] = dict(item.get("serial") or {})
-            item["serial"]["early_finish"] = plan
-            _save_json(paths.TASKS_DIR / (tid + ".json"), item)
-    ok, err, new = continue_task(task_id, chapters=batch)
-    if not ok:
-        with LOCK:
-            for tid in pinned_ids:
-                item = _TASKS.get(tid) or get_task(tid)
-                if not item:
-                    continue
-                if previous.get(tid):
-                    item["serial"]["early_finish"] = previous[tid]
-                else:
-                    item["serial"].pop("early_finish", None)
-                _save_json(paths.TASKS_DIR / (tid + ".json"), item)
-        return False, err, None
-    return True, "", new
-
-
-def update_early_finish_task(task_id, target_chapter=None, reason=None, cancel=False):
-    """Adjust or cancel an existing early-ending plan before it is complete."""
-    task = get_task(task_id)
-    if not task:
-        return False, "任务不存在", None
-    plan = serial_early_finish_plan(task)
-    if not plan:
-        return False, "当前没有提前完结规划", None
-    info = continue_info(task_id)
-    if not info:
-        return False, "任务不存在", None
-    latest_id = info.get("early_finish_latest_task_id") or task_id
-    if latest_id != task_id:
-        # Details for a serial chain are often opened on the first batch. Keep
-        # those controls useful by resolving the operation to the current
-        # latest batch instead of forcing the user to hunt through the chain.
-        latest = get_task(latest_id)
-        if not latest:
-            return False, "最新连载批次不存在，请刷新后重试", None
-        task_id = latest_id
-        task = latest
-        info = continue_info(task_id)
-        plan = serial_early_finish_plan(task)
-        if not info or not plan:
-            return False, "当前没有提前完结规划", None
-    if info.get("early_finish_state") == "completed":
-        return False, "提前完结规划已经完成，不能再修改", None
-    if task.get("status") in ("queued", "running"):
-        return False, "任务正在运行中，完成或取消后再调整", None
-    for run in _RUNS.values():
-        if run.get("task_id") == task_id and run.get("status") in ("queued", "running"):
-            return False, "有运行中的记录，请先取消", None
-    chain = serial_chain_ids(task_id) or [task_id]
-    if cancel:
-        with LOCK:
-            for tid in chain:
-                item = _TASKS.get(tid) or get_task(tid)
-                if not item:
-                    continue
-                serial_data = dict(item.get("serial") or {})
-                serial_data.pop("early_finish", None)
-                item["serial"] = serial_data
-                _save_json(paths.TASKS_DIR / (tid + ".json"), item)
-            bump_state()
-        return True, "", get_task(task_id)
-    try:
-        target = int(target_chapter)
-    except (TypeError, ValueError):
-        return False, "最终章号必须是整数", None
-    if target > 500:
-        return False, "最终章号不能超过 500", None
-    if target < 1:
-        return False, "最终章号必须是正整数", None
-    last = int(info.get("last_chapter") or 0)
-    if target <= last:
-        return False, "最终章号必须大于当前已完成章节", None
-    current_target = int(plan.get("target_chapter") or 0)
-    if target < current_target:
-        try:
-            from .publish import ledger, manager
-            published = set()
-            scheduled = set()
-            for platform in manager.PLATFORMS:
-                published.update(ledger.published_chapters(task_id, platform))
-                scheduled.update(ledger.scheduled_chapters(task_id, platform))
-            published_ahead = sorted(n for n in published if n > target)
-            scheduled_ahead = sorted(n for n in scheduled if n > target)
-        except Exception:
-            # A target reduction must not silently cross publication state that
-            # could not be verified. The user can retry after the ledger recovers.
-            return False, "无法核对发布台账，暂不能缩短最终章", None
-        if published_ahead:
-            return False, ("最终章不能早于已发布的第 %d 章" % published_ahead[-1]), None
-        if scheduled_ahead:
-            return False, ("最终章不能早于已排期的第 %d 章" % scheduled_ahead[-1]), None
-    revised = dict(plan)
-    revised["target_chapter"] = target
-    if reason is not None:
-        text = str(reason).strip()
-        if text:
-            revised["reason"] = text[:240]
-        else:
-            revised.pop("reason", None)
-    revised["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    with LOCK:
-        for tid in chain:
-            item = _TASKS.get(tid) or get_task(tid)
-            if not item:
-                continue
-            serial_data = dict(item.get("serial") or {})
-            serial_data["early_finish"] = dict(revised)
-            item["serial"] = serial_data
-            _save_json(paths.TASKS_DIR / (tid + ".json"), item)
-        bump_state()
-    return True, "", get_task(task_id)
 
 
 def set_task_git_state(task_id, state):
@@ -2895,7 +2646,12 @@ def clear_stream_state(run_id=None, n=None):
 def finish_step(run_id, n, status, summary="", exit_code=None,
                 cost_usd=0.0, tokens=0.0, duration_s=None, model=None, output=None,
                 followups=None, thinking=None, partial=False, acp_events=None,
-                command=None, verify_command=None, binding_result=None):
+                command=None, verify_command=None, binding_result=None,
+                terminal_run_status=None, terminal_error=None):
+    """完成步骤。terminal_run_status 非 None 时同时原子更新 run 终态，
+    避免中间崩溃导致 step done 但 run 仍 running。"""
+    audit = None
+    failure_audit = None
     with LOCK:
         run = _RUNS.get(run_id)
         if not run:
@@ -2907,9 +2663,7 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                 s["status"] = status
                 s["ended_at"] = time.strftime("%H:%M:%S")
                 s["ended_at_epoch"] = time.time()
-                # 步骤摘要是 CLI 文本的汇聚点（失败时=错误尾巴，成功时=智能体结论）：
-                # 落盘前统一清洗，避免 ANSI/覆写/乱码墙进 UI 与报告
-                s["summary"] = runner.clean_cli_text(summary)
+                s["summary"] = cli_text.clean_cli_text(summary)
                 s["exit_code"] = exit_code
                 s["cost_usd"] = round(cost_usd, 4)
                 s["tokens"] = tokens
@@ -2926,11 +2680,9 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                     s["duration_s"] = round(max(
                         0.0, s["ended_at_epoch"] - s["started_at_epoch"]), 1)
                 if output is not None:
-                    # output 是智能体正文（对话气泡直读）：只剥 ANSI，不做噪声折叠
-                    # ——正文里的装饰性长串是作者写的，不能替它省略
-                    s["output"] = runner.strip_ansi(str(output))[:6000]
+                    s["output"] = cli_text.strip_ansi(str(output))[:6000]
                 if thinking is not None:
-                    s["thinking"] = runner.strip_ansi(str(thinking))[:LIVE_TEXT_MAX]
+                    s["thinking"] = cli_text.strip_ansi(str(thinking))[:LIVE_TEXT_MAX]
                 if followups:
                     s["followups"] = list(followups)[:3]
                 if partial:
@@ -2940,16 +2692,70 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
                 if acp_events:
                     s["acp_events"] = [dict(item) for item in acp_events[:200]
                                        if isinstance(item, dict)]
-                # 收尾即清运行中态：stream/activity/live 只是过程快照，留着会让
-                # 前端把「已结束」的步骤仍当实时流渲染（也白占 run.json 体积）
                 s.pop("stream", None)
                 s.pop("activity", None)
                 s.pop("live", None)
                 break
         run["cost_usd"] = round(run.get("cost_usd", 0.0) + cost_usd, 4)
         run["tokens"] = run.get("tokens", 0) + tokens
+        # 原子终态提交：同时更新 run 状态，避免中间崩溃不一致
+        if terminal_run_status is not None:
+            prev_status = str(run.get("status") or "")
+            run_fields = {"status": terminal_run_status}
+            if terminal_error is not None:
+                run_fields["error"] = terminal_error
+            run_fields["ended_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            a, fa = _update_run_core(run, run_fields, prev_status)
+            audit = a
+            failure_audit = fa
+            # Acceptance/contracts 在锁外执行
+            if terminal_run_status in TERMINAL_STATUSES:
+                try:
+                    from . import acceptance
+                    run["acceptance"] = acceptance.evaluate_run(
+                        run, (_TASKS.get(run.get("task_id")) if run.get("task_id") else None) or {})
+                except Exception:
+                    pass
+                try:
+                    from . import contracts
+                    for case in (run.get("acceptance") or {}).get("cases") or []:
+                        contracts.add_evidence(
+                            run.get("task_id") or "",
+                            {"criterion": "acceptance:%s" % case.get("case"),
+                             "status": "passed" if case.get("status") == "passed" else case.get("status"),
+                             "summary": case.get("reason") or "acceptance matrix",
+                             "source": "acceptance"}, actor="system")
+                    contracts.record_acceptance_cases(
+                        run.get("task_id") or "",
+                        (run.get("acceptance") or {}).get("cases") or [],
+                        actor="system")
+                    contracts.complete(run.get("task_id") or "", run)
+                except Exception:
+                    pass
         _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+        # run_end 钩子
+        if terminal_run_status in TERMINAL_STATUSES:
+            try:
+                import threading
+                from . import hooks
+                threading.Thread(
+                    target=hooks.run_event, args=("run_end",), daemon=True,
+                    kwargs={"task_id": run.get("task_id") or "", "run_id": run_id,
+                            "ctx": {"status": terminal_run_status, "title": run.get("title") or "",
+                                    "error": str(run.get("error") or "")[:300]}}).start()
+            except Exception:
+                pass
     clear_stream_state(run_id, n)
+    # 锁外审计
+    if failure_audit is not None:
+        _record_run_failure(failure_audit)
+    if audit is not None and _RUN_AUDITOR is not None:
+        try:
+            _RUN_AUDITOR(audit)
+        except Exception:
+            pass
+    if terminal_run_status is not None:
+        bump_state()
 
 
 # ---------------------------------------------------------------- 运行中指挥（消息信箱）
@@ -2957,279 +2763,6 @@ def finish_step(run_id, n, status, summary="", exit_code=None,
 # 下一个智能体步骤开始前由 pipeline drain 出来注入 prompt——不插进正在跑的进程
 # （无头 CLI 没有交互 stdin），而是在最近的轮间安全点生效。consumed 标记防重复注入。
 
-def _ensure_messages(run):
-    if "messages" not in run or not isinstance(run.get("messages"), list):
-        run["messages"] = []
-    return run["messages"]
-
-
-def append_run_inject(run_id, text):
-    """追加钩子注入文本到 run.hook_inject（message_submit 钩子通道）。
-    直连轮间组装提示词时消费一次并清零。返回 bool。"""
-    text = str(text or "").strip()
-    if not text:
-        return False
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return False
-        old = str(run.get("hook_inject") or "")
-        run["hook_inject"] = (old + ("\n\n" if old and text else "") + text)[:4000]
-        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-        return True
-
-
-def pop_run_inject(run_id):
-    """取出并清空 hook_inject（直连轮间提示词头一次性消费）。"""
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return ""
-        txt = str(run.get("hook_inject") or "")
-        if txt and "hook_inject" in run:
-            run["hook_inject"] = ""
-            try:
-                _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-            except Exception:
-                pass
-        return txt
-
-
-def add_message(run_id, text, sender="本机", attachments=None):
-    """往运行信箱追加一条用户指令。attachments 为已落盘到 workdir 的
-    附件相对路径清单（由 main.py 提交后传入）。返回消息 dict 或 None。"""
-    text = str(text or "").strip()
-    atts = [str(a) for a in (attachments or []) if a][:12]
-    if not text and not atts:
-        return None
-    if len(text) > 4000:
-        text = text[:4000]
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return None
-        msgs = _ensure_messages(run)
-        if len(msgs) >= 200:  # 信箱封顶：只保留最近 200 条，防 run.json 无限膨胀
-            del msgs[:len(msgs) - 199]
-        # id 取「现存最大 +1」而非 len+1：撤回/封顶删除后 len 会回落，
-        # 用 len+1 会和存活消息撞号，前端按 id 撤回就错杀。
-        nxt = 1
-        for m in msgs:
-            try:
-                nxt = max(nxt, int(m.get("id") or 0) + 1)
-            except (TypeError, ValueError):
-                pass
-        msg = {
-            "id": "%06d" % nxt,
-            "text": text, "sender": str(sender or "")[:24],
-            "attachments": atts,
-            "created_at": time.strftime("%H:%M:%S"),
-            "consumed": False,
-        }
-        msgs.append(msg)
-        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-        return msg
-
-
-def drain_messages(run_id, consumed_by=None):
-    """取出并标记全部未消费消息（运行中指挥注入点调用）。
-
-    consumed_by：{"step": 步号, "role": 角色}——送达回执，记录指令最终进了
-    哪个步骤，详情页「✓已下达」据此显示去向。返回 [{text,attachments,...}]。"""
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return []
-        pend = [m for m in _ensure_messages(run) if not m.get("consumed")]
-        if not pend:
-            return []
-        receipt = None
-        if consumed_by:
-            try:
-                receipt = {"step": int(consumed_by.get("step") or 0),
-                           "role": str(consumed_by.get("role") or "")[:40]}
-            except Exception:
-                receipt = None
-        for m in pend:
-            m["consumed"] = True
-            if receipt:
-                m["consumed_by"] = dict(receipt)
-        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-        return [{"text": m.get("text", ""), "attachments": m.get("attachments", []),
-                 "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
-                for m in pend]
-
-
-def peek_messages(run_id):
-    """只读未消费消息（不标记）：规划步骤合入上下文用，执行步骤仍会 drain 注入。"""
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return []
-        return [{"id": m.get("id"), "text": m.get("text", ""), "attachments": m.get("attachments", []),
-                 "sender": m.get("sender", ""), "created_at": m.get("created_at", "")}
-                for m in _ensure_messages(run) if not m.get("consumed")]
-
-
-def pending_message(run_id, msg_id):
-    """Resolve an existing queued message, rejecting delivered inherited copies."""
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return None
-        message = next((m for m in run.get("messages") or []
-                        if str(m.get("id")) == str(msg_id)), None)
-        if not message:
-            return None
-        key = (message.get("id"), message.get("created_at"), message.get("text"))
-        for owner in _RUNS.values():
-            if owner["id"] != run_id and (not run.get("task_id") or
-                    owner.get("task_id") != run.get("task_id")):
-                continue
-            if any(m.get("consumed") and
-                   (m.get("id"), m.get("created_at"), m.get("text")) == key
-                   for m in owner.get("messages") or []):
-                return None
-        return dict(message)
-
-
-def retract_message(run_id, msg_id):
-    """撤回一条尚未下达（consumed=False）的指令：从信箱删除。
-
-    只删未消费的——已随步骤注入执行的删不掉（那是审计事实，且 prompt 已喂出）。
-    返回 (ok, err)：ok=False 时 err 说明原因，供前端 toast。"""
-    msg_id = str(msg_id or "").strip()
-    if not msg_id:
-        return False, "缺少消息 id"
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return False, "运行不存在"
-        msgs = _ensure_messages(run)
-        for m in msgs:
-            if str(m.get("id")) == msg_id:
-                key = (m.get("id"), m.get("created_at"), m.get("text"))
-                copies = [(r, other) for r in _RUNS.values()
-                          if r["id"] == run_id or (run.get("task_id") and
-                                                  r.get("task_id") == run.get("task_id"))
-                          for other in r.get("messages") or []
-                          if (other.get("id"), other.get("created_at"), other.get("text")) == key]
-                delivered = next((other for _, other in copies if other.get("consumed")), None)
-                if delivered:
-                    cb = delivered.get("consumed_by") or {}
-                    where = ("已随步骤 #" + str(cb.get("step")) + " 送达") if cb.get("step") \
-                        else "已送达执行"
-                    return False, "指令" + where + "，无法撤回"
-                for owner, other in copies:
-                    owner["messages"].remove(other)
-                    _save_json(paths.RUNS_DIR / owner["id"] / "run.json", owner)
-                bump_state()
-                return True, ""
-        return False, "消息不在信箱中（可能已被撤回）"
-
-
-def set_paused(run_id, paused):
-    """暂停/放行，并记录请求是否已经到达下一步闸门。
-
-    ``paused`` is kept for old callers.  New readers should use
-    ``pause_phase``: ``requested`` means the current step is still running;
-    ``paused`` means the gate has actually been reached.
-    """
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if not run:
-            return False
-        target = bool(paused)
-        if target:
-            phase = "paused" if run.get("pause_phase") == "paused" else "requested"
-            update = {"paused": True, "pause_phase": phase,
-                      "pause_requested_at": run.get("pause_requested_at") or
-                      time.strftime("%Y-%m-%d %H:%M:%S"),
-                      "pause_reached_at": run.get("pause_reached_at") if phase == "paused" else None}
-        else:
-            update = {"paused": False, "pause_phase": "none",
-                      "pause_requested_at": None, "pause_reached_at": None}
-    update_run(run_id, **update)
-    return True
-
-
-def pause_control():
-    """全量步骤暂停计数，不受运行列表窗口限制；管理操作没有步骤闸门。"""
-    with LOCK:
-        active = [run for run in _RUNS.values()
-                  if run.get("kind") == "orchestration"
-                  and run.get("status") in ("queued", "running")]
-        return {"active": len(active),
-                "paused": sum(1 for run in active if run.get("paused"))}
-
-
-def pause_observability():
-    """Return the split pause lifecycle without changing the legacy summary."""
-    with LOCK:
-        active = [run for run in _RUNS.values()
-                  if run.get("kind") == "orchestration"
-                  and run.get("status") in ("queued", "running")]
-        requested = sum(1 for run in active
-                        if run.get("paused") and
-                        run.get("pause_phase", "requested") == "requested")
-        reached = sum(1 for run in active
-                      if run.get("paused") and
-                      run.get("pause_phase") == "paused")
-        return {"active": len(active), "requested": requested, "reached": reached}
-
-
-def mark_pause_reached(run_id):
-    """Mark the gate reached once no step from the current parallel wave runs."""
-    changed = False
-    with LOCK:
-        run = _RUNS.get(run_id)
-        if (not run or not run.get("paused") or
-                run.get("status") not in ("queued", "running")):
-            return False
-        if any(s.get("status") == "running" for s in run.get("steps") or []):
-            return False
-        if run.get("pause_phase") == "paused":
-            return True
-        run["pause_phase"] = "paused"
-        run["pause_reached_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        _save_json(paths.RUNS_DIR / run_id / "run.json", run)
-        changed = True
-    if changed:
-        bump_state()
-    return True
-
-
-def set_paused_all(paused):
-    """批量暂停/放行所有仍在排队或运行的编排任务。
-
-    只触碰活动 run；终态记录保留原值，避免运行记录页的全局控制改变历史。
-    返回实际发生变化的 run 数，供 UI 给出准确反馈。
-    """
-    target = bool(paused)
-    changed = 0
-    with LOCK:
-        for run in _RUNS.values():
-            if run.get("kind") != "orchestration" or run.get("status") not in ("queued", "running"):
-                continue
-            if bool(run.get("paused")) == target:
-                continue
-            run["paused"] = target
-            if target:
-                run["pause_phase"] = ("paused" if run.get("pause_phase") == "paused"
-                                       else "requested")
-                run["pause_requested_at"] = run.get("pause_requested_at") or time.strftime(
-                    "%Y-%m-%d %H:%M:%S")
-                if run["pause_phase"] != "paused":
-                    run["pause_reached_at"] = None
-            else:
-                run["pause_phase"] = "none"
-                run["pause_requested_at"] = None
-                run["pause_reached_at"] = None
-            _save_json(paths.RUNS_DIR / run["id"] / "run.json", run)
-            changed += 1
-    if changed:
-        bump_state()
-    return changed
 
 
 def write_report(run_id, markdown):
@@ -3281,15 +2814,15 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
                 stream.seek(0)
             data = stream.read()
         if tail > 0 and size > tail:
-            text = "...(已截断)...\n" + runner.tail_decoded(data, tail)
+            text = "...(已截断)...\n" + cli_text.tail_decoded(data, tail)
         else:
-            text = runner.decode_output(data)
+            text = cli_text.decode_output(data)
         # 先洗终端噪声（ANSI/覆写/乱码墙），再折叠遥测刷屏（时间戳不同的重复
         # WARN）；pretty 最后把 codex JSONL 事件流翻译成【消息】【命令】等可读行
         # ——顺序不能反：乱码墙会挤掉折叠分组，翻译也会把 ANSI 当正文
-        text = runner.collapse_dup_lines(runner.clean_cli_text(text))
+        text = cli_text.collapse_dup_lines(cli_text.clean_cli_text(text))
         if pretty:
-            text = runner.pretty_cli_log(text)
+            text = cli_text.pretty_cli_log(text)
     except Exception:
         text = ""
     if not (text or "").strip():
