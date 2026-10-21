@@ -317,7 +317,7 @@
       "kind": "lines",
       "text": "lines: app/core/pipeline.py 6771 行（上限 1200，历史最高 0）",
       "file": "app/core/pipeline.py",
-      "lines": 6771
+      "lines": 8204
     },
     {
       "kind": "lines",

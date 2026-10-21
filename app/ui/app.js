@@ -1297,7 +1297,9 @@ function recommendTaskType(goal) {
     ["email", /(邮件|email|e-mail|回信|邀约信|商务函)/i],
     ["weekly_report", /(周报|月报|述职|工作汇报|工作总结)/i],
     ["short_drama", /(短剧|微短剧|短剧本|分集剧本|网剧本)/i],
-    ["video_script", /(短视频|口播|分镜|抖音|b站|视频号|视频脚本)/i],
+    // 手绘视频在 video_script 之前：「手绘讲解视频」兼有视频词，专属词先接
+    ["handdraw_video", /(手绘|手绘视频|白板动画|涂鸦视频|边画边讲)/i],
+    ["video_script", /(短视频|口播|分镜|抖音|b站|视频号|视频脚本|讲解视频)/i],
     ["speech", /(演讲稿|发言稿|致辞|演讲)/i],
     ["tech_proposal", /(技术方案|架构方案|选型方案|实施方案)/i],
     ["research", /(调研|深度研究)/i],

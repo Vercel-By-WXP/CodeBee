@@ -887,6 +887,7 @@ _DURATION_BASELINES = {
     "doc": 480, "resume": 420, "code": 600, "tech_proposal": 720,
     "research": 900, "novel": 720, "serial_novel": 2400, "short_drama": 1200,
     "presentation": 480, "bid_doc": 720, "defect_retro": 240,
+    "handdraw_video": 720,   # 制作包=口播稿+分镜预算+逐镜画面，重于普通脚本轻于分集剧本
 }
 
 

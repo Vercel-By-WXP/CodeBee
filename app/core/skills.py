@@ -93,6 +93,10 @@ BUILTIN_PACKS = [
      "file": "fanqie-novel.md",
      "scopes": ["novel", "serial_novel"],
      "note": "番茄经验边界、阅读数据假设、故事单元自检与后台规则核验；非算法预测"},
+    {"id": "handdraw-video", "name": "手绘讲解视频制作规范",
+     "file": "handdraw-video.md",
+     "scopes": ["handdraw_video"],
+     "note": "sweety-handdraw-video（MIT）方法论蒸馏：黄金5秒开场、分镜预算先行、逐笔可画与字幕唯一性硬门槛"},
 ]
 
 # ---------------------------------------------------------------- 用户自建包（3A）

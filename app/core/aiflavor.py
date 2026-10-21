@@ -87,7 +87,7 @@ def narrative_analyze(text):
 # 节奏审计——读者留存看「每章/每集有没有钩子、段落有没有淤积、是不是通篇独白」，
 # 这些是能确定性统计的客观量。与套话检测同路：只给评审官一条参考线，
 # 不直接扣分——短段落多的快节奏文也可能开篇没有冲突词。）
-NARRATIVE_FLOWS = ("novel", "serial_novel", "video_script", "short_drama")
+NARRATIVE_FLOWS = ("novel", "serial_novel", "video_script", "short_drama", "handdraw_video")
 
 # 冲突/悬念信号词表：开篇用来看「抓不抓人」，单元末用来看「留不留钩子」
 HOOK_WORDS = (
@@ -205,7 +205,8 @@ def report_line(text, kind=None):
                      "结尾是否靠主角想通收束。")
         lines.append(line)
     if kind in NARRATIVE_FLOWS:
-        unit = "集" if kind == "short_drama" else "章"
+        # 单元量词按类型走：短剧=集、手绘视频=段（口播语义段）、其余=章
+        unit = {"short_drama": "集", "handdraw_video": "段"}.get(kind, "章")
         pr = pacing_analyze(text, unit=unit)
         episode_sections = _episode_sections(text) if kind == "short_drama" else []
         missing_episode_hooks, checked_episodes = [], 0
@@ -229,8 +230,8 @@ def report_line(text, kind=None):
                 line += "缺少集尾悬念信号：%s。" % "、".join(
                     "第 %s 集" % label for label in missing_episode_hooks)
         if pr.get("alert"):
-            cadence = "每集的" if kind == "short_drama" else "每章的"
-            retention = "短剧" if kind == "short_drama" else "连载"
+            cadence = {"short_drama": "每集的", "handdraw_video": "每段的"}.get(kind, "每章的")
+            retention = {"short_drama": "短剧", "handdraw_video": "短视频"}.get(kind, "连载")
             line += ("提示：%s。%s留存取决于%s钩子与段落节奏，"
                      "请评审官结合剧情判断是否真问题。"
                      % ("、".join(pr["alerts"]), retention, cadence))

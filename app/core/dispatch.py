@@ -17,6 +17,7 @@ TYPE_DIMENSIONS = {
     "article": "writing",
     "video_script": "writing",
     "short_drama": "writing",
+    "handdraw_video": "writing",
     "doc": "writing",
     "translation": "writing",
     "rank_scan": "reasoning",
