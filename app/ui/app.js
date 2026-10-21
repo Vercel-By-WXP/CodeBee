@@ -380,13 +380,17 @@ async function wbMountWebPreview(run) {
 function wbOpenDetail() {
   const task = wbCurrentTask();
   if (!task) return;
-  if (window.codebeeOpenTaskDetail) window.codebeeOpenTaskDetail(task.id);
+  // 与侧栏点任务同一条链：主栏就地进对话式任务详情（showDetailInMain 会把
+  // 工作台所在的设置子页切走，不会两层叠加）。codebeeOpenTaskDetail 从未存在，
+  // 旧写法是点了没反应的静默空操作。
+  window.sideOpenTask(task.id);
 }
 
 function wbRetryTask() {
   const task = wbCurrentTask();
   if (!task) return;
-  if (window.codebeeRetryTask) window.codebeeRetryTask(task.id);
+  // 与侧栏右键「重试」同一条链：POST /retry 后 jumpToRun 跳新 run
+  retryTask(task.id);
 }
 
 // CDP workspace helpers (adapted from browser*)
