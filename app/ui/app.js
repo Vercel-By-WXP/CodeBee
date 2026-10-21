@@ -3921,8 +3921,8 @@ function selectTaskTemplate(start) {
 }
 
 async function saveCurrentAsTemplate() {
-  const name = window.prompt(t("模板名称"), ($("f-title") || {}).value || t("我的任务模板"));
-  if (!name || !name.trim()) return;
+  const name = await uiPrompt(t("模板名称"), ($("f-title") || {}).value || t("我的任务模板"));
+  if (!name) return;
   try {
     await api("/api/task-templates", { method: "POST", body: JSON.stringify({ name: name.trim(), type: $("f-type").value,
       goal: $("f-goal").value.trim(), rubric: (($("f-rubric") || {}).value || "").split(/[,，、]/).map((x) => x.trim()).filter(Boolean),
@@ -8411,9 +8411,9 @@ window.pbAccSelSet = function (platform, id) {
 };
 
 window.pbAddAccount = async function (platform) {
-  const id = (window.prompt(t("新账号 ID（字母/数字/下划线/连字符，1-16 位；如 a2、b1）：")) || "").trim();
+  const id = await uiPrompt(t("新账号 ID（字母/数字/下划线/连字符，1-16 位；如 a2、b1）："));
   if (!id) return;
-  const label = (window.prompt(t("备注名（可空，如“二号机”）：")) || "").trim();
+  const label = (await uiPrompt(t("备注名（可空，如“二号机”）："))) || "";
   try {
     await api("/api/publish/accounts/add", { method: "POST",
       body: JSON.stringify({ platform, id, label }) });
@@ -16697,7 +16697,7 @@ async function saveSerialDaily() {
 }
 
 async function serialDailyAction(id, action) {
-  if (action === "cancel" && !window.confirm(t("取消后将停止后续写作和发布，确定取消吗？"))) return;
+  if (action === "cancel" && !(await uiConfirm(t("取消后将停止后续写作和发布，确定取消吗？")))) return;
   try { await api("/api/serial-daily/" + encodeURIComponent(id) + "/" + action,
     { method: "POST", body: "{}" }); }
   catch (e) { toast(e.message, true); return; }
