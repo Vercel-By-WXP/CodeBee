@@ -20746,15 +20746,17 @@ function updateStatusSidebar() {
       runningList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0" data-i18n="暂无运行中的任务">暂无运行中的任务</div>';
     } else {
       runningList.innerHTML = running.slice(0, 5).map((r) => {
-        const progress = r.progress || 0;
-        const step = r.current_step || 0;
-        const total = r.total_steps || 0;
+        // progress/step_count 由后端 _state_run_summary 折算；current_step 是对象取 .n；
+        // 无步骤的 run（直连对话）没有进度可言，显示 — 而不是恒 0
+        const total = r.step_count || 0;
+        const progress = total ? Math.min(100, Math.max(0, Math.round(Number(r.progress) || 0))) : 0;
+        const step = (r.current_step && r.current_step.n) || 0;
         const mins = Math.floor((Date.now() - new Date(r.started_at || Date.now()).getTime()) / 60000);
         return '<div class="running-item">'
           + '<div class="running-item-title">' + esc(r.title || r.id || "") + '</div>'
           + '<div class="running-item-meta">'
           + '<span>' + (total ? t("第 ") + step + t("/") + total + t(" 步") : "") + (mins ? " · " + mins + t(" 分") : "") + '</span>'
-          + '<span class="running-item-progress">' + Math.round(progress) + '%</span>'
+          + '<span class="running-item-progress">' + (total ? progress + "%" : "—") + '</span>'
           + '</div>'
           + '<div class="progress-track"><div class="progress-fill" style="width:' + Math.round(progress) + '%"></div></div>'
           + '</div>';

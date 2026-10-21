@@ -3898,7 +3898,12 @@ def _state_run_summary(run):
               "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens")
     fields += ("project_memory_id",)
     summary = {key: run[key] for key in fields if key in run}
-    summary["step_count"] = len(run.get("steps") or [])
+    run_steps = run.get("steps") or []
+    done_steps = sum(1 for s in run_steps
+                     if isinstance(s, dict) and s.get("status") == "done")
+    summary["step_count"] = len(run_steps)
+    # 状态侧栏直接消费的 0-100 进度（已落 done 步骤占比）；无步骤的 run 恒 0
+    summary["progress"] = round(100 * done_steps / len(run_steps)) if run_steps else 0
     summary.update(activity.run_activity(run))
     messages = run.get("messages") or []
     summary["message_count"] = len(messages)
