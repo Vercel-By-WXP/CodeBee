@@ -36,6 +36,7 @@ from core import activity, automation, board, catalog, cloud_readiness, experts,
 from core import paths
 from core import health
 from core import usage as usage_ledger
+from core.http_logging import log_request_exception
 import pick_dialog
 import pet
 
@@ -210,6 +211,19 @@ class Handler(BaseHTTPRequestHandler):
         return remote.same_origin(self.headers.get("Origin") or "",
                                   self.headers.get("Host") or "")
 
+    def _host_allowed(self):
+        """Reject unconfigured Host values before serving any route.
+
+        Origin checks on writes do not stop DNS rebinding on read-only routes:
+        the attacker's page can send its own matching Host and Origin to a
+        loopback listener. The allowlist is derived from the configured bind,
+        advertised LAN/Tailscale IPs, and explicit public URL.
+        """
+        headers = getattr(self, "headers", {})
+        forwarded = (headers.get("X-Forwarded-For") or
+                     headers.get("CF-Connecting-IP") or "")
+        return remote.allowed_request_host(headers.get("Host") or "", forwarded)
+
     def _phone_admin_local(self):
         # Pairing and revocation are available only on the actual computer.
         # Do not trust forwarded loopback requests even before proxy mode starts.
@@ -217,7 +231,7 @@ class Handler(BaseHTTPRequestHandler):
             return False
         if self.headers.get("X-Forwarded-For") or self.headers.get("CF-Connecting-IP"):
             return False
-        origin = self.headers.get("Origin")
+        origin = str(self.headers.get("Origin") or "")
         return remote.same_origin(origin, self.headers.get("Host") or "")
 
     def _client_id(self):
@@ -258,12 +272,14 @@ class Handler(BaseHTTPRequestHandler):
         # 浏览器只见 "Failed to fetch"（2026-09-29 store 局部名遮蔽实案）。
         # 现在统一落日志并回 500 JSON；对端已断开时无从回话，原样上抛。
         try:
+            if not self._host_allowed():
+                return self._json(403, {"error": "拒绝未配置的 Host"})
             return self._route_get()
         except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError,
                 socket.timeout):
             raise
-        except Exception:
-            log.exception("GET %s 处理异常", getattr(self, "path", "?"))
+        except Exception as exc:
+            log_request_exception(log, "GET", getattr(self, "path", "?"), exc)
             self._safe_500()
 
     def _route_get(self):
@@ -372,6 +388,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 from core import health
                 return self._json(200, health.snapshot())
+            if path == "/api/availability":
+                # 通道体检：厂商/模型/CLI 账号可用性一页聚合（只读）
+                from core import availability
+                return self._json(200, availability.payload())
             if path == "/api/cli-discovery":
                 from core import cli_discovery
                 return self._json(200, {"clis": cli_discovery.load(cli_discovery.cache_path(paths.DATA_DIR))})
@@ -543,6 +563,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, mcp_catalog.state())
                 except (TypeError, ValueError) as exc:
                     return self._json(400, {"error": str(exc)})
+            # MCP Harness: expose platform capabilities to external AI clients
+            if path == "/mcp/orchestration":
+                from core import mcp_harness
+                return self._handle_mcp_harness(mcp_harness)
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -1141,12 +1165,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         # 同 do_GET：路由裸抛统一落日志并回 500，不再静默掐连接
         try:
+            if not self._host_allowed():
+                return self._json(403, {"error": "拒绝未配置的 Host"})
             return self._route_post()
         except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError,
                 socket.timeout):
             raise
-        except Exception:
-            log.exception("POST %s 处理异常", getattr(self, "path", "?"))
+        except Exception as exc:
+            log_request_exception(log, "POST", getattr(self, "path", "?"), exc)
             self._safe_500()
 
     def _safe_500(self):
@@ -1438,6 +1464,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, mcp_catalog.remove(
                     body.get("name"), commit=bool(body.get("commit"))))
             except (TypeError, ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+        # MCP Harness token management
+        if path == "/api/mcp/harness/token":
+            from core import mcp_harness
+            body = self._body() or {}
+            action = body.get("action", "create")
+            try:
+                if action == "create":
+                    token = mcp_harness.create_token(user_id=body.get("user_id", "default"))
+                    return self._json(200, {"token": token, "warning": "Token shown once. Store it securely."})
+                elif action == "revoke":
+                    token = body.get("token")
+                    if not token:
+                        return self._json(400, {"error": "token is required"})
+                    revoked = mcp_harness.revoke_token(token)
+                    return self._json(200, {"revoked": revoked})
+                elif action == "list":
+                    tokens = mcp_harness.list_tokens()
+                    return self._json(200, {"tokens": tokens})
+                else:
+                    return self._json(400, {"error": f"Unknown action: {action}"})
+            except Exception as exc:
                 return self._json(400, {"error": str(exc)})
         m = re.match(r"^/api/backend-profiles/([^/]+)/delete$", path)
         if m:
@@ -4439,6 +4487,63 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": err})
         return self._send(200, data, ctype)
 
+    def _handle_mcp_harness(self, mcp_harness):
+        """Handle MCP Harness requests (Streamable HTTP transport).
+        
+        Supports both GET (tool listing) and POST (tool invocation) per MCP spec.
+        Authentication: Bearer token in Authorization header.
+        """
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return self._json(401, {"error": "Missing or invalid Authorization header"})
+        
+        token = auth_header[7:]  # Strip "Bearer "
+        token_meta = mcp_harness.validate_token(token)
+        if not token_meta:
+            return self._json(401, {"error": "Invalid or revoked token"})
+        
+        method = self.command
+        if method == "GET":
+            # Return tool list
+            tools = mcp_harness.list_tools()
+            return self._json(200, {"tools": tools})
+        elif method == "POST":
+            # Parse request body
+            try:
+                body = self._read_body()
+                request = json.loads(body)
+            except Exception as exc:
+                return self._json(400, {"error": f"Invalid JSON: {exc}"})
+            
+            # MCP JSON-RPC 2.0 protocol
+            if request.get("jsonrpc") != "2.0":
+                return self._json(400, {"error": "Expected JSON-RPC 2.0"})
+            
+            rpc_method = request.get("method")
+            rpc_id = request.get("id")
+            params = request.get("params", {})
+            
+            if rpc_method == "tools/list":
+                tools = mcp_harness.list_tools()
+                return self._json(200, {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {"tools": tools},
+                })
+            elif rpc_method == "tools/call":
+                tool_name = params.get("name")
+                tool_params = params.get("arguments", {})
+                result = mcp_harness.call_tool(tool_name, tool_params, auth_token=token)
+                return self._json(200, {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": result,
+                })
+            else:
+                return self._json(400, {"error": f"Unknown method: {rpc_method}"})
+        else:
+            return self._json(405, {"error": f"Method not allowed: {method}"})
+
     def _preview_dir_ok(self, path, entry):
         """目录请求只允许回落到该目录自己的入口（/x/ 只解析 x/index.html），
         免得 /sub/ 悄悄把根入口当子目录入口发出去。"""
@@ -4587,7 +4692,7 @@ def main():
                         help="服务跑在 Cloudflare Tunnel/frp 等反代后面时开启："
                              "带转发头的回源请求必须带令牌，防止本机回源被当成 127.0.0.1 豁免")
     parser.add_argument("--public-url", default="",
-                        help="固定公网地址（如 https://codebee.example.com），扫码弹框优先展示")
+                        help="固定公网地址（如 https://codebee.example.com）；反向代理 Host 需匹配此域名，扫码弹框优先展示")
     parser.add_argument("--no-public-tunnel", action="store_true",
                         help="不自动开 Cloudflare 快速隧道（默认：打开手机连接时按需建立，"
                              "获得随机 *.trycloudflare.com 公网地址，重启会变）")
@@ -4832,6 +4937,13 @@ def main():
     except Exception as _free_err:
         print("[CodeBee] Our Free Model 接入跳过（不影响启动）：%s: %s"
               % (type(_free_err).__name__, _free_err), flush=True)
+    # ensure_builtin_free_provider may automatically disable the local
+    # provider when standalone is unavailable; remove any alert from the
+    # previous enabled session before exposing the first health snapshot.
+    try:
+        health.clear_inactive()
+    except Exception:
+        pass
     # Node 首次启动偶尔会超过进程就绪等待窗口；继续后台重试一次供应商
     # 接线，避免本次 CodeBee 会话一直停留在“未启动”。手动停用仍由
     # modelhub 的 builtin_auto_enable 标记保护，不会被后台重启覆盖。
@@ -5042,15 +5154,11 @@ def main():
         _hint = ""
         try:
             from core.manager import tmp_data_no_home_write
-            if tmp_data_no_home_write():
-                # 测试实例不清场：TUTTI_DATA 在临时目录的进程若占用了真实
-                # 端口（如 8765），清场会误杀生产服务（2026-09-23 实案）
-                _cleared, _hint = False, "测试实例不执行端口清场"
-            else:
-                _cleared, _hint = _pg.clear_stale_port(
-                    args.port, paths.APP_DIR / "main.py")
-        except Exception:
-            _cleared, _hint = False, 
+            # 测试实例不清场：TUTTI_DATA 在临时目录的进程若占用了真实
+            # 端口（包括 8765），清场会误杀生产服务。
+            _cleared, _hint = _pg.safe_clear_stale_port(
+                args.port, paths.APP_DIR / "main.py",
+                test_instance=tmp_data_no_home_write())
         except Exception:
             _cleared, _hint = False, ""
         if _cleared:
