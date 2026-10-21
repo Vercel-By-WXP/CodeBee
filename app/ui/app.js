@@ -47,6 +47,9 @@ let wbView = "preview";
 let wbWorkspacePlatform = "";
 let wbWorkspaceKey = "";
 let wbWorkspacePoll = 0;
+let wbPvSeq = 0;         // 预览挂载过期闸门：任何一次重画都让在飞的挂载响应作废
+let wbPvMounted = "";    // 已挂进 iframe 的 run：同 run 重画只亮回 iframe，不整页 reload
+let wbNpSeq = 0;         // 小说纸面过期闸门：重画/换章都让在飞的章节响应作废
 
 try { wbTaskId = localStorage.getItem(WB_TASK_STORAGE_KEY) || ""; } catch (e) { wbTaskId = ""; }
 
@@ -102,6 +105,8 @@ function wbSetView(view) {
 }
 
 function wbDraw() {
+  wbPvSeq++;
+  wbNpSeq++;
   const task = wbCurrentTask();
   const run = wbLatestRun(task);
   
@@ -134,7 +139,9 @@ function wbDraw() {
   
   if (empty) empty.classList.add("hidden");
   if (paper) paper.classList.add("hidden");
-  if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
+  // src 不在这里摘：同 run 重画由 wbMountWebPreview 原样亮回，避免 iframe 整页 reload；
+  // 真要清（换 run/切视图/无任务）由 wbPreviewReset 统一收尸
+  if (frame) frame.classList.add("hidden");
   if (console_) console_.classList.add("hidden");
   if (cdpScreen) { cdpScreen.classList.add("hidden"); cdpScreen.removeAttribute("src"); }
   
@@ -145,6 +152,7 @@ function wbDraw() {
   const footMeta = $("wb-foot-meta");
   
   if (!task) {
+    wbPreviewReset();
     if (empty) empty.classList.remove("hidden");
     if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
     if (stageNote) stageNote.textContent = "";
@@ -152,6 +160,7 @@ function wbDraw() {
     if (footHint) footHint.textContent = "";
     if (footMeta) footMeta.textContent = "";
   } else if (wbView === "console") {
+    wbPreviewReset();
     if (console_) {
       console_.classList.remove("hidden");
       console_.textContent = run ? JSON.stringify(run, null, 2) : t("暂无运行日志");
@@ -165,41 +174,23 @@ function wbDraw() {
     // Preview mode
     const type = (task.type || "").toLowerCase();
     if (type === "serial_novel" || type === "novel") {
+      wbPreviewReset();
       // Novel paper preview
-      if (paper) {
-        paper.classList.remove("hidden");
-        paper.innerHTML = wbRenderNovelPaper(task, run);
-      }
+      if (paper) paper.classList.remove("hidden");
       if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("小说预览");
       if (stageNote) stageNote.textContent = task.serial ? (task.serial.chapters + t(" 章")) : "";
       if (stageActions) stageActions.innerHTML = "";
       if (footHint) footHint.textContent = t("连载小说成品预览");
-      if (footMeta) footMeta.textContent = run ? (run.chapter_scores ? run.chapter_scores.length + t(" 章已评审") : "") : "";
+      if (footMeta) footMeta.textContent = "";
+      wbMountNovelPaper(run);
     } else {
-      // HTML preview or CDP screenshot
-      const previewUrl = run ? ("/api/runs/" + run.id + "/preview") : "";
-      if (previewUrl) {
-        if (frame) {
-          frame.classList.remove("hidden");
-          frame.src = previewUrl;
-        }
-        if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
-        if (stageNote) stageNote.textContent = run.id;
-        if (stageActions) stageActions.innerHTML = '<button class="chip" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg>' + t("新窗口打开") + "</button>";
-        if (footHint) footHint.textContent = t("网页成品预览");
-        if (footMeta) footMeta.textContent = run.workdir || "";
-      } else {
-        if (empty) {
-          empty.classList.remove("hidden");
-          empty.querySelector("h3").textContent = t("暂无预览");
-          empty.querySelector("p").textContent = t("任务尚未运行或没有可预览的成品");
-        }
-        if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
-        if (stageNote) stageNote.textContent = "";
-        if (stageActions) stageActions.innerHTML = "";
-        if (footHint) footHint.textContent = "";
-        if (footMeta) footMeta.textContent = "";
-      }
+      // 网页成品预览：先问后端要入口与挂载根（/preview/<run>/<令牌>/ 的只读
+      // 静态挂载），有才挂 iframe；没有（小说/普通任务的常态）给空态说明——
+      // 不能把 /api/runs/<id>/preview 这个 JSON 接口当页面开，那是一行 no_html
+      if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
+      if (stageNote) stageNote.textContent = run ? run.id : "";
+      if (footMeta) footMeta.textContent = run ? (run.workdir || "") : "";
+      wbMountWebPreview(run);
     }
   }
   
@@ -248,26 +239,142 @@ function wbDraw() {
   }
 }
 
-function wbRenderNovelPaper(task, run) {
-  const chapters = (run && run.chapter_scores) || [];
-  if (!chapters.length) {
-    return '<div style="padding:40px;text-align:center;color:var(--paper-muted)">' + t("暂无章节内容") + "</div>";
+/* 小说纸面预览：读 run 成品里的 chapter-<数字>.md 真章文。run.chapter_scores
+ * 后端从不落盘，旧版对着它渲染永远是「暂无章节内容」。章清单来自
+ * /api/runs/<id>/files（任务首跑以来的产出，与「成果」同口径，续写任务即本
+ * 任务写的章节），正文走 /api/runs/<id>/file 按章现取；-draft/-final 等过程稿
+ * 不进目录。 */
+async function wbMountNovelPaper(run) {
+  const paper = $("wb-paper");
+  if (!paper) return;
+  const seq = ++wbNpSeq;
+  if (!run || !run.id) {
+    paper.innerHTML = '<div style="padding:40px;text-align:center;color:var(--paper-muted)">' + t("暂无章节内容") + "</div>";
+    return;
   }
-  return '<div style="padding:30px">' +
-    '<h1 style="font-size:24px;font-weight:700;margin:0 0 20px">' + esc(task.title || "") + "</h1>" +
-    chapters.map((c) => '<div style="margin-bottom:30px">' +
-      '<h2 style="font-size:18px;font-weight:600;margin:0 0 10px">' + esc(c.title || (t("第") + " " + c.chapter + " " + t("章"))) + "</h2>" +
-      '<div style="color:var(--paper-muted);font-size:13px;line-height:1.8">' + esc(c.excerpt || t("暂无内容")) + "</div>" +
-      "</div>").join("") +
+  let files = [];
+  try {
+    const d = await api("/api/runs/" + encodeURIComponent(run.id) + "/files");
+    files = (d.files || []).filter((f) => /^chapter-(\d+)\.md$/i.test(f.name || ""));
+  } catch (e) { files = []; }
+  if (seq !== wbNpSeq) return;   // 拉取期间重画过：过期响应不落盘
+  const chNo = (f) => parseInt(f.name.match(/^chapter-(\d+)\.md$/i)[1], 10);
+  files.sort((a, b) => chNo(a) - chNo(b));
+  if (!files.length) {
+    paper.innerHTML = '<div style="padding:40px;text-align:center;color:var(--paper-muted)">' + t("本次运行没有产出章节文件") + "</div>";
+    return;
+  }
+  const opts = files.map((f, i) =>
+    '<option value="' + i + '">' + esc(t("第") + " " + chNo(f) + " " + t("章")) + "</option>").join("");
+  paper.innerHTML = '<div>' +
+    '<div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,.08);position:sticky;top:0;background:inherit;z-index:1">' +
+      '<button class="chip" id="wb-np-prev">‹ ' + esc(t("上一章")) + "</button>" +
+      '<select id="wb-np-sel" style="max-width:220px" aria-label="' + esc(t("选择章节")) + '">' + opts + "</select>" +
+      '<button class="chip" id="wb-np-next">' + esc(t("下一章")) + ' ›</button>' +
+      '<span style="color:var(--paper-muted);font-size:12px">' + esc(files.length + t(" 章")) + "</span>" +
+    "</div>" +
+    '<div id="wb-np-body" style="padding:26px 8% 40px"><div style="text-align:center;color:var(--paper-muted)">' + esc(t("正在读取文件…")) + "</div></div>" +
     "</div>";
+  const sel = $("wb-np-sel"), body = $("wb-np-body");
+  const load = async (i) => {
+    if (!sel || !body || i < 0 || i >= files.length) return;
+    const mySeq = ++wbNpSeq;
+    sel.value = String(i);
+    body.innerHTML = '<div style="text-align:center;color:var(--paper-muted)">' + esc(t("正在读取文件…")) + "</div>";
+    let text = "";
+    try {
+      const r = await fetch(urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" + encodeURIComponent(files[i].name)), { headers: authHeaders() });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      text = await r.text();
+    } catch (e) { text = ""; }
+    const box = $("wb-np-body");
+    if (mySeq !== wbNpSeq || !box) return;   // 过期或纸面已重画：不落盘
+    if (!text) {
+      box.innerHTML = '<div style="text-align:center;color:var(--paper-muted)">' + esc(t("章节内容读取失败")) + "</div>";
+      return;
+    }
+    // 标题取章内首个 # 标题行；没有就落回「第 N 章」
+    const hm = text.match(/^\s*#\s*(.+?)\s*$/m);
+    const title = hm ? hm[1] : (t("第") + " " + chNo(files[i]) + " " + t("章"));
+    const prose = hm ? text.slice(text.indexOf(hm[0]) + hm[0].length).replace(/^\s+/, "") : text;
+    box.innerHTML = '<h2 style="font-size:20px;font-weight:700;margin:0 0 18px;text-align:center">' + esc(title) + "</h2>" +
+      '<div style="font-size:15px;line-height:2;white-space:pre-wrap;color:var(--paper,#3a332a)">' + esc(prose) + "</div>";
+  };
+  const cur = () => parseInt((sel && sel.value) || "0", 10) || 0;
+  const prev = $("wb-np-prev"), next = $("wb-np-next");
+  if (prev) prev.onclick = () => load(cur() - 1);
+  if (next) next.onclick = () => load(cur() + 1);
+  if (sel) sel.onchange = () => load(parseInt(sel.value, 10) || 0);
+  load(0);
 }
 
-function wbOpenPreview() {
+async function wbOpenPreview() {
   const task = wbCurrentTask();
   const run = wbLatestRun(task);
   if (!run) { toast(t("暂无可预览的运行"), true); return; }
-  const url = "/api/runs/" + run.id + "/preview";
-  window.open(url, "_blank");
+  const type = String((task && task.type) || "").toLowerCase();
+  if (type === "serial_novel" || type === "novel") { wbSetView("preview"); return; }   // 小说走纸面预览
+  let d = null;
+  try { d = await api("/api/runs/" + encodeURIComponent(run.id) + "/preview"); }
+  catch (e) { d = null; }
+  if (d && d.ok && d.base && d.entry) {
+    window.open(urlAuth(d.base + d.entry), "_blank");
+  } else {
+    toast(t("该任务没有可预览的网页成品"), true);
+  }
+}
+
+/* 工作台网页成品挂载：iframe 只认 /preview/<run>/<令牌>/<入口> 的只读静态挂载；
+ * /api/runs/<id>/preview 是元数据接口，吐的是 ok/no_html 的 JSON——当页面开就是
+ * 一行裸 JSON。挂载信息随 run 走：同 run 重画只把 iframe 亮回来，换 run/换任务/
+ * 切视图即作废在飞的响应（wbPvSeq 闸门），也不给没有网页成品的任务硬开窗口。 */
+function wbPreviewReset() {
+  wbPvMounted = "";
+  const frame = $("wb-frame");
+  if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
+}
+
+async function wbMountWebPreview(run) {
+  const seq = wbPvSeq;
+  const frame = $("wb-frame"), empty = $("wb-empty");
+  const stageActions = $("wb-stage-actions"), footHint = $("wb-foot-hint");
+  if (!run || !run.id) {
+    wbPreviewReset();
+    if (empty) {
+      empty.classList.remove("hidden");
+      empty.querySelector("h3").textContent = t("暂无预览");
+      empty.querySelector("p").textContent = t("任务尚未运行或没有可预览的成品");
+    }
+    if (stageActions) stageActions.innerHTML = "";
+    if (footHint) footHint.textContent = "";
+    return;
+  }
+  if (wbPvMounted === run.id) {
+    if (frame) frame.classList.remove("hidden");
+    return;
+  }
+  wbPreviewReset();
+  let d = null;
+  try { d = await api("/api/runs/" + encodeURIComponent(run.id) + "/preview"); }
+  catch (e) { d = null; }
+  if (seq !== wbPvSeq) return;   // 拉取期间重画过：过期响应不落盘
+  if (d && d.ok && d.base && d.entry) {
+    wbPvMounted = run.id;
+    if (frame) {
+      frame.src = urlAuth(d.base + d.entry);
+      frame.classList.remove("hidden");
+    }
+    if (stageActions) stageActions.innerHTML = '<button class="chip" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg>' + t("新窗口打开") + "</button>";
+    if (footHint) footHint.textContent = t("网页成品预览");
+  } else {
+    if (empty) {
+      empty.classList.remove("hidden");
+      empty.querySelector("h3").textContent = t("暂无网页成品");
+      empty.querySelector("p").textContent = t("最近一次运行没有可预览的网页，请在详情页查看成果");
+    }
+    if (stageActions) stageActions.innerHTML = "";
+    if (footHint) footHint.textContent = "";
+  }
 }
 
 function wbOpenDetail() {
@@ -313,6 +420,7 @@ function wbWorkspaceShow(data) {
 function wbWorkspaceFallback(url, error) {
   const frame = $("wb-frame");
   wbWorkspaceStop();
+  wbPvMounted = "";   // iframe 内容被工作台地址顶掉：旧挂载记录一并作废
   if (frame) {
     frame.classList.remove("hidden");
     frame.src = url;
