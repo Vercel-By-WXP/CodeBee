@@ -38,378 +38,290 @@ try {
   }
 } catch (e) { /* 不可用或损坏的本机偏好回落聊天模式 */ }
 
-/* ---------------------------------------------------------- 内置浏览器工作区 */
-const BROWSER_STORAGE_KEY = "orch.browser.workspace.v1";
-const BROWSER_HOME = "__codebee_home__";
-const BROWSER_SEARCH = "https://www.google.com/search?igu=1&q=";
-const BROWSER_FRAME_BLOCKED_HOSTS = new Set(["github.com", "www.github.com", "x.com", "twitter.com", "www.twitter.com", "linkedin.com", "www.linkedin.com"]);
-const BROWSER_HISTORY_LIMIT = 500;
-const BROWSER_PERMISSION_FEATURES = ["camera", "microphone", "geolocation", "clipboard-read"];
-const BROWSER_TASK_STORAGE_KEY = "orch.browser.task.v1";
-let browserState = browserLoadState();
-let browserTaskId = "";
-let browserPublishAt = 0;
-let browserFrameWatch = 0;
-let browserWorkspacePlatform = "";
-let browserWorkspaceKey = "";
-let browserWorkspacePoll = 0;
+/* ---------------------------------------------------------- 工作台（预览与发布） */
+const WB_STORAGE_KEY = "orch.workbench.v1";
+const WB_TASK_STORAGE_KEY = "orch.workbench.task.v1";
+let wbState = wbLoadState();
+let wbTaskId = "";
+let wbView = "preview";
+let wbWorkspacePlatform = "";
+let wbWorkspaceKey = "";
+let wbWorkspacePoll = 0;
 
-try { browserTaskId = localStorage.getItem(BROWSER_TASK_STORAGE_KEY) || ""; } catch (e) { browserTaskId = ""; }
+try { wbTaskId = localStorage.getItem(WB_TASK_STORAGE_KEY) || ""; } catch (e) { wbTaskId = ""; }
 
-function browserLoadState() {
+function wbLoadState() {
   try {
-    const raw = JSON.parse(localStorage.getItem(BROWSER_STORAGE_KEY) || "{}");
-    const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs : [{ id: "home", url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 }];
-    const kept = tabs.slice(0, 20).map(browserNormalizeTab);
-    const migratedHistory = kept.flatMap((tab) => tab.history.slice(0, tab.index + 1).map((url, index) => ({
-      url, title: browserTitle(url), visitedAt: Date.now() - (tab.history.length - index),
-    })));
-    const history = Array.isArray(raw.history) ? raw.history.filter(browserValidHistoryEntry) : migratedHistory;
+    const raw = JSON.parse(localStorage.getItem(WB_STORAGE_KEY) || "{}");
     return {
-      tabs: kept,
-      active: Math.max(0, Math.min(Number(raw.active) || 0, kept.length - 1)),
-      history: history.slice(-BROWSER_HISTORY_LIMIT),
-      permissions: raw.permissions && typeof raw.permissions === "object" && !Array.isArray(raw.permissions) ? raw.permissions : {},
+      view: raw.view === "console" ? "console" : "preview",
       updatedAt: Number(raw.updatedAt) || 0,
     };
   } catch (e) {
-    return { tabs: [{ id: "home", url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 }], active: 0, history: [], permissions: {}, updatedAt: 0 };
+    return { view: "preview", updatedAt: 0 };
   }
 }
 
-function browserValidHistoryEntry(entry) {
-  return !!entry && typeof entry.url === "string" && entry.url !== BROWSER_HOME &&
-    /^https?:\/\//i.test(entry.url) && Number.isFinite(Number(entry.visitedAt));
-}
-
-function browserNormalizeTab(tab, i) {
-  const history = Array.isArray(tab.history) && tab.history.length ? tab.history.slice(-20) : [tab.url || BROWSER_HOME];
-  const index = Math.max(0, Math.min(Number(tab.index) || history.length - 1, history.length - 1));
-  return { id: String(tab.id || ("tab-" + i)), url: history[index], title: String(tab.title || t("CodeBee 浏览器")).slice(0, 80), history, index };
-}
-
-function browserSaveState() {
+function wbSaveState() {
   try {
-    const stored = JSON.parse(localStorage.getItem(BROWSER_STORAGE_KEY) || "null");
-    if (stored && Number(stored.updatedAt) > Number(browserState.updatedAt || 0)) {
-      browserState = browserLoadState();
-      browserDraw(true);
-      return;
-    }
-    browserState.tabs = browserState.tabs.slice(0, 20).map(browserNormalizeTab);
-    browserState.active = Math.max(0, Math.min(browserState.active, browserState.tabs.length - 1));
-    browserState.history = (browserState.history || []).filter(browserValidHistoryEntry).slice(-BROWSER_HISTORY_LIMIT);
-    browserState.updatedAt = Math.max(Date.now(), Number(browserState.updatedAt || 0) + 1);
-    localStorage.setItem(BROWSER_STORAGE_KEY, JSON.stringify(browserState));
-  } catch (e) { /* private browsing/storage quota: browser remains usable in memory */ }
-  const count = $("browser-history-count");
-  if (count) count.textContent = t("{0} 个标签页", browserState.tabs.length);
+    wbState.updatedAt = Math.max(Date.now(), Number(wbState.updatedAt || 0) + 1);
+    localStorage.setItem(WB_STORAGE_KEY, JSON.stringify(wbState));
+  } catch (e) { /* private browsing: state remains in memory */ }
 }
 
-window.addEventListener("storage", (event) => {
-  if (event.key !== BROWSER_STORAGE_KEY) return;
-  if (!event.newValue) {
-    browserState = browserLoadState();
-    browserDraw(true);
-    return;
-  }
-  try {
-    const raw = JSON.parse(event.newValue);
-    const tabs = Array.isArray(raw.tabs) && raw.tabs.length ? raw.tabs.slice(0, 20).map(browserNormalizeTab) : [];
-    browserState = tabs.length ? {
-      tabs,
-      active: Math.max(0, Math.min(Number(raw.active) || 0, tabs.length - 1)),
-      history: Array.isArray(raw.history) ? raw.history.filter(browserValidHistoryEntry).slice(-BROWSER_HISTORY_LIMIT) : [],
-      permissions: raw.permissions && typeof raw.permissions === "object" && !Array.isArray(raw.permissions) ? raw.permissions : {},
-      updatedAt: Number(raw.updatedAt) || 0,
-    } : browserLoadState();
-    browserDraw(true);
-  } catch (e) { /* Ignore a partially written value; local state remains usable. */ }
-});
-
-function browserTaskList() {
+function wbTaskList() {
   return ((S.state || {}).tasks || []).filter((task) => task && task.id);
 }
 
-function browserTaskForId(id) {
-  return browserTaskList().find((task) => task.id === id) || null;
+function wbTaskForId(id) {
+  return wbTaskList().find((t) => t.id === id) || null;
 }
 
-function browserCurrentTask() {
-  const candidates = [browserTaskId, S.detailTaskKey,
-    S.lastRun && S.lastRun.task_id, S.lastRunTask && S.lastRunTask.id];
-  for (const id of candidates) {
-    const task = id && browserTaskForId(id);
-    if (task) return task;
+function wbLatestRun(task) {
+  if (!task || !task.id) return null;
+  const latest = (S.state || {}).task_latest || {};
+  return latest[task.id] || null;
+}
+
+function wbCurrentTask() {
+  return wbTaskForId(wbTaskId);
+}
+
+function wbSetTask(id) {
+  wbTaskId = id || "";
+  try { localStorage.setItem(WB_TASK_STORAGE_KEY, wbTaskId); } catch (e) {}
+  wbDraw();
+  wbLoadPublishState(wbCurrentTask());
+}
+
+function wbSetView(view) {
+  wbView = view === "console" ? "console" : "preview";
+  wbState.view = wbView;
+  wbSaveState();
+  wbDraw();
+}
+
+function wbDraw() {
+  const task = wbCurrentTask();
+  const run = wbLatestRun(task);
+  
+  // Task selector
+  const select = $("wb-task-select");
+  if (select) {
+    const tasks = wbTaskList();
+    select.innerHTML = '<option value="">' + t("选择任务…") + "</option>" +
+      tasks.map((t) => '<option value="' + esc(t.id) + '"' + (t.id === wbTaskId ? " selected" : "") + ">" + esc(t.title || t.id) + "</option>").join("");
   }
-  return browserTaskList()[0] || null;
-}
-
-function browserLatestRun(task) {
-  if (!task) return null;
-  if (S.lastRun && S.lastRun.task_id === task.id) return S.lastRun;
-  const runs = ((S.state || {}).runs || []).filter((run) => run && run.task_id === task.id);
-  return runs[0] || ((S.state || {}).task_latest || {})[task.id] || null;
-}
-
-function browserStatusLabel(status) {
-  const map = { running: t("运行中"), queued: t("排队中"), done: t("已完成"), failed: "失败",
-    cancelled: t("已取消"), timeout: t("超时"), waiting: t("等待中") };
-  return t(map[status] || status || t("未开始"));
-}
-
-function browserRenderHomeTask(task, run, status, verifyPass) {
-  const title = $("browser-home-task-title"), meta = $("browser-home-task-meta");
-  const runLine = $("browser-home-run");
-  if (!title || !meta || !runLine) return;
-  const buttons = {};
-  document.querySelectorAll("[data-browser-home-action]").forEach((button) => {
-    buttons[button.dataset.browserHomeAction] = button;
+  
+  // Title and subtitle
+  const title = $("wb-title");
+  if (title) title.textContent = task ? (task.title || task.id) : t("预览与发布");
+  const sub = $("wb-sub");
+  if (sub) sub.textContent = task ? (task.type || "") : t("任务成品预览、验证与平台发布");
+  
+  // View switch
+  document.querySelectorAll("[data-wb-view]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.wbView === wbView);
+    btn.setAttribute("aria-selected", btn.dataset.wbView === wbView ? "true" : "false");
   });
+  
+  // Stage content
+  const empty = $("wb-empty");
+  const paper = $("wb-paper");
+  const frame = $("wb-frame");
+  const console_ = $("wb-console");
+  const cdpScreen = $("wb-cdp-screen");
+  
+  if (empty) empty.classList.add("hidden");
+  if (paper) paper.classList.add("hidden");
+  if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
+  if (console_) console_.classList.add("hidden");
+  if (cdpScreen) { cdpScreen.classList.add("hidden"); cdpScreen.removeAttribute("src"); }
+  
+  const stageLabel = $("wb-stage-label");
+  const stageNote = $("wb-stage-note");
+  const stageActions = $("wb-stage-actions");
+  const footHint = $("wb-foot-hint");
+  const footMeta = $("wb-foot-meta");
+  
   if (!task) {
-    title.textContent = t("还没有任务");
-    meta.textContent = t("当前任务");
-    runLine.textContent = t("等待任务进入工作台");
-    Object.values(buttons).forEach((button) => { button.disabled = true; });
-    return;
-  }
-  const type = task.type || task.flow || "";
-  title.textContent = task.title || task.goal || t("未命名任务");
-  meta.textContent = [browserStatusLabel(status), type].filter(Boolean).join(" · ");
-  const verifyText = verifyPass === true ? t("验证通过") :
-    (verifyPass === false ? t("验证未通过") : t("等待验证"));
-  runLine.textContent = run && run.id
-    ? t("运行 #{0} · {1}", String(run.id).slice(0, 8), verifyText)
-    : t("还没有运行记录");
-  if (buttons.preview) buttons.preview.disabled = !run || !run.id;
-  if (buttons.verify) buttons.verify.disabled = !run || !run.id;
-  if (buttons.retry) buttons.retry.disabled = status === "running" || status === "queued";
-  if (buttons.publish) buttons.publish.disabled = !/(serial|novel|小说|连载)/i.test(type);
-}
-
-function browserRenderTaskOptions() {
-  const select = $("browser-task-select");
-  if (!select) return null;
-  const tasks = browserTaskList();
-  const current = browserCurrentTask();
-  if (current && !browserTaskId) browserTaskId = current.id;
-  if (!tasks.length) {
-    select.innerHTML = '<option value="">' + esc(t("暂无任务")) + "</option>";
-    select.disabled = true;
-    return null;
-  }
-  select.disabled = false;
-  select.innerHTML = tasks.map((task) => '<option value="' + esc(task.id) + '">' +
-    esc(task.title || task.goal || t("未命名任务")) + "</option>").join("");
-  const chosen = browserTaskForId(browserTaskId) || current || tasks[0];
-  browserTaskId = chosen.id;
-  select.value = browserTaskId;
-  try { localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* memory only */ }
-  return chosen;
-}
-
-function browserRenderTaskContext() {
-  const task = browserRenderTaskOptions();
-  const card = $("browser-task-card"), verify = $("browser-verify-card"), publish = $("browser-publish-card");
-  const actions = $("browser-context-actions");
-  if (!card || !verify || !publish) return task;
-  const run = browserLatestRun(task);
-  if (!task) {
-    card.innerHTML = '<div class="browser-task-empty">' + esc(t("还没有任务；先在左侧新建一个任务")) + "</div>";
-    verify.innerHTML = '<span>' + esc(t("任务运行后，这里会显示验证证据")) + "</span>";
-    publish.innerHTML = '<span>' + esc(t("连载任务完成后，可从这里进入发布工作台")) + "</span>";
-    if (actions) actions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
-    browserRenderHomeTask(null, null, "", null);
-    return null;
-  }
-  if (actions) actions.querySelectorAll("button").forEach((button) => { button.disabled = false; });
-  const latest = ((S.state || {}).task_latest || {})[task.id] || {};
-  const status = run && run.status || task.status || latest.status || "";
-  const previewAction = $("browser-action-preview"), detailAction = $("browser-action-detail"), retryAction = $("browser-action-retry");
-  if (previewAction) previewAction.disabled = !run || !run.id;
-  if (detailAction) detailAction.disabled = !run || !run.id;
-  if (retryAction) retryAction.disabled = status === "running" || status === "queued";
-  const type = task.type || task.flow || "";
-  card.innerHTML = '<div class="browser-task-title">' + esc(task.title || t("未命名任务")) + "</div>" +
-    '<div class="browser-task-meta"><span class="browser-task-status">' + esc(browserStatusLabel(status)) +
-    "</span>" + (type ? '<span>' + esc(type) + "</span>" : "") +
-    (run && run.id ? '<span>#' + esc(String(run.id).slice(0, 8)) + "</span>" : "") + "</div>" +
-    (task.goal ? '<div class="browser-task-goal">' + esc(task.goal) + "</div>" : "");
-  const verdict = (run && run.verdict) || latest.verdict || {};
-  const verifyPass = verdict.verify_pass != null ? verdict.verify_pass :
-    (run && run.verify_pass != null ? run.verify_pass : null);
-  const verifyClass = verifyPass === true ? "ok" : (verifyPass === false ? "bad" : "");
-  const verifyIcon = verifyPass === true ? "i-check" : (verifyPass === false ? "i-x" : "i-gauge");
-  const verifyText = verifyPass === true ? "验证通过" : (verifyPass === false ? "验证未通过" : t("等待验证"));
-  const command = task.verify_command || "";
-  const qualityLabels = { continue_only: t("继续打磨（暂不可发布）"),
-    publish_ready: t("可发布，签约检查点待完成"), signing_ready: t("可申请签约") };
-  const qualityStatus = verdict.quality_status && qualityLabels[verdict.quality_status];
-  verify.innerHTML = '<div class="browser-verify-line ' + verifyClass + '"><svg class="ico" aria-hidden="true"><use href="#' + verifyIcon + '"></use></svg><span>' + esc(t(verifyText)) + "</span></div>" +
-    (qualityStatus ? '<div class="browser-verify-command quality-status">' + esc(t(qualityStatus)) + "</div>" : "") +
-    (command ? '<div class="browser-verify-command" title="' + esc(command) + '">' + esc(command) + "</div>" : '<span>' + esc(t("未配置验证命令")) + "</span>");
-  const platforms = ["fanqie", "qimao"], ps = (S.pubState && S.pubState.platforms) || {};
-  publish.innerHTML = '<div class="browser-publish-platforms">' + platforms.map((platform) => {
-    const state = ps[platform] || {}, label = platform === "fanqie" ? "番茄" : t("七猫");
-    const statusText = state.status === "connected" ? t("已连接") : (state.status === "busy" ? "操作中" : t("未连接"));
-    return '<div class="browser-publish-platform"><b>' + esc(t(label)) + '</b><span>' + esc(t(statusText)) + "</span></div>";
-  }).join("") + "</div>";
-  browserRenderHomeTask(task, run, status, verifyPass);
-  return task;
-}
-
-function browserOpenTaskRun(task, tab) {
-  const run = browserLatestRun(task);
-  if (!task || !run || !run.id) { toast(t("当前任务还没有运行记录"), true); return; }
-  showDetailInMain();
-  openRun(run.id, tab || null);
-}
-
-function browserOpenTaskPreview(task) {
-  const run = browserLatestRun(task);
-  if (!run || !run.id) { toast(t("当前任务还没有可预览的成果"), true); return; }
-  api("/api/runs/" + encodeURIComponent(run.id) + "/preview").then((data) => {
-    if (!data || !data.ok || !data.base) throw new Error(t("当前任务没有网页成品"));
-    browserNavigate(data.base + data.entry);
-  }).catch((e) => toast(e.message || String(e), true));
-}
-
-async function browserLoadPublishState(task) {
-  if (!task || Date.now() - browserPublishAt < 5000) return;
-  browserPublishAt = Date.now();
-  try {
-    const state = await api("/api/publish");
-    S.pubState = state;
-    if (task.id) {
-      try { S.pubTaskInfo = await api("/api/publish/task/" + encodeURIComponent(task.id) + "/history"); } catch (e) { /* optional */ }
+    if (empty) empty.classList.remove("hidden");
+    if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
+    if (stageNote) stageNote.textContent = "";
+    if (stageActions) stageActions.innerHTML = "";
+    if (footHint) footHint.textContent = "";
+    if (footMeta) footMeta.textContent = "";
+  } else if (wbView === "console") {
+    if (console_) {
+      console_.classList.remove("hidden");
+      console_.textContent = run ? JSON.stringify(run, null, 2) : t("暂无运行日志");
     }
-    browserRenderTaskContext();
-  } catch (e) { /* publishing is optional and may not be installed */ }
-}
-
-function normalizeBrowserUrl(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return BROWSER_HOME;
-  if (raw === BROWSER_HOME || raw.indexOf("/preview/") === 0 || raw.indexOf(location.origin + "/preview/") === 0) return raw;
-  if (/^(javascript|data|vbscript|file):/i.test(raw)) return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(raw)) return "https://" + raw;
-  return BROWSER_SEARCH + encodeURIComponent(raw);
-}
-
-function browserActiveTab() { return browserState.tabs[browserState.active] || browserState.tabs[0]; }
-
-function browserTitle(url) {
-  if (url === BROWSER_HOME) return t("CodeBee 浏览器");
-  try { return new URL(url, location.origin).hostname.replace(/^www\./, "") || t("浏览器"); } catch (e) { return t("浏览器"); }
-}
-
-// Google sends X-Frame-Options on its normal entry/search URLs. The documented
-// `igu=1` variant keeps the same Google UI while allowing an embedded workspace
-// to render it; other sites still use the system-browser fallback when they
-// opt out of framing.
-function browserEmbedUrl(url) {
-  try {
-    const parsed = new URL(url, location.origin);
-    const host = (parsed.hostname || "").toLowerCase();
-    if (host === "google.com" || host.endsWith(".google.com")) parsed.searchParams.set("igu", "1");
-    return parsed.toString();
-  } catch (e) { return url; }
-}
-
-// CodeBee's query token is a local application credential. It must never be
-// attached to Google, GitHub, publishing platforms, or any other third party.
-function browserUrlAuth(url) {
-  try {
-    const parsed = new URL(url, location.origin);
-    return parsed.origin === location.origin ? urlAuth(url) : url;
-  } catch (e) { return url; }
-}
-
-function browserRenderHint(url) {
-  const hint = $("browser-hint");
-  if (!hint) return;
-  if (url === BROWSER_HOME) {
-    hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
-    return;
-  }
-  if (browserWorkspacePlatformFor(url)) {
-    hint.textContent = t("番茄和七猫优先使用 CodeBee 受控浏览器；连接失败时会切回嵌入页面。发布操作进行中时，工作区会暂时锁定。 ");
-    return;
-  }
-  try {
-    const host = (new URL(url, location.origin).hostname || "").toLowerCase();
-    if (host === "google.com" || host.endsWith(".google.com")) {
-      hint.textContent = t("Google 可在本机系统浏览器访问；嵌入工作区会被 Google 拒绝，请用右上角系统浏览器打开。");
-    } else if (BROWSER_FRAME_BLOCKED_HOSTS.has(host)) {
-      hint.textContent = t("此网站禁止嵌入页面；请点击右上角系统浏览器打开。");
+    if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("控制台");
+    if (stageNote) stageNote.textContent = run ? run.id : "";
+    if (stageActions) stageActions.innerHTML = "";
+    if (footHint) footHint.textContent = t("运行日志与输出");
+    if (footMeta) footMeta.textContent = run ? (run.verdict || "") : "";
+  } else {
+    // Preview mode
+    const type = (task.type || "").toLowerCase();
+    if (type === "serial_novel" || type === "novel") {
+      // Novel paper preview
+      if (paper) {
+        paper.classList.remove("hidden");
+        paper.innerHTML = wbRenderNovelPaper(task, run);
+      }
+      if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("小说预览");
+      if (stageNote) stageNote.textContent = task.serial ? (task.serial.chapters + t(" 章")) : "";
+      if (stageActions) stageActions.innerHTML = "";
+      if (footHint) footHint.textContent = t("连载小说成品预览");
+      if (footMeta) footMeta.textContent = run ? (run.chapter_scores ? run.chapter_scores.length + t(" 章已评审") : "") : "";
     } else {
-      hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
+      // HTML preview or CDP screenshot
+      const previewUrl = run ? ("/api/runs/" + run.id + "/preview") : "";
+      if (previewUrl) {
+        if (frame) {
+          frame.classList.remove("hidden");
+          frame.src = previewUrl;
+        }
+        if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
+        if (stageNote) stageNote.textContent = run.id;
+        if (stageActions) stageActions.innerHTML = '<button class="chip" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg>' + t("新窗口打开") + "</button>";
+        if (footHint) footHint.textContent = t("网页成品预览");
+        if (footMeta) footMeta.textContent = run.workdir || "";
+      } else {
+        if (empty) {
+          empty.classList.remove("hidden");
+          empty.querySelector("h3").textContent = t("暂无预览");
+          empty.querySelector("p").textContent = t("任务尚未运行或没有可预览的成品");
+        }
+        if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
+        if (stageNote) stageNote.textContent = "";
+        if (stageActions) stageActions.innerHTML = "";
+        if (footHint) footHint.textContent = "";
+        if (footMeta) footMeta.textContent = "";
+      }
     }
-  } catch (e) {
-    hint.textContent = t("外部网站可能禁止嵌入；可用右上角系统浏览器打开。");
+  }
+  
+  // Task context card
+  const card = $("wb-task-card");
+  if (card) {
+    if (!task) {
+      card.innerHTML = '<div class="wb-task-empty">' + t("选择一个任务开始工作") + "</div>";
+    } else {
+      const status = task.status || "";
+      const statusClass = status === "running" ? "ok" : status === "failed" ? "bad" : "";
+      card.innerHTML = '<div class="wb-task-title">' + esc(task.title || task.id) + "</div>" +
+        '<div class="wb-task-meta">' +
+        '<span class="wb-task-status ' + statusClass + '">' + esc(status) + "</span>" +
+        (task.type ? "<span>" + esc(task.type) + "</span>" : "") +
+        (task.serial ? "<span>" + (task.serial.chapters || 0) + t(" 章") + "</span>" : "") +
+        "</div>" +
+        (task.goal ? '<div class="wb-task-goal">' + esc(task.goal) + "</div>" : "");
+    }
+  }
+  
+  // Action buttons
+  const actions = $("wb-aside-actions");
+  if (actions) {
+    if (!task) {
+      actions.innerHTML = "";
+    } else {
+      actions.innerHTML = '<button class="primary small" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg>' + t("预览成品") + "</button>" +
+        '<button class="ghost small" onclick="wbOpenDetail()"><svg class="ico" aria-hidden="true"><use href="#i-file-search"></use></svg>' + t("查看详情") + "</button>" +
+        '<button class="ghost small" onclick="wbRetryTask()"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg>' + t("重新运行") + "</button>";
+    }
+  }
+  
+  // Verify card
+  const verify = $("wb-verify-card");
+  if (verify) {
+    if (!run || !run.verdict) {
+      verify.innerHTML = '<span style="color:var(--muted)">' + t("暂无验证结果") + "</span>";
+    } else {
+      const ok = run.verdict === "pass";
+      verify.innerHTML = '<div class="wb-verify-line ' + (ok ? "ok" : "bad") + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="#i-' + (ok ? "check" : "x") + '"></use></svg>' +
+        (ok ? t("验证通过") : t("验证未通过")) +
+        "</div>";
+    }
   }
 }
 
-function browserSetFrameError(show, message) {
-  const frame = $("browser-frame"), error = $("browser-frame-error"), text = $("browser-frame-error-text");
-  if (!frame || !error) return;
-  error.classList.toggle("hidden", !show);
-  frame.classList.toggle("hidden", show);
-  if (text && message) text.textContent = message;
+function wbRenderNovelPaper(task, run) {
+  const chapters = (run && run.chapter_scores) || [];
+  if (!chapters.length) {
+    return '<div style="padding:40px;text-align:center;color:var(--paper-muted)">' + t("暂无章节内容") + "</div>";
+  }
+  return '<div style="padding:30px">' +
+    '<h1 style="font-size:24px;font-weight:700;margin:0 0 20px">' + esc(task.title || "") + "</h1>" +
+    chapters.map((c) => '<div style="margin-bottom:30px">' +
+      '<h2 style="font-size:18px;font-weight:600;margin:0 0 10px">' + esc(c.title || (t("第") + " " + c.chapter + " " + t("章"))) + "</h2>" +
+      '<div style="color:var(--paper-muted);font-size:13px;line-height:1.8">' + esc(c.excerpt || t("暂无内容")) + "</div>" +
+      "</div>").join("") +
+    "</div>";
 }
 
-function browserWorkspacePlatformFor(url) {
+function wbOpenPreview() {
+  const task = wbCurrentTask();
+  const run = wbLatestRun(task);
+  if (!run) { toast(t("暂无可预览的运行"), true); return; }
+  const url = "/api/runs/" + run.id + "/preview";
+  window.open(url, "_blank");
+}
+
+function wbOpenDetail() {
+  const task = wbCurrentTask();
+  if (!task) return;
+  if (window.codebeeOpenTaskDetail) window.codebeeOpenTaskDetail(task.id);
+}
+
+function wbRetryTask() {
+  const task = wbCurrentTask();
+  if (!task) return;
+  if (window.codebeeRetryTask) window.codebeeRetryTask(task.id);
+}
+
+// CDP workspace helpers (adapted from browser*)
+function wbWorkspacePlatformFor(url) {
   try {
     const parsed = new URL(url, location.origin);
     if (parsed.protocol !== "https:" || parsed.username || parsed.password) return "";
     const host = parsed.hostname.toLowerCase();
     if (host === "fanqienovel.com" || host.endsWith(".fanqienovel.com")) return "fanqie";
     if (host === "qimao.com" || host.endsWith(".qimao.com")) return "qimao";
-  } catch (e) { /* invalid URL has already been rejected by normalizeBrowserUrl */ }
+  } catch (e) {}
   return "";
 }
 
-function browserWorkspaceStop() {
-  clearInterval(browserWorkspacePoll);
-  browserWorkspacePoll = 0;
-  browserWorkspacePlatform = "";
-  browserWorkspaceKey = "";
-  const screen = $("browser-cdp-screen");
+function wbWorkspaceStop() {
+  clearInterval(wbWorkspacePoll);
+  wbWorkspacePoll = 0;
+  wbWorkspacePlatform = "";
+  wbWorkspaceKey = "";
+  const screen = $("wb-cdp-screen");
   if (screen) { screen.classList.add("hidden"); screen.removeAttribute("src"); }
 }
 
-function browserWorkspaceShow(data) {
-  const screen = $("browser-cdp-screen");
+function wbWorkspaceShow(data) {
+  const screen = $("wb-cdp-screen");
   if (!screen || !data || !data.image) throw new Error(t("浏览器没有返回页面画面"));
   screen.src = "data:image/png;base64," + data.image;
   screen.classList.remove("hidden");
-  const tab = browserActiveTab();
-  if (tab && browserWorkspacePlatformFor(data.url) === browserWorkspacePlatform && data.url !== tab.url) {
-    tab.url = data.url;
-    tab.title = browserTitle(data.url);
-    tab.history[tab.index] = data.url;
-    browserRecordVisit(data.url);
-    const address = $("browser-address");
-    if (address) address.value = data.url;
-    browserDrawTabs();
-    browserSaveState();
-  }
 }
 
-function browserWorkspaceFallback(url, error) {
-  const frame = $("browser-frame");
-  browserWorkspaceStop();
+function wbWorkspaceFallback(url, error) {
+  const frame = $("wb-frame");
+  wbWorkspaceStop();
   if (frame) {
     frame.classList.remove("hidden");
-    frame.src = browserUrlAuth(browserEmbedUrl(url));
+    frame.src = url;
   }
-  browserWatchFrame(url);
-  const hint = $("browser-hint");
-  if (hint) hint.textContent = t("受控浏览器暂不可用，已切回嵌入页面；如网站拒绝嵌入，请用系统浏览器继续。") + (error ? " " + error : "");
+  const hint = $("wb-foot-hint");
+  if (hint) hint.textContent = t("受控浏览器暂不可用，已切回嵌入页面") + (error ? " " + error : "");
 }
 
-async function browserWorkspaceRequest(platform, action, extra) {
+async function wbWorkspaceRequest(platform, action, extra) {
   return api("/api/browser/workspace", {
     method: "POST", timeout: 90000, silent: true, busy: false, operation: false,
     headers: Object.assign(authHeaders(), { "Content-Type": "application/json" }),
@@ -417,62 +329,59 @@ async function browserWorkspaceRequest(platform, action, extra) {
   });
 }
 
-async function browserWorkspaceRefresh(platform) {
-  if (!platform || platform !== browserWorkspacePlatform) return;
+async function wbWorkspaceRefresh(platform) {
+  if (!platform || platform !== wbWorkspacePlatform) return;
   try {
     const data = await api("/api/browser/workspace?platform=" + encodeURIComponent(platform),
       { timeout: 15000, silent: true, busy: false, operation: false });
-    if (platform === browserWorkspacePlatform) browserWorkspaceShow(data);
+    if (platform === wbWorkspacePlatform) wbWorkspaceShow(data);
   } catch (e) {
-    if (e && e.status === 409) return; // 发布流程临时占用同一页面，保留最近画面并继续轮询
-    browserWorkspaceFallback(browserActiveTab().url, e && e.message);
+    if (e && e.status === 409) return;
+    wbWorkspaceFallback("", e && e.message);
   }
 }
 
-function browserWorkspaceOpen(url, platform) {
-  const frame = $("browser-frame"), screen = $("browser-cdp-screen");
+function wbWorkspaceOpen(url, platform) {
+  const frame = $("wb-frame"), screen = $("wb-cdp-screen");
   if (frame) frame.classList.add("hidden");
-  browserSetFrameError(false);
   if (screen) screen.classList.remove("hidden");
   const key = platform + "\n" + url;
-  if (browserWorkspaceKey === key) return;
-  clearInterval(browserWorkspacePoll);
-  browserWorkspacePlatform = platform;
-  browserWorkspaceKey = key;
+  if (wbWorkspaceKey === key) return;
+  clearInterval(wbWorkspacePoll);
+  wbWorkspacePlatform = platform;
+  wbWorkspaceKey = key;
   if (screen) screen.removeAttribute("src");
-  browserWorkspaceRequest(platform, "navigate", { url }).then((data) => {
-    if (browserWorkspaceKey !== key) return;
-    browserWorkspaceShow(data);
-    clearInterval(browserWorkspacePoll);
-    browserWorkspacePoll = window.setInterval(() => browserWorkspaceRefresh(platform), 1800);
+  wbWorkspaceRequest(platform, "navigate", { url }).then((data) => {
+    if (wbWorkspaceKey !== key) return;
+    wbWorkspaceShow(data);
+    clearInterval(wbWorkspacePoll);
+    wbWorkspacePoll = window.setInterval(() => wbWorkspaceRefresh(platform), 1800);
   }).catch((e) => {
-    if (browserWorkspaceKey !== key) return;
+    if (wbWorkspaceKey !== key) return;
     if (e && e.status === 409) {
-      // Publishing temporarily owns the shared CDP tab. Keep the controlled
-      // workspace selected and retry navigation when that operation releases it.
-      const hint = $("browser-hint");
+      const hint = $("wb-foot-hint");
       if (hint) hint.textContent = t("发布操作正在使用受控浏览器，完成后将继续打开作者后台。");
-      clearInterval(browserWorkspacePoll);
-      browserWorkspacePoll = window.setInterval(() => {
-        if (browserWorkspaceKey !== key) return;
-        browserWorkspaceRequest(platform, "navigate", { url }).then((data) => {
-          if (browserWorkspaceKey !== key) return;
-          browserWorkspaceShow(data);
-          clearInterval(browserWorkspacePoll);
-          browserWorkspacePoll = window.setInterval(() => browserWorkspaceRefresh(platform), 1800);
+      clearInterval(wbWorkspacePoll);
+      wbWorkspacePoll = window.setInterval(() => {
+        if (wbWorkspaceKey !== key) return;
+        wbWorkspaceRequest(platform, "navigate", { url }).then((data) => {
+          if (wbWorkspaceKey !== key) return;
+          wbWorkspaceShow(data);
+          clearInterval(wbWorkspacePoll);
+          wbWorkspacePoll = window.setInterval(() => wbWorkspaceRefresh(platform), 1800);
         }).catch((retryError) => {
           if (retryError && retryError.status === 409) return;
-          if (browserWorkspaceKey === key) browserWorkspaceFallback(url, retryError && retryError.message);
+          if (wbWorkspaceKey === key) wbWorkspaceFallback(url, retryError && retryError.message);
         });
       }, 1800);
       return;
     }
-    browserWorkspaceFallback(url, e && e.message);
+    wbWorkspaceFallback(url, e && e.message);
   });
 }
 
-function browserWorkspacePointer(event, action) {
-  const screen = $("browser-cdp-screen");
+function wbWorkspacePointer(event, action) {
+  const screen = $("wb-cdp-screen");
   if (!screen || screen.classList.contains("hidden") || !screen.naturalWidth || !screen.naturalHeight) return;
   const rect = screen.getBoundingClientRect();
   const scale = Math.min(rect.width / screen.naturalWidth, rect.height / screen.naturalHeight);
@@ -481,308 +390,39 @@ function browserWorkspacePointer(event, action) {
   const top = rect.top + (rect.height - drawnHeight) / 2;
   const x = Math.round((event.clientX - left) / scale), y = Math.round((event.clientY - top) / scale);
   if (x < 0 || y < 0 || x >= screen.naturalWidth || y >= screen.naturalHeight) return;
-  browserWorkspaceAction(action, { x, y });
+  wbWorkspaceAction(action, { x, y });
 }
 
-function browserWorkspaceAction(action, extra) {
-  const platform = browserWorkspacePlatform;
+function wbWorkspaceAction(action, extra) {
+  const platform = wbWorkspacePlatform;
   if (!platform) return;
-  browserWorkspaceRequest(platform, action, extra).then((data) => {
-    if (platform === browserWorkspacePlatform) browserWorkspaceShow(data);
+  wbWorkspaceRequest(platform, action, extra).then((data) => {
+    if (platform === wbWorkspacePlatform) wbWorkspaceShow(data);
   }).catch((e) => {
     if (e && e.status === 409) return;
-    browserWorkspaceFallback(browserActiveTab().url, e && e.message);
+    wbWorkspaceFallback("", e && e.message);
   });
 }
 
-function browserRecordVisit(url) {
-  if (!url || url === BROWSER_HOME) return;
-  const visitedAt = Date.now();
-  const entry = { url, title: browserTitle(url), visitedAt };
-  browserState.history = (browserState.history || []).filter((item) => item.url !== url);
-  browserState.history.push(entry);
-  browserState.history = browserState.history.slice(-BROWSER_HISTORY_LIMIT);
+// Publish state (reuse existing logic)
+function wbLoadPublishState(task) {
+  // This will be wired to existing pbLoadState
+  if (window.pbLoadState) window.pbLoadState(task);
 }
 
-function browserCurrentOrigin() {
-  const tab = browserActiveTab();
-  try { return tab && tab.url !== BROWSER_HOME ? new URL(tab.url, location.origin).origin : ""; } catch (e) { return ""; }
-}
-
-function browserSitePermissions(origin) {
-  const saved = browserState.permissions && browserState.permissions[origin];
-  return new Set(Array.isArray(saved) ? saved.filter((feature) => BROWSER_PERMISSION_FEATURES.includes(feature)) : []);
-}
-
-function browserApplyFramePermissions() {
-  const frame = $("browser-frame");
-  if (!frame) return;
-  const origin = browserCurrentOrigin();
-  const allowed = browserSitePermissions(origin);
-  frame.setAttribute("allow", BROWSER_PERMISSION_FEATURES.filter((feature) => allowed.has(feature))
-    .map((feature) => feature + " 'src'").join("; "));
-  const summary = $("browser-site-origin");
-  if (summary) summary.textContent = origin || t("当前没有打开网站");
-  const controls = $("browser-permission-list");
-  if (controls) {
-    controls.querySelectorAll("input[data-browser-permission]").forEach((input) => {
-      input.checked = allowed.has(input.dataset.browserPermission);
-      input.disabled = !origin || !origin.startsWith("https://");
-    });
-    const note = $("browser-permission-note");
-    if (note) note.textContent = origin && !origin.startsWith("https://")
-      ? t("网站权限仅对 HTTPS 网站开放。")
-      : t("只允许此网站请求所选权限；浏览器仍会在网站实际使用时显示系统授权提示。");
+function wbBind() {
+  const select = $("wb-task-select");
+  if (select) {
+    select.addEventListener("change", () => wbSetTask(select.value));
   }
-  const siteButton = $("browser-site-permissions");
-  if (siteButton) siteButton.disabled = !origin;
-}
-
-function browserRenderHistory() {
-  const list = $("browser-history-list");
-  if (!list) return;
-  const query = (($ ("browser-history-search") || {}).value || "").trim().toLocaleLowerCase();
-  const entries = (browserState.history || []).slice().reverse().filter((item) =>
-    !query || (item.title + " " + item.url).toLocaleLowerCase().includes(query));
-  if (!entries.length) {
-    list.innerHTML = '<div class="browser-dialog-empty">' + esc(t(query ? t("没有匹配的浏览记录") : t("暂无浏览记录"))) + "</div>";
-    return;
-  }
-  list.innerHTML = entries.map((item) => '<button type="button" class="browser-history-entry" data-browser-history-url="' + esc(item.url) + '">' +
-    '<span class="browser-history-entry-mark"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg></span>' +
-    '<span class="browser-history-entry-copy"><b>' + esc(item.title || browserTitle(item.url)) + '</b><small>' + esc(item.url) + '</small></span>' +
-    '<time>' + esc(new Date(item.visitedAt).toLocaleString()) + '</time></button>').join("");
-}
-
-function browserOpenDialog(id) {
-  const dialog = $(id);
-  if (!dialog) return;
-  if (typeof dialog.showModal === "function") dialog.showModal();
-  else dialog.setAttribute("open", "");
-}
-
-function browserWatchFrame(url) {
-  window.clearTimeout(browserFrameWatch);
-  browserSetFrameError(false);
-  const frame = $("browser-frame");
-  if (!frame || url === BROWSER_HOME) return;
-  browserFrameWatch = window.setTimeout(() => {
-    let host = "";
-    try { host = (new URL(url, location.origin).hostname || "").toLowerCase(); } catch (e) { /* invalid URL was already normalized */ }
-    if (host === "google.com" || host.endsWith(".google.com")) {
-      browserSetFrameError(true, t("Google 可以在本机系统浏览器访问，但会拒绝嵌入 CodeBee 工作区；这不是本地网络问题。"));
-      return;
-    }
-    try {
-      // Cross-origin pages throw here when they loaded successfully. A failed
-      // frame stays at about:blank, which is the useful signal for Google/XFO.
-      const docUrl = frame.contentDocument && frame.contentDocument.URL;
-      if (docUrl === "about:blank") browserSetFrameError(true);
-    } catch (e) { /* loaded cross-origin content; keep it visible */ }
-  }, 2400);
-}
-
-function browserDrawTabs() {
-  const tabs = $("browser-tabs");
-  if (!tabs) return;
-  tabs.querySelectorAll(".browser-tab").forEach((x) => x.remove());
-  const add = $("browser-new-tab");
-  browserState.tabs.forEach((tab, i) => {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "browser-tab" + (i === browserState.active ? " active" : "");
-    b.dataset.browserTab = tab.id; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", i === browserState.active ? "true" : "false");
-    b.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>' + esc(tab.title || browserTitle(tab.url)) + '</span><span class="browser-tab-close" aria-label="' + esc(t("关闭标签页")) + '">×</span>';
-    tabs.insertBefore(b, add);
+  
+  document.querySelectorAll("[data-wb-view]").forEach((btn) => {
+    btn.addEventListener("click", () => wbSetView(btn.dataset.wbView));
   });
-}
-
-function browserDraw(skipSave) {
-  const tab = browserActiveTab();
-  if (!tab) return;
-  browserRenderTaskContext();
-  browserDrawTabs();
-  const address = $("browser-address"), frame = $("browser-frame"), empty = $("browser-empty");
-  browserApplyFramePermissions();
-  if (address) address.value = tab.url === BROWSER_HOME ? "" : tab.url;
-  const canBack = tab.index > 0, canForward = tab.index < tab.history.length - 1;
-  ["browser-back", "browser-forward"].forEach((id, i) => { const b = $(id); if (b) b.disabled = i ? !canForward : !canBack; });
-  if (tab.url === BROWSER_HOME) {
-    browserWorkspaceStop();
-    window.clearTimeout(browserFrameWatch);
-    browserSetFrameError(false);
-    if (frame) { frame.classList.add("hidden"); frame.removeAttribute("src"); }
-    if (empty) empty.classList.remove("hidden");
-  } else {
-    if (empty) empty.classList.add("hidden");
-    const bridgePlatform = browserWorkspacePlatformFor(tab.url);
-    if (bridgePlatform) {
-      browserWorkspaceOpen(tab.url, bridgePlatform);
-    } else {
-      browserWorkspaceStop();
-    }
-    if (frame && !bridgePlatform) {
-      frame.classList.remove("hidden");
-      frame.src = browserUrlAuth(browserEmbedUrl(tab.url));
-      browserWatchFrame(tab.url);
-    }
-  }
-  browserRenderHint(tab.url);
-  if (!skipSave) browserSaveState();
-}
-
-function browserNavigate(value, replace) {
-  const url = normalizeBrowserUrl(value);
-  if (!url) { toast(t("不允许打开此类地址"), true); return false; }
-  const tab = browserActiveTab();
-  if (replace) tab.history[tab.index] = url;
-  else { tab.history = tab.history.slice(0, tab.index + 1).concat(url).slice(-20); tab.index = tab.history.length - 1; }
-  browserRecordVisit(url);
-  tab.url = url; tab.title = browserTitle(url); browserDraw(); return true;
-}
-
-// The desktop shell sends external links back here so CodeBee's own analysis
-// and self-editing flows stay inside the CodeBee browser workspace.
-window.codebeeOpenBrowser = function (url) {
-  const normalized = normalizeBrowserUrl(url);
-  if (!normalized) return false;
-  switchTab("browser", "main");
-  return browserNavigate(normalized);
-};
-
-function browserOpenPreview() {
-  browserOpenTaskPreview(browserCurrentTask());
-}
-
-function browserBind() {
-  if (!$("browser-frame")) return;
-  const contextToggle = $("browser-context-toggle");
-  document.body.classList.add("browser-context-collapsed");
-  if (contextToggle) contextToggle.setAttribute("aria-expanded", "false");
-  if (contextToggle) contextToggle.addEventListener("click", () => {
-    const collapsed = document.body.classList.toggle("browser-context-collapsed");
-    contextToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  });
-  const homeSearch = $("browser-home-search");
-  if (homeSearch) homeSearch.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = homeSearch.querySelector("input");
-    browserNavigate(input && input.value);
-    if (input) input.value = "";
-  });
-  const viewport = $("browser-viewport");
-  const screen = $("browser-cdp-screen");
-  if (viewport && screen) {
-    screen.addEventListener("click", (event) => browserWorkspacePointer(event, "click"));
-    screen.addEventListener("wheel", (event) => {
-      if (!browserWorkspacePlatform) return;
-      event.preventDefault();
-      browserWorkspaceAction("scroll", { deltaX: Math.round(event.deltaX), deltaY: Math.round(event.deltaY) });
-    }, { passive: false });
-    screen.addEventListener("keydown", (event) => {
-      if (!browserWorkspacePlatform) return;
-      if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        event.preventDefault(); browserWorkspaceAction("text", { text: event.key });
-      } else if (event.key !== "Unidentified" && event.key !== "Process") {
-        event.preventDefault(); browserWorkspaceAction("key", {
-          key: event.key, ctrl: event.ctrlKey, alt: event.altKey,
-          meta: event.metaKey, shift: event.shiftKey,
-        });
-      }
-    });
-    screen.addEventListener("compositionend", (event) => {
-      if (browserWorkspacePlatform && event.data) browserWorkspaceAction("text", { text: event.data });
-    });
-    screen.addEventListener("paste", (event) => {
-      if (!browserWorkspacePlatform) return;
-      const text = event.clipboardData && event.clipboardData.getData("text");
-      if (text) { event.preventDefault(); browserWorkspaceAction("text", { text }); }
-    });
-  }
-  $("browser-nav-form").addEventListener("submit", (e) => { e.preventDefault(); browserNavigate($("browser-address").value); });
-  $("browser-back").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index > 0) { t0.index--; t0.url = t0.history[t0.index]; browserDraw(); } });
-  $("browser-forward").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.index < t0.history.length - 1) { t0.index++; t0.url = t0.history[t0.index]; browserDraw(); } });
-  $("browser-reload").addEventListener("click", () => { const f = $("browser-frame"); if (f && !f.classList.contains("hidden")) f.src = f.src; });
-  $("browser-home").addEventListener("click", () => browserNavigate(BROWSER_HOME));
-  $("browser-new-tab").addEventListener("click", () => {
-    browserState.tabs.push({ id: "tab-" + Date.now(), url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 });
-    browserState.active = browserState.tabs.length - 1;
-    browserDraw();
-    $("browser-address").focus();
-  });
-  // Explicit escape hatch: only this named target intentionally leaves CodeBee.
-  $("browser-open-external").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "codebee-system-browser", "noopener"); });
-  $("browser-frame-error-open").addEventListener("click", () => { const t0 = browserActiveTab(); if (t0.url !== BROWSER_HOME) window.open(browserUrlAuth(t0.url), "codebee-system-browser", "noopener"); });
-  $("browser-history-open").addEventListener("click", () => { browserRenderHistory(); browserOpenDialog("browser-history-dialog"); });
-  $("browser-history-search").addEventListener("input", browserRenderHistory);
-  $("browser-history-list").addEventListener("click", (e) => {
-    const entry = e.target.closest("[data-browser-history-url]");
-    if (!entry) return;
-    $("browser-history-dialog").close();
-    browserNavigate(entry.dataset.browserHistoryUrl);
-  });
-  $("browser-clear-data").addEventListener("click", () => {
-    const confirm = $("browser-clear-confirm");
-    if (typeof confirm.showModal === "function") confirm.showModal(); else confirm.setAttribute("open", "");
-  });
-  $("browser-clear-confirm-yes").addEventListener("click", () => {
-    browserState.history = [];
-    browserState.permissions = {};
-    browserState.tabs = [{ id: "home", url: BROWSER_HOME, title: t("CodeBee 浏览器"), history: [BROWSER_HOME], index: 0 }];
-    browserState.active = 0;
-    browserSaveState();
-    $("browser-clear-confirm").close();
-    $("browser-history-dialog").close();
-    browserDraw(true);
-  });
-  $("browser-site-permissions").addEventListener("click", () => {
-    browserApplyFramePermissions();
-    browserOpenDialog("browser-permissions-dialog");
-  });
-  $("browser-permission-list").addEventListener("change", (e) => {
-    const input = e.target.closest("input[data-browser-permission]");
-    const origin = browserCurrentOrigin();
-    if (!input || !origin || !origin.startsWith("https://")) return;
-    const allowed = browserSitePermissions(origin);
-    if (input.checked) allowed.add(input.dataset.browserPermission); else allowed.delete(input.dataset.browserPermission);
-    if (allowed.size) browserState.permissions[origin] = Array.from(allowed);
-    else delete browserState.permissions[origin];
-    browserSaveState();
-    browserApplyFramePermissions();
-  });
-  document.querySelectorAll("[data-browser-dialog-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
-  $("browser-empty").addEventListener("click", (e) => {
-    const button = e.target.closest("[data-browser-home-action]");
-    if (!button || button.disabled) return;
-    const task = browserCurrentTask(), action = button.dataset.browserHomeAction;
-    if (action === "preview") browserOpenTaskPreview(task);
-    else if (action === "verify") browserOpenTaskRun(task, "result");
-    else if (action === "publish") browserOpenTaskRun(task, "bookmeta");
-    else if (action === "retry") {
-      if (task) retryTask(task.id); else toast(t("请先选择任务"), true);
-    }
-  });
-  const taskSelect = $("browser-task-select");
-  if (taskSelect) taskSelect.addEventListener("change", () => {
-    browserTaskId = taskSelect.value || "";
-    try { localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* memory only */ }
-    browserRenderTaskContext();
-    browserLoadPublishState(browserCurrentTask());
-  });
-  $("browser-action-preview").addEventListener("click", () => browserOpenTaskPreview(browserCurrentTask()));
-  $("browser-action-detail").addEventListener("click", () => browserOpenTaskRun(browserCurrentTask()));
-  $("browser-action-retry").addEventListener("click", () => {
-    const task = browserCurrentTask();
-    if (task) retryTask(task.id); else toast(t("请先选择任务"), true);
-  });
-  $("browser-action-verify").addEventListener("click", () => browserOpenTaskRun(browserCurrentTask(), "result"));
-  $("browser-action-publish").addEventListener("click", () => {
-    const task = browserCurrentTask();
-    if (task) browserOpenTaskRun(task, "bookmeta"); else toast(t("请先选择任务"), true);
-  });
-  $("browser-shortcuts").addEventListener("click", (e) => { const b = e.target.closest("[data-browser-url], [data-browser-preview]"); if (!b) return; if (b.dataset.browserPreview) browserOpenPreview(); else browserNavigate(b.dataset.browserUrl); });
-  $("browser-tabs").addEventListener("click", (e) => { const close = e.target.closest(".browser-tab-close"), tab = e.target.closest(".browser-tab"); if (!tab) return; const i = browserState.tabs.findIndex((x) => x.id === tab.dataset.browserTab); if (close && browserState.tabs.length > 1) { browserState.tabs.splice(i, 1); browserState.active = Math.min(browserState.active, browserState.tabs.length - 1); } else if (!close && i >= 0) browserState.active = i; browserDraw(); });
-  browserDraw();
-  browserLoadPublishState(browserCurrentTask());
+  
+  wbView = wbState.view || "preview";
+  wbDraw();
+  wbLoadPublishState(wbCurrentTask());
 }
 
 /* ---------------------------------------------------------- 任务类型（流程） */
@@ -2718,6 +2358,95 @@ async function healthDisableProvider(pid, provider) {
   }
 }
 
+/* ---------------------------------------------------------- 通道体检 */
+/* /api/availability：厂商健康 + 模型熔断 + CLI 降级链 + 账号探活一页聚合。
+   只读展示；禁用/静默等操作仍走健康告警弹框与模型调度页。 */
+
+async function loadAvailability() {
+  let data;
+  try { data = await api("/api/availability", { timeout: 15000 }); }
+  catch (e) { toast(t("操作失败：") + e.message, true); return; }
+  if (!data) return;
+  renderAvailability(data);
+}
+window.loadAvailability = loadAvailability;
+
+function availChip(label, cls) {
+  return "<span class='avail-chip " + cls + "'>" + esc(label) + "</span>";
+}
+
+function availStatusChip(p) {
+  if (!p.enabled) return availChip(t("已停用"), "off");
+  const h = p.health;
+  if (h && (h.alerting || h.status === "down")) return availChip(t("已熔断"), "bad");
+  if (h && h.status === "failing") return availChip(t("观察中"), "warn");
+  if (h && h.status === "recovered") return availChip(t("已恢复"), "ok");
+  return availChip(t("可用"), "ok");
+}
+
+function renderAvailability(data) {
+  const provs = data.providers || [];
+  const clis = data.clis || [];
+  const c = { ok: 0, warn: 0, bad: 0, off: 0 };
+  provs.forEach((p) => {
+    if (!p.enabled) { c.off++; return; }
+    const st = p.health ? p.health.status : "ok";
+    if (p.health && (p.health.alerting || st === "down")) { c.bad++; return; }
+    if (st === "failing") { c.warn++; return; }
+    c.ok++;
+  });
+  const sum = $("avail-summary");
+  if (sum) sum.innerHTML =
+    "<span class='avail-pill ok'>" + t("可用") + " " + c.ok + "</span>" +
+    "<span class='avail-pill warn'>" + t("观察中") + " " + c.warn + "</span>" +
+    "<span class='avail-pill bad'>" + t("已熔断") + " " + c.bad + "</span>" +
+    (c.off ? "<span class='avail-pill off'>" + t("已停用") + " " + c.off + "</span>" : "") +
+    "<span class='avail-sub'>" + esc(data.generated_at || "") + "</span>";
+  const host = (u) => { try { return new URL(u).host; } catch (e) { return u; } };
+  const el = $("avail-providers");
+  if (el) el.innerHTML = provs.map((p) => {
+    const h = p.health;
+    const meta = [];
+    if (h && h.consecutive_failures) meta.push(t("连续失败") + " " + h.consecutive_failures + " " + t("次"));
+    if (h && h.last_fail_at) meta.push(t("最近失败") + " " + h.last_fail_at);
+    if (h && h.last_ok_at) meta.push(t("最近成功") + " " + h.last_ok_at);
+    if (p.keys_total) meta.push("KEY " + p.keys_enabled + "/" + p.keys_total);
+    const models = p.models || [];
+    const chips = models.slice(0, 24).map((m) =>
+      "<span class='avail-model" + (m.down ? " down" : (m.enabled ? "" : " off")) + "'>" +
+      esc(m.name) + (m.down ? " ⚠" : "") + "</span>").join("");
+    const more = models.length > 24
+      ? "<span class='avail-model off'>+" + (models.length - 24) + "</span>" : "";
+    return "<div class='card avail-card" + (p.enabled ? "" : " off") + "'>" +
+      "<div class='avail-head'><b>" + esc(p.name) + "</b>" + availStatusChip(p) +
+      "<span class='avail-sub'>" + esc(host(p.base_url)) +
+      (p.protocol ? " · " + esc(p.protocol) : "") + "</span></div>" +
+      (meta.length ? "<div class='avail-meta'>" + meta.map(esc).join(" · ") + "</div>" : "") +
+      (h && h.last_error ? "<div class='avail-err'>" + esc(String(h.last_error).slice(0, 220)) + "</div>" : "") +
+      (chips ? "<div class='avail-models'>" + chips + more + "</div>" : "") +
+      "</div>";
+  }).join("") || "<p class='hint'>—</p>";
+  const elc = $("avail-clis");
+  if (elc) elc.innerHTML = clis.map((row) => {
+    const a = row.account;
+    const chip = !a ? "" :
+      a.status === "ok" ? availChip(t("可用"), "ok") :
+      a.status === "recovered" ? availChip(t("已恢复"), "ok") :
+      availChip(t("账号失效"), "bad");
+    const chain = (row.chain || []).map((e) =>
+      "<span class='avail-model" + (e.down ? " down" : "") + "'>" +
+      esc((e.provider || e.provider_id || "?") + " · " + e.model) +
+      (e.down ? " ⚠" : "") + "</span>").join("");
+    const dead = a && a.status !== "ok" && a.status !== "recovered";
+    return "<div class='card avail-card" + (dead ? " off" : "") + "'>" +
+      "<div class='avail-head'><b>" + esc(row.id) + "</b>" + chip + "</div>" +
+      (chain ? "<div class='avail-models'>" + chain + "</div>"
+             : "<div class='avail-meta'>" + esc(t("无降级链，按任务类型自动推荐厂商与模型")) + "</div>") +
+      (a && a.summary ? "<div class='avail-err'>" + esc(a.summary) + "</div>" : "") +
+      "</div>";
+  }).join("") || "<p class='hint'>—</p>";
+}
+
 async function refreshState() {
   applyState(await api("/api/state", { timeout: 15000, busy: false, operation: false }));
 }
@@ -4443,11 +4172,9 @@ function cmpAddAction(action) {
     toggleTypeMenu(true);
   } else if (action === "browser") {
     const currentTask = S.currentTaskId || S.taskId || "";
-    browserTaskId = browserTaskId || currentTask || ((S.state || {}).tasks || [])[0]?.id || "";
-    try { if (browserTaskId) localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* local preference only */ }
+    wbSetTask(currentTask || ((S.state || {}).tasks || [])[0]?.id || "");
     switchTab("browser", "main");
-    browserNavigate("https://www.google.com");
-    toast(t("已打开 CodeBee 内置浏览器工作区并关联当前任务；如需使用系统 Chrome，请从桌面浏览器按钮打开。"));
+    toast(t("已打开工作台并关联当前任务"));
   } else if (action === "goal") {
     switchTab("overview", "main");
     goalLoad().then(() => {
@@ -9094,10 +8821,10 @@ window.toggleBrowserSplit = function () {
   const open = !document.body.classList.contains("browser-split-open");
   const button = $("btn-browser-split");
   if (open) {
-    if (detailSideTaskKey()) browserTaskId = detailSideTaskKey();
-    try { if (browserTaskId) localStorage.setItem(BROWSER_TASK_STORAGE_KEY, browserTaskId); } catch (e) { /* local preference only */ }
+    if (detailSideTaskKey()) wbTaskId = detailSideTaskKey();
+    try { if (wbTaskId) localStorage.setItem(WB_TASK_STORAGE_KEY, wbTaskId); } catch (e) { /* local preference only */ }
     document.body.classList.add("browser-split-open");
-    browserDraw();
+    wbDraw();
   } else {
     document.body.classList.remove("browser-split-open");
   }
@@ -20329,6 +20056,7 @@ function switchTab(name, shell) {
   if (name === "agents") { autoCheckUpdates(); loadReviewQueue(); loadReviewPolicy(); loadInterventions(); loadCliDiscovery(false); }
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
+  if (name === "availability") loadAvailability();   // 进通道体检页：拉可用性聚合
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
   if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
@@ -20342,7 +20070,7 @@ function switchTab(name, shell) {
   if (name === "usage") { syncUsageRange(); loadUsage(); loadAnalytics(UI_FEATURES.analyticsDays); }   // 进用量页：对齐范围选中态并拉取
   if (name === "overview") { ovDays(); loadOverview(); }   // 进概览页：对齐趋势范围并拉两期台账
   if (name === "overview") goalLoad();
-  if (name === "browser") browserDraw();
+  if (name === "browser") wbDraw();
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
   if (name === "about") loadSelfupdate(false);     // 进关于页：拉版本与更新状态
@@ -20919,7 +20647,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-q-runs").addEventListener("click", () => switchTab("runs", "main"));
   $("btn-q-automation").addEventListener("click", () => switchTab("automation", "main"));
   $("btn-q-browser").addEventListener("click", () => switchTab("browser", "main"));
-  browserBind();
+  wbBind();
   bindCtxMenus();
   bindInspector();
   if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");

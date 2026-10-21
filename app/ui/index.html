@@ -304,6 +304,7 @@
       <button class="set-item" data-sub="agents" data-search="本机智能体 cli agent 安装 命令行 local agents install"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="本机智能体">本机智能体</span></button>
       <button class="set-item" data-sub="models" data-search="模型接入 供应商 API 密钥 provider models api keys"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="模型接入">模型接入</span></button>
       <button class="set-item" data-sub="bindings" data-search="模型调度 路由 绑定 降级 fallback routing binding"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="模型调度（可选）">模型调度（可选）</span></button>
+      <button class="set-item" data-sub="availability" data-search="通道体检 可用性 健康 厂商 模型 CLI 熔断 告警 availability health status circuit"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="通道体检">通道体检</span></button>
       <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
       <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
       <div data-i18n="知识与扩展" class="set-group">知识与扩展</div>
@@ -1224,6 +1225,21 @@
         </div>
       </div>
 
+      <!-- 通道体检：厂商/模型/CLI 可用性一页看清 -->
+      <div id="sub-availability" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="通道体检">通道体检</h2>
+            <div class="actions"><button class="ghost small" onclick="loadAvailability()" data-i18n="刷新">刷新</button></div>
+          </div>
+          <p class="hint" data-i18n="当前哪些厂商、模型和 CLI 能正常用，一目了然。状态来自真实调用与后台探活：绿=可用，黄=连续失败观察中，红=已熔断（正在告警），灰=已停用。">当前哪些厂商、模型和 CLI 能正常用，一目了然。状态来自真实调用与后台探活：绿=可用，黄=连续失败观察中，红=已熔断（正在告警），灰=已停用。</p>
+          <div id="avail-summary" class="avail-summary"></div>
+          <h3 class="avail-section" data-i18n="厂商与模型">厂商与模型</h3>
+          <div id="avail-providers" class="cards"></div>
+          <h3 class="avail-section" data-i18n="CLI 与降级链">CLI 与降级链</h3>
+          <div id="avail-clis" class="cards"></div>
+        </div>
+      </div>
+
       <!-- 经验库 -->
       <!-- 记忆中心：统一呈现全局经验/知识与项目记忆，操作复用各自已有治理链 -->
       <div id="sub-memory" class="subpage hidden">
@@ -1734,118 +1750,77 @@
       </div>
 
       <div id="sub-browser" class="subpage hidden">
-        <div class="browser-shell">
-          <div class="browser-head">
-            <div class="browser-tabs" id="browser-tabs" role="tablist" aria-label="浏览器标签页" data-i18n-aria="浏览器标签页">
-              <button class="browser-tab active" type="button" data-browser-tab="home" role="tab" aria-selected="true">
-                <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span>CodeBee 浏览器</span>
-              </button>
-              <button class="browser-tab-add" id="browser-new-tab" type="button" title="新建标签页" aria-label="新建标签页" data-i18n-title="新建标签页" data-i18n-aria="新建标签页"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></button>
+        <div class="wb-shell">
+          <div class="wb-head">
+            <div class="wb-copy">
+              <span class="wb-eyebrow"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="工作台">工作台</span></span>
+              <h2 class="wb-title" id="wb-title" data-i18n="预览与发布">预览与发布</h2>
+              <p class="wb-sub" id="wb-sub" data-i18n="任务成品预览、验证与平台发布">任务成品预览、验证与平台发布</p>
             </div>
-            <div class="browser-status"><span class="browser-status-dot"></span><span data-i18n="本地浏览器工作区">本地浏览器工作区</span></div>
+            <div class="wb-seg" role="tablist" aria-label="视图切换" data-i18n-aria="视图切换">
+              <button class="wb-seg-btn active" data-wb-view="preview" type="button" role="tab" aria-selected="true">
+                <svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="预览">预览</span>
+              </button>
+              <button class="wb-seg-btn" data-wb-view="console" type="button" role="tab" aria-selected="false">
+                <svg class="ico" aria-hidden="true"><use href="#i-terminal"></use></svg><span data-i18n="控制台">控制台</span>
+              </button>
+            </div>
+            <div class="wb-task-pick">
+              <label for="wb-task-select" class="wb-task-label" data-i18n="当前任务">当前任务</label>
+              <select id="wb-task-select" class="wb-task-select" aria-label="选择当前任务" data-i18n-aria="选择当前任务"></select>
+            </div>
           </div>
-          <div class="browser-toolbar">
-            <button class="icon-btn" id="browser-back" type="button" title="后退" aria-label="后退" data-i18n-title="后退" data-i18n-aria="后退"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg></button>
-            <button class="icon-btn" id="browser-forward" type="button" title="前进" aria-label="前进" data-i18n-title="前进" data-i18n-aria="前进"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
-            <button class="icon-btn" id="browser-reload" type="button" title="刷新" aria-label="刷新" data-i18n-title="刷新" data-i18n-aria="刷新"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg></button>
-            <button class="icon-btn" id="browser-home" type="button" title="主页" aria-label="主页" data-i18n-title="主页" data-i18n-aria="主页"><svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg></button>
-            <button class="icon-btn browser-context-toggle" id="browser-context-toggle" type="button" title="任务面板" aria-label="任务面板" aria-expanded="false" aria-controls="browser-context" data-i18n-title="任务面板" data-i18n-aria="任务面板"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg></button>
-            <form id="browser-nav-form" class="browser-address-wrap">
-              <svg class="ico browser-lock" aria-hidden="true"><use href="#i-lock"></use></svg>
-              <input id="browser-address" type="text" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索内容" data-i18n-ph="输入网址或搜索内容" aria-label="网址" data-i18n-aria="网址">
-              <button class="browser-go" type="submit" title="打开" aria-label="打开" data-i18n-title="打开" data-i18n-aria="打开"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
-            </form>
-            <button class="icon-btn" id="browser-site-permissions" type="button" title="网站权限" aria-label="网站权限" data-i18n-title="网站权限" data-i18n-aria="网站权限" disabled><svg class="ico" aria-hidden="true"><use href="#i-lock"></use></svg></button>
-            <button class="icon-btn" id="browser-history-open" type="button" title="浏览记录和数据" aria-label="浏览记录和数据" data-i18n-title="浏览记录和数据" data-i18n-aria="浏览记录和数据"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg></button>
-            <button class="ghost small browser-external" id="browser-open-external" type="button" title="在系统浏览器打开" data-i18n-title="在系统浏览器打开"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="系统浏览器">系统浏览器</span></button>
-          </div>
-          <div class="browser-shortcuts" id="browser-shortcuts">
-            <button type="button" class="browser-shortcut" data-browser-url="https://www.google.com"><span class="shortcut-mark google">G</span><span>Google</span></button>
-            <button type="button" class="browser-shortcut" data-browser-url="https://github.com"><span class="shortcut-mark github">GH</span><span>GitHub</span></button>
-            <button type="button" class="browser-shortcut" data-browser-url="https://developer.mozilla.org"><span class="shortcut-mark mdn">MDN</span><span>MDN</span></button>
-          </div>
-          <div class="browser-stage">
-            <aside class="browser-context" id="browser-context" aria-label="CodeBee 工作上下文" data-i18n-aria="CodeBee 工作上下文">
-              <div class="browser-context-head">
-                <span class="browser-context-kicker"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span data-i18n="工作上下文">工作上下文</span></span>
-                <span class="browser-context-live"><i></i><span data-i18n="本地">本地</span></span>
+          <div class="wb-body">
+            <div class="wb-stage" id="wb-stage">
+              <div class="wb-stage-top">
+                <span class="wb-stage-label" id="wb-stage-label">
+                  <span class="wb-stage-live"></span>
+                  <span data-i18n="预览">预览</span>
+                  <span class="wb-stage-note" id="wb-stage-note"></span>
+                </span>
+                <div class="wb-stage-actions" id="wb-stage-actions"></div>
               </div>
-              <div class="browser-context-select">
-                <label for="browser-task-select" data-i18n="当前任务">当前任务</label>
-                <select id="browser-task-select" aria-label="选择当前任务" data-i18n-aria="选择当前任务"></select>
+              <div class="wb-stage-canvas" id="wb-stage-canvas">
+                <div class="wb-empty" id="wb-empty">
+                  <div class="wb-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg></div>
+                  <h3 data-i18n="选择一个任务开始">选择一个任务开始</h3>
+                  <p data-i18n="从右上角选择任务，预览成品或查看运行日志。">从右上角选择任务，预览成品或查看运行日志。</p>
+                </div>
+                <div class="wb-paper hidden" id="wb-paper"></div>
+                <iframe id="wb-frame" class="wb-frame hidden" title="任务预览" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
+                <div class="wb-console hidden" id="wb-console"></div>
+                <img id="wb-cdp-screen" class="wb-cdp-screen hidden" alt="受控浏览器页面" tabindex="0">
               </div>
-              <div class="browser-task-card" id="browser-task-card">
-                <div class="browser-task-empty" data-i18n="选择一个任务开始工作">选择一个任务开始工作</div>
+              <div class="wb-stage-foot">
+                <span id="wb-foot-hint"></span>
+                <span class="wb-foot-spacer"></span>
+                <span id="wb-foot-meta"></span>
               </div>
-              <div class="browser-context-actions" id="browser-context-actions">
-                <button class="primary small" id="browser-action-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="预览成品">预览成品</span></button>
-                <button class="ghost small" id="browser-action-detail" type="button"><svg class="ico" aria-hidden="true"><use href="#i-file-search"></use></svg><span data-i18n="查看详情">查看详情</span></button>
-                <button class="ghost small" id="browser-action-retry" type="button"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="重新运行">重新运行</span></button>
+            </div>
+            <aside class="wb-aside" id="wb-aside">
+              <div class="wb-aside-head">
+                <span class="wb-aside-kicker"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span data-i18n="任务上下文">任务上下文</span></span>
               </div>
-              <section class="browser-context-section">
-                <div class="browser-context-section-head"><span data-i18n="验证">验证</span><button class="icon-btn" id="browser-action-verify" type="button" title="查看验证结果" aria-label="查看验证结果" data-i18n-title="查看验证结果" data-i18n-aria="查看验证结果"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>
-                <div id="browser-verify-card" class="browser-verify-card"></div>
+              <div class="wb-task-card" id="wb-task-card">
+                <div class="wb-task-empty" data-i18n="选择一个任务开始工作">选择一个任务开始工作</div>
+              </div>
+              <div class="wb-aside-actions" id="wb-aside-actions">
+                <button class="primary small" id="wb-action-preview" type="button"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg><span data-i18n="预览成品">预览成品</span></button>
+                <button class="ghost small" id="wb-action-detail" type="button"><svg class="ico" aria-hidden="true"><use href="#i-file-search"></use></svg><span data-i18n="查看详情">查看详情</span></button>
+                <button class="ghost small" id="wb-action-retry" type="button"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="重新运行">重新运行</span></button>
+              </div>
+              <section class="wb-aside-section">
+                <div class="wb-aside-section-head"><span data-i18n="验证">验证</span><button class="icon-btn" id="wb-action-verify" type="button" title="查看验证结果" aria-label="查看验证结果" data-i18n-title="查看验证结果" data-i18n-aria="查看验证结果"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>
+                <div id="wb-verify-card" class="wb-verify-card"></div>
               </section>
-              <section class="browser-context-section browser-publish-section">
-                <div class="browser-context-section-head"><span data-i18n="小说发布">小说发布</span><button class="icon-btn" id="browser-action-publish" type="button" title="打开发布工作台" aria-label="打开发布工作台" data-i18n-title="打开发布工作台" data-i18n-aria="打开发布工作台"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>
-                <div class="browser-publish-note" data-i18n="发布由 CodeBee 受控浏览器执行，自动提交并核验平台回执。">发布由 CodeBee 受控浏览器执行，自动提交并核验平台回执。</div>
-                <div id="browser-publish-card" class="browser-publish-card"></div>
+              <section class="wb-aside-section wb-publish-section">
+                <div class="wb-aside-section-head"><span data-i18n="小说发布">小说发布</span><button class="icon-btn" id="wb-action-publish" type="button" title="打开发布工作台" aria-label="打开发布工作台" data-i18n-title="打开发布工作台" data-i18n-aria="打开发布工作台"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>
+                <div class="wb-publish-note" data-i18n="发布由 CodeBee 受控浏览器执行，自动提交并核验平台回执。">发布由 CodeBee 受控浏览器执行，自动提交并核验平台回执。</div>
+                <div id="wb-publish-card" class="wb-publish-card"></div>
               </section>
             </aside>
-            <div class="browser-viewport">
-              <div class="browser-empty" id="browser-empty">
-                <div class="browser-home-workbench" id="browser-home-dashboard">
-                  <header class="browser-home-hero">
-                    <div class="browser-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></div>
-                    <div class="browser-home-copy">
-                      <span class="browser-home-eyebrow" data-i18n="新标签页">新标签页</span>
-                      <h2 data-i18n="CodeBee 浏览器">CodeBee 浏览器</h2>
-                    </div>
-                  </header>
-                  <form id="browser-home-search" class="browser-home-search">
-                    <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
-                    <input type="text" autocomplete="off" spellcheck="false" placeholder="搜索网页，或输入网址" aria-label="搜索网页，或输入网址" data-i18n-ph="搜索网页，或输入网址" data-i18n-aria="搜索网页，或输入网址">
-                    <button class="browser-home-search-go" type="submit" aria-label="搜索" title="搜索" data-i18n-aria="搜索" data-i18n-title="搜索"><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
-                  </form>
-                  <div class="browser-home-note" data-i18n="常用网站">常用网站</div>
-                </div>
-              </div>
-              <div class="browser-frame-error hidden" id="browser-frame-error" role="status">
-                <div class="browser-frame-error-mark"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></div>
-                <h2 data-i18n="这个网站拒绝了内置嵌入">这个网站拒绝了内置嵌入</h2>
-                <p id="browser-frame-error-text" data-i18n="Google 等网站会拦截 iframe 或自动化挑战；页面本身未必不可访问。">Google 等网站会拦截 iframe 或自动化挑战；页面本身未必不可访问。</p>
-                <button class="primary small" id="browser-frame-error-open" type="button"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span data-i18n="用系统浏览器继续">用系统浏览器继续</span></button>
-              </div>
-              <iframe id="browser-frame" class="browser-frame hidden" title="CodeBee 浏览器" data-i18n-title="CodeBee 浏览器" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
-              <img id="browser-cdp-screen" class="browser-cdp-screen hidden" alt="CodeBee 受控浏览器页面" tabindex="0">
-            </div>
           </div>
-          <div class="browser-foot"><span id="browser-hint" data-i18n="外部网站可能禁止嵌入；可用右上角系统浏览器打开。">外部网站可能禁止嵌入；可用右上角系统浏览器打开。</span><span class="spacer"></span><span id="browser-history-count"></span></div>
         </div>
-        <dialog id="browser-history-dialog" class="browser-dialog" aria-labelledby="browser-history-heading">
-          <div class="browser-dialog-head"><div><span class="browser-dialog-kicker" data-i18n="本地保存">本地保存</span><h2 id="browser-history-heading" data-i18n="浏览记录">浏览记录</h2></div><button type="button" class="icon-btn" data-browser-dialog-close aria-label="关闭" title="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">×</button></div>
-          <label class="browser-dialog-search"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><input id="browser-history-search" type="search" autocomplete="off" placeholder="搜索标题或网址" data-i18n-ph="搜索标题或网址"></label>
-          <div id="browser-history-list" class="browser-history-list"></div>
-          <div class="browser-dialog-foot"><span data-i18n="最多保存最近 500 条，仅存于本机。">最多保存最近 500 条，仅存于本机。</span><button id="browser-clear-data" class="ghost small" type="button" data-i18n="清理浏览数据">清理浏览数据</button></div>
-        </dialog>
-        <dialog id="browser-clear-confirm" class="browser-dialog browser-confirm-dialog" aria-labelledby="browser-clear-heading">
-          <div class="browser-dialog-head"><div><span class="browser-dialog-kicker" data-i18n="本地浏览器工作区">本地浏览器工作区</span><h2 id="browser-clear-heading" data-i18n="清理浏览数据？">清理浏览数据？</h2></div><button type="button" class="icon-btn" data-browser-dialog-close aria-label="关闭" title="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">×</button></div>
-          <p class="browser-dialog-explainer" data-i18n="将删除本机保存的浏览记录、标签页和网站权限配置，并恢复为一个新标签页。">将删除本机保存的浏览记录、标签页和网站权限配置，并恢复为一个新标签页。</p>
-          <p class="browser-dialog-note" data-i18n="由于网页运行在隔离框架中，CodeBee 无法读取或清理系统浏览器中的 Cookie、缓存及下载记录。">由于网页运行在隔离框架中，CodeBee 无法读取或清理系统浏览器中的 Cookie、缓存及下载记录。</p>
-          <div class="browser-dialog-actions"><button type="button" class="ghost" data-browser-dialog-close data-i18n="取消">取消</button><button id="browser-clear-confirm-yes" type="button" class="danger" data-i18n="清理本地数据">清理本地数据</button></div>
-        </dialog>
-        <dialog id="browser-permissions-dialog" class="browser-dialog browser-permissions-dialog" aria-labelledby="browser-permissions-heading">
-          <div class="browser-dialog-head"><div><span class="browser-dialog-kicker" data-i18n="按站点控制">按站点控制</span><h2 id="browser-permissions-heading" data-i18n="网站权限">网站权限</h2></div><button type="button" class="icon-btn" data-browser-dialog-close aria-label="关闭" title="关闭" data-i18n-aria="关闭" data-i18n-title="关闭">×</button></div>
-          <p id="browser-site-origin" class="browser-site-origin"></p>
-          <div id="browser-permission-list" class="browser-permission-list">
-            <label><span><b data-i18n="摄像头">摄像头</b><small data-i18n="允许此站点请求摄像头访问">允许此站点请求摄像头访问</small></span><input type="checkbox" data-browser-permission="camera"></label>
-            <label><span><b data-i18n="麦克风">麦克风</b><small data-i18n="允许此站点请求麦克风访问">允许此站点请求麦克风访问</small></span><input type="checkbox" data-browser-permission="microphone"></label>
-            <label><span><b data-i18n="位置信息">位置信息</b><small data-i18n="允许此站点请求设备位置">允许此站点请求设备位置</small></span><input type="checkbox" data-browser-permission="geolocation"></label>
-            <label><span><b data-i18n="读取剪贴板">读取剪贴板</b><small data-i18n="允许此站点请求读取剪贴板">允许此站点请求读取剪贴板</small></span><input type="checkbox" data-browser-permission="clipboard-read"></label>
-          </div>
-          <p id="browser-permission-note" class="browser-dialog-note"></p>
-          <div class="browser-dialog-actions"><button type="button" class="primary" data-browser-dialog-close data-i18n="完成">完成</button></div>
-        </dialog>
       </div>
     </section>
     </main>
