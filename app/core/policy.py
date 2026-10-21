@@ -76,8 +76,10 @@ def normalize_sandbox(spec=None, workdir=None):
                 })
     internal_dir = str(spec.get("internal_dir") or ".codebee").strip()[:120]
     allowed_tools = None
-    if "allowed_tools" in spec:
-        raw_tools = spec.get("allowed_tools")
+    # Normalized specs always carry the key (None = unrestricted), so a
+    # second normalization pass must treat None as absent instead of invalid.
+    raw_tools = spec.get("allowed_tools")
+    if raw_tools is not None:
         if not isinstance(raw_tools, (list, tuple, set)):
             raise ValueError("allowed_tools 必须是工具名列表")
         allowed_tools = []

@@ -39,6 +39,36 @@ class ProviderHealthRegressionTests(unittest.TestCase):
 
         self.assertEqual(health.snapshot()["providers"], [])
 
+    def test_sandbox_gate_rejection_is_not_a_provider_failure(self):
+        health.report_failure(
+            "MiMo Code 原生免费通道",
+            "沙箱拒绝：allowed_tools 必须是工具名列表",
+            model="mimo/mimo-auto",
+            provider_id="prov-46",
+        )
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_init_removes_persisted_sandbox_gate_false_positives(self):
+        path = Path(self.tmp.name) / "provider_health.json"
+        errors = ("沙箱拒绝：allowed_tools 必须是工具名列表",
+                  "权限拒绝：该任务带工具禁用策略，外部 CLI 无法执行")
+        path.write_text(json.dumps({"providers": {
+            "provider-%d" % idx: {
+                "name": "provider-%d" % idx,
+                "status": "down",
+                "consecutive_failures": 10,
+                "last_error_code": "",
+                "last_error": error,
+            }
+            for idx, error in enumerate(errors)
+        }}), encoding="utf-8")
+
+        with mock.patch.object(health, "_prune_missing"):
+            health.init(self.tmp.name, start_probe=False)
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
     def test_real_upstream_http_failure_still_enters_provider_health(self):
         health.report_failure(
             "API provider",

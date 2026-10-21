@@ -173,12 +173,16 @@ def _is_local_false_positive(st):
     """Whether a persisted provider row is known to be a local-only failure."""
     if not isinstance(st, dict):
         return False
+    # The gate prefix is a fixed local marker, stronger than any generic
+    # classification attached to the row; check it before the code gate.
+    text = str(st.get("last_error") or "")
+    if _is_sandbox_gate_rejection(text):
+        return True
     code = str(st.get("last_error_code") or "").upper()
     if code in {"TOOL_LAUNCH", "CONTEXT_OVERFLOW"}:
         return True
     if code and code != "VENDOR_ERROR":
         return False
-    text = str(st.get("last_error") or "")
     if "未启动外部 CLI" in text[:160] or _LAUNCH_FAILURE_PREFIX in text[:80]:
         return True
     if "stderr/stdout:" not in text[:160]:
@@ -236,6 +240,16 @@ def report_success(provider: str, *, model: str = ""):
 # 判定标记同源双写（error_codes 在 L0，health 在 L1，策略禁止 L1→L0 import；
 # 供应商侧任何报错都不会带这个前缀，单靠前缀即可零误判）。
 _LAUNCH_FAILURE_PREFIX = "启动失败"
+
+# pipeline._external_sandbox_block_reason 的固定文案族：起跑前的本地策略闸门。
+# 供应商一次请求都没收到，记进健康台账会把健康通道推进 down 并踢出候选链
+# （2026-10-21 实案：存量任务沙箱里 allowed_tools=None 二次规范化失败，
+# MiMo/OpenCode/维云/Bigmodel 四个供应商被同一条本地拒绝连坐）。
+_SANDBOX_GATE_PREFIXES = ("沙箱拒绝：", "权限拒绝：")
+
+
+def _is_sandbox_gate_rejection(text):
+    return str(text or "").lstrip().startswith(_SANDBOX_GATE_PREFIXES)
 
 
 def _inactive_config(provider_id, provider, model):
@@ -310,6 +324,10 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
                     provider, str(error or "")[:160])
         return
     text = str(error or "")
+    if _is_sandbox_gate_rejection(text):
+        log.warning("[health] 起跑前沙箱/权限闸拒绝（供应商 %s 未收到请求，"
+                    "不记健康故障）：%s", provider, text[:160])
+        return
     # Deterministic account/model failures should open a short circuit on the
     # first observation.  Waiting for the generic three-failure threshold makes
     # every chapter or reviewer retry a request that cannot succeed.
