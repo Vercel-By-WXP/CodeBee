@@ -4826,9 +4826,15 @@ async function archiveTask(id, archived) {
 
 async function deleteTask(id) {
   if (!await uiConfirm(t("删除该任务及其全部运行记录（含日志与报告）？不可恢复。"), { ok: t("删除"), danger: true })) return;
+  toast(t("正在删除任务…"));
+  await deleteTaskCore(id);
+}
+
+/* 删除单任务的执行段（无确认、无前置提示）：任务行单删与文件夹整删共用，
+ * 批删只确认一次。返回是否删除成功（false＝服务端拒绝，如运行中/连载链前序）。 */
+async function deleteTaskCore(id) {
   let gone = false;
   try {
-    toast(t("正在删除任务…"));
     await api("/api/tasks/" + encodeURIComponent(id) + "/delete",
       { method: "POST", operation: "删除任务" });
   } catch (e) {
@@ -4860,6 +4866,7 @@ async function deleteTask(id) {
   render();
   poll();
   if (gone) toast(t("任务已删除"));
+  return true;
 }
 
 /* ---------------------------------------------------------- 右键菜单（归档/删除） */
@@ -4889,6 +4896,16 @@ function unhideSideDir(dir) {
   if (!dir || !s.delete(dir)) return;
   localStorage.setItem("tutti.hiddenDirs", JSON.stringify([...s]));
   S.sideSig = "";
+}
+
+/* 「显示已归档」开着时不剪已移除目录：时钟开关是被移除文件夹的唯一找回入口——
+ * 移除=整目录任务归档+目录隐藏，只有灰显行右键「取消归档」才会把目录从隐藏表
+ * 捞回来（unhideSideDir）。这里若无条件剪掉，开关永远照不出它，只剩「在该目录
+ * 新建任务」一条兜底路（2026-10-21 不周山移除后时钟开关照不回实测案）。 */
+function pruneHiddenSideDirs(dirs, showArchived) {
+  if (showArchived) return;
+  const hid = sideHiddenDirs();
+  for (let i = dirs.length - 1; i >= 0; i--) if (hid.has(dirs[i].dir)) dirs.splice(i, 1);
 }
 
 let ctxItems = [];
@@ -5011,6 +5028,7 @@ function bindCtxMenus() {
       fn: () => setSidePin(dir, !pinned) });
     items.push("-");
     items.push({ label: t("移除该文件夹"), danger: true, fn: () => removeSideDir(ids, dir) });
+    items.push({ label: t("删除该文件夹"), danger: true, fn: () => deleteSideDir(ids, dir) });
     openCtxMenu(e.clientX, e.clientY, items);
   });
   // 文件夹展开/折叠：toggle 事件不冒泡，用捕获监听整个侧栏，实时写回 localStorage
@@ -5642,7 +5660,7 @@ async function removeSideDir(ids, dir) {
     return;
   }
   const ok = await uiConfirm(
-    t("把该文件夹下 %1 个任务移出侧栏？文件与运行记录不会删除；移除后文件夹从侧栏隐藏，在该目录新建任务会重新显示。")
+    t("把该文件夹下 %1 个任务移出侧栏？文件与运行记录不会删除；移除后文件夹从侧栏隐藏，点侧栏时钟开关（显示已归档）可找回，在该目录新建任务也会重新显示。")
       .replace("%1", ids.length),
     { ok: t("移除") });
   if (!ok) return;
@@ -5652,6 +5670,26 @@ async function removeSideDir(ids, dir) {
   for (const id of ids) if (!await archiveTask(id, true)) failed++;
   if (failed) {
     toast(t("有 {0} 个任务归档失败，文件夹先保留；任务与文件都没动，稍后重试即可").replace("{0}", failed), true);
+    return;
+  }
+  if (dir) hideSideDir(dir);
+}
+
+/* 文件夹右键「删除该文件夹」：目录下全部任务（含已归档灰显的）连同运行记录、
+ * 日志、评审史一并删除——与任务行「删除」同一条后端链路（store.delete_task），
+ * 工作目录磁盘上的文件不动。运行中/连载链前序任务会被服务端拒绝：有失败就
+ * 保留文件夹让用户重试（部分已删不可回收，如实提示）；全成功才藏目录。 */
+async function deleteSideDir(ids, dir) {
+  if (!ids.length) return;
+  const ok = await uiConfirm(
+    t("把该文件夹下 %1 个任务连同全部运行记录（含日志与报告）一起删除？不可恢复；工作目录里的文件不会删。")
+      .replace("%1", ids.length),
+    { ok: t("删除"), danger: true });
+  if (!ok) return;
+  let failed = 0;
+  for (const id of ids) if (!await deleteTaskCore(id)) failed++;
+  if (failed) {
+    toast(t("有 {0} 个任务删除失败，文件夹先保留；已删的不回收，稍后可重试其余任务").replace("{0}", failed), true);
     return;
   }
   if (dir) hideSideDir(dir);
@@ -6005,9 +6043,8 @@ function renderSideTasks() {
     if (String(g.time || "") > String(d.time || "")) d.time = g.time;
     if (g.active) d.active = true;
   }
-  // 已移除（隐藏）的目录不上侧栏；「其他」兜底永远保留
-  const hid = sideHiddenDirs();
-  for (let i = dirs.length - 1; i >= 0; i--) if (hid.has(dirs[i].dir)) dirs.splice(i, 1);
+  // 已移除（隐藏）的目录不上侧栏；「其他」兜底永远保留（时钟开关打开时不剪，见 pruneHiddenSideDirs）
+  pruneHiddenSideDirs(dirs, S.showArchived);
   // 组内任务按活动时间倒序；文件夹：无主运行「其他」恒垫底，其余按自动（最近活动倒序，
   // 活跃项目浮上来）或用户拖动后的手动顺序
   dirs.forEach((d) => d.groups.sort((a, b) => String(b.time || "").localeCompare(String(a.time || ""))));
