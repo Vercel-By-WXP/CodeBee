@@ -2369,6 +2369,7 @@
     "已禁用厂商 {0}：调度链已自动移除它的条目，绑定页可重新启用": "Provider {0} disabled: its entries were removed from the routing chains — re-enable on the Bindings page",
     "已禁用模型 {0} · {1}，调度链已自动移除它；绑定页可重新启用": "Model {0} · {1} disabled: its entry was removed from the routing chain — re-enable on the Bindings page",
     "已静默 {0} 的告警（恢复后自动重新武装）": "Muted {0}'s alert (auto-rearms on recovery)",
+    "该告警已消失，无需处理": "This alert is already gone — nothing to do",
     "开始升级": "Start upgrade",
     "当前状态不支持": "Not supported in the current state",
     "恢复内置默认 catalog？你对该文件的修改将丢失。": "Restore the built-in default catalog? Your edits to that file will be lost.",

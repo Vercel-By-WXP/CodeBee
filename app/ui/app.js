@@ -2653,6 +2653,14 @@ async function healthOp(op, down) {
     if (op === "silence") toast(t("已静默 {0} 的告警（恢复后自动重新武装）").replace("{0}", down.provider));
     if (op === "reset") toast(t("已手动标记 {0} 为恢复，探针将重新核实").replace("{0}", down.provider));
   } catch (e) {
+    if (e && e.status === 404) {
+      // 弹窗数据是打开那一刻的快照：点击时健康行可能已被清（禁用模型/
+      // 厂商时后端 clear_inactive 顺手清掉，或已自行恢复重建）——告警
+      // 已不存在，目标已达成，按成功收场而不是弹「未知的供应商」红错。
+      closeModal(); render(); refreshState().catch(() => {});
+      toast(t("该告警已消失，无需处理"));
+      return;
+    }
     toast(t("操作失败：") + e.message, true);
   }
 }
@@ -2668,7 +2676,11 @@ async function healthDisableModel(pid, model, provider) {
   try {
     await api("/api/models/model-op", { method: "POST",
       body: JSON.stringify({ provider_id: pid, name: model, op: "disable" }) });
-    if (provider) await applyHealthOp(provider, "silence");
+    if (provider) {
+      // 禁用一成功，后端 clear_inactive 多半已把健康行一并清掉，这条
+      // 顺手静默常常无行可静默——尽力而为，失败不能掩盖禁用本身成功。
+      try { await applyHealthOp(provider, "silence"); } catch (e) {}
+    }
     const models = await api("/api/models");
     S.providers = models.providers; S.bindings = models.bindings;
     S.modelCatalog = models.catalog || [];
@@ -2689,7 +2701,11 @@ async function healthDisableProvider(pid, provider) {
   try {
     await api("/api/models/provider-op", { method: "POST",
       body: JSON.stringify({ ids: [pid], op: "disable" }) });
-    if (provider) await applyHealthOp(provider, "silence");
+    if (provider) {
+      // 禁用一成功，后端 clear_inactive 多半已把健康行一并清掉，这条
+      // 顺手静默常常无行可静默——尽力而为，失败不能掩盖禁用本身成功。
+      try { await applyHealthOp(provider, "silence"); } catch (e) {}
+    }
     const models = await api("/api/models");
     S.providers = models.providers; S.bindings = models.bindings;
     S.provSig = "";
