@@ -240,7 +240,9 @@ def _automatic_retry_status(task_id):
     """Return the small, UI-safe projection of a durable batch retry."""
     with _auto()._BATCH_JOB_LOCK:
         record = _auto()._load_batch_jobs().get(str(task_id))
-        if not isinstance(record, dict) or record.get("status") != "retry_wait":
+        status = str((record or {}).get("status") or "")
+        if not isinstance(record, dict) or status not in (
+                "retry_wait", "blocked_verdict"):
             return None
         try:
             attempt = max(0, int(record.get("attempt") or 0))
@@ -251,7 +253,7 @@ def _automatic_retry_status(task_id):
         except (TypeError, ValueError):
             retry_at = 0
         return {"platform": str(record.get("platform") or ""),
-                "status": "retry_wait", "error": str(record.get("error") or ""),
+                "status": status, "error": str(record.get("error") or ""),
                 "attempt": attempt, "next_retry_at": retry_at}
 
 

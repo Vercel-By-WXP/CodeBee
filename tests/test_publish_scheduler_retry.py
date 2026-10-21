@@ -134,6 +134,47 @@ class ScheduledPublishRetryTests(unittest.TestCase):
         self.assertEqual(state["status"], "exhausted")
         self.assertEqual(state["error"], "章节正文过短，不符合平台规则")
 
+    def test_quality_gate_error_goes_quiet_after_daily_verdict_budget(self):
+        from core.publish.auto import scheduled_retry_state
+
+        prior = {"day": TODAY, "attempt": 4, "status": "retry_wait",
+                 "next_retry_at": 900,
+                 "error": "质量门禁拦截：最近一次质量评审未达标"}
+        state, ready = scheduled_retry_state(prior, None, now=1000)
+        self.assertFalse(ready)
+        self.assertEqual(state["status"], "blocked_verdict")
+        self.assertNotIn("next_retry_at", state)
+
+    def test_quality_gate_error_still_retries_within_daily_verdict_budget(self):
+        from core.publish.auto import scheduled_retry_state
+
+        prior = {"day": TODAY, "attempt": 2, "status": "retry_wait",
+                 "next_retry_at": 900,
+                 "error": "质量门禁拦截：全局一致性评审未通过"}
+        state, ready = scheduled_retry_state(prior, None, now=1000)
+        self.assertTrue(ready)
+        self.assertEqual(state["status"], "retry_wait")
+
+    def test_blocked_verdict_gets_a_fresh_budget_on_the_next_day(self):
+        from core.publish.auto import scheduled_retry_state
+
+        prior = {"day": YESTERDAY, "attempt": 4, "status": "blocked_verdict",
+                 "error": "质量门禁拦截：未形成共识"}
+        state, ready = scheduled_retry_state(prior, None, now=1000,
+                                             day=TODAY)
+        self.assertTrue(ready)
+        self.assertEqual(state["status"], "ready")
+        self.assertEqual(state["attempt"], 0)
+
+    def test_login_recovery_family_ignores_the_verdict_budget(self):
+        from core.publish.auto import scheduled_retry_state
+
+        prior = {"day": TODAY, "attempt": 9, "status": "retry_wait",
+                 "next_retry_at": 900, "error": "登录态已失效，请重新登录"}
+        state, ready = scheduled_retry_state(prior, None, now=1000)
+        self.assertTrue(ready)
+        self.assertEqual(state["status"], "retry_wait")
+
     def test_legacy_exhausted_recoverable_error_is_migrated(self):
         from core.publish.auto import scheduled_retry_state
 

@@ -94,6 +94,25 @@ def _scheduled_error_is_persistent(error):
     ))
 
 
+def _error_needs_fresh_verdict(error):
+    """Whether the error can only clear when a NEW review verdict lands.
+
+    Quality-gate blockers are rejected submissions, not unavailable ones:
+    retrying cannot change the verdict, it only wakes the platform browser
+    to read the same blockers again. These get a small per-day attempt
+    budget (``SCHEDULE_RETRY_VERDICT_MAX_ATTEMPTS``) and then go quiet as
+    ``blocked_verdict`` until the next day's fresh attempt. Every other
+    recoverable error keeps the unlimited unattended retry loop, because
+    those wait on platform/system state that a retry can genuinely catch.
+    """
+    text = str(error or "")
+    return any(mark in text for mark in (
+        "质量门禁拦截", "最近一次质量评审未达标", "全局一致性评审未通过",
+        "未形成共识", "评审人数不足", "评分未达到有效发布门槛",
+        "存在未达标章节", "存在 major 问题",
+    ))
+
+
 def _retry_delay(attempt):
     exponent = max(0, int(attempt or 1) - 1)
     return min(_auto().SCHEDULE_RETRY_MAX_S,
@@ -171,12 +190,20 @@ def scheduled_retry_state(prior, run_status, now=None, day=None, error=None):
             state["next_retry_at"] = now + _auto()._retry_delay(attempt)
             return state, False
         return state, False
-    if status in ("succeeded", "cancelled"):
+    if status in ("succeeded", "cancelled", "blocked_verdict"):
         return state, False
     if status == "retry_wait":
         if (attempt >= _auto().SCHEDULE_RETRY_MAX_ATTEMPTS and
                 not _auto()._scheduled_error_is_persistent(effective_error)):
             state["status"] = "exhausted"
+            state.pop("next_retry_at", None)
+            return state, False
+        if (_auto()._error_needs_fresh_verdict(effective_error) and
+                attempt >= _auto().SCHEDULE_RETRY_VERDICT_MAX_ATTEMPTS):
+            # Only a new review verdict can change this outcome. Stop waking
+            # the platform browser for the rest of the day; the day-keyed
+            # state resets, so tomorrow gets one fresh scheduled attempt.
+            state["status"] = "blocked_verdict"
             state.pop("next_retry_at", None)
             return state, False
         return state, now >= float(state.get("next_retry_at") or 0)

@@ -29,7 +29,8 @@ from . import ledger
 from .auto_batch import (  # noqa: F401 - 旧调用面再导出
     _automatic_retry_delay, _batch_sleep, _batch_slot_lock, _forget_automatic_batch,
     _queue_automatic_retry, _reclaim_previous, _release_cancel_event, _remember_automatic_batch,
-    _retain_automatic_batch_for_retry, _start_worker_or_retry, cancel_pending, other_batch_running,
+    _retain_automatic_batch_for_retry, _start_worker_or_retry, cancel_pending,
+    cancel_user_batch, other_batch_running,
     resume_interrupted_batches,
 )
 from .auto_chapters import (  # noqa: F401 - 旧调用面再导出
@@ -40,7 +41,8 @@ from .auto_prep import (  # noqa: F401 - 旧调用面再导出
     _book_ready, _isdir, _prepare_book, _wait_idle,
 )
 from .auto_schedule import (  # noqa: F401 - 旧调用面再导出
-    _retry_delay, _scheduled_error_is_persistent, _scheduled_retry, _set_scheduled_retry,
+    _error_needs_fresh_verdict, _retry_delay, _scheduled_error_is_persistent,
+    _scheduled_retry, _set_scheduled_retry,
     due_tasks, fire_due, norm_auto_publish, scheduled_retry_state,
 )
 
@@ -1084,6 +1086,9 @@ _AP_RETRY = None
 SCHEDULE_RETRY_MAX_ATTEMPTS = 5
 SCHEDULE_RETRY_BASE_S = 60
 SCHEDULE_RETRY_MAX_S = 30 * 60
+# 质量门禁族错误的重试预算（按天）。评审结论不因重试而改变，到预算即转
+# blocked_verdict 安睡到明天；其余可恢复错误保持原有的无限重试循环。
+SCHEDULE_RETRY_VERDICT_MAX_ATTEMPTS = 4
 
 
 def _ap_file():

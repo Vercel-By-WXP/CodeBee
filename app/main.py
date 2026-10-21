@@ -2175,6 +2175,16 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/publish-all$", path)
         if m:
             return self._api_publish_auto(m.group(1))
+        m = re.match(r"^/api/publish/task/([^/]+)/cancel-batch$", path)
+        if m:
+            # 人工停批：掐在跑批次 + 丢弃持久恢复记录 + 终结当日重试。
+            # store 已在模块顶层导入，函数内禁止再 import（见下方案注）。
+            from core.publish import auto_batch as pub_batch
+            tid = m.group(1)
+            if not store.get_task(tid):
+                return self._json(404, {"error": "任务不存在"})
+            stopped = pub_batch.cancel_user_batch(tid)
+            return self._json(200, {"ok": True, "stopped": stopped})
         m = re.match(r"^/api/publish/task/([^/]+)/sync-published$", path)
         if m:
             # 已发章数校准：数章节管理页的实况写回登记（后台线程）。

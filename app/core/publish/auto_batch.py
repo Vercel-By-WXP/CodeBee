@@ -47,6 +47,10 @@ def _remember_automatic_batch(task_id, platform, auto_submit, as_draft,
             attempt = max(0, int(prior.get("attempt") or 0)) if isinstance(prior, dict) else 0
         except (TypeError, ValueError):
             attempt = 0
+        if isinstance(prior, dict) and prior.get("status") == "blocked_verdict":
+            # A fresh acceptance is a deliberate human re-arm: restart the
+            # per-day verdict budget instead of instant re-blocking.
+            attempt = 0
         jobs[str(task_id)] = {"task_id": str(task_id), "platform": str(platform),
                               "params": params, "status": "in_flight",
                               "updated_at": _auto().time.time(), "attempt": attempt}
@@ -86,10 +90,17 @@ def _retain_automatic_batch_for_retry(task_id, error, now=None):
     Re-entry uses the normal publish worker, which reconciles live platform
     state before selecting chapters. This is safe for uncertain submit receipts:
     it never blindly submits again while the platform may still be processing.
+
+    Verdict-blocked batches (quality gate) get a small per-day attempt budget:
+    retrying cannot produce a new verdict, so once the budget is spent the
+    record sleeps as ``blocked_verdict`` (outside the resume set) instead of
+    waking the platform browser every backoff window. The attempt counter is
+    per calendar day, mirroring the scheduler's day-keyed retry state.
     """
     if not _auto()._scheduled_error_is_persistent(error):
         return False
     now = _auto().time.time() if now is None else float(now)
+    today = _auto().time.strftime("%Y-%m-%d", _auto().time.localtime(now))
     key = str(task_id)
     with _auto()._BATCH_JOB_LOCK:
         record = _auto()._load_batch_jobs().get(key)
@@ -99,10 +110,17 @@ def _retain_automatic_batch_for_retry(task_id, error, now=None):
             attempt = max(0, int(record.get("attempt") or 0)) + 1
         except (TypeError, ValueError):
             attempt = 1
-        delay = _auto()._automatic_retry_delay(error, attempt)
+        if str(record.get("day") or "") != today:
+            attempt = 1
         record.update(status="retry_wait", error=str(error or "")[:240],
-                      attempt=attempt, next_retry_at=now + delay,
-                      updated_at=now)
+                      attempt=attempt, day=today, updated_at=now)
+        if (_auto()._error_needs_fresh_verdict(error) and
+                attempt >= _auto().SCHEDULE_RETRY_VERDICT_MAX_ATTEMPTS):
+            record["status"] = "blocked_verdict"
+            record.pop("next_retry_at", None)
+        else:
+            record["next_retry_at"] = now + _auto()._automatic_retry_delay(
+                error, attempt)
         _auto()._save_batch_jobs()
     return True
 
@@ -162,6 +180,15 @@ def resume_interrupted_batches(now=None):
                 # was deleted; retain the record and let the next tick retry.
                 continue
             if not task or task.get("archived"):
+                _auto()._forget_automatic_batch(key)
+                continue
+            # A disabled schedule is a stop signal too: an ``enabled=false``
+            # auto_publish flag must not keep waking the platform browser
+            # through a durable crash-recovery record (mirrors the archived
+            # check above). Manual batches on tasks that never carried the
+            # schedule are unaffected (no auto_publish key to read).
+            ap_flag = task.get("auto_publish")
+            if isinstance(ap_flag, dict) and not ap_flag.get("enabled"):
                 _auto()._forget_automatic_batch(key)
                 continue
             try:
@@ -225,6 +252,27 @@ def cancel_pending(task_id):
             return False
         event.set()
         return True
+
+
+def cancel_user_batch(task_id):
+    """人工停批的完整语义：掐在跑批次 + 丢弃持久记录 + 终结当日重试。
+
+    cancel_pending 只发取消事件，管不到 retry_wait/blocked_verdict 这类
+    没有活线程的持久记录；本函数一并清除恢复队列里的记录，并把当天的
+    调度重试状态置为 cancelled（明天按任务上的 auto_publish 配置重来）。
+    返回是否有在跑批次被掐断。
+    """
+    key = str(task_id)
+    stopped = bool(cancel_pending(key))
+    with _auto()._LOCK:
+        cur = _auto()._running.get(key) or {}
+        if cur.get("status") in ("running", "preparing", "reclaiming"):
+            stopped = True
+    _auto()._forget_automatic_batch(key)
+    _auto()._set_scheduled_retry(key, {
+        "day": _auto().time.strftime("%Y-%m-%d"),
+        "attempt": 0, "status": "cancelled"})
+    return stopped
 
 
 def _release_cancel_event(task_id, event):
