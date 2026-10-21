@@ -2782,7 +2782,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
             break           # 本步期间没有新消息：对话告一段落
         first = False
 
-    verdict = {"type": task["type"], "engine": "direct", "pass": True, "mode": mode,
+    verdict = {"type": task["type"], "engine": "direct", "mode": mode,
                "direct": True, "turns": turns,
                "impl": "builtin" if bi is not None else impl["id"], "route": route,
                "partial": partial_turn}
@@ -3520,7 +3520,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 Cancelled/管道异常语义（上抛打断本 run）必须原样保留。"""
                 try:
                     _critique_one_inner(idx, agent)
-                except BaseException as exc:      # noqa: BLE001（含 Cancelled）
+                except BaseException as exc:      # 含 Cancelled
                     results[idx] = {"error": exc}
 
             def _critique_one_inner(idx, agent):
@@ -4619,7 +4619,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             """异常不吞：记进 results 由主线程按原顺序重抛（保留串行语义）。"""
             try:
                 _global_one_inner(idx, agent)
-            except BaseException as exc:      # noqa: BLE001（含 Cancelled）
+            except BaseException as exc:      # 含 Cancelled
                 results[idx] = {"error": exc}
 
         def _global_one_inner(idx, agent):
