@@ -440,13 +440,16 @@ def read_chapter(fp):
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                          force=False, force_confirmed=False, force_reason="",
                          as_draft=False, scheduled=False, direct_today=False,
+                         short_story=False,
                          _recovery=False, _batch=False, _recovery_epoch=None):
     """把一章自动发布到平台，或通过 as_draft 只保存草稿。
 
     幂等：已成功发布**或已存草稿**的章号拒绝重做——重复发会平台上出双章，
     重复存草稿会攒一箱重复稿。as_draft=True 走「存草稿」流程表
     （upload_chapter_draft）：内容落平台草稿箱不上线，不构成发布动作，
-    质量闸不拦（发布时照拦）；存稿动作无需人工确认，适合批量连跑。"""
+    质量闸不拦（发布时照拦）；存稿动作无需人工确认，适合批量连跑。
+    short_story=True 走短故事单文档链（无章节标题/序号，正文 4000-70000），
+    仅支持 as_draft，发布在草稿箱人工提交。"""
     from .. import contracts, store
     if plat not in PLATFORMS:
         return False, "未知平台"
@@ -463,6 +466,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     book = ledger.book_for(task_id, plat)
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
+    if short_story and (scheduled or not as_draft):
+        return False, ("短故事仅支持存草稿：正文按单文档整篇上（4000-70000 字），"
+                       "发布请到平台草稿箱人工提交")
     if not book.get("book_id") and book.get("source") != "manual":
         return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
     # 多账号路由：书在哪个账号建的（books entry.account），这章就发到
@@ -520,13 +526,26 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     n_chars = len(body.replace("\n", "").replace(" ", ""))
     if n_chars < 100:
         return False, "正文过短（%d 字），疑似未完成章节" % n_chars
-    # 平台级下限（如七猫编辑器明示「最少 1000 字」：不足时发布被静默拦截）
-    min_chars = int(PLATFORMS[plat].CONFIG.get("min_chapter_chars") or 100)
-    if n_chars < min_chars:
-        return False, ("正文 %d 字未达该平台下限（%d 字），补足后再发"
-                       % (n_chars, min_chars))
-    if n_chars > 30000:
-        return False, "正文超长（%d 字），平台单章上限一般 2 万字" % n_chars
+    if short_story:
+        # 短故事单文档：编辑器顶栏明示 4000-70000（2026-10-22 实抓），
+        # 与连载单章（1000 下限/约 2 万上限）不同口径
+        min_chars = int(PLATFORMS[plat].CONFIG.get("short_story_body_min_chars")
+                        or 4000)
+        max_chars = int(PLATFORMS[plat].CONFIG.get("short_story_body_max_chars")
+                        or 70000)
+        if n_chars < min_chars:
+            return False, ("短故事正文 %d 字未达平台下限（%d 字），补足后再存"
+                           % (n_chars, min_chars))
+        if n_chars > max_chars:
+            return False, "短故事正文超长（%d 字），平台上限 %d 字" % (n_chars, max_chars)
+    else:
+        # 平台级下限（如七猫编辑器明示「最少 1000 字」：不足时发布被静默拦截）
+        min_chars = int(PLATFORMS[plat].CONFIG.get("min_chapter_chars") or 100)
+        if n_chars < min_chars:
+            return False, ("正文 %d 字未达该平台下限（%d 字），补足后再发"
+                           % (n_chars, min_chars))
+        if n_chars > 30000:
+            return False, "正文超长（%d 字），平台单章上限一般 2 万字" % n_chars
     done = ledger.published_chapters(task_id, plat)
     if ch_no and ch_no in done:
         return False, "第 %d 章已成功发布过（台账幂等拦截）；确需重发请手工处理" % ch_no
@@ -566,6 +585,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         action_lock.release()
         return False, why
     flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
+    if short_story and as_draft:
+        flow_key = "upload_short_story_draft"
     # A scheduled fallback uses the same editor fill chain unless a platform
     # ships a dedicated calibrated flow.  The action is still recorded as
     # scheduled so idempotency and progress accounting advance correctly.

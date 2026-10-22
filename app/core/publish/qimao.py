@@ -137,6 +137,26 @@ UPLOAD_CHAPTER_DRAFT = [
     {"do": "verify", "url": "{draft_url}", "any": ["{chapter_title}"], "settle": 5},
 ]
 
+# 短故事正文上传（2026-10-22 校准：编辑器路由与正文框和小说同款
+# q-contenteditable，单文档无章节标题/序号字段——整篇一次填入，存草稿后
+# 由用户在草稿箱人工点发布）。字数预检（4000-70000，编辑器顶栏实抓）在
+# manager 侧做，流程表只管填与存。正文框沿用小说校准选择器（font-size-16
+# 编辑器组件同款）；首跑如有出入以 fail-shot 为准校准。
+UPLOAD_SHORT_STORY_DRAFT = [
+    {"do": "navigate", "url": "{editor_url}"},
+    {"do": "url_any", "any": ["qimao.com"]},
+    {"do": "wait", "sel": ".q-contenteditable.book", "timeout": 20},
+    {"do": "fill", "sel": ".q-contenteditable.book.font-size-16.edit-mask",
+     "key": "chapter_body"},
+    {"do": "shot", "name": "short-story-body-filled"},
+    {"do": "click_real", "text": "存为草稿", "tries": 25},
+    {"do": "sleep", "s": 2},
+    {"do": "expect_text", "any": ["已保存到云端", "保存成功", "存草稿成功",
+                                   "草稿保存成功", "已保存"], "timeout": 15},
+    {"do": "verify", "url": "{short_book_manage}", "any": ["{book_name}"],
+     "settle": 5},
+]
+
 CHECK_LOGIN = [
     {"do": "navigate", "url": "{home}"},
     {"do": "url_any", "any": ["qimao.com"]},
@@ -187,6 +207,7 @@ CREATE_SHORT_STORY = [
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
          "create_short_story": CREATE_SHORT_STORY,
+         "upload_short_story_draft": UPLOAD_SHORT_STORY_DRAFT,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 

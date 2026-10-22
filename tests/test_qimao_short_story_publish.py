@@ -60,6 +60,24 @@ class QimaoShortStoryFlowTests(unittest.TestCase):
                                 "category_main": "现代言情",
                                 "category_sub": "总裁豪门"})
 
+    def test_upload_short_story_draft_flow(self):
+        steps = qimao.FLOWS.get("upload_short_story_draft")
+        self.assertIsInstance(steps, list) and self.assertTrue(steps)
+        does = [s.get("do") for s in steps]
+        self.assertNotIn("tags", does)                  # 上传链无标签弹层
+        fill = next(s for s in steps if s.get("key") == "chapter_body")
+        self.assertIn("q-contenteditable", str(fill.get("sel")))
+        # 无章节标题/序号字段：流程表不得出现 chapter_title/chapter_no 填充
+        keys = {s.get("key") for s in steps}
+        self.assertNotIn("chapter_title", keys)
+        self.assertNotIn("chapter_no", keys)
+        self.assertTrue(any(s.get("do") == "click_real"
+                            and s.get("text") == "存为草稿" for s in steps))
+        verify = next(s for s in steps if s.get("do") == "verify")
+        self.assertIn("short_book_manage", str(verify.get("url")))
+        self.assertTrue(_flow_contract_ok(
+            "qimao", "upload_short_story_draft", steps))
+
     def test_reconcile_pair_exists(self):
         # 短故事对账走独立列表（book-manage/short），与小说版同契约
         self.assertTrue(callable(qimao.reconcile_short_story_book_id))
