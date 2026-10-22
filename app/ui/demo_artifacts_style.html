@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>成品文件区样式优化 demo</title>
+<style>
+/* ==== 复用应用 ocean 皮肤变量（浅/深两版原值） ==== */
+:root {
+  --bg: #ffffff; --panel: #ffffff; --panel2: #f0f6fd;
+  --border: #d7e3f4; --border-strong: #b9cde8;
+  --text: #0c1a2c; --muted: #5d7290;
+  --accent: #1f6fd0; --accent2: #5b4fe0; --ok: #0d9a72;
+  --mono: "Cascadia Code", Consolas, monospace;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+}
+html[data-mode="dark"] {
+  --bg: #0e1626; --panel: #17243a; --panel2: #21304a;
+  --border: rgba(255,255,255,.10); --border-strong: rgba(255,255,255,.20);
+  --text: #e7eefb; --muted: #93a6c4;
+  --accent: #3ba9f5; --accent2: #6d6cf6; --ok: #35c99b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-ui); font-size: 13px; line-height: 1.5;
+  transition: background .2s ease, color .2s ease;
+}
+.wrap { max-width: 800px; margin: 0 auto; padding: 28px 24px 64px; }
+.demo-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.demo-head h1 { font-size: 16px; margin: 0; }
+.mode-btn {
+  border: 1px solid var(--border-strong); background: none; color: var(--muted);
+  border-radius: 8px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.mode-btn:hover { color: var(--accent); border-color: var(--accent); }
+.demo-note { color: var(--muted); font-size: 12px; margin: 0 0 26px; }
+.variant-tag { margin: 34px 0 4px; font-size: 13.5px; font-weight: 700; }
+.variant-tag .rec { color: var(--ok); font-size: 11px; border: 1px solid currentColor; border-radius: 9px; padding: 0 8px; margin-left: 8px; vertical-align: 1px; }
+.variant-note { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+
+/* ==== 区块头（两版共用，与生产一致的结构） ==== */
+.files-head { display: grid; grid-template-columns: max-content max-content minmax(0,1fr); align-items: center; gap: 14px; margin-bottom: 8px; }
+.sec-title { font-size: 15px; font-weight: 700; }
+.ver-badge { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 9px; padding: 1px 8px; white-space: nowrap; cursor: help; width: max-content; }
+.wd { font-family: var(--mono); font-size: 11.5px; color: var(--muted); cursor: copy; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ==== 方案 A：柔和卡片行（推荐） ====
+ * 行＝一张软卡：panel2 底色、12px 圆角、无边框（hover 才浮现细边）；
+ * 行内三段：类型徽标+文件名+大小 | 动作区右对齐、固定双列（对比空缺占位，列不漂移）；
+ * 预览＝主操作（淡 accent 底药丸），对比＝次操作（幽灵文字钮）。 */
+.fa { display: flex; flex-direction: column; gap: 6px; }
+.fa .fc-row {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  background: color-mix(in srgb, var(--panel2) 55%, transparent);
+  border: 1px solid transparent; border-radius: 12px;
+  padding: 7px 8px 7px 12px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.fa .fc-row:hover { background: var(--panel2); border-color: var(--border); }
+.fa .fc-name { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; color: var(--text); text-decoration: none; border-radius: 8px; }
+.fa .fx {
+  flex: none; font-style: normal; font-weight: 700; font-size: 10px; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-radius: 6px; padding: 2px 0; width: 32px; text-align: center;
+}
+.fa .fc-name .p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.fa .fc-name .sz { flex: none; font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.fa .fc-acts { flex: none; display: grid; grid-template-columns: 62px 62px; gap: 4px; justify-items: end; }
+.fa .act {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  width: 62px; border: none; background: transparent; text-decoration: none;
+  font-family: inherit; font-size: 12px; cursor: pointer; border-radius: 8px; padding: 5px 0;
+  transition: background .15s ease, color .15s ease;
+}
+.fa .act .ico { width: 13px; height: 13px; }
+.fa .act-prev { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.fa .act-prev:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.fa .act-diff { color: var(--muted); }
+.fa .act-diff:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* ==== 方案 B：无边框清单行（备选） ====
+ * 与检查器 Git 变更清单同族：透明底 + 发丝分隔线，hover 整行上底色；
+ * 最轻、最省纵向空间；动作钮同 A 的双列定宽网格。 */
+.fb { display: flex; flex-direction: column; }
+.fb .fc-row {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 6px 8px 6px 12px; border-radius: 10px;
+}
+.fb .fc-row + .fc-row { border-top: 1px solid var(--border); border-radius: 0; }
+.fb .fc-row:hover { background: var(--panel2); }
+.fb .fc-row:hover + .fc-row { border-top-color: transparent; }
+.fb .fc-name { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; color: var(--text); text-decoration: none; }
+.fb .fx {
+  flex: none; font-style: normal; font-weight: 700; font-size: 10px; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--ok); width: 32px; text-align: center;
+}
+.fb .fc-name .p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.fb .fc-name .sz { flex: none; font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.fb .fc-acts { flex: none; display: grid; grid-template-columns: 62px 62px; gap: 4px; justify-items: end; }
+.fb .act {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  width: 62px; border: none; background: transparent; text-decoration: none;
+  font-family: inherit; font-size: 12px; cursor: pointer; border-radius: 8px; padding: 5px 0; color: var(--muted);
+  transition: background .15s ease, color .15s ease;
+}
+.fb .act:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.fb .act .ico { width: 13px; height: 13px; }
+
+/* ==== 对照：生产现状 ==== */
+.fold { color: var(--muted); font-size: 12px; margin: 40px 0 8px; }
+.old { display: flex; flex-direction: column; gap: 4px; width: min(100%, 760px); }
+.old .fc-row { display: grid; grid-template-columns: minmax(0,1fr) 76px; align-items: center; gap: 8px; min-width: 0; }
+.old .file-chip {
+  display: inline-flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
+  padding: 3px 10px; border: 1px solid var(--border-strong); border-radius: 8px;
+  font-size: 12px; color: var(--text); text-decoration: none;
+}
+.old .file-chip i { font-style: normal; color: var(--muted); font-size: 11px; flex: none; }
+.old .file-chip.prev { width: 76px; justify-content: center; padding-inline: 8px; color: var(--accent); cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo-head">
+    <h1>成品文件区样式优化 · demo（假数据）</h1>
+    <button class="mode-btn" onclick="toggleMode()">切深色</button>
+  </div>
+  <p class="demo-note">现状问题：可对比的文件一行有 文件+预览+对比 三个元素，生产网格只有两列，「对比」被挤到下一行贴左悬着；且文件行是通栏硬边框盒，与按钮无主次。以下两个方案都把动作收进行内右端固定双列，不再换行。数据为假数据。</p>
+
+  <!-- ================ 方案 A（推荐） ================ -->
+  <div class="variant-tag">方案 A · 柔和卡片行<span class="rec">推荐</span></div>
+  <p class="variant-note">行＝软卡（panel2 底、圆角 12、默认无边框 hover 才现细边）；预览为主操作（淡 accent 药丸）、对比为次操作（幽灵钮）；徽标 tint 化；动作区固定双列，有无「对比」预览列都不漂移。取舍：每行有底色，列表视觉重量略升，但与主栏卡片语言一致。</p>
+  <section class="fa">
+    <div class="files-head">
+      <span class="sec-title">成品文件</span>
+      <span class="ver-badge" title="该任务第 N 次运行的产出，序号含修订与重试">第 5 版</span>
+      <span class="wd" title="点击复制">C:\Users\HP\AppData\Roaming\workspace</span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="document.md · 21.1 KB">
+        <i class="fx">md</i><span class="p">document.md</span><i class="sz">21.1 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act act-diff" href="#" onclick="return false" title="与第 4 版对比">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4.5" cy="4" r="1.8"/><circle cx="4.5" cy="12" r="1.8"/><circle cx="11.5" cy="8" r="1.8"/><path d="M4.5 5.8v4.4M6.3 4h2.4a1.6 1.6 0 0 1 1.6 1.6v.6M6.3 12h2.4a1.6 1.6 0 0 0 1.6-1.6v-.6"/></svg>对比</a>
+        <a class="act act-prev" href="#" onclick="return false" title="查看内容">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2.8h6.5L13 6.3v6.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.4a1 1 0 0 1 1-1z"/><path d="M9.5 2.8v3.5H13"/></svg>预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="article.md · 11.5 KB">
+        <i class="fx">md</i><span class="p">article.md</span><i class="sz">11.5 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act act-diff" href="#" onclick="return false" title="与第 4 版对比">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4.5" cy="4" r="1.8"/><circle cx="4.5" cy="12" r="1.8"/><circle cx="11.5" cy="8" r="1.8"/><path d="M4.5 5.8v4.4M6.3 4h2.4a1.6 1.6 0 0 1 1.6 1.6v.6M6.3 12h2.4a1.6 1.6 0 0 0 1.6-1.6v-.6"/></svg>对比</a>
+        <a class="act act-prev" href="#" onclick="return false" title="查看内容">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2.8h6.5L13 6.3v6.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.4a1 1 0 0 1 1-1z"/><path d="M9.5 2.8v3.5H13"/></svg>预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="INSPECTION.md · 8.4 KB">
+        <i class="fx">md</i><span class="p">INSPECTION.md</span><i class="sz">8.4 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act act-prev" href="#" onclick="return false" title="查看内容" style="grid-column:2">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2.8h6.5L13 6.3v6.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.4a1 1 0 0 1 1-1z"/><path d="M9.5 2.8v3.5H13"/></svg>预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="report.md · 7.8 KB">
+        <i class="fx">md</i><span class="p">report.md</span><i class="sz">7.8 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act act-prev" href="#" onclick="return false" title="查看内容" style="grid-column:2">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2.8h6.5L13 6.3v6.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.4a1 1 0 0 1 1-1z"/><path d="M9.5 2.8v3.5H13"/></svg>预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="cover.png · 342.7 KB">
+        <i class="fx">png</i><span class="p">cover.png</span><i class="sz">342.7 KB</i>
+      </a>
+      <span class="fc-acts"></span>
+    </div>
+  </section>
+
+  <!-- ================ 方案 B（备选） ================ -->
+  <div class="variant-tag">方案 B · 无边框清单行</div>
+  <p class="variant-note">与检查器 Git 变更清单同族：透明底＋发丝分隔线，hover 整行上色；最轻、最省纵向空间。取舍：行点击域不如卡片明确，与主栏卡片语言弱一致；徽标沿用检查器的绿色。</p>
+  <section class="fb">
+    <div class="files-head">
+      <span class="sec-title">成品文件</span>
+      <span class="ver-badge" title="该任务第 N 次运行的产出，序号含修订与重试">第 5 版</span>
+      <span class="wd" title="点击复制">C:\Users\HP\AppData\Roaming\workspace</span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="document.md · 21.1 KB">
+        <i class="fx">md</i><span class="p">document.md</span><i class="sz">21.1 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act" href="#" onclick="return false" title="与第 4 版对比">对比</a>
+        <a class="act" href="#" onclick="return false" title="查看内容">预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="article.md · 11.5 KB">
+        <i class="fx">md</i><span class="p">article.md</span><i class="sz">11.5 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act" href="#" onclick="return false" title="与第 4 版对比">对比</a>
+        <a class="act" href="#" onclick="return false" title="查看内容">预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="INSPECTION.md · 8.4 KB">
+        <i class="fx">md</i><span class="p">INSPECTION.md</span><i class="sz">8.4 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act" href="#" onclick="return false" title="查看内容" style="grid-column:2">预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="report.md · 7.8 KB">
+        <i class="fx">md</i><span class="p">report.md</span><i class="sz">7.8 KB</i>
+      </a>
+      <span class="fc-acts">
+        <a class="act" href="#" onclick="return false" title="查看内容" style="grid-column:2">预览</a>
+      </span>
+    </div>
+    <div class="fc-row">
+      <a class="fc-name" href="#" onclick="return false" title="cover.png · 342.7 KB">
+        <i class="fx">png</i><span class="p">cover.png</span><i class="sz">342.7 KB</i>
+      </a>
+      <span class="fc-acts"></span>
+    </div>
+  </section>
+
+  <!-- ================ 生产现状对照 ================ -->
+  <details>
+    <summary class="fold">点开对照：生产现状（两列网格，对比按钮换行贴左）</summary>
+    <section class="old">
+      <div class="files-head">
+        <span class="sec-title">成品文件</span>
+        <span class="ver-badge">第 5 版</span>
+        <span class="wd">C:\Users\HP\AppData\Roaming\workspace</span>
+      </div>
+      <div class="fc-row">
+        <a class="file-chip" href="#" onclick="return false"><i class="fx">md</i><span class="p">document.md</span><i>21.1 KB</i></a>
+        <a class="file-chip prev" href="#" onclick="return false">预览</a>
+        <a class="file-chip prev" href="#" onclick="return false">对比</a>
+      </div>
+      <div class="fc-row">
+        <a class="file-chip" href="#" onclick="return false"><i class="fx">md</i><span class="p">article.md</span><i>11.5 KB</i></a>
+        <a class="file-chip prev" href="#" onclick="return false">预览</a>
+      </div>
+    </section>
+  </details>
+</div>
+<script>
+function toggleMode() {
+  const h = document.documentElement;
+  const dark = h.dataset.mode === "dark";
+  h.dataset.mode = dark ? "light" : "dark";
+  document.querySelector(".mode-btn").textContent = dark ? "切深色" : "切浅色";
+}
+</script>
+</body>
+</html>

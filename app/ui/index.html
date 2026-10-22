@@ -389,7 +389,7 @@
         <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
         <!-- 状态栏开合：只在 workbench 布局桌面端出现（CSS 守卫），与左侧菜单的
              顶栏开合钮对称；收起后列宽同步归零，见 redesign-layout.css -->
-        <button id="btn-status-rail" class="pill icon-only" type="button" aria-controls="status-sidebar" aria-pressed="true" title="收起 / 展开状态栏" aria-label="收起 / 展开状态栏" data-i18n-title="收起 / 展开状态栏" data-i18n-aria="收起 / 展开状态栏"><svg class="ico" aria-hidden="true"><use href="#i-rail-right"></use></svg></button>
+        <button id="btn-status-rail" class="pill icon-only" type="button" aria-controls="status-sidebar" aria-pressed="false" title="收起 / 展开状态栏" aria-label="收起 / 展开状态栏" data-i18n-title="收起 / 展开状态栏" data-i18n-aria="收起 / 展开状态栏"><svg class="ico" aria-hidden="true"><use href="#i-rail-right"></use></svg></button>
         <!-- 详情面板开关：贴动作组最右 = 紧挨面板弹出的那一侧，空间映射一致 -->
         <button id="btn-insp" class="pill icon-only" type="button" onclick="toggleInspector()" title="打开任务详情" aria-label="打开任务详情" data-i18n-title="打开任务详情" data-i18n-aria="打开任务详情"><svg class="ico" aria-hidden="true"><use href="#i-panel"></use></svg></button>
         <button id="btn-browser-split" class="pill icon-only" type="button" onclick="toggleBrowserSplit()" title="并排打开浏览器" aria-label="并排打开浏览器" aria-pressed="false" data-i18n-title="并排打开浏览器" data-i18n-aria="并排打开浏览器"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></button>
@@ -420,9 +420,8 @@
         <p class="rd-home-sub" data-i18n="拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。">拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。</p>
       </div>
 
-      <!-- 任务输入卡：不再是简化假身——真表单的 .cmp-box 由 showHome 原样搬入
-           （ID 全不变：目录菜单/类型菜单/专家/附件/能力菜单主页直接可用，
-           发送即真实提交不跳页）；离开主页时搬回 #sub-tasks .form -->
+      <!-- 任务输入卡：真表单 composer 由 showHome 原样搬入（工作台入口）。
+           新聊天入口走任务表单页本身（居中问候+类型页签+composer 的简洁形态） -->
       <div class="rd-input-card">
         <div id="rd-input-slot"></div>
       </div>
@@ -798,7 +797,11 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="运行记录">运行记录</h2>
-          <!-- 全部暂停/全部清除已搬进右侧状态栏「正在运行」卡（全局可达），此页不再重复 -->
+          <div class="actions">
+            <!-- 全部清除回到本页：它操作的是这份列表里的已结束记录；
+                 全部暂停（活跃任务批量控制）已进右侧状态栏「正在运行」卡 -->
+            <button type="button" data-i18n="全部清除" id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="把全部已结束记录移出运行列表（任务、日志与成果文件都保留）" data-i18n-title="把全部已结束记录移出运行列表（任务、日志与成果文件都保留）">全部清除</button>
+          </div>
         </div>
         <div id="run-list" class="list"></div>
       </div>
@@ -2098,14 +2101,11 @@
           </button>
         </div>
         <div id="status-running-list"></div>
-        <!-- 运行记录页的批量操作搬进全局状态卡（用户指定）：暂停/放行跟随
-             pause_control 显隐（renderPauseAllButton 在每次状态刷新时同步），
-             清除=把已结束记录移出列表；任务、日志与成果文件都保留 -->
+        <!-- 批量暂停跟随本卡语义（暂停的是活跃任务）；全部清除操作的是运行
+             列表里的已结束记录，与本卡无关，放回运行记录页 -->
         <div class="status-card-actions">
           <button type="button" data-i18n="全部暂停" id="btn-pause-all" class="ghost small hidden" onclick="pauseAllRuns()" title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响" data-i18n-title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响">全部暂停</button>
-          <button type="button" data-i18n="全部清除" id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="把全部已结束记录移出运行列表（任务、日志与成果文件都保留）" data-i18n-title="把全部已结束记录移出运行列表（任务、日志与成果文件都保留）">全部清除</button>
         </div>
-        <p class="status-card-note" data-i18n="只把记录移出列表；任务、日志与成果文件都保留，运行中的记录不能清除。">只把记录移出列表；任务、日志与成果文件都保留，运行中的记录不能清除。</p>
         <button type="button" id="status-queue-link" class="status-rail-link"><span data-i18n="运行队列">运行队列</span><svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
       </div>
 

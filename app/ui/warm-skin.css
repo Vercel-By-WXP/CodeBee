@@ -97,6 +97,20 @@ html[data-skin="warm"][data-theme="dark"] .qitem.active {
   background: #332f2a;
 }
 
+/* desktop-workbench 的夜间新聊天钮是冷灰硬编码（#292e34），暖皮下会冒出一块
+ * 蓝灰。日间该钮本就透明，夜间同样让它落在侧栏底色上。 */
+html[data-skin="warm"][data-theme="dark"] .side-main > .new-task {
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-skin="warm"][data-theme="dark"] .side-main > .new-task:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
 /* 顶栏毛玻璃效果 */
 html[data-skin="warm"][data-theme="light"] .topbar {
   background: rgba(250, 249, 245, .85);

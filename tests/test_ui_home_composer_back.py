@@ -70,9 +70,9 @@ function makeWorld() {
   };
   const $ = (id) => (id === 'rd-input-slot' ? slot : null);
   const api = new Function('document', '$', 'S',
-    'syncRailState', 'syncInspBtn', 'renderPageCrumb', 'collapseDrawerIfMobile', 'syncInspectorVis',
+    'syncRailState', 'syncInspBtn', 'renderPageCrumb', 'collapseDrawerIfMobile', 'syncInspectorVis', 'atlasLiveStop',
     movers + '\n' + detail + '\nreturn { homeMountComposer, homeUnmountComposer, showDetailInMain };')(
-    doc, $, { tab: 'home' }, () => {}, () => {}, () => {}, () => {}, () => {});
+    doc, $, { tab: 'home' }, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
   return { api, where, slot, form };
 }
 

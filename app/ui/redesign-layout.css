@@ -1360,3 +1360,211 @@ html[data-layout="workbench"] .rd-task-arrow {
   color: var(--muted);
   margin-left: 8px;
 }
+
+/* 任务信息弹层：统计改为一行一条的键值行。旧 flex 胶囊在窄弹层里
+ * 互相挤压换行，标签值糊成一段散文（用户实拍） */
+#run-detail .rd-meta-popover .rd-meta-strip {
+  display: block;
+}
+
+#run-detail .rd-meta-popover .rd-meta-strip .stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  border-radius: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: normal;
+}
+
+#run-detail .rd-meta-popover .rd-meta-strip .stat:last-of-type {
+  border-bottom: none;
+}
+
+#run-detail .rd-meta-popover .rd-meta-strip .stat b {
+  color: var(--text);
+  font-weight: 550;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* 任务累计是带分隔符的长句，单独成块整段换行，不参与键值行 */
+#run-detail .rd-meta-popover .rd-meta-strip .stat.tasksum {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  line-height: 1.75;
+}
+
+
+/* ===== 借鉴 Morphz 的布局语言（用户已确认 demo）：彩色图标砖 / 状态圆盘 +
+ * 三级元信息 / 待你处理分组时间线 ===== */
+
+/* ① 快捷入口：每卡专属柔色图标砖（图标为 currentColor 线性精灵，随卡染色） */
+html[data-skin="warm"] .rd-tool-grid .rd-tool-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel2);
+  color: var(--accent);
+}
+
+html[data-skin="warm"] .rd-tool-grid .rd-tool:nth-of-type(1) .rd-tool-ico {
+  background: color-mix(in srgb, #2f9e8f 13%, #fff);
+  color: #2f9e8f;
+}
+
+html[data-skin="warm"] .rd-tool-grid .rd-tool:nth-of-type(2) .rd-tool-ico {
+  background: color-mix(in srgb, #7c5cd6 13%, #fff);
+  color: #7c5cd6;
+}
+
+html[data-skin="warm"] .rd-tool-grid .rd-tool:nth-of-type(3) .rd-tool-ico {
+  background: color-mix(in srgb, #b98a2e 15%, #fff);
+  color: #b98a2e;
+}
+
+html[data-skin="warm"] .rd-tool-grid .rd-tool:nth-of-type(4) .rd-tool-ico {
+  background: color-mix(in srgb, #3d7bd6 13%, #fff);
+  color: #3d7bd6;
+}
+
+/* ② 最近任务行：状态圆盘 + 三级元信息（时间 · 流程 · 步数）+ 细进度条 */
+html[data-skin="warm"] .rd-task-item .rd-disc {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #fff;
+}
+
+html[data-skin="warm"] .rd-disc.run {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+html[data-skin="warm"] .rd-disc.ok { background: var(--ok, #3d8f5f); }
+html[data-skin="warm"] .rd-disc.bad { background: var(--bad); }
+html[data-skin="warm"] .rd-disc.wait { background: var(--warn, #b98a2e); }
+
+html[data-skin="warm"] .rd-task-item .rd-meta3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+html[data-skin="warm"] .rd-m3-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+html[data-skin="warm"] .rd-task-item .rd-track {
+  width: 90px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--panel2);
+  overflow: hidden;
+  flex: none;
+}
+
+html[data-skin="warm"] .rd-task-item .rd-track-fill {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent);
+}
+
+html[data-skin="warm"] .rd-task-item .rd-pct {
+  flex: none;
+  width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* ③ 状态栏运行条目：软底圆角卡（原发丝分隔线样式让位） */
+html[data-skin="warm"] #status-running-list .running-item {
+  margin-bottom: 6px;
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 10px;
+}
+
+html[data-skin="warm"] #status-running-list .running-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ④ 待你处理分组时间线 */
+html[data-skin="warm"] #status-pending-list .pending-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 12px 0 4px;
+}
+
+html[data-skin="warm"] #status-pending-list .pending-group-n {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-skin="warm"] #status-pending-list .pending-group:first-child .pending-group-head {
+  margin-top: 2px;
+}
+
+html[data-skin="warm"] #status-pending-list details.pending-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 12px 0 4px;
+  cursor: pointer;
+  list-style: none;
+}
+
+html[data-skin="warm"] #status-pending-list details.pending-group summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-skin="warm"] #status-pending-list .pending-more {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 2px 2px;
+}
+
+html[data-skin="warm"] #status-pending-list .pending-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  margin-bottom: 6px;
+}
+
+html[data-skin="warm"] #status-pending-list .pending-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}

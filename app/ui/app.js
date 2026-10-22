@@ -5174,7 +5174,7 @@ async function archiveTask(id, archived) {
 }
 
 async function deleteTask(id) {
-  if (!await uiConfirm(t("删除该任务及其全部运行记录（含日志与报告）？不可恢复。"), { ok: t("删除"), danger: true })) return;
+  if (!await uiConfirm(t("删除任务及其全部运行记录（含日志与报告），不可恢复；工作目录里的文件不会删"), { ok: t("删除"), danger: true })) return;
   toast(t("正在删除任务…"));
   await deleteTaskCore(id);
 }
@@ -10576,7 +10576,8 @@ function fmtSize(n) {
 }
 
 /* 成品文件行（检查器「成品文件」与主栏「成果」分区共用一套标记）：
- * fc-row：文件行 + 弹窗预览按钮同行排布，避免按钮独占一行参差不齐。
+ * fc-row＝清单行；动作钮收进右端固定双列 fc-acts（对比占左列、预览钉右列，
+ * solo＝无对比时预览落第 2 列）——列不随行漂移，按钮永不换行。
  * 点文件名与点「预览」同款 artPopup 弹窗，行为一致不 surprise。 */
 function artifactsChips(runId, files, prevRun, hasPlan) {
   // 活计划入口（批3）：task_plan.md 不进成品扫描，存在时首行给「任务计划」
@@ -10594,21 +10595,23 @@ function artifactsChips(runId, files, prevRun, hasPlan) {
     // 与上一版对比（OpenCreator「版本化对比」借鉴）：同名文本文件在上一版
     // run 也存在时给 diff 入口；prevRun=null（无历史/清单拉取失败）静默不给
     const diffable = isTxt && prevRun && prevRun.names.has(f.name);
-    return '<span class="fc-row">' +
-      '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
-      encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" ' +
-      'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
-      '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
-      '<span class="p">' + esc(f.name) + '</span><i>' + fmtSize(f.size) + "</i></a>" +
-      (isTxt ? '<a class="file-chip prev artifact-file-preview" title="' + esc(t("查看内容")) +
-        '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
-        '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "") +
+    const acts =
       (diffable ? '<a class="file-chip prev artifact-file-diff" title="' +
         esc(prevRun.ver ? t("与第 {0} 版对比").replace("{0}", prevRun.ver) : t("与上一版对比")) +
         '" data-file-run="' + esc(runId) + '" data-prev-run="' + esc(prevRun.id) +
         '" data-prev-ver="' + (prevRun.ver || "") +
         '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-git-branch"/></svg>' + t("对比") + "</a>" : "") +
+      (isTxt ? '<a class="file-chip prev artifact-file-preview" title="' + esc(t("查看内容")) +
+        '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="#i-book"/></svg>' + t("预览") + "</a>" : "");
+    return '<span class="fc-row">' +
+      '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
+      encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" ' +
+      'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
+      '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
+      '<span class="p">' + esc(f.name) + '</span><i>' + fmtSize(f.size) + "</i></a>" +
+      (acts ? '<span class="fc-acts' + (diffable ? '' : ' solo') + '">' + acts + "</span>" : "") +
       "</span>";
   }).join("");
 }
@@ -14394,6 +14397,9 @@ function renderHome() {
     dateEl.textContent = (now.getMonth() + 1) + " 月 " + now.getDate() + " 日 · 星期" + weekdays[now.getDay()];
   }
 
+  // 快捷入口里的通道体检摘要：复用体检页缓存，60 秒内不重复请求
+  homeHealthRefresh();
+
   // 卡头目录/分支展示已随主页假身一并移除：主页直接载真表单 composer，
   // 工作目录与分支信息由 composer 自身的 cmp-wd 行与 git 行承载。
 
@@ -14405,28 +14411,33 @@ function renderHome() {
     listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">' + t("暂无任务") + "</div>";
     return;
   }
-  // 快捷入口里的通道体检摘要：复用体检页缓存，60 秒内不重复请求
-  homeHealthRefresh();
-
   listEl.innerHTML = recent.map((r) => {
-    const dotClass = r.status === "running" ? "running" : r.status === "queued" ? "waiting" : r.status === "failed" ? "failed" : "completed";
-    const progress = r.progress != null ? Math.round(r.progress) + "%" : "—";
-    const meta = [r.project_name || r.project || "", r.flow_name || r.flow || "", relTime(r.created_at || r.started_at || "")].filter(Boolean).join(" · ");
+    const st = r.status === "running" ? "run" : r.status === "queued" ? "wait" : (r.status === "failed" || r.status === "timeout") ? "bad" : "ok";
+    const discTxt = st === "run" ? "▸" : st === "ok" ? "✓" : st === "bad" ? "✕" : "◔";
+    // 进度契约与状态栏一致：step_count 折算、current_step 是对象取 .n
+    const total = r.step_count || 0;
+    const progress = total ? Math.min(100, Math.max(0, Math.round(Number(r.progress) || 0))) : (r.progress != null ? Math.round(Number(r.progress)) : null);
+    const step = (r.current_step && r.current_step.n) || 0;
+    const meta3 = [relTime(r.created_at || r.started_at || ""), r.flow_name || r.flow || "",
+      (total ? t("第 ") + step + "/" + total + t(" 步") : "")].filter(Boolean);
+    const metaHtml = meta3.map((x, i) => (i ? '<span class="rd-m3-dot"></span>' : "") + "<span>" + esc(String(x)) + "</span>").join("");
     return '<div class="rd-task-item" onclick="homeOpenRun(\'' + esc(r.id || "") + '\')">'
-      + '<span class="rd-task-dot ' + dotClass + '"></span>'
+      + '<span class="rd-disc ' + st + '">' + discTxt + "</span>"
       + '<div class="rd-task-info">'
-      + '<div class="rd-task-title">' + esc(r.title || r.id || "") + '</div>'
-      + '<div class="rd-task-meta">' + esc(meta) + '</div>'
-      + '</div>'
-      + '<span class="rd-task-progress">' + progress + '</span>'
-      + '<svg class="ico rd-task-arrow" aria-hidden="true"><use href="#i-chevron-r"></use></svg>'
-      + '</div>';
+      + '<div class="rd-task-title">' + esc(r.title || r.id || "") + "</div>"
+      + '<div class="rd-meta3">' + metaHtml + "</div>"
+      + "</div>"
+      + (progress != null
+        ? '<span class="rd-track"><span class="rd-track-fill" style="width:' + progress + '%"></span></span><span class="rd-pct">' + progress + "%</span>"
+        : '<svg class="ico rd-task-arrow" aria-hidden="true"><use href="#i-chevron-r"></use></svg>')
+      + "</div>";
   }).join("");
 }
 
 /* 主页直载真表单 composer：主页不放简化假身，把 #sub-tasks .cmp-box 原样
  * 搬进 #rd-input-slot——ID 全不变，目录/类型/专家/附件/能力菜单在主页直接
- * 可用，发送即真实提交不跳页；离开主页搬回 #sub-tasks .form 原位。 */
+ * 可用，发送即真实提交不跳页；离开主页搬回 #sub-tasks .form 原位。
+ * 「新聊天」入口则直达任务表单页本身的简洁形态（exitSettings(true)）。 */
 function homeMountComposer() {
   const slot = $("rd-input-slot"), box = document.querySelector("#sub-tasks .cmp-box");
   if (!slot || !box || box.parentElement === slot) return;
@@ -20418,6 +20429,8 @@ function setLangBtn(lang) {
   renderQuickChips();
   // 侧栏区头两颗钮的 title/aria 是 JS 按状态写的，applyI18n 会用静态词条盖掉，这里重刷
   if (S.tab === "overview") ovRenderRecent();
+  if (S.tab === "availability") renderAvailability();   // 体检页/主页摘要的动态文案跟随语言
+  renderHomeHealth();
   paintArchToggle();
   syncSideExpandBtn();
   renderCodePreviews();   // 预览徽章是动态文案：语言切换时若停在皮肤页要跟着换
@@ -20429,8 +20442,6 @@ function setLangBtn(lang) {
     paintHelpChrome();
     renderHelp();
   }
-  if (S.tab === "availability") renderAvailability();   // 体检页/主页摘要的动态文案跟随语言
-  renderHomeHealth();
   // 重画还在缓存里的页面标题（语言切换后组名也要跟着换）
   renderPageCrumb();
   // 同步顶栏的连接状态文案（applyI18n 不会处理 textContent 写入的）
@@ -21328,16 +21339,21 @@ function sideUsageRenderRuns() {
 }
 
 /* 右侧状态栏开合（与左侧菜单同一套 body 类开关，见 redesign-layout.css）：
- * 偏好落 localStorage，默认展开；非 workbench 布局没有这条栏，类留着也无副作用。 */
+ * 偏好落 localStorage，默认收起；「shown」才展开——写法必须经 statusRailCollapsed()
+ * 取有效态，若退回 ==="hidden" 旧式判断，新用户首击会把 null 判成展开、写回 hidden，
+ * 第一次点击就开不了栏。非 workbench 布局没有这条栏，类留着也无副作用。 */
 const STATUS_RAIL_KEY = "orch.statusRail";
+function statusRailCollapsed() {
+  return localStorage.getItem(STATUS_RAIL_KEY) !== "shown";
+}
 function applyStatusRail() {
-  const collapsed = localStorage.getItem(STATUS_RAIL_KEY) === "hidden";
+  const collapsed = statusRailCollapsed();
   document.body.classList.toggle("status-rail-collapsed", collapsed);
   const btn = $("btn-status-rail");
   if (btn) btn.setAttribute("aria-pressed", collapsed ? "false" : "true");
 }
 function toggleStatusRail() {
-  localStorage.setItem(STATUS_RAIL_KEY, localStorage.getItem(STATUS_RAIL_KEY) === "hidden" ? "shown" : "hidden");
+  localStorage.setItem(STATUS_RAIL_KEY, statusRailCollapsed() ? "shown" : "hidden");
   applyStatusRail();
 }
 
@@ -21392,18 +21408,44 @@ function updateStatusSidebar() {
     if (needsRows.length === 0) {
       pendingList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0">' + t("暂无待处理项") + "</div>";
     } else {
-      pendingList.innerHTML = needsRows.slice(0, 4).map((r) =>
+      // 分组时间线（借鉴 Morphz）：待审批/待裁决/已暂停=「待处理」，其余按
+      // 结束时间分「今天/更早」；每组计数，更早默认折叠
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const groups = { now: [], today: [], earlier: [] };
+      needsRows.forEach((r) => {
+        const pausedLike = r.reasons && r.reasons.some((x) => x === "待审批" || x === "待裁决" || x === "已暂停");
+        const t = r.time ? new Date(String(r.time).replace(" ", "T")) : null;
+        if (pausedLike) groups.now.push(r);
+        else if (t && t >= todayStart) groups.today.push(r);
+        else groups.earlier.push(r);
+      });
+      const pendItem = (r) =>
         '<div class="pending-item" onclick="homeOpenRun(\'' + esc(r.id) + '\')" style="cursor:pointer">'
-        + '<div class="pending-item-title">' + esc(r.title || r.id) + '</div>'
-        + (r.reasons && r.reasons.length ? '<div class="pending-item-desc">' + esc(r.reasons.map((x) => t(x)).join(" · ")) + '</div>' : "")
+        + '<div class="pending-item-title">' + esc(r.title || r.id) + "</div>"
+        + (r.reasons && r.reasons.length ? '<div class="pending-item-desc">' + esc(r.reasons.map((x) => t(x)).join(" · ")) + "</div>" : "")
         + '<div class="pending-foot">'
         + '<button type="button" class="pending-go" onclick="event.stopPropagation(); homeOpenRun(\'' + esc(r.id) + '\')">'
         + t("去确认") + '<svg class="ico ico-sm" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>'
         + '<button type="button" class="pending-ignore" title="' + esc(t("不再提醒这条待处理")) + '" onclick="event.stopPropagation(); ignorePendingRun(\'' + esc(r.id) + '\')">'
         + t("忽略") + "</button>"
         + "</div>"
-        + "</div>"
-      ).join("");
+        + "</div>";
+      const pendGroup = (label, rows, folded) => {
+        if (!rows.length) return "";
+        const body = rows.slice(0, 3).map(pendItem).join("");
+        const hiddenRest = rows.length > 3
+          ? '<div class="pending-more">' + t("还有 {0} 条", rows.length - 3) + "</div>" : "";
+        if (folded) {
+          return '<details class="pending-group"><summary><span>' + esc(label) + '</span><span class="pending-group-n">'
+            + rows.length + "</span></summary>" + body + hiddenRest + "</details>";
+        }
+        return '<div class="pending-group-head"><span>' + esc(label) + '</span><span class="pending-group-n">' + rows.length + "</span></div>"
+          + body + hiddenRest;
+      };
+      pendingList.innerHTML =
+        pendGroup(t("待处理"), groups.now, false)
+        + pendGroup(t("今天"), groups.today, false)
+        + pendGroup(t("更早"), groups.earlier, true);
     }
   }
 
@@ -22504,7 +22546,12 @@ document.addEventListener("DOMContentLoaded", () => {
   $("sidebar").addEventListener("click", (e) => {
     if (e.target.closest("button, summary, .stask")) collapseDrawerIfMobile();
   });
-  $("btn-new-task").addEventListener("click", () => mobileNewTask());
+  $("btn-new-task").addEventListener("click", () => {
+    // 工作台布局：新聊天=任务表单页（居中问候+类型页签+composer 的简洁形态）；
+    // 经典布局维持旧流程
+    if (currentLayout() === "workbench") { exitSettings(true); return; }
+    mobileNewTask();
+  });
   $("btn-mobile-new").addEventListener("click", () => mobileNewTask());
   $("btn-mobile-workspaces").addEventListener("click", () => {
     $("sub-tasks").classList.remove("mobile-composing");

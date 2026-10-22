@@ -2401,6 +2401,7 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 #file-pop .fp-img { min-height: 320px; }
 /* 成品行 + 内联预览按钮同行；预览按钮保留 pill 形态 */
 #insp-pane-files .fc-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#insp-pane-files .fc-acts { flex: none; display: flex; align-items: center; gap: 4px; margin-left: auto; }
 #insp-pane-files .fc-row .file-chip { flex: 1; min-width: 0; }
 #insp-pane-files .fc-row .file-chip.prev {
   flex: none; width: auto; justify-content: center; padding: 2px 9px;
@@ -4879,24 +4880,54 @@ main .panel.wide {
 #run-detail .rd-arts .files-head .ver-badge + .wd { grid-column: 3; }
 #run-detail .rd-arts .file-chips {
   width: min(100%, 760px);
-  gap: 4px;
+  gap: 0;
   margin-top: 0;
 }
+/* 清单行（demo B 定案）：无边框行 + 发丝分隔线；动作收右端固定双列，
+   有无「对比」预览列都不漂移，按钮永不换行 */
 #run-detail .rd-arts .fc-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+  padding: 6px 8px 6px 12px;
+  border-radius: 10px;
 }
+#run-detail .rd-arts .fc-row + .fc-row { border-top: 1px solid var(--border); border-radius: 0; }
+#run-detail .rd-arts .fc-row:hover { background: var(--panel2); }
+#run-detail .rd-arts .fc-row:hover + .fc-row { border-top-color: transparent; }
 #run-detail .rd-arts .fc-row .file-chip:first-child {
-  width: 100%;
-  min-width: 0;
+  display: flex; align-items: center; gap: 9px;
+  flex: 1; min-width: 0; width: auto;
+  padding: 0; background: none; border: none; border-radius: 10px;
 }
+#run-detail .rd-arts .fc-row .file-chip:first-child:hover { background: none; border-color: transparent; }
+#run-detail .rd-arts .fc-row .file-chip i.fx {
+  flex: none; font-style: normal; font-weight: 700; font-size: 10px; letter-spacing: .5px;
+  color: var(--ok); text-transform: uppercase; width: 32px; text-align: center;
+}
+#run-detail .rd-arts .fc-row .file-chip .p {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px;
+}
+#run-detail .rd-arts .fc-row .file-chip i:not(.fx) {
+  flex: none; font-family: var(--mono); font-size: 11px;
+}
+#run-detail .rd-arts .fc-acts {
+  flex: none; display: grid; grid-template-columns: 62px 62px; gap: 4px; align-items: center;
+}
+#run-detail .rd-arts .fc-acts.solo .file-chip.prev { grid-column: 2; }
 #run-detail .rd-arts .fc-row .file-chip.prev {
-  width: 76px;
-  justify-content: center;
-  padding-inline: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  width: 62px; padding: 5px 0;
+  background: none; border: none; border-radius: 8px;
+  color: var(--muted); cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+#run-detail .rd-arts .fc-row .file-chip.prev .ico { width: 13px; height: 13px; }
+#run-detail .rd-arts .fc-row .file-chip.prev:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* Docked log: a utility rail, never a modal card floating over the hive. */
@@ -4942,8 +4973,9 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   #run-detail .detail-head { padding-top: 12px; }
   #run-detail .rd-pane .files-head { grid-template-columns: 1fr; gap: 4px; }
   #run-detail .rd-arts .files-head .ver-badge + .wd { grid-column: auto; }
-  #run-detail .rd-arts .fc-row { grid-template-columns: minmax(0, 1fr) 68px; }
-  #run-detail .rd-arts .fc-row .file-chip.prev { width: 68px; }
+  #run-detail .rd-arts .fc-row { gap: 8px; padding: 6px 4px 6px 10px; }
+  #run-detail .rd-arts .fc-acts { grid-template-columns: 56px 56px; }
+  #run-detail .rd-arts .fc-row .file-chip.prev { width: 56px; }
   #rd-hive-cells .lane-meter { width: 52px; }
 }
 
