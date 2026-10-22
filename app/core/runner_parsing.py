@@ -4,7 +4,9 @@
 从 runner 拆出（单文件行数治理），runner 原样再导出这些名字：
   - extract_json：严格 JSON → ```json 围栏 → 平衡花括号扫描；
   - _loads_lenient：修复字符串内未转义引号后重试；
-  - as_scores / extract_scores_from_text / scores_from_prose：评审三道兜底。
+  - as_scores / extract_scores_from_text / scores_from_prose：评审三道兜底；
+  - verdict_brief / verdict_digest：评审裁定 JSON → 人读摘要（步骤
+    summary 单行版 / 对话时间线多行版），非裁定原文返回 None。
 """
 from __future__ import annotations
 
@@ -138,3 +140,110 @@ def scores_from_prose(text, dims):
             except (TypeError, ValueError):
                 pass
     return found if len(found) >= 3 else {}
+
+
+def _verdict_parts(text):
+    """评审裁定识别：文本宽容解析出「带全数值 scores 的 JSON 对象」时返回
+    (对象, 归一分数表)，其余返回 None。判定刻意收紧——scores 缺失或混入
+    非数值一律不算裁定：直连回答、配置 JSON、普通引用到 "scores" 的文本
+    都不能误伤成「已摘要」。"""
+    if not text or (isinstance(text, str) and "scores" not in text):
+        return None
+    cj = text if isinstance(text, dict) else extract_json(text)
+    if not isinstance(cj, dict):
+        return None
+    raw = cj.get("scores")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    scores = {}
+    for k, v in raw.items():
+        if isinstance(v, bool):   # true/false 不是分数（与 as_scores 同口径）
+            return None
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            return None
+        scores[str(k)] = fv
+    return (cj, scores) if scores else None
+
+
+def _verdict_issues(cj):
+    """裁定里的意见列表：content 流叫 issues、code 流叫 findings，通吃。"""
+    for key in ("issues", "findings"):
+        v = cj.get(key)
+        if isinstance(v, list) and v:
+            return [x for x in v if isinstance(x, dict)]
+    return []
+
+
+def _issue_line(it, cap=110):
+    """单条意见压成一行：[severity] 维度/文件：要点。"""
+    dim = str(it.get("dim") or it.get("path") or "").strip()
+    sev = str(it.get("severity") or "").strip().lower()
+    note = " ".join(str(it.get("note") or it.get("header") or it.get("detail") or "").split())
+    if len(note) > cap:
+        note = note[:cap] + "…"
+    head = "[%s] " % sev if sev else ""
+    if dim and note:
+        return "%s%s：%s" % (head, dim, note)
+    return head + (dim or note)
+
+
+def verdict_brief(text, limit=260):
+    """评审裁定 JSON → 单行短摘要（步骤 summary 用）；非裁定原文返回 None。
+
+    评审官的 ```json 裁定原文曾整段截 600 字塞进 summary，检查器/蜂巢/
+    详情一行根本放不下（2026-10-22 用户反馈「一大堆根本没人看」）。与
+    mock 步骤「均分 X：总结」同语系；意见只留计数与首条，细节看日志。"""
+    parts = _verdict_parts(text)
+    if not parts:
+        return None
+    cj, scores = parts
+    avg = sum(scores.values()) / len(scores)
+    dims = "·".join("%s %.1f" % (k, v) for k, v in
+                    list(scores.items())[:5])
+    out = "均分 %.1f（%s）" % (avg, dims)
+    if isinstance(cj.get("pass"), bool):
+        out = ("评审通过，" if cj["pass"] else "评审未通过，") + out
+    concl = " ".join(str(cj.get("summary") or "").split())
+    if concl:
+        out += "：%s" % concl[:80]
+    issues = _verdict_issues(cj)
+    if issues:
+        n_major = sum(1 for it in issues if str(it.get("severity") or "")
+                      .lower() in ("blocker", "critical", "major"))
+        out += "；意见 %d 条%s" % (len(issues),
+                                   ("（含 major %d）" % n_major) if n_major else "")
+        first = _issue_line(issues[0], cap=70)
+        if first:
+            out += "：%s" % first
+    return out[:limit]
+
+
+def verdict_digest(text, limit=1000):
+    """评审裁定 JSON → 多行人读摘要（对话时间线气泡用）；非裁定返回 None。
+
+    分数一行带全维度、结论一行、意见逐条（封顶 6 条、单条截断）——保住
+    评审里有用的血肉，砍掉 JSON 语法噪音；完整原文永远在该步日志里。"""
+    parts = _verdict_parts(text)
+    if not parts:
+        return None
+    cj, scores = parts
+    head = "评审均分 %.1f" % (sum(scores.values()) / len(scores))
+    if isinstance(cj.get("pass"), bool):
+        head = ("评审通过，" if cj["pass"] else "评审未通过，") + head
+    lines = [head + "（" + " · ".join("%s %.1f" % (k, v)
+                                     for k, v in scores.items()) + "）"]
+    concl = " ".join(str(cj.get("summary") or "").split())
+    if concl:
+        lines.append("结论：" + concl[:200])
+    issues = _verdict_issues(cj)
+    if issues:
+        lines.append("意见 %d 条：" % len(issues))
+        for it in issues[:6]:
+            ln = _issue_line(it)
+            if ln:
+                lines.append("· " + ln)
+        if len(issues) > 6:
+            lines.append("· …其余 %d 条见该步日志" % (len(issues) - 6))
+    return "\n".join(lines)[:limit]

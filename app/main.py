@@ -3134,6 +3134,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             body = s.get("output") or ""
             if not body:
                 body = s.get("summary") or ""
+            # 评审裁定 JSON 原文整段进气泡没人读（2026-10-22 用户反馈）：
+            # 换成多行人读摘要；非裁定原文原样保留。完整 JSON 仍在该步日志。
+            digest = runner.verdict_digest(body)
+            if digest:
+                body = digest
             running = (s.get("status") or "") == "running"
             items.append({
                 "kind": "agent",

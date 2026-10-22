@@ -65,7 +65,7 @@ from .cli_parsers import (
 
 from .runner_parsing import (  # noqa: F401 - 旧调用面再导出
     _loads_lenient, as_scores, extract_json, extract_scores_from_text,
-    scores_from_prose,
+    scores_from_prose, verdict_brief, verdict_digest,
 )
 
 log = logging.getLogger(__name__)

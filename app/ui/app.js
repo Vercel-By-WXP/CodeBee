@@ -7150,7 +7150,7 @@ function drawTaskDetail(key, runs, appendFrom) {
           '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
           (String(s.model || "").trim() ? '<span class="st-model" title="' + esc(t("实际派发模型")) + '">' + esc(String(s.model).trim()) + "</span>" : "") +
           (String(s.provider || "").trim() ? '<span class="st-prov" title="' + esc(t("实际用上游（厂商@网关）")) + '">' + esc(String(s.provider).trim()) + "</span>" : "") +
-          '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
+          '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (verdictDigestText(s.summary) || s.summary || "")) + "</span>" +
           '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
           statusChip(s.status) +
           (s.log ? '<button class="step-log-btn" type="button" data-log-run="' + esc(item.runId) + '" data-log-rel="' + esc(s.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button>" : "") +
@@ -7826,7 +7826,7 @@ function renderRunDetailSteps(run, token) {
         '<span class="who">' + esc(t(s.agent_label || s.agent)) + "</span>" +
         (s.model ? '<span class="st-model" title="' + esc(t("实际派发模型")) + '">' + esc(s.model) + "</span>" : "") +
         (String(s.provider || "").trim() ? '<span class="st-prov" title="' + esc(t("实际用上游（厂商@网关）")) + '">' + esc(String(s.provider).trim()) + "</span>" : "") +
-        '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (s.summary || "")) + "</span>" +
+        '<span class="sum">' + esc((s.note ? "◆ " + s.note + " — " : "") + (verdictDigestText(s.summary) || s.summary || "")) + "</span>" +
         '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span>" +
         statusChip(s.status) +
         (s.log ? '<button class="step-log-btn" type="button" data-log-run="' + esc(run.id) + '" data-log-rel="' + esc(s.log) + '" title="' + esc(t("查看日志")) + '">' + esc(t("CLI 日志")) + "</button>" : "") +
@@ -9945,10 +9945,10 @@ function drawInspector() {
   }
   $("insp-steps").innerHTML = (d.steps || []).map((s) =>
     '<button class="insp-step ' + esc(s.status || "") + '" onclick="sideOpenRun(\'' + esc(runId) + "', " + (Number(s.n) || 0) + ')" title="' +
-    esc(s.summary || "") + '">' +
+    esc(verdictDigestText(s.summary) || s.summary || "") + '">' +
     '<span class="sdot ' + esc(s.status || "") + '"></span>' +
     '<span class="role">' + esc(s.role || "") + "</span>" +
-    '<span class="sum">' + esc(s.summary || s.note || "") + "</span>" +
+    '<span class="sum">' + esc(verdictDigestText(s.summary) || s.summary || s.note || "") + "</span>" +
     '<span class="dur">' + (s.duration_s != null ? s.duration_s + "s" : "") + "</span></button>"
   ).join("") || '<span class="insp-hint">' + esc(t("尚无步骤")) + "</span>";
 
@@ -11474,7 +11474,7 @@ function hiveSceneSync(run, lanes, byStage) {
         const whoShow = who + (mdl ? " · " + mdl : "");
         const rel = s.log || "";
         if (st === "running") hiveLiveMeta[rel] = { started_at: s.started_at || "" };
-        const concl = String(s.summary || "").replace(/\s+/g, " ").trim();
+        const concl = (verdictDigestText(s.summary) || String(s.summary || "")).replace(/\s+/g, " ").trim();
         const elapsed = s.duration_s != null ? s.duration_s + "s" : hiveElapsed(s.started_at);
         const stWord = { running: t("运行中"), done: t("完成"), failed: t("失败"),
           timeout: t("超时"), cancelled: t("已取消"), queued: t("排队中") }[st] || s.status;
@@ -11548,7 +11548,7 @@ window.renderHive = function (run) {
     const whoShow = who + (model ? " · " + model : "");
     // 完成即给结论：终态格子定格在 summary（智能体最终回答/失败原因），
     // 悬停 title 展示全文；运行中格子才跟实时尾巴
-    const concl = String(s.summary || "").replace(/\s+/g, " ").trim();
+    const concl = (verdictDigestText(s.summary) || String(s.summary || "")).replace(/\s+/g, " ").trim();
     const key = run.id + "|" + (s.log || "");
     if (st !== "running") { delete hiveTails[key]; delete hiveThink[key]; }
     const tailText = st === "running" ? (hiveTails[key] || concl) : concl;
@@ -12042,6 +12042,65 @@ function chatCleanText(raw) {
     .replace(/\n*DIRECT_DONE:.*\s*$/s, "")
     .replace(/\n*<followups>[\s\S]*?<\/followups>\s*$/s, "")
     .trim();
+}
+
+/* 评审裁定 JSON 原文 → 人读短摘要（multi=true 多行版，供对话气泡）。
+ * 后端已把新 run 的步骤 summary 落成摘要（runner_parsing.verdict_brief），
+ * 但历史 run 的 summary/对话 output 已按 ```json 原文落盘，前端同样兜底。
+ * 识别不出裁定形状（含被截断的残文，走 scores 片区抢分数对）返回 ""，
+ * 调用方回退原文；普通回答永远原样放行。 */
+function verdictDigestText(txt, multi) {
+  const s = String(txt || "").trim();
+  if (!s || s.indexOf('"scores"') < 0) return "";
+  let obj = null;
+  const fence = s.match(/```(?:json)?\s*(\{[\s\S]*?)(?:```|$)/);
+  const bare = (/^\{[\s\S]*\}$/.test(s) ? s : (fence ? fence[1] : ""))
+    .replace(/\s+$/, "");
+  if (bare) { try { obj = JSON.parse(bare); } catch (e) { obj = null; } }
+  let dims = null, issues = null, concl = "", pass = null;
+  if (obj && obj.scores && typeof obj.scores === "object" && !Array.isArray(obj.scores)) {
+    dims = Object.keys(obj.scores).map((k) => [k, Number(obj.scores[k])])
+      .filter((pair) => Number.isFinite(pair[1]));
+    issues = Array.isArray(obj.issues) ? obj.issues
+      : (Array.isArray(obj.findings) ? obj.findings : null);
+    concl = String(obj.summary || "");
+    pass = typeof obj.pass === "boolean" ? obj.pass : null;
+  } else {
+    // 截断残文：只从 "scores": { … } 片区抢「维度: 数值」对（截在 600 字
+    // 的老 summary 解析不了整对象，但分数表通常在前排完好）
+    const sm = s.match(/"scores"\s*:\s*\{([\s\S]*?)(?:\}|$)/);
+    if (!sm) return "";
+    dims = (sm[1].match(/"([^"\\]{1,24})"\s*:\s*\d+(?:\.\d+)?/g) || [])
+      .map((pair) => pair.match(/"([^"\\]{1,24})"\s*:\s*(\d+(?:\.\d+)?)/))
+      .filter(Boolean)
+      .map((mm) => [mm[1], Number(mm[2])]);
+  }
+  if (!dims.length) return "";
+  const avg = dims.reduce((a, d) => a + d[1], 0) / dims.length;
+  const passHead = pass === false ? "评审未通过，" : pass === true ? "评审通过，" : "";
+  const head = passHead + "均分 " + avg.toFixed(1);
+  const dimTxt = dims.slice(0, 6).map((d) => d[0] + " " + d[1].toFixed(1)).join(" · ");
+  concl = concl.replace(/\s+/g, " ").trim();
+  if (!multi) {
+    let out = head + "（" + dimTxt + "）";
+    if (concl) out += "：" + concl.slice(0, 90);
+    return out.slice(0, 240);
+  }
+  const lines = [head + "（" + dimTxt + "）"];
+  if (concl) lines.push("结论：" + concl.slice(0, 200));
+  if (Array.isArray(issues) && issues.length) {
+    lines.push("意见 " + issues.length + " 条：");
+    for (const it of issues.slice(0, 6)) {
+      if (!it || typeof it !== "object") continue;
+      const dim = String(it.dim || it.path || "").trim();
+      const note = String(it.note || it.header || it.detail || "")
+        .replace(/\s+/g, " ").trim().slice(0, 110);
+      const sev = String(it.severity || "").trim();
+      const body = dim && note ? dim + "：" + note : (note || dim);
+      if (body) lines.push("· " + (sev ? "[" + sev + "] " : "") + body);
+    }
+  }
+  return lines.join("\n").slice(0, 1000);
 }
 let chatSig = "";
 let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长度变才重建 DOM）
@@ -12802,7 +12861,10 @@ function drawChatFlow(run, data, active) {
     // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
     // 开场「本轮做了什么：…」+「回复：」是模型复读协议措辞的元描述（提示词已禁，
     // 这里兜历史数据），只剥消息开头的第一行
-    const body = chatCleanText(it.text);
+    // 评审裁定 JSON 原文整段糊泡没人读（2026-10-22 用户反馈）：换多行人读摘要，
+    // 完整原文在该步日志里（复制按钮同口径走 verdictDigestText，见复制处理器）
+    const rawBody = chatCleanText(it.text);
+    const body = verdictDigestText(rawBody, true) || rawBody;
     // 运行中还没有正文：先给思考过程块（有思维链/工具活动时），正文位退化为
     // 实时预览（stream 累计值）；两者皆无才是三点打字动画（终态无正文才落占位）
     const liveText = it.status === "running" ? String(it.stream || "").trim() : "";
@@ -14068,7 +14130,11 @@ function bindChat() {
     if (act) {
       const it = chatTimelineItems[Number(act.dataset.ci)];
       if (!it) return;
-      const txt = it.kind === "user" ? String(it.text || "") : chatCleanText(it.text);
+      // 复制=看到的正文（评审裁定气泡给摘要版）；编辑重发必须原文（裁定
+      // 摘要回发给模型没有意义，原文才是它的上一轮输出）
+      const rawTxt = it.kind === "user" ? String(it.text || "") : chatCleanText(it.text);
+      const txt = act.dataset.cact === "copy"
+        ? (verdictDigestText(rawTxt, true) || rawTxt) : rawTxt;
       if (act.dataset.cact === "copy") {
         copyText(txt, () => toast(t("已复制")));
       } else if (act.dataset.cact === "edit") {

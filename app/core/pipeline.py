@@ -1309,6 +1309,19 @@ def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
     return res
 
 
+def _step_summary_text(res):
+    """步骤摘要：评审裁定 JSON 先摘要成一行人话，其余维持原文/报错兜底。
+
+    评审官的 ```json 裁定原文整段截 600 字塞进 summary，会在检查器/蜂巢/
+    详情糊成没人读的 JSON 墙（2026-10-22 用户反馈）；摘要化只动显示层，
+    原文仍完整存在 output 与步骤日志里。"""
+    text = res.get("text") or ""
+    brief = runner.verdict_brief(text)
+    if brief:
+        return brief
+    return (text or res.get("error") or "")[:600].strip()
+
+
 def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
                         admission=None):
     """step 收尾：记录 + 用量 + 运行时断言（5F）。"""
@@ -1332,7 +1345,7 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
         status = "timeout"
     else:
         status = "done" if res["ok"] else "failed"
-    step_summary = (res.get("text") or res.get("error") or "")[:600]
+    step_summary = _step_summary_text(res)
     if raw.get("quiescence_unknown"):
         # 杀树未确认清空（借鉴 WorkDSH 取消结算分层：kill 完成 ≠ 停稳）：
         # 孙进程可能仍在跑，孤儿清扫稍后兜底。只提示不改变终态语义。
