@@ -132,5 +132,26 @@ class FanqieShortStoryTests(unittest.TestCase):
         self.assertEqual(fanqie.CONFIG["short_story_body_max_chars"], 50000)
 
 
+class ShortStoryPublishGuardsTests(unittest.TestCase):
+    """端到端实案回归：fresh 短篇任务曾被质量闸/番茄预检反向卡死建书。"""
+
+    def test_quality_guard_skips_short_story(self):
+        from app.core.publish import manager
+        r = manager._quality_release_guard(
+            {"id": "t-nonexistent", "type": "short_story", "engine": "review"},
+            "qimao", action="publish")
+        self.assertTrue(r["allowed"])
+
+    def test_fanqie_preflight_skips_novel_fields_for_short(self):
+        from app.core.publish.publish_create import _create_preflight
+        self.assertEqual(_create_preflight("fanqie", {"book_name": "镜中七秒"},
+                                           short_story=True), "")
+        self.assertIn("作品简介", _create_preflight(
+            "fanqie", {"book_name": "镜中七秒", "summary": "短"}, short_story=False))
+        # 七猫短篇表单仍吃简介/分类/标签
+        self.assertIn("作品简介", _create_preflight(
+            "qimao", {"book_name": "镜中七秒"}, short_story=True))
+
+
 if __name__ == "__main__":
     unittest.main()

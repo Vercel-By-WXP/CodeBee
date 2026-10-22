@@ -445,7 +445,13 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
 
     Review tasks require a quality verdict. Serial tasks additionally require
     global/chapter evidence; single manuscripts use their content-review result.
+    short_story 不吃本闸：自动化只到草稿箱（draft 在调用方已放行），平台发布
+    由作者人工把关；新任务无 verdict 时不得反向拦建书（2026-10-22 端到端
+    实案：fresh 任务被"最近评审未达标"卡死建书）。
     """
+    if str(task.get("type") or "").lower() == "short_story":
+        return {"allowed": True, "status": "not_applicable", "blockers": [],
+                "warnings": [], "forced": False}
     if str(task.get("type") or "").lower() not in ("novel", "serial_novel") \
             and (task.get("engine") or "") != "review":
         return {"allowed": True, "status": "not_applicable", "blockers": [],

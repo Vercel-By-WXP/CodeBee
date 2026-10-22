@@ -120,14 +120,18 @@ def _sync_renamed_book(task_id, plat, task, data, new_name, logs):
         logs.append("书名同步部分失败（不拦建书）：%s" % str(e)[:120])
 
 
-def _create_preflight(plat, data):
+def _create_preflight(plat, data, short_story=False):
     """建书前置闸：平台表单对必填字段有硬校验（番茄简介 50-500 字），过不了
     校验时页面不跳转、流程只能误报「未登录或改版」——开浏览器之前先拦下，
-    把人话原因还给用户。返回错误文案，空串=放行。"""
+    把人话原因还给用户。返回错误文案，空串=放行。
+    short_story：番茄一键建不填小说字段（名称/正文在编辑器链路），只锁书名；
+    七猫表单仍吃分类/标签/简介。"""
     placeholders = {"待补充", "（待补充）", "(待补充)"}
     title = str(data.get("book_name") or "").strip()
     if not title or title in placeholders:
         return "作品名称为空，请先补书名再点「创建作品」"
+    if short_story and plat == "fanqie":
+        return ""
     summary = str(data.get("summary") or "").strip()
     if plat == "fanqie":
         if len(summary) < 50 or len(summary) > 500:
@@ -727,7 +731,7 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
             for r in _mgr().ledger.recent(task_id=task_id, platform=plat, limit=50))
         if not failed_create:
             return False, "该任务已有作品登记但未确认，请登记已有作品或先在平台核对"
-    why = _mgr()._create_preflight(plat, meta["data"])
+    why = _mgr()._create_preflight(plat, meta["data"], short_story=is_short_story)
     if why:
         return False, why
     release_flags = _mgr().automatic_release_kwargs(
