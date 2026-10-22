@@ -389,7 +389,7 @@ async function wbMountWebPreview(run) {
       frame.src = urlAuth(d.base + d.entry);
       frame.classList.remove("hidden");
     }
-    if (stageActions) stageActions.innerHTML = '<button class="chip" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg>' + t("新窗口打开") + "</button>";
+    if (stageActions) stageActions.innerHTML = '<button class="ghost small" type="button" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span>' + esc(t("新窗口打开")) + "</span></button>";
     if (footHint) footHint.textContent = t(d.media ? "媒体成品预览" : "网页成品预览");
   } else {
     if (empty) {
