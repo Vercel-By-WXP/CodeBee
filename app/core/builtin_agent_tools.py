@@ -434,9 +434,11 @@ def _tool_run_command(workdir, args, cancel_event=None, deadline=None, sandbox=N
                     len(out) - limit, CMD_OUT_HEAD // 1024, CMD_OUT_TAIL // 1024)
                 + out[-CMD_OUT_TAIL:])
     if r.get("cancelled"):
-        note = "已取消，进程树已终止"
+        note = ("已取消，进程树已终止（结果未知：命令可能已部分执行；继续之前先用只读命令"
+                "核实实际状态，不要直接重放写操作）")
     elif r.get("timed_out"):
-        note = "超时 %d 秒，进程树已强制终止" % timeout
+        note = ("超时 %d 秒，进程树已强制终止（结果未知：命令可能已部分执行，副作用未确认；"
+                "重试前先用只读命令核实实际状态，不要直接重放写操作）" % timeout)
     else:
         note = ""
     prefix = ("（%s）\n" % note) if note else ""
@@ -825,7 +827,7 @@ TOOLS_SPEC = [
               "?replace_all": "可选，true=替换全部命中（默认仅允许 1 处命中）"}},
     {"name": "append_file", "description": "把文本追加到文件末尾（bytes 级追加，大文件不必整份重写）；文件不存在则创建。追加日志、逐条记录时优先用它",
      "args": {"path": "文件相对路径", "content": "追加到末尾的文本"}},
-    {"name": "fs_manage", "description": "文件管理：删除 / 移动 / 重命名 / 复制（工作目录内；目标已存在一律拒绝覆盖，删目录会连内容一起删）",
+    {"name": "fs_manage", "description": "文件管理：删除 / 移动 / 重命名 / 复制（工作目录内；目标已存在一律拒绝覆盖，删目录会连内容一起删）。执行前先用 find_files/list_files 核对 path 与 dest 解析后的实际目标，再动手",
      "args": {"action": "delete | move | rename | copy",
               "path": "源相对路径（目录或文件）",
               "?dest": "move/rename/copy 的目标相对路径"}},
@@ -843,8 +845,9 @@ TOOLS_SPEC = [
               "?limit": "可选，返回字符数，最大 20000"}},
     {"name": "write_file", "description": "把文本内容写入工作目录内一个文件（UTF-8，整份覆盖，父目录自动创建；只改一小段请用 edit_file）",
      "args": {"path": "文件相对路径", "content": "完整文本内容"}},
+    {"name": "save_skill_draft", "description": "把本次对话中沉淀出的可复用方法论/守则保存为技能草稿（经验包）；草稿默认不生效，用户在知识库面板审核启用后才注入后续同类任务。适合保存流程纪律、写作规范、排查套路、验收清单", "args": {"name": "技能名（简短，2-24 字）", "content": "技能正文：可直接作为守则注入的 Markdown 指令（不含 frontmatter）", "?scopes": "适用流程类型，逗号分隔，如 code,serial_novel；留空=全部流程", "?note": "一句话说明（来源与用途）"}},
     {"name": "run_command",
-     "description": "在本机执行一条 shell 命令，返回退出码与合并输出。诊断、修复、改配置、重启服务等操作真实生效；先跑命令看结果再定下一步。默认超时 600 秒，可用 timeout_sec 调整（5~1800）。Windows 需要管理员权限的命令（flushdns/防火墙/系统服务等）用 powershell -Command \"Start-Process <程序> -ArgumentList '<参数>' -Verb RunAs -Wait\" 触发 UAC（用户点允许后提权执行；提权进程输出拿不到，事后用普通命令复核）。避免长驻/交互式命令（ping -t、top、按键应答的安装器）。",
+     "description": "在本机执行一条 shell 命令，返回退出码与合并输出。诊断、修复、改配置、重启服务等操作真实生效；先跑命令看结果再定下一步。删除/移动文件的命令，执行前先用只读命令（dir/ls/type/cat）核对实际目标路径。默认超时 600 秒，可用 timeout_sec 调整（5~1800）。Windows 需要管理员权限的命令（flushdns/防火墙/系统服务等）用 powershell -Command \"Start-Process <程序> -ArgumentList '<参数>' -Verb RunAs -Wait\" 触发 UAC（用户点允许后提权执行；提权进程输出拿不到，事后用普通命令复核）。避免长驻/交互式命令（ping -t、top、按键应答的安装器）。",
      "args": {"command": "完整命令行（shell 语法，本机直接执行）",
               "timeout_sec": "可选，超时秒数"}},
 ]
@@ -1023,6 +1026,43 @@ def _tool_schedule_task(workdir, args, schedule_gateway=None, sandbox=None):
             "run_now 之一，收到：%s）" % (action or "空"))
 
 
+SAVE_SKILL_SPEC = {
+    "name": "save_skill_draft",
+    "description": "把本次对话中沉淀出的可复用方法论/守则保存为技能草稿（经验包）。"
+                   "草稿默认不生效，用户在知识库面板审核启用后才会注入后续同类任务。"
+                   "适合保存：流程纪律、写作规范、排查套路、验收清单等可复用文本；"
+                   "不要保存只对本次任务有意义的一次性内容。",
+    "args": {
+        "name": "技能名（简短，2-24 字）",
+        "content": "技能正文：可直接作为守则注入的 Markdown 指令（不含 frontmatter，写「应该怎么做」而非过程叙述）",
+        "?scopes": "适用流程类型，逗号分隔，如 code,serial_novel,novel；留空=全部流程",
+        "?note": "一句话说明（来源与用途）",
+    },
+}
+
+
+def _tool_save_skill_draft(args):
+    """保存技能草稿（dsh「让 Agent 创建插件·保留草稿」借鉴）。
+
+    只落 data/skillpacks/drafts/（不参与注入）；启用走用户审核。"""
+    from . import skills
+    args = args if isinstance(args, dict) else {}
+    scopes_raw = str(args.get("scopes") or "")
+    scopes = [s.strip() for s in re.split(r"[,，;；]", scopes_raw) if s.strip()] \
+        if scopes_raw.strip() else []
+    info, err = skills.save_draft(
+        str(args.get("name") or ""),
+        str(args.get("content") or ""),
+        scopes=scopes,
+        note=str(args.get("note") or ""))
+    if err:
+        return "（%s）" % err
+    return ("技能草稿已保存：%s（%d 字，文件 %s，适用 %s）。草稿默认不生效；"
+            "请告知用户到「知识库 → 技能草稿」审核启用。"
+            % (info["name"], info["chars"], info["file"],
+               "、".join(info["scopes"]) or "全部流程"))
+
+
 def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
     """Create a separate task through the caller-owned task boundary."""
     if task_creator is None:
@@ -1070,6 +1110,18 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
         return "（发起任务失败：%s）" % str(exc)[:300]
     if not isinstance(result, dict) or not result.get("task_id"):
         return "（发起任务失败：未返回任务编号）"
+    # 并发压力提前提示（B8，dsh 委派纪律借鉴）：池满时新任务要排队等执行位，
+    # 起跑前就让用户/模型知道，而不是排 10 分钟后撞 BUSY_WAIT_MAX 判失败。
+    try:
+        from . import jobs as _jobs
+        active, cap = _jobs.pool_pressure()
+        if active >= cap:
+            return ("已发起新任务：%s（运行编号：%s，类型：%s）。"
+                    "提示：当前并发已满（%d/%d），新任务将排队等待空位，"
+                    "不是立即开跑" % (result["task_id"], result.get("run_id") or "",
+                                    task_type, active, cap))
+    except Exception:
+        pass
     return "已发起新任务：%s（运行编号：%s，类型：%s）" % (
         result["task_id"], result.get("run_id") or "", task_type)
 
@@ -1129,6 +1181,8 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
         return _tool_schedule_task(workdir, args or {},
                                    schedule_gateway=schedule_gateway,
                                    sandbox=sandbox)
+    if name == "save_skill_draft":
+        return _tool_save_skill_draft(args or {})
     if name == "read_tool_output":
         from . import tool_outputs
         result = tool_outputs.read(tool_output_run_id, (args or {}).get("ref"),
@@ -1236,6 +1290,13 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
                 result += "\n" + checkpoint_warning
         return result
     except Exception as e:
+        # 写类工具中途抛异常 = 操作可能已部分落地（dsh 0.2.0「结果未知的操作
+        # 先核实副作用，不盲目重试」）：回给模型的错误必须带核实指引，否则
+        # 模型下一轮就是原样重放，重复副作用。
+        if name in {"fs_manage", "write_file", "edit_file", "append_file", "run_command"}:
+            return ("工具执行失败: %s\n（该操作可能已部分执行、结果未知；重试前先用只读工具"
+                    "（read_file/list_files/只读命令）核实实际状态，确认后再继续，不要直接重放）"
+                    % (e,))
         return "工具执行失败: %s" % (e)
 
 

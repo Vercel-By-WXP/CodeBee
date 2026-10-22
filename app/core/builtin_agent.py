@@ -59,6 +59,7 @@ _SYSTEM_PROMPT = """你是 CodeBee 的内置执行智能体，直接完成用户
 ## 工作方式
 - 需要读文件、看目录、写文件时调用工具；所有路径都是工作目录内的相对路径。
 - 改文件的优先级：小改动用 edit_file（精确查找替换，不必整份重写）＞追加用 append_file＞整份重建才用 write_file。删除/移动/重命名/复制用 fs_manage，不要绕 shell。
+- 删除、移动、重命名、复制（含 shell 的 rm/mv/del/move）执行前，先用 list_files/read_file 核对解析后的实际目标路径与内容再动手——路径拼错是不可逆操作里最常见的翻车点。
 - 大文件（超 64KB）默认只读头尾、中段省略；要看全用 read_file 的 offset/lines 分段读（返回头会提示下一段的 offset）。找内容用 search_content（带行号的 grep），找文件用 find_files，不要逐个文件读。
 - read_file 只能读文本文件；图片、压缩包等二进制文件读不了，如实告知用户即可，不要反复尝试。
 - 较早工具结果若提示已卸载并给出 ref，使用 read_tool_output 按需读取（可传 offset 分段）；不要假设压缩标记就是完整结果。
@@ -1083,7 +1084,19 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         if log:
                             log("[迭代 %d] %s 请求工具: %s" % (
                                 it, model, ", ".join(c["name"] for c in calls)))
-                        _fire(on_activity, "请求工具: " + "、".join(c["name"] for c in calls))
+                        # 活动行先上屏参数（dsh agent-tool-presentation 借鉴）：
+                        # 工具还没跑完时用户就能看到「要动哪个文件/跑什么命令」，
+                        # 长工具（浏览器/渲染）不再是黑盒等待。
+                        def _call_brief(c):
+                            a = c.get("args") or {}
+                            for k in ("command", "path", "pattern", "query",
+                                      "action", "name", "prompt", "ref"):
+                                v = str(a.get(k) or "").strip().replace("\n", " ")
+                                if v:
+                                    return "%s（%s）" % (c["name"], v[:80])
+                            return c["name"]
+                        _fire(on_activity, "请求工具: " + "、".join(
+                            _call_brief(c) for c in calls))
                         results = []
                         for c in calls:
                             out = _exec_tool(workdir, c["name"], c["args"], cancel_event,

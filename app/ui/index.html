@@ -941,6 +941,7 @@
                     <div id="rd-model-menu" class="type-menu hidden" role="menu" aria-label="对话模型" data-i18n-aria="对话模型"></div>
                   </span>
                   <div class="chat-send-actions">
+                    <button id="rd-chat-summarize" type="button" class="ghost small chat-summarize hidden" title="总结对话（压缩记忆，续轮自动携带）" aria-label="总结对话" data-i18n-title="总结对话（压缩记忆，续轮自动携带）" data-i18n-aria="总结对话" onclick="chatSummarizeDirect()"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="总结对话">总结对话</span></button>
                     <button id="rd-chat-stop" type="button" class="chat-stop hidden" title="停止运行" aria-label="停止运行" data-i18n-title="停止运行" data-i18n-aria="停止运行"><span aria-hidden="true">■</span></button>
                     <button id="rd-chat-send" type="button" class="primary chat-send-default" title="发送" aria-label="发送" data-i18n-title="发送" data-i18n-aria="发送"><svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg><span id="rd-chat-send-label" data-i18n="发送">发送</span></button>
                     <button id="rd-chat-send-options" type="button" class="ghost chat-send-options hidden" aria-haspopup="menu" aria-controls="rd-chat-send-menu" aria-expanded="false" data-i18n-title="发送方式" title="发送方式" data-i18n-aria="发送方式" aria-label="发送方式"><svg class="ico chat-send-chevron" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
@@ -1522,6 +1523,9 @@
             <button class="ghost small" onclick="agentSkillImport()" data-i18n="导入 Agent Skills">导入 Agent Skills</button>
           </div>
           <div id="agent-skills" class="cards" style="margin-bottom:14px"></div>
+          <h3 data-i18n="技能草稿（Agent 沉淀）" class="sec-title">技能草稿（Agent 沉淀）</h3>
+          <p class="hint" data-i18n="对话里的智能体通过 save_skill_draft 工具沉淀的可复用守则草稿；默认不生效，审阅后「启用」才会注入后续同类任务。">对话里的智能体通过 save_skill_draft 工具沉淀的可复用守则草稿；默认不生效，审阅后「启用」才会注入后续同类任务。</p>
+          <div id="skill-drafts" class="cards" style="margin-bottom:14px"></div>
           <h3 data-i18n="内置规范包" class="sec-title">内置规范包</h3>
           <div id="skill-packs" class="cards"></div>
           <h3 class="sec-title"><span data-i18n="自动沉淀的教训">自动沉淀的教训</span> <span class="tag" id="skill-count"></span></h3>
@@ -1582,6 +1586,8 @@
             <input id="mkr-search" type="search" placeholder="搜索外部插件…" data-i18n-ph="搜索外部插件…" autocomplete="off">
             <button id="mkr-search-btn" class="ghost small" title="搜索" data-i18n-title="搜索" aria-label="搜索" data-i18n-aria="搜索"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><span data-i18n="搜索">搜索</span></button>
             <select id="mkr-source" aria-label="来源" data-i18n-aria="来源"></select>
+            <button id="mkr-add-source" type="button" class="ghost small" title="添加自定义索引源（标准 marketplace.json 的 https 地址）" data-i18n-title="添加自定义索引源（标准 marketplace.json 的 https 地址）" onclick="mkrAddSource()">＋<span data-i18n="源">源</span></button>
+            <button id="mkr-del-source" type="button" class="ghost small hidden" title="删除当前选中的自定义源" data-i18n-title="删除当前选中的自定义源" onclick="mkrDelSource()"><span data-i18n="删此源">删此源</span></button>
             <button id="mkr-installed" class="ghost small" title="只看已安装的外部插件" data-i18n-title="只看已安装的外部插件" aria-pressed="false">已安装</button>
             <button id="mkr-refresh" class="ghost small" data-i18n="拉取更新">拉取更新</button>
           </div>

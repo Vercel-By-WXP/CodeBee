@@ -19,7 +19,8 @@ _READ = (
     "read_tool_output",
 )
 _WRITE = ("write_file", "edit_file", "append_file", "fs_manage",
-          "create_task", "schedule_task", "run_command", "code_map")
+          "create_task", "schedule_task", "run_command", "code_map",
+          "save_skill_draft")
 _SPECS = {name: ActionSpec(name, "green", "read") for name in _READ}
 _SPECS.update({name: ActionSpec(name, "yellow", "write", ("workspace",))
                for name in _WRITE})

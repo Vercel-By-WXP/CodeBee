@@ -2682,6 +2682,70 @@ def _direct_last_text(run):
     return ""
 
 
+def summarize_direct(task_id):
+    """对话记忆手动压缩（dsh /compact 借鉴，A4）。
+
+    直连追话默认只带上一轮输出尾部 3000 字（硬剪），多轮之后早前的决策与
+    结论全部丢失。这里把该任务历史 direct run 的输出交给编排者模型做一次
+    语义摘要，滚动存进 task.direct_summary；_run_direct 续轮提示词携带
+    「之前对话摘要」块。幂等：重复调用=重算覆盖。返回 (摘要 dict, 错误)。"""
+    try:
+        task = store.get_task(task_id)
+    except Exception:
+        task = None
+    if not task:
+        return None, "任务不存在"
+    try:
+        runs = [r for r in store.task_runs(task_id)
+                if r.get("status") == "done" and not r.get("hidden")]
+    except Exception:
+        runs = []
+    texts = []
+    for r in reversed(runs):                # 新→旧取材料
+        t = (_direct_last_text(r) or "").strip()
+        if t:
+            texts.append(t[:4000])
+        if len(texts) >= 8:
+            break
+    if not texts:
+        return None, "该任务还没有已完成的对话输出，无需压缩"
+    texts.reverse()                          # 旧→新交给模型
+    joined = "\n\n---\n\n".join(texts)
+    if len(joined) > 24000:
+        joined = joined[:24000] + "\n…（更早内容已截断）"
+    prev_summary = ""
+    if isinstance(task.get("direct_summary"), dict):
+        prev_summary = str(task["direct_summary"].get("text") or "").strip()[:4000]
+    try:
+        orch = modelhub.resolve_orchestrator()
+    except Exception:
+        orch = None
+    if not orch:
+        return None, "没有可用的编排者模型生成摘要"
+    prov, model = orch
+    prompt = (
+        "把下面这段 CodeBee 对话历史压缩成一份给 AI 助手看的记忆摘要，供下一轮"
+        "对话作为上下文使用。要求：\n"
+        "1. 保留用户的目标、约束、偏好与拍板决定（尤其是不可违反的纪律）；\n"
+        "2. 保留已完成的事项、产出文件路径与关键结论；\n"
+        "3. 保留未完成事项与下一步意向；\n"
+        "4. 丢弃寒暄、过程性输出与已被后续修正的中间态；\n"
+        "5. 用紧凑的分条 Markdown 输出，不超过 600 字；不要输出其他解释。"
+        + ("\n\n已有旧摘要（与新材料合并更新）：\n%s" % prev_summary if prev_summary else "")
+        + "\n\n## 对话历史（旧→新）\n" + joined)
+    res = modelhub.chat(prov.get("id"), model, prompt, max_tokens=1500, timeout=180)
+    text = str(res.get("text") or "").strip() if res.get("ok") else ""
+    if not text:
+        return None, res.get("error") or "摘要生成为空"
+    summary = {"text": text[:6000],
+               "updated_at": _now(),
+               "runs_covered": len(texts)}
+    ok, err = store.update_task_params(task_id, {"direct_summary": summary})
+    if not ok:
+        return None, err or "摘要写入任务失败"
+    return summary, None
+
+
 def _run_direct(run, task, agents, ev, stats, mode):
     """直连引擎：目标+附件直接交给一个执行者，跑完即止。
 
@@ -2821,6 +2885,14 @@ def _run_direct(run, task, agents, ev, stats, mode):
                            "完成后逐项核对结果。不要只输出计划，除非用户明确要求只做规划。")
             if capability_block:
                 prompt += "\n\n" + capability_block
+            # 用户级全局指令（A5，dsh DSH_AGENTS_HOME 借鉴）：data/GLOBAL.md 存在
+            # 即对直连对话每轮生效（chat 无会话记忆，逐轮携带才不会丢）。
+            try:
+                _gblk = skills.global_directives_block()
+                if _gblk:
+                    prompt += "\n\n" + _gblk
+            except Exception:
+                pass
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:
@@ -2838,6 +2910,19 @@ def _run_direct(run, task, agents, ev, stats, mode):
                     prompt += "\n\n## 上一轮输出（结尾）\n" + last_text[-3000:]
             if capability_block:
                 prompt += "\n\n" + capability_block
+            # 全局指令 + 对话摘要（A4/A5）：摘要是对话记忆的手动压缩档——
+            # 追话默认只带上一轮输出尾巴，长对话里早前决策靠这份滚动摘要找回。
+            try:
+                _gblk = skills.global_directives_block()
+                if _gblk:
+                    prompt += "\n\n" + _gblk
+            except Exception:
+                pass
+            _ds = task.get("direct_summary")
+            if isinstance(_ds, dict) and str(_ds.get("text") or "").strip():
+                prompt += ("\n\n## 之前对话摘要（人工触发的记忆压缩，更新于 %s）\n%s"
+                           % (_ds.get("updated_at") or "—",
+                              str(_ds["text"]).strip()[-4000:]))
             note = "对话续轮"
             images = None
         # 续轮判据：只有「本步执行期间新到」的消息才再开一轮。
@@ -3878,7 +3963,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             # is the stable, shrinkable context; the story bible remains a
             # separate section so retries can preserve its chapter boundaries.
             sk_lessons, kb_block = cap_block, ""
-            sk_block = "\n\n".join(p for p in (cap_block, bible) if p)
+            # 用户全局指令（A5）放技能块之前：同任务跨章字节级稳定，不打碎
+            # 供应商前缀缓存（§07 T1.3 静态头部纪律）；GLOBAL.md 改动才失效。
+            try:
+                _gblk = skills.global_directives_block()
+            except Exception:
+                _gblk = ""
+            sk_block = "\n\n".join(p for p in (_gblk, cap_block, bible) if p)
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
 

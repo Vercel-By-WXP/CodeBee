@@ -25,6 +25,9 @@ import shutil  # noqa: F401  (retained as a patch seam for MCP backend tests)
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 _LOCK = threading.RLock()
@@ -78,6 +81,7 @@ def parse_servers(text):
             return None, "MCP 服务器配置必须是对象"
         name = str(item.get("name") or "").strip()
         command = str(item.get("command") or "").strip()
+        url = str(item.get("url") or "").strip()
         if not _NAME_RE.match(name):
             return None, "服务器名 %r 只能是小写字母/数字/-/_（≤24 位）" % name[:24]
         if "__" in name:
@@ -85,8 +89,20 @@ def parse_servers(text):
         if name in names:
             return None, "MCP 服务器名 %s 重名" % name
         names.add(name)
-        if not command:
-            return None, "服务器 %s 缺 command" % name
+        headers = item.get("headers") if isinstance(item.get("headers"), dict) else {}
+        headers = {str(k): str(v) for k, v in list(headers.items())[:8]
+                   if str(k).strip() and len(str(v)) <= 500}
+        if url and command:
+            return None, "服务器 %s 的 url 与 command 只能二选一" % name
+        if not command and not url:
+            return None, "服务器 %s 缺 command（stdio）或 url（HTTP）" % name
+        if url:
+            # HTTP transport（Streamable HTTP，B9）：不落子进程，无 OS 沙箱诉求；
+            # 只收 http/https。host 不设白名单——与 stdio「用户本机自配同自主权」
+            # 同档（含 localhost 场景：本机工具起 HTTP 服务器是常态）。
+            parsed = urllib.parse.urlsplit(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                return None, "服务器 %s 的 url 必须是 http/https 且带主机" % name
         args = item.get("args") if isinstance(item.get("args"), list) else []
         args = [str(a) for a in args][:16]
         env = item.get("env") if isinstance(item.get("env"), dict) else {}
@@ -96,8 +112,8 @@ def parse_servers(text):
             disabled = []
         disabled = list(dict.fromkeys(str(x).strip()[:120] for x in disabled
                                       if str(x or "").strip()))[:200]
-        out.append({"name": name, "command": command, "args": args, "env": env,
-                    "disabled_tools": disabled})
+        out.append({"name": name, "command": command, "url": url, "args": args,
+                    "env": env, "headers": headers, "disabled_tools": disabled})
     return out, None
 
 
@@ -343,10 +359,154 @@ class _Session:
             return msg.get("result") or {}
 
 
+_HTTP_BODY_CAP = 2 * 1024 * 1024   # 单次响应体上限（防炸弹）
+
+
+class _HttpSession:
+    """Streamable HTTP 形态的 MCP 会话（B9）：每次使用做一遍
+    initialize → initialized → 请求，不保活。
+
+    与 stdio _Session 同接口（__enter__/__exit__/_request），list_tools /
+    call_tool 按 server 形态选择会话类。Windows 上 stdio 服务器因无 OS 隔离
+    后端一律拒启（_sandbox_launch 纪律），HTTP 是该平台可用的主通道：不落
+    子进程就没有进程面要隔离，边界收在「只打用户配置的 URL + 响应体上限」。
+
+    直连（不走系统代理）：localhost 服务器经代理转发必断，远端 https MCP
+    也以直连为默认口径，与探测/模型链路一致。"""
+
+    def __init__(self, server, sandbox=None, workdir=None, timeout_s=None,
+                 cancel_event=None, deadline=None):
+        self.server = server
+        self.url = str(server.get("url") or "").strip()
+        self.timeout_s = timeout_s
+        self.deadline = deadline
+        self.task_deadline = deadline
+        self.cancel_event = cancel_event
+        self.session_id = ""
+
+    def _check_interrupted(self):
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise RuntimeError("任务已取消")
+        if self.task_deadline is not None and time.monotonic() >= self.task_deadline:
+            raise RuntimeError("任务总时限已到")
+
+    def _post(self, payload, timeout):
+        headers = dict(self.server.get("headers") or {})
+        headers.update({
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        })
+        if self.session_id:
+            headers["Mcp-Session-Id"] = self.session_id
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(self.url, method="POST", headers=headers, data=data)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(req, timeout=max(0.001, float(timeout))) as resp:
+                body = resp.read(_HTTP_BODY_CAP + 1)
+                sid = resp.headers.get("Mcp-Session-Id")
+                if sid:
+                    self.session_id = str(sid)[:200]
+                ctype = str(resp.headers.get("Content-Type") or "").lower()
+                status = resp.status
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = e.read(2048).decode("utf-8", "replace")
+            except Exception:
+                pass
+            raise RuntimeError("MCP HTTP %s: %s" % (e.code, detail[:200]))
+        if len(body) > _HTTP_BODY_CAP:
+            raise RuntimeError("MCP HTTP 响应体超上限")
+        return status, ctype, body.decode("utf-8", "replace")
+
+    def _parse_payload(self, ctype, body, want_id):
+        """响应体（JSON 或 SSE 流）→ id 匹配的 JSON-RPC 消息 dict。"""
+        candidates = []
+        if "text/event-stream" in ctype:
+            for line in body.splitlines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    obj = json.loads(payload)
+                except Exception:
+                    continue
+                if isinstance(obj, dict):
+                    candidates.append(obj)
+        else:
+            try:
+                obj = json.loads(body)
+            except Exception:
+                raise RuntimeError("MCP HTTP 响应不是合法 JSON")
+            if isinstance(obj, dict):
+                candidates.append(obj)
+        for msg in candidates:
+            if msg.get("id") == want_id:
+                return msg
+        return None
+
+    def __enter__(self):
+        if self.timeout_s is not None:
+            call_deadline = time.monotonic() + max(0.0, float(self.timeout_s))
+            self.deadline = min(self.deadline, call_deadline) if self.deadline is not None else call_deadline
+        self._check_interrupted()
+        init_timeout = _INIT_TIMEOUT
+        if self.deadline is not None:
+            init_timeout = min(init_timeout, self.deadline - time.monotonic())
+            if init_timeout <= 0:
+                raise RuntimeError("MCP 任务时限已到，初始化未执行")
+        self._request("initialize", {
+            "protocolVersion": "2024-11-05", "capabilities": {},
+            "clientInfo": _CLIENT_INFO}, timeout=init_timeout, rid=1)
+        # notifications/initialized：合法响应是 202/空体；SSE 长连接场景下服务端
+        # 可能挂住连接等后续事件——超短超时把「挂住」当送达处理（会话已建立）。
+        try:
+            self._post({"jsonrpc": "2.0", "method": "notifications/initialized"},
+                       timeout=min(3.0, init_timeout))
+        except Exception:
+            pass
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def _request(self, method, params, timeout, rid=None):
+        """单请求单响应；SSE 流里按 id 匹配（其余事件丢弃）。"""
+        self._check_interrupted()
+        duration = max(0.0, float(timeout))
+        if self.deadline is not None:
+            duration = min(duration, self.deadline - time.monotonic())
+        if duration <= 0:
+            raise RuntimeError("%s 超时（任务时限已到）" % method)
+        if rid is None:
+            rid = id({})
+        status, ctype, body = self._post(
+            {"jsonrpc": "2.0", "id": rid, "method": method,
+             "params": params or {}}, duration)
+        msg = self._parse_payload(ctype, body, rid)
+        if msg is None:
+            raise RuntimeError("MCP %s 未等到 id 匹配的响应" % method)
+        if msg.get("error"):
+            raise RuntimeError("MCP %s 失败: %s" % (
+                method, json.dumps(msg["error"], ensure_ascii=False)[:200]))
+        return msg.get("result") or {}
+
+
+def _session_for(server, **kw):
+    """按服务器形态选会话类：url → HTTP；command → stdio（OS 沙箱纪律不变）。"""
+    if str(server.get("url") or "").strip():
+        return _HttpSession(server, **kw)
+    return _Session(server, **kw)
+
+
 def list_tools(server, *, sandbox=None, workdir=None):
     """发现服务器工具。返回 {"ok", "tools":[{"name","description","input_schema"}], "error"}。"""
     try:
-        with _Session(server, sandbox=sandbox, workdir=workdir) as sess:
+        with _session_for(server, sandbox=sandbox, workdir=workdir) as sess:
             res = sess._request("tools/list", {}, timeout=_INIT_TIMEOUT)
         tools = []
         for t in (res.get("tools") or [])[:16]:
@@ -367,9 +527,9 @@ def call_tool(server, tool_name, arguments, timeout_s=_CALL_TIMEOUT,
     """调用一个工具。返回 {"ok", "text", "error", "is_error"}。"""
     try:
         timeout = min(_CALL_TIMEOUT_MAX, max(0.001, float(timeout_s or _CALL_TIMEOUT)))
-        with _Session(server, sandbox=sandbox, workdir=workdir,
-                      timeout_s=timeout, cancel_event=cancel_event,
-                      deadline=deadline) as sess:
+        with _session_for(server, sandbox=sandbox, workdir=workdir,
+                          timeout_s=timeout, cancel_event=cancel_event,
+                          deadline=deadline) as sess:
             res = sess._request("tools/call",
                                 {"name": tool_name,
                                  "arguments": arguments if isinstance(arguments, dict) else {}},

@@ -2592,6 +2592,16 @@ def update_task_params(task_id, patch):
         if thresholds is not None and task.get("acceptance_thresholds") != thresholds:
             task["acceptance_thresholds"] = thresholds
             changed = True
+        # 对话记忆压缩（A4，dsh /compact 借鉴）：direct_summary 由
+        # pipeline.summarize_direct 生成（编排者模型滚动摘要），续轮提示词携带。
+        ds = patch.get("direct_summary")
+        if isinstance(ds, dict) and str(ds.get("text") or "").strip():
+            task["direct_summary"] = {
+                "text": str(ds["text"])[:6000],
+                "updated_at": str(ds.get("updated_at") or time.strftime("%Y-%m-%d %H:%M:%S"))[:19],
+                "runs_covered": int(ds.get("runs_covered") or 0),
+            }
+            changed = True
         if changed:
             from .execution_config import FIELDS
             sources = task.setdefault("configuration_sources", {})

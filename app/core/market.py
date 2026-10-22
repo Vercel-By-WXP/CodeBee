@@ -265,12 +265,14 @@ def install(pack_id):
     return install_files(pack_id, pack["name"], files)
 
 
-def install_files(pack_id, name, files, extra=None):
+def install_files(pack_id, name, files, extra=None, force_write=False):
     """通用安装入口：任意 {安装相对路径: 文本内容} 写进用户包目录并记账。
     内置市场包（install）与外部目录插件（market_remote）共用这一条落地通道，
     避让 / 安装标记 / market.json 记账 / 幂等纪律完全一致；extra 追加进记账记录
     （如外部插件的来源与版本）。
 
+    force_write=True（B6 版本升级路径）：已装包重装覆写——只覆写带本包标记的
+    目标文件（避让循环对无标记用户文件依旧让行），内容突变照走待复核纪律。
     装前静态扫描（借鉴 NVIDIA SkillSpector）：安装内容扫危险模式，风险行写进
     返回值与记账——提示不拦阻（用户仍可装），但危险必须被看见。"""
     if not files or not any(str(v).strip() for v in files.values()):
@@ -304,9 +306,12 @@ def install_files(pack_id, name, files, extra=None):
         primary = "market-%s.md" % pack_id
         target = (rec or {}).get("file") or ""
         already = bool(target and _is_market_file(udir / target, pack_id))
-        if not already:
-            # 无记录 / 记录在但文件丢了或被替换：主文件选一个不踩用户文件的目标名
-            target = primary
+        if not already or force_write:
+            # 无记录 / 记录在但文件丢了或被替换：主文件选一个不踩用户文件的
+            # 目标名；force_write 升级路径沿用原目标名（带标记的本包文件），
+            # 避免与既有避让名并存出双胞胎。
+            if not already:
+                target = primary
             n = 1
             while (udir / target).exists() and not _is_market_file(udir / target, pack_id):
                 n += 1

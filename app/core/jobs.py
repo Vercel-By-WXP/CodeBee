@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import queue
 import os
+import re
 import threading
 import time
 import traceback
@@ -770,6 +771,31 @@ AUTO_RESUME_MAX = 10
 AUTO_RESUME_DELAY_S = 300  # 自动续跑延迟入队秒数：网关限流/欠费窗口通常分钟级，
                            # 立即重排会撞在同一堵墙上把续跑次数烧光（2026-09-17 七猫实测）
 
+# 等待类失败特征（dsh「等待子任务期间不消耗目标轮次」借鉴，B8）：撞限流/额度
+# 窗口/临时拥堵属于「墙会自己挪」的失败——退避等待不该烧正式续跑预算，走
+# 独立的等待重排计数（AUTO_WAIT_RESUME_MAX），总闸仍是两边之和。
+AUTO_WAIT_RESUME_MAX = 10
+_WAIT_ERR_RE = re.compile(
+    r"429|rate.?limit|限流|速率|额度|欠费|quota|余额|拥堵|暂时不可用|"
+    r"他人在控制|423|过载|overload|熔断|稍后(?:再试|重试)|服务暂不可用",
+    re.IGNORECASE)
+
+
+def is_wait_type_error(err):
+    """失败是否属于「等待型」：退避后大概率自愈的临时墙（限流/额度窗口）。"""
+    return bool(_WAIT_ERR_RE.search(str(err or "")))
+
+
+def pool_pressure():
+    """(活跃运行数, 池上限)——create_task 等入口的并发压力提前提示（B8）。"""
+    try:
+        from . import store
+        active = sum(1 for r in store.list_runs(limit=200)
+                     if r.get("status") in ("queued", "running"))
+    except Exception:
+        active = 0
+    return active, MAX_POOL
+
 
 def _task_active_run(task_id, exclude_run_id=None):
     """该任务当前 queued/running 的运行（同任务单飞守卫用）；无则 None。"""
@@ -830,7 +856,22 @@ def _maybe_auto_resume(run_id):
             return False
         if run.get("cancelled_by_user") or run.get("status") == "cancelled":
             return False   # 用户主动取消的运行绝不自动续跑
-        if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
+        # 等待类失败（限流/额度窗口/临时拥堵，B8）不烧正式续跑预算：墙大概率
+        # 会自己挪，退避重排走独立计数；同因止损也豁免——等待的意义就是同因
+        # 再试一次。总闸（正式+等待）与各上限仍然兜底，不会无限烧钱。
+        wait_type = is_wait_type_error(run.get("error"))
+        auto_resumes = int(run.get("auto_resumes") or 0)
+        wait_resumes = int(run.get("auto_wait_resumes") or 0)
+        if auto_resumes + wait_resumes >= AUTO_RESUME_MAX + AUTO_WAIT_RESUME_MAX:
+            return False
+        if wait_type:
+            if wait_resumes >= AUTO_WAIT_RESUME_MAX:
+                store.update_run(
+                    run_id,
+                    error=(run.get("error") or "")
+                    + "｜等待类自动续跑次数已用完（限流/额度窗口持续未恢复）")
+                return False
+        elif auto_resumes >= AUTO_RESUME_MAX:
             # 上限烧完不再续跑。但「任务总时限已到」+本轮有进章时，错误行必须
             # 带上进度与续跑方式——不然执行结果卡只写「任务总时限已到」，读起来
             # 像白跑（2026-09-25 续2 案：用户看到 64/64 步+超时以为续跑没生效）。
@@ -848,7 +889,9 @@ def _maybe_auto_resume(run_id):
                     pass
             return False
         prev_id = run.get("auto_resumed_from")
-        if prev_id:
+        if prev_id and not wait_type:
+            # 同因止损对等待类豁免（B8）：限流窗口里同因重试正是等待的语义，
+            # 由 AUTO_WAIT_RESUME_MAX 与总闸兜底；非等待类维持原止损。
             prev = store.get_run(prev_id)
             sig_now = _err_signature(run.get("error"))
             timeout_progressed = (run.get("status") == "timeout"
@@ -870,8 +913,14 @@ def _maybe_auto_resume(run_id):
         import time as _t
         resume_at = _t.strftime("%Y-%m-%d %H:%M:%S",
                                 _t.localtime(_t.time() + AUTO_RESUME_DELAY_S))
-        store.update_run(new_run["id"], auto_resumes=int(run.get("auto_resumes") or 0) + 1,
-                         auto_resumed_from=run_id, resume_enqueue_at=resume_at)
+        new_counters = {"auto_resumed_from": run_id, "resume_enqueue_at": resume_at}
+        if wait_type:
+            new_counters["auto_resumes"] = auto_resumes
+            new_counters["auto_wait_resumes"] = wait_resumes + 1
+        else:
+            new_counters["auto_resumes"] = auto_resumes + 1
+            new_counters["auto_wait_resumes"] = wait_resumes
+        store.update_run(new_run["id"], **new_counters)
 
         _schedule_enqueue({"kind": "orchestration", "run_id": new_run["id"],
                            "task_id": task["id"]}, AUTO_RESUME_DELAY_S)
@@ -930,13 +979,16 @@ def resume_interrupted(limit=3):
             task = store.get_task(run["task_id"])
             if not task or not task.get("serial"):
                 continue
-            if int(run.get("auto_resumes") or 0) >= AUTO_RESUME_MAX:
+            if int(run.get("auto_resumes") or 0) + int(run.get("auto_wait_resumes") or 0) \
+                    >= AUTO_RESUME_MAX + AUTO_WAIT_RESUME_MAX:
                 continue
             ok, err, new_run = store.retry_task(task["id"])
             if not ok or not new_run:
                 continue
+            # 启动恢复沿用 B8 分账：等待类计数器原样继承，正式计数 +1
             store.update_run(new_run["id"],
                              auto_resumes=int(run.get("auto_resumes") or 0) + 1,
+                             auto_wait_resumes=int(run.get("auto_wait_resumes") or 0),
                              auto_resumed_from=run["id"])
             try:
                 enqueue({"kind": "orchestration", "run_id": new_run["id"],

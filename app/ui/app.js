@@ -1694,6 +1694,87 @@ function esc(s) {
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* 密钥形态识别（A1，dsh 0.2.1「已发送消息密钥默认脱敏按需查看」借鉴）。
+ * 与后端 redact._KEY_PATTERNS 同族，但只收「高置信前缀形态」——裸 40 位
+ * hex（git sha1）在日志里大量合法出现，不进显示侧名单。 */
+const SECRET_MATCHERS = [
+  /\bsk-[A-Za-z0-9_-]{8,}/g,
+  /\bghp_[A-Za-z0-9]{16,}/g, /\bgho_[A-Za-z0-9]{16,}/g, /\bghu_[A-Za-z0-9]{16,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bxox[bpars]-[A-Za-z0-9-]{10,}/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\beyJ[A-Za-z0-9_-]{16,}\.eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{8,}\b/g,
+  /(?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|secret[_-]?key|password|passwd|pwd)["']?\s*[:=，：]\s*["']?[A-Za-z0-9._~+/=-]{16,}/gi,
+];
+
+/* DOM 后处理：遍历文本节点，命中密钥形态的片段换成 .sec-mask（默认打码，
+ * 点击切换明暗）。放在 innerHTML 之后跑，覆盖用户气泡/助手正文/思考块/
+ * CLI 日志 pre 全部表面——渲染器（markdown-lite/纯转义）不用各自改。 */
+function maskSecretsInDOM(root) {
+  if (!root || !root.createTreeWalker) return;
+  const hits = [];
+  try {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const v = node.nodeValue;
+        if (!v || v.length < 8) return NodeFilter.FILTER_REJECT;
+        const p = node.parentNode;
+        if (!p || /^(script|style|textarea|input)$/i.test(p.nodeName)) return NodeFilter.FILTER_REJECT;
+        if (p.closest && (p.closest(".sec-mask") || p.closest("[data-no-secmask]"))) return NodeFilter.FILTER_REJECT;
+        return SECRET_MATCHERS.some((re) => { re.lastIndex = 0; return re.test(v); })
+          ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    let n;
+    while ((n = walker.nextNode())) hits.push(n);
+  } catch (e) { return; }
+  hits.forEach((node) => {
+    const text = node.nodeValue;
+    const found = [];
+    SECRET_MATCHERS.forEach((re) => {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(text)) && m[0]) found.push([m.index, m.index + m[0].length]);
+    });
+    if (!found.length) return;
+    found.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    found.forEach(([s, e]) => {
+      if (!merged.length || s > merged[merged.length - 1][1]) merged.push([s, e]);
+    });
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    merged.forEach(([s, e]) => {
+      if (s > last) frag.appendChild(document.createTextNode(text.slice(last, s)));
+      const span = document.createElement("span");
+      span.className = "sec-mask";
+      try { span.dataset.sec = btoa(unescape(encodeURIComponent(text.slice(s, e)))); }
+      catch (err) { span.dataset.sec = ""; }
+      span.textContent = "•••" + t("密钥") + "•••";
+      frag.appendChild(span);
+      last = e;
+    });
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    if (node.parentNode) node.parentNode.replaceChild(frag, node);
+  });
+}
+
+/* 打码片段点击切换明暗（事件委托：时间线整块重建不丢监听）。 */
+document.addEventListener("click", (e) => {
+  const el = e.target.closest ? e.target.closest(".sec-mask") : null;
+  if (!el) return;
+  if (el.classList.toggle("revealed")) {
+    let plain = "";
+    try { plain = decodeURIComponent(escape(atob(el.dataset.sec || ""))); } catch (err) { plain = ""; }
+    el.dataset.masked = el.textContent;
+    el.textContent = plain || "?";
+    el.title = t("点击隐藏");
+  } else {
+    el.textContent = el.dataset.masked || ("•••" + t("密钥") + "•••");
+    el.title = t("已打码；点击查看明文");
+  }
+});
+
 /* 内联 onclick 里的字符串字面量转义。esc 不够用：它把 ' 编成 &#39;，浏览器
  * 解码属性值后 JS 仍看到一个裸引号，用户自建标签含撇号就会截断字面量
  * （语法错误或参数错位）。这里先做 HTML 属性转义再叠 JS 反斜杠转义。 */
@@ -12182,6 +12263,29 @@ function chatCleanText(raw) {
     .trim();
 }
 
+/* 对话记忆手动压缩（A4，dsh /compact 借鉴）：把当前对话任务的历史输出交给
+ * 编排者模型滚动摘要，之后的续轮自动携带「之前对话摘要」块——长对话里
+ * 早前的决策不再只剩「上一轮输出尾部 3000 字」。 */
+async function chatSummarizeDirect() {
+  const run = S.lastRun || {};
+  const taskId = run.task_id;
+  if (!taskId) return toast(t("当前对话没有任务归属，无法总结"));
+  const btn = $("rd-chat-summarize");
+  if (btn) { btn.disabled = true; }
+  try {
+    const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/direct-summary", {
+      method: "POST", body: {} });
+    if (data && data.ok && data.summary)
+      toast(t("已生成对话摘要（{0} 字，覆盖 {1} 轮），续轮自动携带",
+        String(data.summary.text || "").length, String(data.summary.runs_covered || 0)));
+    else toast(t("摘要生成失败"));
+  } catch (e) {
+    toast(t("摘要生成失败：") + (e.message || ""));
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
 /* 评审裁定 JSON 原文 → 人读短摘要（multi=true 多行版，供对话气泡）。
  * 后端已把新 run 的步骤 summary 落成摘要（runner_parsing.verdict_brief），
  * 但历史 run 的 summary/对话 output 已按 ```json 原文落盘，前端同样兜底。
@@ -12966,6 +13070,10 @@ function drawChatFlow(run, data, active) {
     return String(p).split(/[\\/]/).pop() || ""; };
   chatTimelineItems = items;   // 复制/编辑重发按索引回查（见 rd-chat-flow 委托）
   renderChatContext(chatEngineIsDirect(run));
+  {   // 「总结对话」只对有任务归属的对话引擎亮出（A4）
+    const sumBtn = $("rd-chat-summarize");
+    if (sumBtn) sumBtn.classList.toggle("hidden", !chatEngineIsDirect(run));
+  }
   renderChatQueue(items, run);
   let html = items.map((it, idx) => {
     if (it.kind === "user") {
@@ -13088,6 +13196,7 @@ function drawChatFlow(run, data, active) {
     : true;
   const thinkTop = prevThink ? prevThink.scrollTop : 0;
   flow.innerHTML = html || '<div class="hint">' + esc(t("还没有对话内容")) + "</div>";
+  maskSecretsInDOM(flow);   // 密钥默认打码（A1）：所有气泡/日志表面统一后处理
   flow.querySelectorAll("[data-chat-activity-list]").forEach(list => {
     const prev = activityScroll.get(list.dataset.chatActivityList);
     if (prev) list.scrollTop = prev.pin ? list.scrollHeight : prev.top;
@@ -15922,8 +16031,48 @@ async function loadSkills() {
   try {
     S.skills = await api("/api/skills");
   } catch (e) { S.skills = null; }
+  loadSkillDrafts();
   loadAgentSkills();
   renderSkills();
+}
+
+/* 技能草稿（B7，dsh「让 Agent 创建插件·保留草稿」借鉴）：Agent 在对话中经
+ * save_skill_draft 沉淀到 drafts/，默认不生效；此处审核启用（promote 后走
+ * 与用户自建包完全相同的注入/安检链）或丢弃。 */
+async function loadSkillDrafts() {
+  try {
+    const data = await api("/api/skillpacks/drafts", { method: "POST", body: JSON.stringify({ action: "list" }) });
+    S.skillDrafts = Array.isArray(data && data.drafts) ? data.drafts : [];
+  } catch (e) { S.skillDrafts = []; }
+  renderSkillDrafts();
+}
+
+function renderSkillDrafts() {
+  const box = $("skill-drafts");
+  if (!box) return;
+  const drafts = S.skillDrafts || [];
+  box.innerHTML = drafts.map((d) =>
+    '<div class="card"><div class="head">' +
+    '<span class="name">📝 ' + esc(d.name) + "</span>" +
+    '<span class="tag">' + esc((d.scopes || []).join(" / ") || t("全部流程")) + "</span>" +
+    '<span class="tag">' + t("草稿") + "</span></div>" +
+    (d.note ? '<div class="note">' + esc(d.note) + "</div>" : "") +
+    '<div class="facts">' + t("正文 ") + "<b>" + (d.chars || 0) + "</b>" + t(" 字 · 更新于 ") + esc(d.updated_at || "") + "</div>" +
+    '<div class="ops">' +
+    '<button class="ghost small" onclick="skillDraftOp(\'' + esc(d.file) + '\', \'promote\')">' + t("审阅通过，启用") + "</button>" +
+    '<button class="danger small" onclick="skillDraftOp(\'' + esc(d.file) + '\', \'discard\')">' + t("丢弃") + "</button>" +
+    "</div></div>").join("")
+    || '<div class="empty">' + t("暂无草稿——在对话里让智能体「把这条方法论存成技能」即可在此出现。") + "</div>";
+}
+
+async function skillDraftOp(file, action) {
+  if (action === "discard" && !await uiConfirm(t("丢弃这份技能草稿？"), { ok: t("丢弃"), danger: true })) return;
+  if (action === "promote" && !await uiConfirm(t("启用后该草稿将成为经验包，按适用流程自动注入后续任务。确认审阅通过？"), { ok: t("启用") })) return;
+  try {
+    const data = await api("/api/skillpacks/drafts", { method: "POST", body: JSON.stringify({ action, file }) });
+    toast(action === "promote" ? t("已启用经验包：") + esc(data.enabled || "") : t("已丢弃草稿"));
+  } catch (e) { toast(e.message, true); return; }
+  loadSkills();   // 级联刷新草稿区 + 经验包区（promote 后包立即出现在上方列表）
 }
 
 function renderSkills() {
@@ -18776,7 +18925,13 @@ async function mkrLoadPage(reset) {
 
 function mkrCardHtml(p) {
   let ops;
-  if (p.installed) ops = '<span class="tag ok">' + t("已安装") + "</span>" +
+  if (p.installed) ops = '<span class="tag ok">' + t("已安装") +
+      (p.installed_version ? " v" + esc(p.installed_version) : "") + "</span>" +
+    (p.update_available
+      ? '<button class="ghost small" onclick="mkrUpdate(\'' + esc(p.id) + '\', \'' + esc(p.version || "") + '\')" title="' +
+        esc(t("目录已有 v") + (p.version || "?") + t("；重装覆写（仅本包标记文件），内容变化会提示核对")) + '">' +
+        t("更新到 v") + esc(p.version || "?") + "</button>"
+      : "") +
     '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
   else if (p.compat === "blocked") ops = '<button class="ghost small" disabled title="' +
     esc(p.block_reason || t("该插件无法从公开生态下载")) + '">' + t("不适配") + "</button>";
@@ -18811,13 +18966,16 @@ function renderMarketRemote() {
     mkCount("");
     return;
   }
-  // 来源下拉：首次填充，之后保留用户选择（计数是目录全量，不是本页）
+  // 来源下拉：首次填充，之后保留用户选择（计数是目录全量，不是本页）；
+  // 自定义源在条目名前加「自定义·」标注（B6）
   const srcSel = $("mkr-source");
   if (srcSel && !srcSel.options.length) {
     srcSel.innerHTML = '<option value="">' + t("全部来源") + "</option>" +
       (data.sources || []).map((s) =>
-        '<option value="' + esc(s.id) + '">' + esc(t(s.name)) + t("（") + s.count + t("）") + "</option>").join("");
+        '<option value="' + esc(s.id) + '">' + (s.custom ? t("自定义·") : "") +
+        esc(t(s.name)) + t("（") + s.count + t("）") + "</option>").join("");
   }
+  mkrSyncSourceButtons();
   const times = (data.sources || []).map((s) => s.fetched_at).filter(Boolean);
   const meta = $("mkr-meta");
   if (meta) meta.textContent = times.length ? t("目录更新于 ") + times.join(" / ") : "";
@@ -18861,6 +19019,64 @@ function mkrBindSentinel() {
     if (S.mkrLoading || !S.marketRemote || !S.marketRemote.has_more) return;
     mkrLoadPage(false);
   }, { root: document.querySelector("main"), rootMargin: "400px" }).observe(sentinel);
+}
+
+/* 已装插件更新（B6，dsh「安装结果显示实际版本」借鉴）：直接 force 重装
+ * （服务端仍走下载+剥离式检查+内容突变对账），不像新装那样走预览弹框。 */
+async function mkrUpdate(id, ver) {
+  if (!await uiConfirm(t("重装该插件到目录当前版本？只覆写带本包标记的文件；内容有变化会停用待复核。"), { ok: t("更新") })) return;
+  let r;
+  try {
+    r = await api("/api/market/remote/install", { method: "POST",
+      body: JSON.stringify({ id, force: true }), timeout: 180000 });
+  } catch (e) { toast(e.message, true); return; }
+  toast(t("已更新到 v") + (ver || (r && r.version) || "?"));
+  (r && r.warnings || []).forEach((w) => toast(w, true));
+  mkrLoadPage(true);
+}
+
+/* 自定义索引源管理（B6，dsh「自定义插件索引源」借鉴）：标准 marketplace.json
+ * 的 https 直链；添加后与内置源同权参与「拉取更新」。 */
+async function mkrAddSource() {
+  const url = await uiPrompt(t("输入自定义源的 marketplace.json 地址（https）"), "");
+  if (!url || !url.trim()) return;
+  try {
+    await api("/api/market/remote/sources", { method: "POST",
+      body: JSON.stringify({ action: "add", url: url.trim() }) });
+  } catch (e) { toast(e.message, true); return; }
+  toast(t("已添加自定义源；点「拉取更新」抓取目录"));
+  const srcSel = $("mkr-source");
+  if (srcSel) srcSel.innerHTML = "";   // 触发下拉重建
+  mkrRefreshSourcesOnly();
+}
+
+async function mkrDelSource() {
+  const srcSel = $("mkr-source");
+  const sid = srcSel ? srcSel.value : "";
+  if (!sid) return;
+  if (!await uiConfirm(t("删除自定义源？已装插件不受影响。"), { ok: t("删除"), danger: true })) return;
+  try {
+    await api("/api/market/remote/sources", { method: "POST",
+      body: JSON.stringify({ action: "remove", id: sid }) });
+  } catch (e) { toast(e.message, true); return; }
+  toast(t("已删除自定义源"));
+  const sel = $("mkr-source");
+  if (sel) { sel.innerHTML = ""; sel.value = ""; }
+  mkrRefreshSourcesOnly();
+}
+
+/* 源管理后的轻量刷新：重拉目录页并按选中项切换「删此源」按钮可见性。 */
+function mkrRefreshSourcesOnly() {
+  mkrLoadPage(true);
+  mkrSyncSourceButtons();
+}
+
+function mkrSyncSourceButtons() {
+  const srcSel = $("mkr-source"), del = $("mkr-del-source");
+  if (!srcSel || !del) return;
+  const sid = srcSel.value || "";
+  const known = ((S.marketRemote || {}).sources || []).find((s) => s.id === sid);
+  del.classList.toggle("hidden", !(known && known.custom));
 }
 
 async function mkrRefresh() {
@@ -23106,7 +23322,7 @@ document.addEventListener("DOMContentLoaded", () => {
     clearTimeout(mkrDebounce._t);
     mkrLoadPage(true);
   });
-  $("mkr-source").addEventListener("change", () => mkrLoadPage(true));
+  $("mkr-source").addEventListener("change", () => { mkrLoadPage(true); mkrSyncSourceButtons(); });
   $("mkr-installed").addEventListener("click", () => {
     S.mkrInst = !S.mkrInst;
     mkrLoadPage(true);

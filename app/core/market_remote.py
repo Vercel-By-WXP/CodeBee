@@ -38,9 +38,146 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import atomic, market, tlsctx
+from . import atomic, market, paths, tlsctx
 
 _LOCK = market._LOCK   # 安装/记账与 market 共用一把锁，避免交叉写 market.json
+
+
+# ---------------------------------------------------------------- 自定义索引源（B6）
+
+def _custom_sources_file():
+    return paths.DATA_DIR / "market_custom_sources.json"
+
+
+def custom_sources():
+    """用户自配的 marketplace.json 索引源（dsh「自定义插件索引源」借鉴）。
+
+    只收标准 marketplace 清单 URL（kind=marketplace）；存量内置源之外按需
+    添加/删除，与 SOURCES 同权参与拉取/目录/安装。"""
+    try:
+        arr = json.loads(_custom_sources_file().read_text(encoding="utf-8"))
+        return [s for s in arr if isinstance(s, dict) and s.get("id") and s.get("url")] \
+            if isinstance(arr, list) else []
+    except Exception:
+        return []
+
+
+def _save_custom_sources(arr):
+    atomic.write_json(_custom_sources_file(), arr, mode=0o600)
+
+
+def add_custom_source(name, url):
+    """登记一个自定义源。返回 (源 dict, 错误)。"""
+    url = str(url or "").strip()
+    name = str(name or "").strip()[:40] or "自定义源"
+    if not url:
+        return None, "url 不能为空"
+    try:
+        assert_public_url(url)
+    except Exception as e:
+        return None, "url 校验未通过：%s" % e
+    with _LOCK:
+        arr = custom_sources()
+        if any(s["url"] == url for s in arr):
+            return None, "该 url 已登记为自定义源"
+        sid = "custom-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:8]
+        if any(s["id"] == sid for s in arr) or any(s["id"] == sid for s in SOURCES):
+            sid += "-%d" % len(arr)
+        entry = {"id": sid, "name": name, "url": url,
+                 "added_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+        arr.append(entry)
+        _save_custom_sources(arr)
+        return entry, None
+
+
+def remove_custom_source(source_id):
+    """删除一个自定义源（缓存目录一并清掉；已装插件不受影响）。"""
+    sid = str(source_id or "").strip()
+    with _LOCK:
+        arr = custom_sources()
+        rest = [s for s in arr if s.get("id") != sid]
+        if len(rest) == len(arr):
+            return False, "没有这个自定义源: %s" % sid
+        _save_custom_sources(rest)
+    try:
+        cache = _cache_file(sid)
+        if cache.is_file():
+            cache.unlink()
+    except OSError:
+        pass
+    return True, None
+
+
+def _all_sources():
+    """内置 + 自定义源统一视图（自定义源全部按 marketplace 清单解析）。"""
+    out = list(SOURCES)
+    for s in custom_sources():
+        out.append({"id": s["id"], "name": s["name"], "kind": "marketplace",
+                    "urls": [s["url"]], "custom": True})
+    return out
+
+
+# ---------------------------------------------------------------- 版本兼容（B6）
+
+def _app_version_tuple():
+    """当前 CodeBee 版本（VERSION 文件，点分数字）。读不到返回 None（不诬指）。"""
+    for cand in (paths.APP_DIR.parent / "VERSION", paths.APP_DIR / "VERSION"):
+        try:
+            txt = cand.read_text(encoding="utf-8", errors="replace").strip()
+            parts = tuple(int(x) for x in txt.split(".") if x.strip().isdigit())
+            if parts:
+                return parts
+        except Exception:
+            continue
+    return None
+
+
+def _ver_tuple(v):
+    out = []
+    for x in str(v or "").strip().split("."):
+        digits = "".join(ch for ch in x if ch.isdigit())
+        out.append(int(digits) if digits else 0)
+    return tuple(out) or (0,)
+
+
+def engines_compatible(engines, current=None):
+    """engines 声明（如 {"codebee": ">=0.1.100"}）对当前版本是否兼容。
+
+    返回 None=兼容/未声明；不兼容时返回人类可读原因。只认 codebee/tutti
+    两个键（生态清单可能两键都写）。语法支持 >=、>、<=、<、=、^、~ 与裸版本；
+    解析不了的声明不作壁（宽进：宁可多显示不可误杀）。"""
+    if not isinstance(engines, dict):
+        return None
+    declared = ""
+    for key in ("codebee", "tutti"):
+        v = str(engines.get(key) or "").strip()
+        if v:
+            declared = v
+            break
+    if not declared:
+        return None
+    ver = current if current is not None else _app_version_tuple()
+    if not ver:
+        return None   # 版本读不到：不按声明拦
+    spec = declared.strip()
+    op = ">=" if spec.startswith(">=") else ">" if spec.startswith(">") \
+        else "<=" if spec.startswith("<=") else "<" if spec.startswith("<") \
+        else "^" if spec.startswith("^") else "~" if spec.startswith("~") \
+        else "=" if spec.startswith("=") else ""
+    target = _ver_tuple(spec[len(op):] if op else spec)
+    if op in (">=", ">", "<=", "<", "="):
+        ok = {">=": ver >= target, ">": ver > target,
+              "<=": ver <= target, "<": ver < target, "=": ver == target}[op]
+    elif op == "^":
+        ok = ver[:1] == target[:1] and ver >= target
+    elif op == "~":
+        ok = ver[:2] == target[:2] and ver >= target
+    else:
+        ok = ver >= target    # 裸版本按「至少需要」处理
+    if ok:
+        return None
+    return "声明仅支持 CodeBee %s（当前 %s）" % (
+        declared, ".".join(str(x) for x in ver))
 
 # ---------------------------------------------------------------- 目录来源
 
@@ -289,6 +426,8 @@ def _normalize(source_meta, entry):
         "source_id": source_meta["id"],
         "source_name": source_meta["name"],
         "install": install,
+        # engines 兼容声明（B6，dsh engines.dsh 借鉴）：目录阶段预判，安装阶段复判
+        "engines": entry.get("engines") if isinstance(entry.get("engines"), dict) else {},
     }
 
 
@@ -311,10 +450,15 @@ _CMD_WORDS = {"commands", "slash-commands", "hooks", "mcp", "scripts"}
 
 def _compat_block(entry):
     """返回 None=预检通过，或不适配原因字符串。
+
     剥离式安装后，脚本/钩子/MCP 组件在安装时自动剔除，不再作为灰显依据——
-    只有来源类型本身不支持（无法下载）才预灰显。"""
+    只有来源类型本身不支持（无法下载）才预灰显。engines 声明不满足当前
+    版本的也在此预灰显（B6）。"""
     if entry["install"]["kind"] == "unsupported":
         return "来源类型不支持（仅支持 zip 直链、git 子目录与 ClawHub）"
+    reason = engines_compatible(entry.get("engines"))
+    if reason:
+        return reason
     return None
 
 
@@ -335,14 +479,15 @@ def _load_cache():
 
 
 def _entries_from_cache(cache=None):
-    """缓存清单 → 统一条目列表（附 installed / compat）。"""
+    """缓存清单 → 统一条目列表（附 installed / compat / 版本可见性）。"""
     cache = cache if cache is not None else _load_cache()
-    src_meta = {s["id"]: s for s in SOURCES}
+    all_sources = _all_sources()
+    src_meta = {s["id"]: s for s in all_sources}
     installed = market.installed_ids()
     # 信任卡：已装包的安检摘要（真注册表，非 id 集合）
     registry = market._load_registry().get("installed") or {}
     entries = []
-    for sid in [s["id"] for s in SOURCES]:
+    for sid in [s["id"] for s in all_sources]:
         c = cache.get(sid)
         if not c:
             continue
@@ -356,6 +501,15 @@ def _entries_from_cache(cache=None):
             e["installed"] = e["id"] in installed
             e["installable"] = e["compat"] == "ok"
             e["scan_note"] = str((registry.get(e["id"]) or {}).get("scan") or "")
+            # 版本可见性（B6，dsh「安装结果显示实际安装版本」借鉴）：已装版本
+            # 与目录版本并排展示；不一致亮「有新版本」，由用户决定重装升级
+            # （重装即取目录当前版本；git 源可带 ref 钉住精确版本）。
+            installed_version = str(((registry.get(e["id"]) or {}).get("remote") or {})
+                                    .get("version") or "")
+            e["installed_version"] = installed_version
+            e["update_available"] = bool(
+                e["installed"] and installed_version
+                and e["version"] and installed_version != e["version"])
             entries.append(e)
     entries.sort(key=lambda x: (x["source_id"], x["name"].lower()))
     return entries
@@ -371,10 +525,11 @@ def view(offset=0, limit=_PAGE_LIMIT, source=None, q=None, installed=None):
     cache = _load_cache()
     entries = _entries_from_cache(cache)
     sources = []
-    for s in SOURCES:
+    for s in _all_sources():
         c = cache.get(s["id"]) or {}
         sources.append({"id": s["id"], "name": s["name"],
                         "fetched_at": c.get("fetched_at") or "",
+                        "custom": bool(s.get("custom")),
                         "count": len((c.get("catalog") or {}).get("plugins") or [])})
     cats = []
     for e in entries:
@@ -497,9 +652,9 @@ def _fetch_cocoloop_catalog():
 
 
 def refresh(source_id=None):
-    """拉取目录清单（全部或指定来源），成功即写缓存。返回 view()。"""
+    """拉取目录清单（全部或指定来源，含自定义源），成功即写缓存。返回 view()。"""
     results = []
-    for s in SOURCES:
+    for s in _all_sources():
         if source_id and s["id"] != source_id:
             continue
         err, raw, used = None, None, ""
@@ -1105,13 +1260,21 @@ def preview_remote(entry_id):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def install_remote(entry_id, token=""):
+def install_remote(entry_id, token="", ref="", force=False):
     """安装外部目录插件：下载 → 纯技能检查 → 转换 → 复用 market 安装通道。
     token 非空且命中预览缓存时直接安装那份已检内容（不重复下载）；token
-    一次性（装成功即焚，防重放）。返回 (结果 dict, 错误)。"""
+    一次性（装成功即焚，防重放）。ref 非空时钉住 git 源的精确版本
+    （dsh「精确版本安装」借鉴，B6）——目录默认装 HEAD，版本漂移场景用它
+    锁旧版。force=True 重装覆写（版本升级路径：只覆写带本包标记的文件，
+    内容突变照走待复核纪律）。返回 (结果 dict, 错误)。"""
     entry, err = _resolve_entry(entry_id)
     if err:
         return None, err
+    if ref and not token:
+        if entry["install"]["kind"] != "git":
+            return None, "仅 git 子目录来源支持 ref 钉版本"
+        entry = dict(entry)
+        entry["install"] = dict(entry["install"], ref=str(ref)[:200])
     cached = None
     if token:
         _preview_purge()
@@ -1137,7 +1300,7 @@ def install_remote(entry_id, token=""):
         "trust": "unverified",
         "remote": {"source": entry["source_id"], "name": entry["name"],
                    "version": entry["version"], "homepage": entry["homepage"]},
-    })
+    }, force_write=bool(force))
     if err:
         return None, err
     if cached:

@@ -1985,6 +1985,14 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if not ok:
                 return self._json(404, {"error": "操作不存在或状态无效"})
             return self._json(200, {"ok": True, "operation": operations.get(m.group(1))})
+        m = re.match(r"^/api/tasks/([^/]+)/direct-summary$", path)
+        if m:
+            # 对话记忆手动压缩（A4，dsh /compact 借鉴）：编排者模型把该任务历史
+            # direct 输出滚动摘要进 task.direct_summary，续轮提示词携带。
+            from core import pipeline as pipeline_mod
+            res, err = pipeline_mod.summarize_direct(m.group(1))
+            return self._json(400, {"error": err}) if err \
+                else self._json(200, {"ok": True, "summary": res})
         m = re.match(r"^/api/tasks/([^/]+)/(archive|delete|retry|rename|continue|early-finish|params)$", path)
         if m:
             if m.group(2) == "archive":
@@ -2649,6 +2657,23 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "file": None, "count": 0,
                                         "note": "no eligible lessons"})
             return self._json(200, {"ok": True, "file": fname, "count": n})
+        if path == "/api/skillpacks/drafts":
+            # 技能草稿管理（B7，dsh「让 Agent 创建插件·保留草稿」借鉴）：
+            # Agent 对话中经 save_skill_draft 工具落 drafts/，此处 list/promote/discard。
+            from core import skills
+            body = self._body()
+            action = str(body.get("action") or "").strip()
+            if action in ("", "list"):
+                return self._json(200, {"ok": True, "drafts": skills.list_drafts()})
+            if action == "promote":
+                name, err = skills.promote_draft(body.get("file") or "")
+                return self._json(400, {"error": err}) if err \
+                    else self._json(200, {"ok": True, "enabled": name})
+            if action == "discard":
+                ok, err = skills.discard_draft(body.get("file") or "")
+                return self._json(400, {"error": err}) if err \
+                    else self._json(200, {"ok": True})
+            return self._json(400, {"error": "action 需要是 list/promote/discard"})
         if path == "/api/agent-skills/import":
             # 本地导入开源 Agent Skills（文件夹或 .zip，可一次多技能）：解包/
             # 类型白名单/可执行件剥离走 market_remote 同款安全件，装前静态安检，
@@ -3038,6 +3063,24 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._json(200, zentao.fetch_users())
         # 外部目录路由必须在通配的 market/<id>/(install|remove) 之前——
         # 否则 "remote" 会被当成包名吞掉
+        if path == "/api/market/remote/sources":
+            # 自定义索引源管理（B6，dsh「自定义插件索引源」借鉴）：标准
+            # marketplace.json 清单 URL 按需增删，与内置源同权参与拉取/安装。
+            body = self._body()
+            action = str(body.get("action") or "").strip()
+            if action in ("", "list"):
+                return self._json(200, {"ok": True,
+                                        "sources": market_remote.custom_sources()})
+            if action == "add":
+                src, err = market_remote.add_custom_source(
+                    body.get("name") or "", body.get("url") or "")
+                return self._json(400, {"error": err}) if err \
+                    else self._json(200, {"ok": True, "source": src})
+            if action == "remove":
+                ok, err = market_remote.remove_custom_source(body.get("id") or "")
+                return self._json(400, {"error": err}) if err \
+                    else self._json(200, {"ok": True})
+            return self._json(400, {"error": "action 需要是 list/add/remove"})
         if path == "/api/market/remote/refresh":
             return self._json(200, market_remote.refresh((self._body() or {}).get("source")))
         if path == "/api/market/remote/preview":
@@ -3046,9 +3089,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._json(400, {"error": err}) if err else self._json(200, res)
         m = re.match(r"^/api/market/remote/install$", path)
         if m:
-            body = self._body() or {}
+            body = self._body()
             res, err = market_remote.install_remote(body.get("id") or "",
-                                                     body.get("token") or "")
+                                                     body.get("token") or "",
+                                                     body.get("ref") or "",
+                                                     bool(body.get("force")))
             return self._json(400, {"error": err}) if err else self._json(200, res)
         m = re.match(r"^/api/market/([^/]+)/(install|remove)$", path)
         if m:

@@ -37,6 +37,20 @@ def _user_pack_dir():
     """用户自建包目录：每次现取 paths.DATA_DIR（测试重定向后自动跟随）。"""
     return paths.DATA_DIR / "skillpacks"
 
+
+def _draft_dir():
+    """Agent 起草的技能草稿目录（dsh「让 Agent 创建插件·保留草稿」借鉴）。
+
+    data/skillpacks/drafts/ 子目录不在 _list_user_pack_files 的顶层 *.md 扫描
+    范围内：草稿天然不参与注入，用户在知识库面板逐份审核启用（promote 提升
+    到顶层即成为正常用户包，走既有 skill_scan 安检链）。"""
+    return paths.DATA_DIR / "skillpacks" / "drafts"
+
+
+DRAFT_NAME_MAX = 24          # 草稿显示名上限
+DRAFT_BODY_MAX_CHARS = 20000  # 草稿正面上限（防一次写入把经验库撑爆）
+GLOBAL_DIRECTIVES_MAX_CHARS = 8192  # 用户级全局指令上限（data/GLOBAL.md）
+
 MAX_INJECT_CHARS = 9000      # 单次注入上限（防止提示词爆炸；四源扫榜平台包并存后上调）
 MAX_LESSONS_INJECT = 8       # 注入的自动教训条数上限
 WILDCARD_PACK_CHAR_CAP = 2400  # wildcard（scope=*）包单包注入预算：市场通配技能动辄数万字，全文注入会挤掉项目教训
@@ -237,6 +251,189 @@ def user_packs():
         if pack:
             out.append(pack)
     return out
+
+
+# ---------------------------------------------------------------- 技能草稿（B7）
+# 对话里由 Agent 沉淀、默认不生效的经验包草稿。启用 = promote 到顶层目录。
+
+_DRAFT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+
+
+def _draft_slug(name):
+    """显示名 → 文件名 slug：ASCII 安全字符直接用；含非 ASCII（中文居多）用
+    draft-<hash8> 兜底——slug 只作文件名身份，显示名走 frontmatter。"""
+    s = re.sub(r"\s+", "-", str(name or "").strip().lower())
+    s = re.sub(r"[^a-z0-9_-]", "", s).strip("-")
+    if _DRAFT_SLUG_RE.match(s or ""):
+        return s
+    return "draft-" + hashlib.sha256(str(name or "").encode("utf-8")).hexdigest()[:8]
+
+
+def _draft_frontmatter(name, scopes, note, persona):
+    # scopes 用 YAML 列表行（- 项）——_parse_frontmatter 只认这种列表形态，
+    # 内联 [a, b] 会被当整串解析（解析面与写片面必须同构）。
+    lines = ["---", "name: %s" % name, "source: agent-draft"]
+    if scopes:
+        lines.append("scopes:")
+        lines.extend("  - %s" % s for s in scopes)
+    else:
+        lines.append("scopes:")
+        lines.append("  - '*'")
+    if persona:
+        lines.append("persona: %s" % str(persona).replace("\n", " ")[:200])
+    if note:
+        lines.append("note: %s" % str(note).replace("\n", " ")[:200])
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def save_draft(name, body, scopes=None, note="", persona=""):
+    """保存一份技能草稿。返回 (草稿信息 dict, 错误)。
+
+    只写 drafts/ 子目录（不参与注入），文件名不与既有草稿/顶层包冲突；
+    重名草稿拒绝而不是覆盖——Agent 连续两次保存同名的语义应是修订正文，
+    但草稿是审核前的物件，宁可让它换个名字也不静默覆盖已有内容。"""
+    name = re.sub(r"\s+", " ", str(name or "").strip())[:DRAFT_NAME_MAX]
+    body = str(body or "").strip()
+    if not name or len(name) < 2:
+        return None, "技能名至少 2 个字符"
+    if not body:
+        return None, "技能正文不能为空"
+    if len(body) > DRAFT_BODY_MAX_CHARS:
+        body = body[:DRAFT_BODY_MAX_CHARS] + "\n…（超长截断）"
+    scope_list = [str(s).strip() for s in (scopes or []) if str(s).strip()][:6]
+    slug = _draft_slug(name)
+    with _LOCK:
+        try:
+            _draft_dir().mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return None, "草稿目录创建失败: %s" % e
+        target = _draft_dir() / ("%s.md" % slug)
+        if target.exists():
+            return None, ("已有同名草稿 %s.md；请换一个技能名，或让用户先在知识库处理该草稿"
+                          % slug)
+        if (_user_pack_dir() / ("%s.md" % slug)).exists():
+            return None, "已存在同名经验包 %s.md，请换个技能名" % slug
+        text = _draft_frontmatter(name, scope_list, note, persona) + "\n\n" + body + "\n"
+        try:
+            target.write_text(text, encoding="utf-8")
+        except OSError as e:
+            return None, "草稿写入失败: %s" % e
+        _user_dir_mtime["ts"] = 0.0   # 目录树变了，顶层清单缓存作废重建
+    return {"file": "%s.md" % slug, "name": name, "scopes": scope_list,
+            "note": str(note or "")[:200], "chars": len(body)}, None
+
+
+def list_drafts():
+    """草稿清单（新→旧按 mtime）。不参与注入，只供审核 UI 展示。"""
+    out = []
+    try:
+        for p in _draft_dir().glob("*.md"):
+            try:
+                st = p.stat()
+                raw = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            meta, body = _parse_frontmatter(raw)
+            out.append({"file": p.name,
+                        "name": str(meta.get("name") or p.stem)[:DRAFT_NAME_MAX],
+                        "scopes": [str(s) for s in (meta.get("scopes") or ["*"])][:6],
+                        "note": str(meta.get("note") or "")[:200],
+                        "chars": len(body),
+                        "updated_at": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")})
+    except OSError:
+        pass
+    out.sort(key=lambda d: d["updated_at"], reverse=True)
+    return out
+
+
+def _invalidate_pack_caches():
+    """目录清单/正文缓存全部作废（promote/discard 动了目录树后调用）。"""
+    with _LOCK:
+        _user_pack_cache.clear()
+        _user_dir_mtime["ts"] = 0.0
+        _user_dir_mtime["ids"] = None
+
+
+def promote_draft(filename):
+    """启用草稿：drafts/<file> 移动到 data/skillpacks/ 顶层成为正常用户包。
+
+    启用即接管既有安检链（_load_user_pack 的 skill_scan 分级），目标名冲突
+    拒绝。返回 (包名, 错误)。"""
+    fname = str(filename or "").strip()
+    if not fname.endswith(".md") or "/" in fname.replace("\\", "/") or ".." in fname:
+        return None, "非法草稿文件名: %s" % fname
+    src = _draft_dir() / fname
+    if not src.is_file():
+        return None, "草稿不存在: %s" % fname
+    dest = _user_pack_dir() / fname
+    with _LOCK:
+        if dest.exists():
+            return None, "顶层已存在同名经验包 %s，先处理它再启用草稿" % fname
+        try:
+            _user_pack_dir().mkdir(parents=True, exist_ok=True)
+            src.replace(dest)
+        except OSError as e:
+            return None, "启用失败: %s" % e
+        _invalidate_pack_caches()
+    try:
+        meta, _body = _parse_frontmatter(dest.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        meta = {}
+    return str(meta.get("name") or dest.stem), None
+
+
+def discard_draft(filename):
+    """丢弃草稿（删除 drafts/ 下文件）。返回 (True, None) 或 (False, 错误)。"""
+    fname = str(filename or "").strip()
+    if not fname.endswith(".md") or "/" in fname.replace("\\", "/") or ".." in fname:
+        return False, "非法草稿文件名: %s" % fname
+    src = _draft_dir() / fname
+    if not src.is_file():
+        return False, "草稿不存在: %s" % fname
+    try:
+        src.unlink()
+    except OSError as e:
+        return False, "删除失败: %s" % e
+    return True, None
+
+
+# ---------------------------------------------------------------- 全局指令（A5）
+# data/GLOBAL.md：用户级跨流程指令（dsh DSH_AGENTS_HOME/共享 AGENTS.md 借鉴）。
+# 所有任务类型的首轮/续轮提示词都会携带（演员角色注入，评审角色不带——
+# 全局纪律约束干活的人，不约束打分的人）。mtime 缓存 + 8KB 上限防爆。
+
+_global_directives_cache = {}
+
+
+def global_directives():
+    """data/GLOBAL.md 内容（strip 后，≤8KB）；缺失返回空串。"""
+    p = paths.DATA_DIR / "GLOBAL.md"
+    try:
+        key = str(p)
+        mt = p.stat().st_mtime
+    except OSError:
+        _global_directives_cache.pop(str(p), None)
+        return ""
+    hit = _global_directives_cache.get(key)
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+    if len(text) > GLOBAL_DIRECTIVES_MAX_CHARS:
+        text = text[:GLOBAL_DIRECTIVES_MAX_CHARS] + "\n…（全局指令超长已截断）"
+    _global_directives_cache[key] = (mt, text)
+    return text
+
+
+def global_directives_block():
+    """带标题头的注入块；GLOBAL.md 缺失返回空串（调用方按空跳过）。"""
+    text = global_directives()
+    if not text:
+        return ""
+    return "## 用户全局指令（data/GLOBAL.md，对所有任务生效）\n" + text
 
 
 def _now():
