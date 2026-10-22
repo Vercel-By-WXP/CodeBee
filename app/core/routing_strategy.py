@@ -50,6 +50,11 @@ class BuiltinStrategy(RoutingStrategy):
             ErrorCode.RATE_LIMIT.value, ErrorCode.LOCAL_STATE.value,
             ErrorCode.FORBIDDEN.value, ErrorCode.MODEL_UNAVAILABLE.value,
             ErrorCode.VENDOR_REFUSAL.value,
+            # 凭据类账号死错同样要换 CLI（2026-10-22 cline-cli 案：账号
+            # Unauthorized 判 AUTH 不在白名单 → 评审步原地重试同一死号 3 次
+            # ×2 轮全撞 401。绑定链内的 Key 走查在 runner 已先耗尽，走到
+            # 这里的 AUTH 是整链凭据死，换 CLI 是唯一活路）。
+            ErrorCode.AUTH.value, ErrorCode.MISSING_CREDENTIAL.value,
         }
         if isinstance(error, dict):
             raw = error.get("raw") or {}

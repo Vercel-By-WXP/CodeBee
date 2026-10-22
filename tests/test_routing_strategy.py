@@ -20,7 +20,14 @@ class RoutingStrategyTests(unittest.TestCase):
         self.assertTrue(strategy.should_fallback("unknown model id"))
         self.assertTrue(strategy.should_fallback({"error_code": "VENDOR_REFUSAL"}))
         self.assertTrue(strategy.should_fallback("content filtering"))
-        self.assertFalse(strategy.should_fallback({"error_code": "AUTH"}))
+        # 凭据类账号死错必须允许换 CLI（2026-10-22 cline-cli Unauthorized 案：
+        # AUTH 不在白名单 → 评审步原地重试同一死号 3 次×2 轮；绑定链内的 Key
+        # 走查在 runner 已先耗尽，走到这里的 AUTH 是整链凭据死）。
+        self.assertTrue(strategy.should_fallback({"error_code": "AUTH"}))
+        self.assertTrue(strategy.should_fallback({"error_code": "MISSING_CREDENTIAL"}))
+        self.assertTrue(strategy.should_fallback(
+            "error: Unauthorized: Please make sure you're using the latest "
+            "version of Cline and re-authenticate your Cline account."))
         self.assertFalse(strategy.should_fallback({"error_code": "PARSE_FAIL"}))
         self.assertFalse(strategy.should_fallback({
             "error_code": "RATE_LIMIT", "raw": {"cancelled": True}}))

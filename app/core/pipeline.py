@@ -27,8 +27,8 @@ from . import diagnostics
 from . import paths as paths_mod
 from . import session_log as session_log_mod
 from . import step_runner as step_runner_mod
-from .error_codes import (error_code_value, is_account_dead_error,
-                          safe_error_summary)
+from .error_codes import (classify_error_text, error_code_value,
+                          is_account_dead_error, safe_error_summary)
 
 from .pipeline_review import (  # noqa: F401 - 旧调用面再导出
     _ANCHOR_EDGE_PUNCT,
@@ -5606,6 +5606,22 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
     return ""
 
 
+def _critic_fail_hint(critic_errors):
+    """评审失败收尾提示：账号级死错要说「重试无法自愈」，别再骗人点重试。
+
+    2026-10-22 cline-cli 案：账号 Unauthorized（AUTH）两轮 6 次全灭，收尾
+    文案仍写「不是稿件质量问题，直接重试即可」——bench 台账是 run 级的，
+    新 run 死号照样当选，用户重试一次死一次。凭据/欠费/未登录类死错只有
+    重新登录或停用该通道才能真正解锁。
+    """
+    dead = sorted(aid for aid, text in (critic_errors or {}).items()
+                  if is_account_dead_error(classify_error_text(str(text or ""))))
+    if dead:
+        return ("——%s 账号级故障（凭据失效/欠费/未登录），重试无法自愈："
+                "请重新登录该 CLI 或在设置中停用该通道后再跑" % "、".join(dead))
+    return "——不是稿件质量问题，直接重试即可"
+
+
 def _run_content_review(run, task, agents, ev, stats, mode):
     is_selection = task.get("type") == "rank_scan"
     if is_selection:
@@ -6131,9 +6147,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             "%s：%s" % (aid, text) for aid, text in
             (history_rounds[-1].get("critic_errors") or {}).items())
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
-                         error="评审环节失败（%s），未获得有效评分——"
-                               "不是稿件质量问题，直接重试即可"
-                               % (why or "评审输出重试后仍无法解析"),
+                         error="评审环节失败（%s），未获得有效评分%s"
+                               % (why or "评审输出重试后仍无法解析",
+                                  _critic_fail_hint(
+                                      history_rounds[-1].get("critic_errors") or {})),
                          summary="评审失败（综合 %.1f）" % overall, ended_at=_now())
     else:
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,

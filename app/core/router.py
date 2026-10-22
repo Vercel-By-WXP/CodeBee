@@ -19,6 +19,28 @@ CAPABILITY = {
 
 MAX_REPAIR_ROUNDS = 2  # 自动修复循环上限
 AUTO_CRITIC_LIMIT = 2  # 自动内容评审只取综合分前两名；手工模式仍尊重完整名单
+# 账号台账死号降权（2026-10-22 cline-cli Unauthorized 案：账号台账 10-17 起
+# down/AUTH、探针连败 243 次，pick_critics 仍凭历史分把它选成唯一评审，两轮
+# 6 次全撞 401）。罚分必须盖过一切加分组合（基线+绑定+历史+粘性），让死号
+# 只在没有任何活号可选时才会被白试选中；探活成功（record_success）即回血。
+LEDGER_DOWN_PENALTY = -200.0
+
+
+def _ledger_down_text(agent_id):
+    """持久账号台账判死则返回 (罚分, 理由片段)；未判死/台账不可用返回 (0, "")。
+
+    一切口径与 bench.is_globally_benched 一致：仅 AUTH/QUOTA/TOOL_LAUNCH 等
+    账号级死错且探针未恢复才 down；限流/超时等瞬态不进台账，不受影响。
+    """
+    try:
+        from . import bench as _bench
+        if _bench.is_globally_benched(agent_id):
+            reason = _bench.global_reason(agent_id) or "账号级死错"
+            return LEDGER_DOWN_PENALTY, "，账号台账停用（%s，探针未恢复 %+.0f）" % (
+                reason, LEDGER_DOWN_PENALTY)
+    except Exception:
+        pass
+    return 0.0, ""
 
 
 def requires_workspace_snapshot(agent):
@@ -226,6 +248,8 @@ def score(agent, role, ttype, stats=None):
                 sv, sticky_txt = 0.0, "，粘性停用（连败冷却）"
             bench_txt = "，近窗 %d 连败冷却（%+.0f）" % (streak, bench)
     total = base + bb + hb + affinity + online + tv + sv + bench
+    ledger, ledger_txt = _ledger_down_text(agent.get("id"))
+    total += ledger
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -242,9 +266,9 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d，%s%s%s%s%s%s%s%s，总分 %s" % (
+    return total, "能力基线 %d，%s%s%s%s%s%s%s%s%s，总分 %s" % (
         base, affinity_txt, btxt, htxt, online_txt, quota_txt, tv_txt,
-        sticky_txt, bench_txt, round(total, 1))
+        sticky_txt, bench_txt, ledger_txt, round(total, 1))
 
 
 def _pick_scored(agents, role, ttype, stats=None, exclude=()):

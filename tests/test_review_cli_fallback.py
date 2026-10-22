@@ -128,6 +128,27 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         self.assertIn("critic-a", guards[1]["exclude"])
         self.assertIn("author", guards[1]["exclude"])
 
+    def test_auth_failure_swaps_cli(self):
+        """cline-cli Unauthorized 案（2026-10-22）：凭据死错必须换人，不原地撞死号。"""
+        seen = []
+
+        def run_step(bound):
+            seen.append(bound["id"])
+            if bound["id"] == "critic-a":
+                return _failure(
+                    code="AUTH",
+                    error="退出码 1；stderr/stdout: error: Unauthorized: Please make "
+                          "sure you're using the latest version of Cline and "
+                          "re-authenticate your Cline account.")
+            return _success()
+
+        (cj, res, actual, note), _ = self._call(_agents()[1], run_step)
+
+        self.assertEqual(cj["scores"], {"质量": 8})
+        self.assertEqual(actual["id"], "critic-b")
+        self.assertEqual(seen, ["critic-a", "critic-b"])
+        self.assertIn("评审自动换 CLI", note)
+
     def test_parse_failure_retries_same_cli_three_times(self):
         seen = []
 
