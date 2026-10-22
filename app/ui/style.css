@@ -6945,7 +6945,7 @@ button.request-busy > * { opacity: .18; }
   line-height: 1.72;
 }
 #run-detail.chat-mode .chat-bubble.me {
-  max-width: min(680px, 78%);
+  max-width: min(680px, 100%);
   border: 0;
   border-radius: 12px;
   background: var(--chat-soft-strong);
@@ -7043,6 +7043,10 @@ button.request-busy > * { opacity: .18; }
   border-top: 1px solid var(--border);
   padding: 8px 0;
   background: transparent;
+  /* hive-ui 的日志 token 是深底(#172027)配浅字(#d8e5e8)；chat-mode 把日志底色
+     改成了透明，浅字落在白底上只剩 ~1.3:1——这里按对话面 own 一份可读配色 */
+  color: var(--chat-text, var(--cb-text-1));
+  font-size: 12px;
 }
 
 /* Final receipt: clear status and metadata, no oversized dashboard card. */
@@ -7085,7 +7089,7 @@ button.request-busy > * { opacity: .18; }
 }
 @media (max-width: 720px) {
   #run-detail.chat-mode .rd-chat-flow { gap: 15px; padding: 16px 8px 10px; }
-  #run-detail.chat-mode .chat-bubble.me { max-width: 88%; }
+  #run-detail.chat-mode .chat-bubble.me { max-width: 100%; }
   #run-detail.chat-mode .rd-chat-run-status,
   #run-detail.chat-mode .rd-chat-bar { width: calc(100% - 16px); }
 }
