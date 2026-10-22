@@ -815,6 +815,125 @@ html[data-layout="workbench"] .rd-qs-btn:hover {
   border-color: var(--border-strong);
 }
 
+/* 快捷入口：2×2 工具卡；通道体检卡带实时健康徽章 */
+html[data-layout="workbench"] .rd-tools {
+  margin-bottom: 28px;
+}
+
+html[data-layout="workbench"] .rd-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+html[data-layout="workbench"] .rd-tool {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 13px 15px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+
+html[data-layout="workbench"] .rd-tool:hover {
+  background: var(--panel2);
+  border-color: var(--border-strong);
+}
+
+html[data-layout="workbench"] .rd-tool-ico {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-tool-ico .ico {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.9;
+}
+
+html[data-layout="workbench"] .rd-tool-health .rd-tool-ico {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-tool-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-layout="workbench"] .rd-tool-text b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+html[data-layout="workbench"] .rd-tool-text i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-layout="workbench"] .rd-tool-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+html[data-layout="workbench"] .rd-tool-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+html[data-layout="workbench"] .rd-tool-badge.ok::before { background: var(--ok); }
+html[data-layout="workbench"] .rd-tool-badge.warn::before { background: var(--warn); }
+html[data-layout="workbench"] .rd-tool-badge.bad::before { background: var(--bad); }
+html[data-layout="workbench"] .rd-tool-badge.bad { color: var(--bad); }
+html[data-layout="workbench"] .rd-tool-badge.warn { color: var(--warn); }
+
+html[data-layout="workbench"] .rd-tool-go {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  opacity: .5;
+}
+
+html[data-layout="workbench"] .rd-tool:hover .rd-tool-go {
+  opacity: .9;
+}
+
+@media (max-width: 720px) {
+  html[data-layout="workbench"] .rd-tool-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 输入卡头：完整路径（demo 同款 名称+路径+分支 并列） */
 html[data-layout="workbench"] .rd-input-path {
   color: var(--muted);

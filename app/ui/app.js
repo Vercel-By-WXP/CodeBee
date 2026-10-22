@@ -2497,91 +2497,370 @@ async function healthDisableProvider(pid, provider) {
 
 /* ---------------------------------------------------------- 通道体检 */
 /* /api/availability：厂商健康 + 模型熔断 + CLI 降级链 + 账号探活一页聚合。
-   只读展示；禁用/静默等操作仍走健康告警弹框与模型调度页。 */
+   只读展示；禁用/静默等操作仍走健康告警弹框与模型调度页。
+   搜索、状态筛选、排序、模型展开全部在客户端完成，不额外打接口。 */
 
-async function loadAvailability() {
-  let data;
-  try { data = await api("/api/availability", { timeout: 15000 }); }
-  catch (e) { toast(t("操作失败：") + e.message, true); return; }
-  if (!data) return;
-  renderAvailability(data);
+const AVAIL = {
+  data: null, at: 0, loading: false,
+  q: "", status: "all", sort: "severity",
+  open: new Set(),
+};
+
+async function loadAvailability(opts) {
+  const silent = !!(opts && opts.silent === true);
+  if (AVAIL.loading) return;
+  AVAIL.loading = true;
+  const btn = $("avail-refresh");
+  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+  try {
+    const data = await api("/api/availability", { timeout: 15000 });
+    if (!data) return;
+    AVAIL.data = data;
+    AVAIL.at = Date.now();
+    renderAvailability(data);
+    renderHomeHealth();
+  } catch (e) {
+    if (!silent) toast(t("操作失败：") + e.message, true);
+  } finally {
+    AVAIL.loading = false;
+    if (btn) { btn.disabled = false; btn.classList.remove("is-loading"); }
+  }
 }
 window.loadAvailability = loadAvailability;
+
+const AVAIL_SEV = { bad: 0, warn: 1, off: 2, ok: 3 };
+
+function availHost(u) {
+  if (!u) return "";
+  try { return new URL(u).host; } catch (e) { return u; }
+}
+
+function availProvStatus(p) {
+  if (!p || p.enabled === false) return "off";
+  const h = p.health;
+  if (h && (h.alerting || h.status === "down")) return "bad";
+  if (h && h.status === "failing") return "warn";
+  return "ok";
+}
+
+function availCliStatus(row) {
+  const a = row && row.account;
+  if (a && a.status !== "ok" && a.status !== "recovered") return "bad";
+  if ((row.chain || []).some((e) => e && e.down)) return "warn";
+  return "ok";
+}
+
+function availStatusLabel(st) {
+  return st === "warn" ? t("观察中") : st === "bad" ? t("已熔断")
+    : st === "off" ? t("已停用") : t("可用");
+}
 
 function availChip(label, cls) {
   return "<span class='avail-chip " + cls + "'>" + esc(label) + "</span>";
 }
 
-function availStatusChip(p) {
-  if (!p.enabled) return availChip(t("已停用"), "off");
-  const h = p.health;
-  if (h && (h.alerting || h.status === "down")) return availChip(t("已熔断"), "bad");
-  if (h && h.status === "failing") return availChip(t("观察中"), "warn");
-  if (h && h.status === "recovered") return availChip(t("已恢复"), "ok");
-  return availChip(t("可用"), "ok");
+function availCounts(provs) {
+  const c = { ok: 0, warn: 0, bad: 0, off: 0, total: provs.length };
+  provs.forEach((p) => { c[availProvStatus(p)] += 1; });
+  return c;
+}
+
+function availVerdict(c) {
+  if (!c.total) return { tone: "", text: t("尚未接入厂商") };
+  if (c.bad) return { tone: "bad", text: t("有 {0} 条通道已熔断", c.bad) };
+  if (c.warn) return { tone: "warn", text: t("有 {0} 条通道观察中", c.warn) };
+  if (c.ok) return { tone: "ok", text: t("所有启用通道正常") };
+  return { tone: "", text: t("所有通道均已停用") };
+}
+
+function availMatchesProv(p, q) {
+  if (!q) return true;
+  const hay = [p.name, p.id, p.base_url, p.protocol, p.model,
+    p.health && p.health.last_error].concat((p.models || []).map((m) => m.name));
+  return hay.some((s) => String(s || "").toLowerCase().includes(q));
+}
+
+function availMatchesCli(row, q) {
+  if (!q) return true;
+  const a = row.account || {};
+  const hay = [row.id, a.summary, a.last_error, a.code]
+    .concat((row.chain || []).map((e) => (e.provider || e.provider_id || "") + " " + (e.model || "")));
+  return hay.some((s) => String(s || "").toLowerCase().includes(q));
+}
+
+function availSortProvs(list) {
+  const arr = list.slice();
+  const name = (p) => String(p.name || p.id || "");
+  const fails = (p) => String((p.health && p.health.last_fail_at) || "");
+  if (AVAIL.sort === "name") {
+    arr.sort((a, b) => name(a).localeCompare(name(b)));
+  } else if (AVAIL.sort === "models") {
+    arr.sort((a, b) => (b.models || []).length - (a.models || []).length
+      || AVAIL_SEV[availProvStatus(a)] - AVAIL_SEV[availProvStatus(b)]
+      || name(a).localeCompare(name(b)));
+  } else if (AVAIL.sort === "recent") {
+    arr.sort((a, b) => {
+      const fa = fails(a), fb = fails(b);
+      if (fa !== fb) return fa < fb ? 1 : -1;
+      return AVAIL_SEV[availProvStatus(a)] - AVAIL_SEV[availProvStatus(b)]
+        || name(a).localeCompare(name(b));
+    });
+  } else {
+    arr.sort((a, b) => AVAIL_SEV[availProvStatus(a)] - AVAIL_SEV[availProvStatus(b)]
+      || name(a).localeCompare(name(b)));
+  }
+  return arr;
+}
+
+function availKpisHtml(c) {
+  const tiles = [
+    ["ok", c.ok, t("可用"), t("正常响应")],
+    ["warn", c.warn, t("观察中"), t("连续失败观察")],
+    ["bad", c.bad, t("已熔断"), t("正在告警")],
+    ["off", c.off, t("已停用"), t("不参与调度")],
+  ];
+  return tiles.map((row) => {
+    const st = row[0], on = AVAIL.status === st;
+    return '<button type="button" class="avail-kpi' + (on ? " is-active" : "") +
+      '" data-status="' + st + '" onclick="availSetStatus(\'' + st + '\')" aria-pressed="' +
+      (on ? "true" : "false") + '">' +
+      '<span class="avail-kpi-top"><span class="avail-kpi-dot"></span>' + esc(row[2]) + "</span>" +
+      '<span class="avail-kpi-v">' + row[1] + "</span>" +
+      '<span class="avail-kpi-s">' + esc(row[3]) + "</span></button>";
+  }).join("");
+}
+
+function availModelChip(m) {
+  const cls = m.down ? " down" : (m.enabled ? "" : " off");
+  const label = m.down ? t("熔断中") : (m.enabled ? t("可用") : t("已停用"));
+  return '<span class="avail-model' + cls + '" title="' + esc(label) + '">' + esc(m.name) + "</span>";
+}
+
+function availProvRow(p, q) {
+  const st = availProvStatus(p);
+  const h = p.health || {};
+  const models = p.models || [];
+  const downN = models.filter((m) => m.down).length;
+  const meta = [];
+  if (p.model) meta.push(t("默认模型") + " <b>" + esc(p.model) + "</b>");
+  if (p.keys_total) {
+    meta.push("KEY <b>" + p.keys_enabled + "/" + p.keys_total + "</b>" +
+      (p.keys_enabled ? "" : ' <span class="avail-bad-text">' + esc(t("无可用 KEY")) + "</span>"));
+  }
+  if (h.consecutive_failures) meta.push(t("连续失败") + " <b>" + h.consecutive_failures + "</b> " + t("次"));
+  if (h.last_fail_at) meta.push(t("最近失败") + " <b>" + esc(h.last_fail_at) + "</b>");
+  if (h.last_ok_at) meta.push(t("最近成功") + " <b>" + esc(h.last_ok_at) + "</b>");
+  if (h.silenced) meta.push(t("告警已静默"));
+  const open = AVAIL.open.has(p.id) || !!q;
+  return '<article class="avail-row' + (p.enabled === false ? " is-off" : "") + '">' +
+    '<span class="avail-row-dot ' + st + '"></span>' +
+    '<div class="avail-row-main">' +
+      '<div class="avail-row-head">' +
+        '<span class="avail-row-name">' + esc(p.name || p.id) + "</span>" +
+        availChip(availStatusLabel(st), st) +
+        '<span class="avail-row-host" title="' + esc(p.base_url) + '">' +
+          esc(availHost(p.base_url)) + (p.protocol ? " · " + esc(p.protocol) : "") + "</span>" +
+      "</div>" +
+      (meta.length ? '<div class="avail-row-meta">' + meta.map((s) => "<span>" + s + "</span>").join("") + "</div>" : "") +
+      (h.last_error ? '<div class="avail-row-err" title="' + esc(h.last_error) + '">' +
+        esc(String(h.last_error).slice(0, 400)) + "</div>" : "") +
+      (models.length ? '<div class="avail-row-foot"><button type="button" class="avail-models-toggle" aria-expanded="' +
+        (open ? "true" : "false") + '" onclick="availToggle(\'' + esc(p.id) + '\')"><span>' +
+        models.length + " " + esc(t("个模型")) + (downN ? " · " + downN + " " + esc(t("异常")) : "") +
+        '</span><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg></button></div>' : "") +
+      (open && models.length ? '<div class="avail-models">' + models.map(availModelChip).join("") + "</div>" : "") +
+    "</div></article>";
+}
+
+function availCliRow(row) {
+  const st = availCliStatus(row);
+  const a = row.account;
+  const chain = row.chain || [];
+  const chip = !a ? availChip(t("未探活"), "muted")
+    : (a.status === "ok" || a.status === "recovered") ? availChip(t("账号可用"), "ok")
+      : availChip(t("账号失效"), "bad");
+  const steps = chain.map((e, i) =>
+    '<span class="avail-chain-step' + (e.down ? " down" : "") + '">' +
+    '<span class="avail-chain-n">' + (i + 1) + "</span>" +
+    esc((e.provider || e.provider_id || "?") + " · " + (e.model || "")) + "</span>").join("");
+  const meta = [];
+  if (chain.length) meta.push(t("降级链 {0} 级", chain.length));
+  if (a && a.code) meta.push(a.code);
+  const note = [];
+  if (a && a.summary) note.push(a.summary);
+  if (a && a.status !== "ok" && a.status !== "recovered" && a.last_error) note.push(a.last_error);
+  return '<article class="avail-row">' +
+    '<span class="avail-row-dot ' + st + '"></span>' +
+    '<div class="avail-row-main">' +
+      '<div class="avail-row-head"><span class="avail-row-name">' + esc(row.id) + "</span>" + chip + "</div>" +
+      (chain.length ? "" : '<div class="avail-row-meta"><span>' +
+        esc(t("无降级链，按任务类型自动推荐厂商与模型")) + "</span></div>") +
+      (steps ? '<div class="avail-chain">' + steps + "</div>" : "") +
+      (meta.length ? '<div class="avail-row-meta">' + meta.map((s) => "<span>" + esc(s) + "</span>").join("") + "</div>" : "") +
+      (note.length ? '<div class="avail-row-note">' + esc(note.join(" · ")) + "</div>" : "") +
+    "</div></article>";
+}
+
+function availEmpty(icon, title, hint, actionLabel, actionCall) {
+  return '<div class="avail-empty">' +
+    '<span class="avail-empty-ico"><svg class="ico" aria-hidden="true"><use href="#' + icon + '"></use></svg></span>' +
+    "<b>" + esc(title) + "</b><p>" + esc(hint) + "</p>" +
+    (actionLabel ? '<button class="ghost small" type="button" onclick="' + actionCall + '">' + esc(actionLabel) + "</button>" : "") +
+    "</div>";
 }
 
 function renderAvailability(data) {
-  const provs = data.providers || [];
-  const clis = data.clis || [];
-  const c = { ok: 0, warn: 0, bad: 0, off: 0 };
-  provs.forEach((p) => {
-    if (!p.enabled) { c.off++; return; }
-    const st = p.health ? p.health.status : "ok";
-    if (p.health && (p.health.alerting || st === "down")) { c.bad++; return; }
-    if (st === "failing") { c.warn++; return; }
-    c.ok++;
+  if (data) AVAIL.data = data;
+  const d = AVAIL.data;
+  if (!d) return;
+  const allProvs = d.providers || [];
+  const allClis = d.clis || [];
+  const c = availCounts(allProvs);
+  const verdict = availVerdict(c);
+
+  const dot = $("avail-verdict-dot");
+  if (dot) dot.className = "avail-dot" + (verdict.tone ? " " + verdict.tone : "");
+  const verdictEl = $("avail-verdict");
+  if (verdictEl) verdictEl.textContent = verdict.text;
+  const stamp = $("avail-stamp");
+  if (stamp) stamp.textContent = d.generated_at ? t("数据更新于 {0}", d.generated_at) : "";
+  const sub = $("avail-hero-sub");
+  if (sub) {
+    const enabled = allProvs.filter((p) => p.enabled !== false);
+    const modelN = enabled.reduce((n, p) => n + (p.models || []).length, 0);
+    const downN = enabled.reduce((n, p) => n + (p.models || []).filter((m) => m.down).length, 0);
+    sub.textContent = t("已启用 {0}/{1} 个厂商 · {2} 个模型{3} · {4} 个 CLI",
+      enabled.length, allProvs.length, modelN,
+      downN ? "（" + t("{0} 个熔断", downN) + "）" : "", allClis.length);
+  }
+
+  const kpis = $("avail-kpis");
+  if (kpis) kpis.innerHTML = availKpisHtml(c);
+  document.querySelectorAll("#avail-filter button").forEach((b) => {
+    const on = b.dataset.status === AVAIL.status;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
   });
-  const sum = $("avail-summary");
-  if (sum) sum.innerHTML =
-    "<span class='avail-pill ok'>" + t("可用") + " " + c.ok + "</span>" +
-    "<span class='avail-pill warn'>" + t("观察中") + " " + c.warn + "</span>" +
-    "<span class='avail-pill bad'>" + t("已熔断") + " " + c.bad + "</span>" +
-    (c.off ? "<span class='avail-pill off'>" + t("已停用") + " " + c.off + "</span>" : "") +
-    "<span class='avail-sub'>" + esc(data.generated_at || "") + "</span>";
-  const host = (u) => { try { return new URL(u).host; } catch (e) { return u; } };
-  const el = $("avail-providers");
-  if (el) el.innerHTML = provs.map((p) => {
-    const h = p.health;
-    const meta = [];
-    if (h && h.consecutive_failures) meta.push(t("连续失败") + " " + h.consecutive_failures + " " + t("次"));
-    if (h && h.last_fail_at) meta.push(t("最近失败") + " " + h.last_fail_at);
-    if (h && h.last_ok_at) meta.push(t("最近成功") + " " + h.last_ok_at);
-    if (p.keys_total) meta.push("KEY " + p.keys_enabled + "/" + p.keys_total);
-    const models = p.models || [];
-    const chips = models.slice(0, 24).map((m) =>
-      "<span class='avail-model" + (m.down ? " down" : (m.enabled ? "" : " off")) + "'>" +
-      esc(m.name) + (m.down ? " ⚠" : "") + "</span>").join("");
-    const more = models.length > 24
-      ? "<span class='avail-model off'>+" + (models.length - 24) + "</span>" : "";
-    return "<div class='card avail-card" + (p.enabled ? "" : " off") + "'>" +
-      "<div class='avail-head'><b>" + esc(p.name) + "</b>" + availStatusChip(p) +
-      "<span class='avail-sub'>" + esc(host(p.base_url)) +
-      (p.protocol ? " · " + esc(p.protocol) : "") + "</span></div>" +
-      (meta.length ? "<div class='avail-meta'>" + meta.map(esc).join(" · ") + "</div>" : "") +
-      (h && h.last_error ? "<div class='avail-err'>" + esc(String(h.last_error).slice(0, 220)) + "</div>" : "") +
-      (chips ? "<div class='avail-models'>" + chips + more + "</div>" : "") +
-      "</div>";
-  }).join("") || "<p class='hint'>—</p>";
-  const elc = $("avail-clis");
-  if (elc) elc.innerHTML = clis.map((row) => {
-    const a = row.account;
-    const chip = !a ? "" :
-      a.status === "ok" ? availChip(t("可用"), "ok") :
-      a.status === "recovered" ? availChip(t("已恢复"), "ok") :
-      availChip(t("账号失效"), "bad");
-    const chain = (row.chain || []).map((e) =>
-      "<span class='avail-model" + (e.down ? " down" : "") + "'>" +
-      esc((e.provider || e.provider_id || "?") + " · " + e.model) +
-      (e.down ? " ⚠" : "") + "</span>").join("");
-    const dead = a && a.status !== "ok" && a.status !== "recovered";
-    return "<div class='card avail-card" + (dead ? " off" : "") + "'>" +
-      "<div class='avail-head'><b>" + esc(row.id) + "</b>" + chip + "</div>" +
-      (chain ? "<div class='avail-models'>" + chain + "</div>"
-             : "<div class='avail-meta'>" + esc(t("无降级链，按任务类型自动推荐厂商与模型")) + "</div>") +
-      (a && a.summary ? "<div class='avail-err'>" + esc(a.summary) + "</div>" : "") +
-      "</div>";
-  }).join("") || "<p class='hint'>—</p>";
+  const clearBtn = $("avail-q-clear");
+  if (clearBtn) clearBtn.classList.toggle("hidden", !AVAIL.q);
+  const qInput = $("avail-q");
+  if (qInput && qInput.value !== AVAIL.q) qInput.value = AVAIL.q;
+  const sortSel = $("avail-sort");
+  if (sortSel) sortSel.value = AVAIL.sort;
+
+  const q = AVAIL.q.trim().toLowerCase();
+  const provs = availSortProvs(allProvs.filter((p) =>
+    (AVAIL.status === "all" || availProvStatus(p) === AVAIL.status) && availMatchesProv(p, q)));
+  const clis = allClis.filter((row) =>
+    (AVAIL.status === "all" || availCliStatus(row) === AVAIL.status) && availMatchesCli(row, q))
+    .sort((a, b) => AVAIL_SEV[availCliStatus(a)] - AVAIL_SEV[availCliStatus(b)]
+      || String(a.id).localeCompare(String(b.id)));
+
+  const provEl = $("avail-providers");
+  if (provEl) {
+    if (!allProvs.length) {
+      provEl.innerHTML = availEmpty("i-layers", t("还没有接入厂商"),
+        t("在「模型接入」里添加厂商和 API KEY 后，这里会显示真实健康状态。"),
+        t("去模型接入"), "switchTab('models')");
+    } else if (!provs.length) {
+      provEl.innerHTML = availEmpty("i-search", t("没有符合条件的通道"),
+        t("试试清空搜索，或切换到「全部」状态。"), t("清除筛选"), "availResetFilters()");
+    } else {
+      provEl.innerHTML = provs.map((p) => availProvRow(p, q)).join("");
+    }
+  }
+  const provCount = $("avail-prov-count");
+  if (provCount) provCount.textContent = allProvs.length ? t("显示 {0} / {1}", provs.length, allProvs.length) : "";
+
+  const cliEl = $("avail-clis");
+  if (cliEl) {
+    if (!allClis.length) {
+      cliEl.innerHTML = availEmpty("i-link", t("还没有配置 CLI 降级链"),
+        t("为 CLI 配置厂商模型降级顺序后，这里会显示账号与链路状态。"),
+        t("去模型调度"), "switchTab('bindings')");
+    } else if (!clis.length) {
+      cliEl.innerHTML = availEmpty("i-search", t("没有符合条件的 CLI"),
+        t("试试清空搜索，或切换到「全部」状态。"), t("清除筛选"), "availResetFilters()");
+    } else {
+      cliEl.innerHTML = clis.map((row) => availCliRow(row)).join("");
+    }
+  }
+  const cliCount = $("avail-cli-count");
+  if (cliCount) cliCount.textContent = allClis.length ? t("显示 {0} / {1}", clis.length, allClis.length) : "";
+}
+
+function availSetStatus(st) {
+  if (["all", "ok", "warn", "bad", "off"].indexOf(st) < 0) return;
+  AVAIL.status = st;
+  renderAvailability();
+}
+
+function availSetSort(v) {
+  if (["severity", "name", "recent", "models"].indexOf(v) < 0) return;
+  AVAIL.sort = v;
+  renderAvailability();
+}
+
+function availSetQuery(v) {
+  AVAIL.q = String(v || "");
+  renderAvailability();
+}
+
+function availClearQuery() {
+  AVAIL.q = "";
+  const input = $("avail-q");
+  if (input) { input.value = ""; input.focus(); }
+  renderAvailability();
+}
+
+function availResetFilters() {
+  AVAIL.q = "";
+  AVAIL.status = "all";
+  const input = $("avail-q");
+  if (input) input.value = "";
+  renderAvailability();
+}
+
+function availToggle(id) {
+  if (!id) return;
+  if (AVAIL.open.has(id)) AVAIL.open.delete(id); else AVAIL.open.add(id);
+  renderAvailability();
+}
+
+/* 主页快捷入口的通道摘要：与体检页共用同一份缓存，60 秒内不重复拉取 */
+function renderHomeHealth() {
+  const line = $("rd-avail-summary");
+  const badge = $("rd-avail-badge");
+  if (!line && !badge) return;
+  const d = AVAIL.data;
+  if (!d) {
+    if (line) line.textContent = t("厂商、模型与 CLI 的实时可用性");
+    if (badge) { badge.className = "rd-tool-badge"; badge.textContent = ""; }
+    return;
+  }
+  const provs = d.providers || [];
+  const c = availCounts(provs);
+  const enabled = provs.filter((p) => p.enabled !== false);
+  const modelN = enabled.reduce((n, p) => n + (p.models || []).length, 0);
+  const cliN = (d.clis || []).length;
+  if (line) {
+    line.textContent = t("厂商 {0}/{1} · 模型 {2} · CLI {3}",
+      c.ok + c.warn + c.bad, c.total, modelN, cliN);
+  }
+  if (badge) {
+    const v = availVerdict(c);
+    badge.textContent = v.tone === "ok" ? t("正常")
+      : v.tone === "bad" ? t("{0} 条熔断", c.bad)
+        : v.tone === "warn" ? t("{0} 条观察中", c.warn) : t("未接入");
+    badge.className = "rd-tool-badge" + (v.tone ? " " + v.tone : "");
+  }
+}
+
+function homeHealthRefresh() {
+  renderHomeHealth();
+  if (AVAIL.loading) return;
+  if (AVAIL.data && Date.now() - AVAIL.at < 60000) return;
+  loadAvailability({ silent: true });
 }
 
 async function refreshState() {
@@ -13987,6 +14266,9 @@ function renderHome() {
     listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">' + t("暂无任务") + "</div>";
     return;
   }
+  // 快捷入口里的通道体检摘要：复用体检页缓存，60 秒内不重复请求
+  homeHealthRefresh();
+
   listEl.innerHTML = recent.map((r) => {
     const dotClass = r.status === "running" ? "running" : r.status === "queued" ? "waiting" : r.status === "failed" ? "failed" : "completed";
     const progress = r.progress != null ? Math.round(r.progress) + "%" : "—";
@@ -19997,6 +20279,8 @@ function setLangBtn(lang) {
     paintHelpChrome();
     renderHelp();
   }
+  if (S.tab === "availability") renderAvailability();   // 体检页/主页摘要的动态文案跟随语言
+  renderHomeHealth();
   // 重画还在缓存里的页面标题（语言切换后组名也要跟着换）
   renderPageCrumb();
   // 同步顶栏的连接状态文案（applyI18n 不会处理 textContent 写入的）

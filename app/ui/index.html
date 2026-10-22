@@ -437,6 +437,49 @@
         </div>
       </div>
 
+      <!-- 快捷入口：重要但不在侧栏常驻的能力。通道体检带实时健康摘要，
+           省得为了看一眼通道状态先绕进设置。 -->
+      <div class="rd-tools">
+        <div class="rd-section-head">
+          <h2 data-i18n="快捷入口">快捷入口</h2>
+        </div>
+        <div class="rd-tool-grid">
+          <button type="button" class="rd-tool rd-tool-health" id="rd-tool-avail" onclick="switchTab('availability')">
+            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg></span>
+            <span class="rd-tool-text">
+              <b data-i18n="通道体检">通道体检</b>
+              <i id="rd-avail-summary" data-i18n="厂商、模型与 CLI 的实时可用性">厂商、模型与 CLI 的实时可用性</i>
+            </span>
+            <span class="rd-tool-badge" id="rd-avail-badge"></span>
+            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+          </button>
+          <button type="button" class="rd-tool" onclick="switchTab('evalbench')">
+            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg></span>
+            <span class="rd-tool-text">
+              <b data-i18n="模型评测">模型评测</b>
+              <i data-i18n="跑基准、看榜单，挑选合适的模型">跑基准、看榜单，挑选合适的模型</i>
+            </span>
+            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+          </button>
+          <button type="button" class="rd-tool" onclick="switchTab('atlas')">
+            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg></span>
+            <span class="rd-tool-text">
+              <b data-i18n="记忆图谱">记忆图谱</b>
+              <i data-i18n="检索、注入预演与记忆治理">检索、注入预演与记忆治理</i>
+            </span>
+            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+          </button>
+          <button type="button" class="rd-tool" onclick="switchTab('usage')">
+            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-coin"></use></svg></span>
+            <span class="rd-tool-text">
+              <b data-i18n="用量统计">用量统计</b>
+              <i data-i18n="Token、费用与调用趋势">Token、费用与调用趋势</i>
+            </span>
+            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+          </button>
+        </div>
+      </div>
+
       <!-- 最近任务 -->
       <div class="rd-recent-tasks">
         <div class="rd-section-head">
@@ -1282,19 +1325,68 @@
         </div>
       </div>
 
-      <!-- 通道体检：厂商/模型/CLI 可用性一页看清 -->
-      <div id="sub-availability" class="subpage hidden">
-        <div class="panel wide">
-          <div class="panel-head"><h2 data-i18n="通道体检">通道体检</h2>
-            <div class="actions"><button class="ghost small" onclick="loadAvailability()" data-i18n="刷新">刷新</button></div>
+      <!-- 通道体检：厂商/模型/CLI 可用性一页看清。先给结论（hero + KPI），
+           再给证据（厂商行 / CLI 链路）；搜索、状态筛选、排序都在客户端完成，
+           数据仍只来自 /api/availability。 -->
+      <div id="sub-availability" class="subpage avail-page hidden">
+        <div class="avail-hero">
+          <div class="avail-hero-main">
+            <div class="avail-eyebrow" data-i18n="智能体与模型">智能体与模型</div>
+            <h1 class="avail-title">
+              <span id="avail-verdict-dot" class="avail-dot"></span>
+              <span id="avail-verdict" data-i18n="正在体检…">正在体检…</span>
+            </h1>
+            <p class="avail-hero-sub" id="avail-hero-sub" data-i18n="当前哪些厂商、模型和 CLI 能正常用，一目了然。">当前哪些厂商、模型和 CLI 能正常用，一目了然。</p>
           </div>
-          <p class="hint" data-i18n="当前哪些厂商、模型和 CLI 能正常用，一目了然。状态来自真实调用与后台探活：绿=可用，黄=连续失败观察中，红=已熔断（正在告警），灰=已停用。">当前哪些厂商、模型和 CLI 能正常用，一目了然。状态来自真实调用与后台探活：绿=可用，黄=连续失败观察中，红=已熔断（正在告警），灰=已停用。</p>
-          <div id="avail-summary" class="avail-summary"></div>
-          <h3 class="avail-section" data-i18n="厂商与模型">厂商与模型</h3>
-          <div id="avail-providers" class="cards"></div>
-          <h3 class="avail-section" data-i18n="CLI 与降级链">CLI 与降级链</h3>
-          <div id="avail-clis" class="cards"></div>
+          <div class="avail-hero-act">
+            <span class="avail-stamp" id="avail-stamp"></span>
+            <button id="avail-refresh" class="ghost small" type="button" onclick="loadAvailability()">
+              <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="重新体检">重新体检</span>
+            </button>
+          </div>
         </div>
+
+        <div id="avail-kpis" class="avail-kpis" aria-live="polite"></div>
+
+        <div class="avail-toolbar">
+          <div class="avail-search">
+            <svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg>
+            <input id="avail-q" type="search" autocomplete="off" placeholder="搜索厂商、模型、域名或错误…" data-i18n-ph="搜索厂商、模型、域名或错误…" oninput="availSetQuery(this.value)" aria-label="搜索通道" data-i18n-aria="搜索通道">
+            <button id="avail-q-clear" class="avail-q-clear hidden" type="button" onclick="availClearQuery()" title="清空搜索" aria-label="清空搜索" data-i18n-title="清空搜索" data-i18n-aria="清空搜索"><svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>
+          </div>
+          <div id="avail-filter" class="avail-seg" role="group" aria-label="按状态筛选" data-i18n-aria="按状态筛选">
+            <button type="button" data-status="all" class="on" aria-pressed="true" onclick="availSetStatus('all')" data-i18n="全部">全部</button>
+            <button type="button" data-status="ok" aria-pressed="false" onclick="availSetStatus('ok')" data-i18n="可用">可用</button>
+            <button type="button" data-status="warn" aria-pressed="false" onclick="availSetStatus('warn')" data-i18n="观察中">观察中</button>
+            <button type="button" data-status="bad" aria-pressed="false" onclick="availSetStatus('bad')" data-i18n="已熔断">已熔断</button>
+            <button type="button" data-status="off" aria-pressed="false" onclick="availSetStatus('off')" data-i18n="已停用">已停用</button>
+          </div>
+          <label class="avail-sort" for="avail-sort">
+            <span data-i18n="排序">排序</span>
+            <select id="avail-sort" onchange="availSetSort(this.value)">
+              <option value="severity" data-i18n="严重优先">严重优先</option>
+              <option value="name" data-i18n="名称">名称</option>
+              <option value="recent" data-i18n="最近失败">最近失败</option>
+              <option value="models" data-i18n="模型数">模型数</option>
+            </select>
+          </label>
+        </div>
+
+        <section class="avail-block" aria-labelledby="avail-prov-head">
+          <div class="avail-block-head">
+            <h2 id="avail-prov-head" data-i18n="厂商与模型">厂商与模型</h2>
+            <span class="avail-count" id="avail-prov-count"></span>
+          </div>
+          <div id="avail-providers" class="avail-list"></div>
+        </section>
+
+        <section class="avail-block" aria-labelledby="avail-cli-head">
+          <div class="avail-block-head">
+            <h2 id="avail-cli-head" data-i18n="CLI 与降级链">CLI 与降级链</h2>
+            <span class="avail-count" id="avail-cli-count"></span>
+          </div>
+          <div id="avail-clis" class="avail-list"></div>
+        </section>
       </div>
 
       <!-- 记忆图谱：星图可视化 + 全域搜索 + 注入预演 + 治理台 -->
