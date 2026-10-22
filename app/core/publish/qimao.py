@@ -206,9 +206,9 @@ CREATE_SHORT_STORY = [
     {"do": "sleep", "s": 1},
     {"do": "shot", "name": "short-story-create-filled"},
     {"do": "submit", "sel": ".js-save-book-infor-btn", "text": "确认创建"},
-    # 创建成功跳编辑器 /front/book-upload?id=<book_id>（book_id 由 runner 按
-    # BOOK_ID_URL_RE 从最终 URL 提取）
-    {"do": "url_any", "any": ["book-upload?id=", "information?id="]},
+    # 实测提交成功后页面停在原处弹 toast（不一定跳编辑器）——book_id 由
+    # runner 的按名对账（含新 tab 兜底）补齐
+    {"do": "expect_text", "any": ["创建成功", "保存成功", "发布成功"], "timeout": 15},
 ]
 
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
@@ -282,6 +282,28 @@ def chapter_manage_url(book):
     return CONFIG["book_manage"]
 
 
+def _book_id_from_open_tabs(page):
+    """从该浏览器的全部标签里捞作品编号。
+
+    短故事场景的标题/「新建短故事」链接都是 target=_blank——点开的新 tab
+    才带 publish-short/<id>，而 reconcile 手里只有旧 tab 的 page 对象，
+    page.url() 永远拿不到（2026-10-22 实案：对账点中同名作品却报
+    「无法从平台地址提取作品编号」）。"""
+    import re
+    try:
+        from .browser import _http_json
+        port = getattr(page, "_port", 0)
+        if not port:
+            return ""
+        for t in _http_json("http://127.0.0.1:%d/json/list" % int(port)):
+            m = re.search(BOOK_ID_URL_RE, str(t.get("url") or ""))
+            if m:
+                return next((g for g in m.groups() if g), "")
+    except Exception:
+        pass
+    return ""
+
+
 def resolve_book_id(page, book):
     """登记缺 book_id 时按书名在作品管理页找回：点书名卡进详情，从 URL 提取。
 
@@ -312,6 +334,9 @@ def resolve_book_id(page, book):
         m = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
         if m:
             return next((g for g in m.groups() if g), "")
+        tab_id = _book_id_from_open_tabs(page)
+        if tab_id:
+            return tab_id
     return ""
 
 
@@ -372,6 +397,9 @@ def reconcile_short_story_book_id(page, book):
                 match = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
                 if match:
                     return True, next((g for g in match.groups() if g), ""), ""
+                tab_id = _book_id_from_open_tabs(page)
+                if tab_id:
+                    return True, tab_id, ""
                 return False, "", "已点中同名短故事，但无法从平台地址提取作品编号"
             time.sleep(1.0)
         probe = page.call(
@@ -385,6 +413,9 @@ def reconcile_short_story_book_id(page, book):
             "create,loading,titleVisible};}", title, 500)
         if (probe and probe.get("ready") and probe.get("create") and
                 not probe.get("loading") and not probe.get("titleVisible")):
+            tab_id = _book_id_from_open_tabs(page)
+            if tab_id:
+                return True, tab_id, ""
             return False, "", ""
         if probe and probe.get("titleVisible"):
             return False, "", "七猫已显示同名短故事，但无法可靠打开并提取作品编号"
