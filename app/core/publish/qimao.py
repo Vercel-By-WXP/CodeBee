@@ -26,8 +26,16 @@ CONFIG = {
     "home": "https://zuozhe.qimao.com/",
     # 作品管理页：建书入口（「新建小说」按钮所在）；建书向导第二步表单在其下
     "book_manage": "https://zuozhe.qimao.com/front/book-manage",
-    # 编辑器顶栏明示「正文字数最少 1000 字」——不足时「立即发布」被静默拦截
+    # 短故事频道（2026-10-22 实机校准）：作品形态与小说平级，列表/建书入口独立；
+    # 分类 id 空间与小说不同（client_id=5，同名「玄幻奇幻」小说=7/短故事=476），
+    # 全量目录实抓存 tools/qimao_shortstory_bookoption.json。UI 流程按名称点选，
+    # 天然隔离两套 id——绝不在流程表里直写分类数字 id。
+    "short_book_manage": "https://zuozhe.qimao.com/front/book-manage/short",
+    "short_create_url": "https://zuozhe.qimao.com/front/book-manage/short/information",
+    # 短故事编辑器顶栏明示：正文最少 4000 字、最多 70000 字（与小说的 1000 字下限不同）
     "min_chapter_chars": 1000,
+    "short_story_body_min_chars": 4000,
+    "short_story_body_max_chars": 70000,
     "login_url_marks": ["login", "signin", "passport", "sso"],
     # 章节管理页计数（2026-09-28 实机校准）：Element UI 表格，.el-table__row
     # 只中数据行（表头在独立的 header-wrapper 表里），与发章流程的等待选择器同源
@@ -35,6 +43,12 @@ CONFIG = {
         "()=>[...document.querySelectorAll('.el-table__row')]"
         ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
 }
+
+# 建书成功后各入口跳转 URL 里的作品编号提取（番茄 book-info/<id>；七猫小说
+# information?id=<id>、短故事 book-upload?id=<id> 直跳编辑器；列表点击回
+# manage/draft）。单一真源：建书 runner 与 reconcile 共用，加新入口在这里补。
+BOOK_ID_URL_RE = (r"book-info/(\d+)|information\?id=(\d+)"
+                  r"|book-upload\?id=(\d+)|manage\?id=(\d+)|draft\?id=(\d+)")
 
 CREATE_BOOK = [
     {"do": "navigate", "url": "{home}"},
@@ -135,8 +149,44 @@ PROBE_FORM = [
     {"do": "probe", "note": "建书表单"},
 ]
 
+# 短故事建书（2026-10-22 登录态实测校准：真建一本草稿走通全表后删除）。
+# 与小说建书的差异：入口直达 information 页；频道是 el-radio；一级/二级分类
+# 是 qm-select 按名称点选（`:has` 选择器实机验证可用）；简介是富文本（页内
+# 唯一 contenteditable）；标签弹层与小说同构（.tags-wrap[data-type-id]，
+# _tag_click_js 原样可用，四类型各必选 1-3 个）；主角名选填且三个 textarea
+# 无稳定区分选择器，v1 不填（缺失由平台表单校验兜底）。声明默认「本人原创」，
+# 含 AI 内容时由作者在后台改（disclaimer_type 是接口字段，UI 流程不碰）。
+CREATE_SHORT_STORY = [
+    {"do": "navigate", "url": "{home}"},
+    {"do": "url_any", "any": ["qimao.com"]},
+    {"do": "navigate", "url": "{short_create_url}", "timeout": 40},
+    {"do": "wait", "sel": "input[placeholder*='作品名称']", "timeout": 20},
+    {"do": "fill", "sel": "input[placeholder*='作品名称']", "key": "title"},
+    {"do": "click_text", "text": "{target_reader}", "contains": True,
+     "scope": ".el-radio"},
+    {"do": "click", "sel": ".el-select:has(input[placeholder*='一级分类'])"},
+    {"do": "click_text", "text": "{category_main}", "contains": False,
+     "scope": ".el-select-dropdown__item"},
+    {"do": "click", "sel": ".el-select:has(input[placeholder*='二级分类'])"},
+    {"do": "click_text", "text": "{category_sub}", "contains": False,
+     "scope": ".el-select-dropdown__item"},
+    {"do": "fill", "sel": ".q-highlight-box-content [contenteditable=true]",
+     "key": "summary"},
+    {"do": "click_text", "text": "添加标签", "contains": True,
+     "scope": "a,button,span,div"},
+    {"do": "tags"},
+    {"do": "click_text", "text": "确定", "contains": False,
+     "scope": "[class*=qm-book-tag] .qm-btn"},
+    {"do": "shot", "name": "short-story-create-filled"},
+    {"do": "submit", "sel": ".js-save-book-infor-btn", "text": "确认创建"},
+    # 创建成功跳编辑器 /front/book-upload?id=<book_id>（book_id 由 runner 按
+    # BOOK_ID_URL_RE 从最终 URL 提取）
+    {"do": "url_any", "any": ["book-upload?id=", "information?id="]},
+]
+
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
+         "create_short_story": CREATE_SHORT_STORY,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 
@@ -172,6 +222,20 @@ def values_create_book(meta):
     }
 
 
+def values_create_short_story(meta):
+    """短故事建书表单取值：与小说同字段名（title/summary/target_reader/
+    category_main/category_sub），UI 全按名称点选——分类 id 空间差异由平台
+    下拉自行隔离（短故事频道 client_id=5）。无 status 字段（短故事没有
+    连载中/已完结选项）。"""
+    return {
+        "title": (meta.get("book_name") or "").strip(),
+        "summary": (meta.get("summary") or "").strip(),
+        "target_reader": (meta.get("target_reader") or "").strip(),
+        "category_main": (meta.get("category_main") or "").strip(),
+        "category_sub": (meta.get("category_sub") or "").strip(),
+    }
+
+
 def tag_groups(meta):
     out = []
     for key in ("tags_style", "tags_role", "tags_plot", "tags_bg"):
@@ -192,31 +256,34 @@ def chapter_manage_url(book):
 def resolve_book_id(page, book):
     """登记缺 book_id 时按书名在作品管理页找回：点书名卡进详情，从 URL 提取。
 
-    与番茄同款对账通道（fanqie.resolve_book_id）；找不回返回空串不拦死。"""
+    与番茄同款对账通道（fanqie.resolve_book_id）；找不回返回空串不拦死。
+    小说与短故事是两个列表（book-manage / book-manage/short），先后各找
+    一轮——撞名兜底不该关心作品形态，多走一步只发生在小说列表没命中的
+    时候（正常路径零开销）。"""
     import re
     import time
     from . import flow as _flow
     title = str((book or {}).get("title") or "").strip()
     if not title:
         return ""
-    try:
-        page.navigate(CONFIG["book_manage"], timeout=30)
-    except Exception:
-        return ""
-    r = None
-    for _try in range(6):                   # 列表慢渲染
-        r = page.call(_flow._click_match_js(), [title], 300)
-        if (r or {}).get("ok"):
-            break
-        time.sleep(1.0)
-    if not (r or {}).get("ok"):
-        return ""
-    time.sleep(2.5)                         # 跳转收尾
-    m = re.search(r"manage\?id=(\d+)|draft\?id=(\d+)|information\?id=(\d+)",
-                  str(page.url() or ""))
-    if not m:
-        return ""
-    return m.group(1) or m.group(2) or m.group(3) or ""
+    for list_url in (CONFIG["book_manage"], CONFIG["short_book_manage"]):
+        try:
+            page.navigate(list_url, timeout=30)
+        except Exception:
+            continue
+        r = None
+        for _try in range(6):               # 列表慢渲染
+            r = page.call(_flow._click_match_js(), [title], 300)
+            if (r or {}).get("ok"):
+                break
+            time.sleep(1.0)
+        if not (r or {}).get("ok"):
+            continue
+        time.sleep(2.5)                     # 跳转收尾
+        m = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
+        if m:
+            return next((g for g in m.groups() if g), "")
+    return ""
 
 
 def reconcile_book_id(page, book):
@@ -233,10 +300,9 @@ def reconcile_book_id(page, book):
                                           contains=False)
             if (result or {}).get("ok"):
                 time.sleep(2.5)
-                match = re.search(r"manage\?id=(\d+)|draft\?id=(\d+)|information\?id=(\d+)",
-                                  str(page.url() or ""))
+                match = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
                 if match:
-                    return True, match.group(1) or match.group(2) or match.group(3), ""
+                    return True, next((g for g in match.groups() if g), ""), ""
                 return False, "", "已点中同名作品，但无法从平台地址提取作品编号"
             time.sleep(1.0)
         probe = page.call(
@@ -254,6 +320,46 @@ def reconcile_book_id(page, book):
         if probe and probe.get("titleVisible"):
             return False, "", "七猫已显示同名作品，但无法可靠打开并提取作品编号"
         return False, "", "七猫作品管理列表未完整加载"
+    except Exception as exc:
+        return False, "", str(exc)[:240]
+
+
+def reconcile_short_story_book_id(page, book):
+    """短故事频道版对账：列表在 book-manage/short（与小说列表分页），点击
+    同名作品跳 book-upload?id=<id>（2026-10-22 实机）。与 reconcile_book_id
+    同契约 (found, book_id, error)。"""
+    import re
+    import time
+    title = str((book or {}).get("title") or "").strip()
+    if not title:
+        return False, "", "作品名为空"
+    try:
+        page.navigate(CONFIG["short_book_manage"], timeout=30)
+        for _try in range(6):
+            result = page.real_click_text(title, scope="a,button,[role=button],span,li,div,section",
+                                          contains=False)
+            if (result or {}).get("ok"):
+                time.sleep(2.5)
+                match = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
+                if match:
+                    return True, next((g for g in match.groups() if g), ""), ""
+                return False, "", "已点中同名短故事，但无法从平台地址提取作品编号"
+            time.sleep(1.0)
+        probe = page.call(
+            "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
+            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
+            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "(e.innerText||'').trim().includes('新建短故事'));"
+            "const loading=[...document.querySelectorAll('.el-loading-mask,[aria-busy=true]')].some(vis);"
+            "return{ready:document.readyState==='complete'&&location.href.includes('/front/book-manage/short'),"
+            "create,loading,titleVisible};}", title, 500)
+        if (probe and probe.get("ready") and probe.get("create") and
+                not probe.get("loading") and not probe.get("titleVisible")):
+            return False, "", ""
+        if probe and probe.get("titleVisible"):
+            return False, "", "七猫已显示同名短故事，但无法可靠打开并提取作品编号"
+        return False, "", "七猫短故事列表未完整加载"
     except Exception as exc:
         return False, "", str(exc)[:240]
 

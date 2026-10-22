@@ -789,6 +789,10 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
             return round(max(0.0, time.monotonic() - started_at), 3)
 
         final_name = book_name
+        # 短故事（short_story 任务）走独立建书流：频道/表单/编辑器与小说不同
+        # （qimao.CREATE_SHORT_STORY，2026-10-22 实机校准），但对账/取值/登记
+        # 同一套机制；operation/ledger 动作名保持 create_book（本质都是建书）。
+        is_short_story = str((task or {}).get("type") or "") == "short_story"
         try:
             b, page = _mgr()._open_page(slot)
             # 书名全平台唯一（2026-09-30 马甲案）：撞名是建书常见死法，撞了
@@ -801,7 +805,8 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
             # before save_book wrote its receipt. Reconcile the same account's
             # work list before opening a new-book form so a retry adopts the
             # platform-created work instead of creating a duplicate.
-            reconcile = getattr(mod, "reconcile_book_id", None)
+            reconcile = getattr(mod, "reconcile_short_story_book_id"
+                                if is_short_story else "reconcile_book_id", None)
             if not callable(reconcile):
                 raise RuntimeError("平台不支持建书前可靠对账，已停止以避免重复建书")
             reconcile = cast(Callable[..., Tuple[Any, Any, Any]], reconcile)
@@ -819,9 +824,13 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                 final_name = name
                 if i > 1:
                     logs.append("第 %d 次尝试，书名《%s》" % (i, name))
-                values = mod.values_create_book(dict(data, book_name=name))
-                steps = _mgr()._with_tag_steps(_mgr().load_flow(plat, "create_book"),
-                                        mod.tag_groups(data), values, mod)
+                values = (mod.values_create_short_story if is_short_story
+                          else mod.values_create_book)(dict(data, book_name=name))
+                steps = _mgr()._with_tag_steps(
+                    _mgr().load_flow(plat,
+                                     "create_short_story" if is_short_story
+                                     else "create_book"),
+                    mod.tag_groups(data), values, mod)
                 try:
                     _mgr().flow.run_flow(page, steps, values=values, config=mod.CONFIG,
                                   auto_submit=auto_submit, dup_check=auto_submit,
@@ -843,15 +852,17 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                         break               # 候选没准备出来（模型+机械全空）
                     continue
                 # book_id：创建成功后平台跳书籍详情/编辑器，从 URL 提取
-                # （番茄 book-info/<id>；七猫 information?id=<id>）。url_any 过了
-                # 但页面还在跳转链上时再等几轮；提取落空把最终 URL 记进日志，
-                # 别再静默登记空 id（发章只能兜底找书，直达编辑器就废了）。
+                # （番茄 book-info/<id>；七猫 information?id=<id>、短故事
+                # book-upload?id=<id> 直跳编辑器）。url_any 过了但页面还在
+                # 跳转链上时再等几轮；提取落空把最终 URL 记进日志，别再静默
+                # 登记空 id（发章只能兜底找书，直达编辑器就废了）。
+                book_id_re = getattr(mod, "BOOK_ID_URL_RE",
+                                     r"book-info/(\d+)|information\?id=(\d+)")
                 try:
                     for _try in range(6):
-                        m_url = re.search(r"book-info/(\d+)|information\?id=(\d+)",
-                                          str(page.url() or ""))
+                        m_url = re.search(book_id_re, str(page.url() or ""))
                         if m_url:
-                            book_id = m_url.group(1) or m_url.group(2)
+                            book_id = next((g for g in m_url.groups() if g), "")
                             break
                         time.sleep(0.8)
                     if not book_id:
