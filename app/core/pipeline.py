@@ -5334,6 +5334,28 @@ def _bestof_draft(run_id, task, impl, prompt_fn, ms_name, workdir, step_wd, ev,
     return winner["res"], winner
 
 
+def _verdict_fail_reason(overall, threshold, last_round, is_selection):
+    """终判失败的人话死因，按真实判定闸逐层如实报：综合线、单维线、major
+    一票否决。达标闸是「每维 ≥ 阈值」，综合分过线也可能被单维拖死——只喊
+    「综合 < 阈值」会指鹿为马（2026-10-22 实案：综合 8.2 ≥ 8.0 仍判死，
+    真凶是唯一评审给「开头吸引力」7.5）。"""
+    last_round = last_round if isinstance(last_round, dict) else {}
+    low_dims = ["%s %.1f（线 %.1f）" % (d, v, threshold)
+                for d, v in (last_round.get("means") or {}).items()
+                if isinstance(v, (int, float)) and v < threshold]
+    reasons = []
+    if isinstance(overall, (int, float)) and overall < threshold:
+        reasons.append("综合 %.1f < 阈值 %.1f" % (overall, threshold))
+    if low_dims:
+        reasons.append("维度未过线：%s" % "、".join(low_dims))
+    if is_selection:
+        majors_left = [i for i in (last_round.get("issues") or [])
+                       if _is_blocking_issue(i)]
+        if majors_left:
+            reasons.append("%d 条 major 未解决" % len(majors_left))
+    return "；".join(reasons) or "综合 %.1f / 阈值 %.1f" % (overall, threshold)
+
+
 def _run_content_review(run, task, agents, ev, stats, mode):
     is_selection = task.get("type") == "rank_scan"
     if is_selection:
@@ -5812,8 +5834,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                          summary="评审失败（综合 %.1f）" % overall, ended_at=_now())
     else:
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
-                         error="评审未达标：综合 %.1f < 阈值 %.1f，需回炉修订"
-                               % (overall, threshold),
+                         error="评审未达标：%s，需回炉修订"
+                               % _verdict_fail_reason(overall, threshold,
+                                                      history_rounds[-1] if history_rounds else {},
+                                                      is_selection),
                          summary="评审任务未达标（综合 %.1f）" % overall, ended_at=_now())
 
 

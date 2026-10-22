@@ -162,11 +162,14 @@ class HanddrawRevisionRoundsTests(unittest.TestCase):
         self.assertEqual(wf["review_rounds"], 2)
         self.assertIn("回炉", wf["reason"])
 
-    def test_plain_doc_stays_single_round(self):
+    def test_plain_doc_keeps_revision_rounds(self):
+        """2026-10-22 起修订回炉对全部评审型内容开放（article 实案：综合过线
+        但单维卡线，1 轮终局连修订都没进），标准内容不再 1 轮定生死。"""
         wf = task_compile.content_workflow(
             {"type": "doc", "rounds": 2}, "default", mode="auto")
-        self.assertEqual(wf["review_rounds"], 1)
-        self.assertNotIn("回炉", wf["reason"])
+        self.assertEqual(wf["reviewers"], 1)
+        self.assertEqual(wf["review_rounds"], 2)
+        self.assertIn("回炉", wf["reason"])
 
     def test_fast_lane_stays_single_round(self):
         wf = task_compile.content_workflow(

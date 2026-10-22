@@ -189,11 +189,10 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
 
     outline = ttype in deep_types or difficulty == "hard"
     reviewers = 2 if outline else 1
-    # 成片类型（handdraw_video）不进深度车道（无大纲步）但保留修订轮数：
-    # 制作返工成本高，评审不过必须真实回炉（2026-10-21 实案：被单评审短链
-    # 压成 1 轮后评审断流即终局，修订循环从未生效）。
-    keep_revision = outline or ttype == "handdraw_video"
-    review_rounds = min(requested_rounds, 2 if keep_revision else 1)
+    # 修订回炉对全部评审型内容开放：单评审短链只省大纲与双评审，不再把修订
+    # 循环压成 1 轮——评审一挂即终局，回炉从未生效（2026-10-21 handdraw 实案、
+    # 2026-10-22 article 实案：综合 8.2 过线但单维卡线，1 轮终局连修订都没进）。
+    review_rounds = min(requested_rounds, 2)
     try:
         if "reviewers" in rec:
             reviewers = max(1, min(2, int(rec["reviewers"])))
@@ -209,12 +208,13 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
         outline = True
         reviewers = max(2, reviewers)
         review_rounds = max(min(2, requested_rounds), review_rounds)
-    # 深度类型至少保留一轮评审，但允许规划器把双评审降成一名；高门槛强制双评审。
-    if float(task.get("threshold") or 7.0) >= 8.5:
+    # 深度类型至少保留一轮评审，但允许规划器把双评审降成一名；高门槛强制双评审
+    # （≥8.0 即双评审：单评审官扛高门槛等于把及格线押在一个模型的手感上，
+    # 2026-10-22 article 实案：唯一评审给单维 7.5，综合 8.2 照样终局）。
+    if float(task.get("threshold") or 7.0) >= 8.0:
         reviewers = 2
     return {"outline": outline, "reviewers": reviewers,
             "review_rounds": review_rounds,
             "reason": ("深度内容保留大纲和多轮质量门禁" if outline
-                       else "成片类型保留修订回炉（单评审，至多 %d 轮）" % review_rounds
-                       if ttype == "handdraw_video"
-                       else "标准内容使用单评审短链")}
+                       else "标准内容单评审，评审不过回炉修订（至多 %d 轮）"
+                       % review_rounds)}

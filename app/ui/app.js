@@ -7618,7 +7618,7 @@ function renderChatContext(direct) {
     const start = Date.parse(String(run.started_at || "").replace(" ", "T"));
     const end = Date.parse(String(run.ended_at || "").replace(" ", "T"));
     const seconds = Number.isFinite(start) ? Math.max(0, Math.floor(((Number.isFinite(end) ? end : Date.now()) - start) / 1000)) : 0;
-    const duration = seconds >= 60 ? Math.floor(seconds / 60) + t("分") + seconds % 60 + t("秒") : seconds + t("秒");
+    const duration = seconds >= 60 ? Math.floor(seconds / 60) + t("分") + Math.round(seconds % 60) + t("秒") : seconds + t("秒");
     html += '<div class="rd-context-section rd-context-terminal"><button type="button" class="rd-context-row" data-context-action="terminal"' +
       (withLog ? ' data-log-rel="' + esc(withLog.log) + '" data-log-run="' + esc(runId) + '"' : "") + '>' +
       '<span>' + esc(t("终端")) + '</span><span class="rd-context-muted">' + esc(duration) +
@@ -13087,7 +13087,7 @@ function chatResultHTML(run, res) {
 }
 
 function chatDurTxt(s) {
-  s = Number(s) || 0;
+  s = Math.round(Number(s) || 0);
   if (s < 60) return s + " " + t("秒");
   const m = Math.floor(s / 60), r = s % 60;
   return m + " " + t("分") + (r ? " " + r + " " + t("秒") : "");
