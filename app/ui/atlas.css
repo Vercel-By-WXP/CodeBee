@@ -18,7 +18,10 @@
 /* ---------- subpage 全屏布局 ---------- */
 #sub-atlas{overflow:hidden;padding:0!important;background:var(--bg);
   height:calc(100dvh - 54px);max-height:calc(100dvh - 54px);}
-#sub-atlas.atlas-live{display:flex!important;flex-direction:column}
+/* :not(.hidden) 是命门：display:flex!important 与 .hidden 的 display:none!important
+   同为 important，ID+类优先级更高——不限定的话图谱开过一次，hidden 就永远藏不住
+   这页（2026-10-22 实案：图谱→侧栏点任务，主区钉死在记忆图谱）。 */
+#sub-atlas.atlas-live:not(.hidden){display:flex!important;flex-direction:column}
 
 /* ---------- 星图顶栏 ---------- */
 .atlas-topbar{display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;

@@ -6481,6 +6481,7 @@ function showDetailInMain() {
   // composer 搬回契约就得自己扛：否则 .cmp-box 困在隐藏 page-home，对话「返回」回
   // #sub-tasks 只剩问候语和类型 chips（2026-10-22 实案）
   homeUnmountComposer();
+  atlasLiveStop();   // 本函数刻意不走 switchTab（见下）：从图谱页点侧栏任务，动画与 atlas-live 得自己停
   const main = document.querySelector("main");
   if (main) main.classList.remove("browser-page-active");
   // 详情面板住在 page-settings 壳里：暖色皮肤停在工作台主页（page-home）时点侧栏任务行，
@@ -7375,6 +7376,7 @@ function closeRun() {
   rdTabReset();
   stopLogLive();
   stopHiveTick();
+  atlasLiveStop();   // 详情里点「返回」直连回任务页：不经 switchTab，图谱停表同契约
   closeBrowserSplit();   // 并排工作台只属于详情视图：离开详情（设置/主页/列表）一并收起
   detailSideReset();
   $("run-detail").classList.add("hidden");
@@ -15914,6 +15916,17 @@ function memoryCenterMaybeRefresh() {
 
 /* ==================== 记忆图谱 (Memory Atlas) ==================== */
 const ATLAS = { data: null, items: [], sky: [], ready: false };
+
+/* 离开图谱页的统一停表：取消 rAF 动画并摘掉 atlas-live。摘类不能省——
+ * #sub-atlas.atlas-live 的 display:flex!important 压得过 .hidden 的
+ * display:none!important，类不摘＝图谱钉死在任何子页上（2026-10-22 实案：
+ * 图谱→侧栏点任务，主区仍是记忆图谱）。所有不走 switchTab 的出口
+ * （showDetailInMain / closeRun / exitSettings）必须各自调用；可重复调用。 */
+function atlasLiveStop() {
+  if (!ATLAS._stop) return;
+  try { ATLAS._stop(); } catch (e) { /* 动画句柄已失效等 */ }
+  ATLAS._stop = null;
+}
 window.loadAtlas = async function loadAtlas() {
   if (ATLAS._stop) { try { ATLAS._stop(); } catch(e){} ATLAS._stop = null; }
   if (ATLAS.ready) return;
@@ -21931,7 +21944,7 @@ function switchTab(name, shell) {
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
   if (name === "atlas") loadAtlas();          // 记忆图谱：星图可视化 + 全域搜索 + 注入预演 + 治理台
-  else if (ATLAS._stop && S.tab !== "atlas") { try { ATLAS._stop(); } catch(e){} ATLAS._stop = null; }  // 离开图谱页停动画
+  else if (ATLAS._stop) atlasLiveStop();   // 离开图谱页停动画（S.tab 已是本页名，else 分支必然不是 atlas）
   if (name === "knowledge") loadKnowledge();   // 进知识库页拉取条目
   if (name === "automation") { loadAutomation(); startAutoPoll(); }   // 进自动化页：拉取 + 页面可见时每 8s 轮询
   else stopAutoPoll();   // 离开自动化页（或切到别的子页）即停表
@@ -21962,6 +21975,7 @@ function exitSettings(forceForm) {
   $("sub-tasks").classList.remove("mobile-composing");
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
   stopAutoPoll();   // 离开设置视图：自动化页轮询一并停掉
+  atlasLiveStop();   // 图谱页点「新聊天/返回任务表单」：不经 switchTab，停表同契约
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", b.dataset.sub === "tasks"));
