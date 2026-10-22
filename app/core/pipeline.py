@@ -3053,6 +3053,34 @@ CONTENT_DELIVERY_CONTRACTS = {
 
 
 
+def _sweep_chapter_registrations(run_id, workdir, nominal, phase):
+    """步骤后正文摘要对账（防线B）：实现端 CLI 可能改写账面章之外的章稿。
+
+    2026-10-22 神瞳 0049 实案：点名修链路里步骤模板写 chapter-41.md、意图契
+    约写「修订第49章」，CLI 按契约改写 chapter-49.md 并用 Bash 直写 .codebee
+    章稿副本；管线账面停在 ch41，ch49 新稿无人回登记，下一轮 run 开场漂移
+    闸连环拒跑。开场 verify 自愈（story_tracking.verify）要等下一轮 run 才
+    兜底，本防线让登记在步内跟手：reconcile_prose 按磁盘稿回登记全部已登记
+    章（磁盘是真源、幂等），账面章之外被改写的章写进 story_tracking_warning
+    留痕。对账失败只静默放过，永不阻塞主流程。返回本次回登记的章号列表。
+    """
+    try:
+        from . import story_tracking
+        healed = story_tracking.reconcile_prose(workdir)
+    except Exception:
+        return []
+    unexpected = [n for n in healed if n != nominal]
+    if unexpected:
+        try:
+            store.update_run(run_id, story_tracking_warning=(
+                "%s：步骤账面章%s之外有章稿被改写，已按磁盘回登记：%s"
+                % (phase, ("第%04d章" % nominal) if nominal else "无",
+                   "、".join("第%04d章" % n for n in unexpected[:20]))))
+        except Exception:
+            pass
+    return healed
+
+
 def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route, resume_ctx, difficulty):
     """连载流水线：大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书。"""
     import json as _json
@@ -4451,6 +4479,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 branching.mark_stale(workdir, i)
             except Exception:
                 pass
+            # 防线B：修订 CLI 若动了账面外章稿（点名修链路模板/契约打架实案），
+            # 步内即按磁盘回登记并留痕，不留到下一轮 run 的开场闸
+            _sweep_chapter_registrations(run_id, workdir, i, "章节修订")
             _check_cancel(ev)
         if gate_live and not (gate_opening_ok and rounds_used == 1):
             # 闸门终判（rnd1 已过线且未修订时免复核）：五维仍低于内部阈值
@@ -4503,6 +4534,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         # Structured story state is committed alongside the chapter.  The
         # pipeline remains compatible with legacy workdirs: a tracking failure
         # is reported in the run evidence but never deletes a valid chapter.
+        # 防线B：验收前把本章周期内账面外的章稿改动步内回登记（正常流程此扫
+        # 幂等空转；有漂移则当场愈合并留痕，不再等下一轮 run 的开场闸）
+        _sweep_chapter_registrations(run_id, workdir, i, "章节验收")
         try:
             from . import story_tracking
             story_tracking.commit_chapter(
@@ -4655,6 +4689,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                 store.update_run(run_id, story_tracking_warning=str(exc)[:300])
                             except Exception:
                                 pass
+                        _sweep_chapter_registrations(run_id, workdir, j, "2万字检查点重改")
                     for revised_chapter in checkpoint_revised:
                         revised_text = _read_chapter(workdir, revised_chapter)
                         revised_reviews = []
@@ -4982,6 +5017,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     store.update_run(run_id, story_tracking_warning=str(exc)[:300])
                 except Exception:
                     pass
+            _sweep_chapter_registrations(run_id, workdir, i, "全局打磨")
             # 重评该章
             cj_by_agent = {}
             from . import bench as _bench
