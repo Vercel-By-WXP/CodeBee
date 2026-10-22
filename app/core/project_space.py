@@ -51,7 +51,7 @@ def snapshot(*, project_id="", include_archived=False):
     if project_id:
         groups = {project_id: groups.get(project_id)} if project_id in groups else {}
     run_by_task = {}
-    for run in store.list_runs(limit=100000):
+    for run in store.list_runs(limit=100000, include_hidden=True):
         tid = str(run.get("task_id") or "")
         if tid:
             run_by_task.setdefault(tid, []).append(run)

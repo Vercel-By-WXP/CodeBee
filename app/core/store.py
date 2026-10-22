@@ -1131,14 +1131,17 @@ def get_run(run_id):
         return _RUNS.get(run_id)
 
 
-def list_runs(limit=60):
-    """运行历史列表：已从列表移除（record_deleted）的记录不再返回。
+def list_runs(limit=60, include_hidden=False):
+    """运行历史列表：默认不返回已从列表移除（record_deleted）的记录。
 
-    任务详情/成果走 task_runs / latest_run_by_task，仍能拿到隐藏记录作锚点。
+    任务详情/成果走 task_runs / latest_run_by_task，仍能拿到隐藏记录作锚点；
+    统计、续跑继承等内部历史改用 include_hidden=True，删列表记录不等于抹掉
+    执行史。
     """
     with LOCK:
         ids = sorted((rid for rid, run in _RUNS.items()
-                      if not run.get("record_deleted")), reverse=True)
+                      if include_hidden or not run.get("record_deleted")),
+                     reverse=True)
         selected = ids if limit is None else ids[:limit]
         return [_RUNS[i] for i in selected]
 

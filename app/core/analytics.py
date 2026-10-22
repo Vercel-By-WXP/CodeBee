@@ -19,7 +19,7 @@ def summary(store, since=None):
     duration_count = 0
     degraded = 0
     runs_seen = 0
-    for run in store.list_runs(limit=None):
+    for run in store.list_runs(limit=None, include_hidden=True):
         if since is not None:
             stamp = run.get("created_at") or run.get("started_at")
             try:
@@ -63,7 +63,7 @@ def summary(store, since=None):
         item.pop("quality_count", None)
         rows.append(item)
     rows.sort(key=lambda x: (-x["cost_usd"], x["task_id"]))
-    for run in store.list_runs(limit=None):
+    for run in store.list_runs(limit=None, include_hidden=True):
         if since is not None:
             stamp = run.get("created_at") or run.get("started_at")
             try:

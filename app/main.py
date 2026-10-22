@@ -664,7 +664,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 # （2026-10-20 实案，见 tests/test_route_store_shadow_guard.py）。
                 from core import evalbench
                 failures = []
-                for run in store.list_runs(limit=100):
+                for run in store.list_runs(limit=100, include_hidden=True):
                     if not isinstance(run, dict) or run.get("status") not in ("failed", "error"):
                         continue
                     for step in run.get("steps") or []:
@@ -4212,7 +4212,8 @@ def main():
     store.load_all()
     _step("正在恢复项目记忆…")
     from core import project_memory
-    memory_recovery = project_memory.backfill(store.list_tasks(), store.list_runs(limit=None))
+    memory_recovery = project_memory.backfill(
+        store.list_tasks(), store.list_runs(limit=None, include_hidden=True))
     if any(memory_recovery.values()):
         print("[CodeBee] 项目记忆：迁移旧记录 %d 条，回填完成记录 %d 条，失败 %d 项"
               % (memory_recovery["legacy"], memory_recovery["runs"], memory_recovery["errors"]),

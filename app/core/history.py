@@ -17,7 +17,8 @@ def agent_stats(limit=200):
         if win:
             s["wins"] += 1
 
-    for run in store.list_runs(limit):
+    # 列表里移除的记录仍是执行史：路由胜率不能因用户清列表而失忆
+    for run in store.list_runs(limit, include_hidden=True):
         if run.get("kind") != "orchestration":
             continue
         # 失败运行也要进历史（记为全负）：以前只数 done——常挂的 CLI 永远

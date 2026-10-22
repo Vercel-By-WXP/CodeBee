@@ -81,6 +81,14 @@ class RunRecordDeleteSemanticsTests(unittest.TestCase):
             (self._run_dir("run-1") / "run.json").read_text(encoding="utf-8"))
         self.assertTrue(persisted["record_deleted"])
 
+    def test_internal_history_can_still_read_hidden_records(self):
+        self._add_run("run-1")
+        store.delete_run("run-1")
+
+        self.assertEqual(store.list_runs(), [])
+        self.assertEqual([r["id"] for r in store.list_runs(include_hidden=True)],
+                         ["run-1"])
+
     def test_delete_run_twice_is_idempotent(self):
         self._add_run("run-1")
 

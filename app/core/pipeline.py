@@ -2558,7 +2558,7 @@ def _pending_messages(run_id):
 def _direct_prev_run(task_id, exclude_run_id):
     """同一任务下最近一次已结束的 direct run（追话时继承会话 id 与工作目录）。"""
     try:
-        runs = store.list_runs(limit=200)
+        runs = store.list_runs(limit=200, include_hidden=True)
     except Exception:
         return None
     cands = [r for r in runs
