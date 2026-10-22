@@ -418,7 +418,11 @@ def _probe_version(entry):
 def _sweep_versions():
     """后台把全部条目的过期/缺失版本补齐（串行，避免 CLI 子进程风暴）。"""
     try:
-        for e in catalog.load():
+        try:
+            entries = catalog.load()
+        except Exception:
+            entries = []
+        for e in entries:
             try:
                 _probe_version(e)
             except Exception:

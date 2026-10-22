@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import pick_dialog  # noqa: F401 - desktop_host 动态经 main.pick_dialog 访问
@@ -125,13 +126,14 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # 安静模式；异常仍会记录到 run 目录
 
-    def _send(self, code, body, ctype="application/json; charset=utf-8", headers=None):
+    def _send(self, code, body, ctype="application/json; charset=utf-8", headers=None,
+              cache_control=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control or "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -298,7 +300,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if not self._authed():
                 return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
             if path == "/api/state":
-                return self._json(200, _state_payload(self._client_id()))
+                # _state_payload_json 返回的是已序列化 JSON 串，直接 _send，
+                # 不能走 _json 再 dumps 一遍（会变成双重编码的字符串）
+                return self._send(200, _state_payload_json(self._client_id()),
+                                  "application/json; charset=utf-8")
             if path == "/api/goals":
                 from core import goal_service
                 return self._json(200, {"current": goal_service.current(),
@@ -2352,6 +2357,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         if path == "/api/catalog/reload":
             catalog.load(force=True)
             manager.detect_all(force=True)
+            manager.refresh_versions_async()   # 版本探测已 SWR 化：重载后后台补一轮
             return self._json(200, {"ok": True})
         if path == "/api/catalog/check-updates":
             # 进入智能体目录页时前端自动调用；后台逐条查远端版本，立即返回
@@ -3522,7 +3528,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             # 期间一次 bump 都没有，等推送就是等个寂寞（2026-09-22 详情
             # 「完成」侧栏「在跑」实案）。此前靠 sent_ctrl=None 首轮必不等
             # 的巧合工作，这里改成显式行为。
-            payload = json.dumps(_state_payload(cid, ver), ensure_ascii=False)
+            payload = _state_payload_json(cid, ver)
             self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
             self.wfile.flush()
             sent_ctrl = remote.control_view(cid)
@@ -3551,7 +3557,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     last_send = time.time()
                 if ver == store.state_version() and ctrl == sent_ctrl:
                     continue  # 只需要补 usage 事件，状态与控制权都没变
-                payload = json.dumps(_state_payload(cid, ver), ensure_ascii=False)
+                payload = _state_payload_json(cid, ver)
                 self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
                 self.wfile.flush()
                 sent_ctrl = ctrl
@@ -3798,12 +3804,41 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         return self._json(200, {"ok": True, "preference": pref})
 
     # ------------------------------------------------------------ 静态
+    # 可压缩的静态文本类型：gzip 后 app.js 1.2MB → ~0.3MB，远程/手机打开的
+    # 首屏拉取量直接砍 4 倍（本地回环收益小，但无副作用）
+    _GZIP_TYPES = (".js", ".css", ".html", ".json", ".svg", ".webmanifest")
+    # gzip 结果缓存：键=文件路径，值=(mtime_ns, size, gzipped_bytes)。UI 目录
+    # 文件数有限不会撑爆；文件一变 mtime 变即重算。
+    _STATIC_GZIP = {}
+
     def _static(self, name):
         p = (paths.UI_DIR / name).resolve()
         if not p.is_file() or paths.UI_DIR.resolve() not in p.parents:
             return self._json(404, {"error": "not found"})
         suffix = p.suffix.lower()
-        self._send(200, p.read_bytes(), MIME.get(suffix, "application/octet-stream"))
+        data = p.read_bytes()
+        etag = '"%x-%x"' % (p.stat().st_mtime_ns, len(data))
+        if self.headers.get("If-None-Match") == etag:
+            # 条件命中：不重发正文。静态资源此前 no-store，每次开页全量重拉
+            # 2MB+（app.js 1.2MB + index.html 0.2MB + 18 份 CSS），远程链路上
+            # 是开页秒数的大头。no-cache+ETag=每次协商一次（几十字节），
+            # 文件变了立即可见，不引入旧缓存窗口。
+            return self._send(304, b"", "text/plain", {"ETag": etag},
+                              cache_control="no-cache")
+        headers = {"ETag": etag}
+        cache_control = "no-cache"
+        if suffix in self._GZIP_TYPES and len(data) > 1024 and \
+                "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            st = p.stat()
+            ent = self._STATIC_GZIP.get(str(p))
+            if not ent or ent[0] != st.st_mtime_ns or ent[1] != len(data):
+                gz = gzip.compress(data, 6)
+                ent = (st.st_mtime_ns, len(data), gz)
+                self._STATIC_GZIP[str(p)] = ent
+            data = ent[2]
+            headers["Content-Encoding"] = "gzip"
+        self._send(200, data, MIME.get(suffix, "application/octet-stream"),
+                   headers, cache_control=cache_control)
 
     # ------------------------------------------------------------ 运行预览
     def _api_preview(self, path):
@@ -3944,6 +3979,28 @@ def _state_payload(client_id="", ver=None):
         # 直接执行观测：并发保护上限、运行数和可用位；queued 恒为 0。
         "jobs": jobs.workers_info(),
     }
+
+
+# 同一状态版本只构建/序列化一次的缓存（SSE 多端推送 + 连接首推 + 轮询共享）。
+# 真实规模下载荷 ~0.5MB：此前每个客户端每次 bump 都重建字典再 json.dumps，
+# 活跃连载期间是持续的后台 CPU/延迟开销。control 视图按端不同，外置拼回。
+_STATE_JSON_LOCK = threading.Lock()
+_STATE_JSON_CACHE = {"ver": None, "body": None}
+
+
+def _state_payload_json(client_id, ver=None):
+    if ver is None:
+        ver = store.state_version()
+    with _STATE_JSON_LOCK:
+        if _STATE_JSON_CACHE["ver"] != ver or _STATE_JSON_CACHE["body"] is None:
+            d = _state_payload("", ver)
+            d.pop("control", None)
+            _STATE_JSON_CACHE["ver"] = ver
+            _STATE_JSON_CACHE["body"] = json.dumps(d, ensure_ascii=False)
+        body = _STATE_JSON_CACHE["body"]
+    # 拼回按端不同的 control 视图（小对象），整体形状与旧 _state_payload 一致
+    ctrl = json.dumps(remote.control_view(client_id), ensure_ascii=False)
+    return body[:-1] + ',"control":' + ctrl + "}"
 
 
 def _state_task_summary(task):
@@ -4494,6 +4551,13 @@ def main():
         pass
     _step("正在启动任务执行器…")
     jobs.start_worker()
+    # 探测缓存后台预热：detect（which）是快 IO 但冷启动要打满一轮，CLI 版本
+    # 探测（--version 子进程）一条 1-2 秒。预热与服务收尾/监听并行跑，用户
+    # 开第一屏时缓存多半已就绪；没就绪也不阻塞——/api/catalog 已 SWR 化，
+    # 版本号晚几秒补上而已。
+    threading.Thread(target=lambda: (manager.detect_all(),
+                                     manager.refresh_versions_async()),
+                     name="detect-warmup", daemon=True).start()
     n_wait = jobs.restore_deferred_resumes()
     if n_wait:
         print("[CodeBee] 已恢复 %d 个定时退避中的自动续跑任务" % n_wait)
