@@ -804,6 +804,14 @@ TOOLS_SPEC = [
     {"name": "use_skill", "description": "按名称或 ID 加载已启用的技能指令；长文可用 offset 继续读取", "args": {"name": "技能名称或 ID", "?offset": "下一段起始位置"}},
     {"name": "web_search", "description": "搜索公开网页，返回标题、网址和摘要；仅用于需要外部最新信息的任务", "args": {"query": "搜索关键词"}},
     {"name": "read_task_output", "description": "读取当前工作目录内另一项 CodeBee 任务的最近运行状态和步骤输出", "args": {"task_id": "任务 ID"}},
+    {"name": "code_map",
+     "description": "工作目录的代码认知图谱（.codebee/code-map.txt）：每个文件一行 F 职责/R 关联文件/A 对外接口/S 关键约束。大仓库先 status 看漂移，再 read 按关键词取相关条目，读完地图再决定展开哪些文件；改完代码用 build 刷新",
+     "args": {"action": "status | read | build",
+              "?query": "read 时的关键词（匹配路径或条目内容）",
+              "?path": "read/status 时限定文件或目录前缀",
+              "?paths": "build 时的部分刷新路径（逗号分隔，留空=全量）",
+              "?limit": "read 返回条目上限，默认 40，最大 200",
+              "?deep": "status 时对 mtime 变化的文件再比 sha256"}},
     {"name": "list_files", "description": "列出工作目录（或其子目录）下的文件",
      "args": {"path": "子目录相对路径，留空=根目录"}},
     {"name": "read_file", "description": "读取工作目录内一个文本文件（UTF-8/GBK 自动识别；默认超 64KB 时保留开头与结尾、中段省略，此时用 offset/lines 分段读全；图片等二进制文件无法读取）",
@@ -948,7 +956,7 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
     # All built-in file tools are constrained to the task's allowed roots, not
     # merely hidden from the model. Shell/MCP effects are handled separately.
     if name in {"list_files", "read_file", "write_file", "edit_file", "append_file",
-                "fs_manage", "search_content", "find_files"}:
+                "fs_manage", "search_content", "find_files", "code_map"}:
         keys = ["path", "dest"]
         # Enumeration tools default to the whole workspace. If policy grants
         # only a narrower root, require an explicit in-scope path instead of
@@ -988,6 +996,11 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
         return _tool_web_search(args or {}, sandbox=sandbox, deadline=deadline)
     if name == "read_task_output":
         return _tool_read_task_output(workdir, args or {}, sandbox=sandbox)
+    if name == "code_map":
+        from . import code_map
+        if sandbox and not _sandbox_path_allowed(workdir or ".", sandbox):
+            return "（沙箱拒绝：工作目录超出允许范围）"
+        return code_map.tool_result(workdir, args or {})
     if str(name or "").startswith("mcp__"):
         # MCP process launch enforces this policy through bubblewrap; platforms
         # without the isolation backend fail closed in mcp_client._sandbox_launch.
@@ -1078,7 +1091,7 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
                disabled_tools=None, sandbox=None, checkpoint_run_id="",
                tool_output_run_id=""):
     """Run one tool and emit a compact decision receipt for every call."""
-    from . import action_policy, audit, policy
+    from . import action_policy, audit, data_taint, policy, redact
     effective = sandbox if isinstance(sandbox, dict) else policy.normalize_sandbox({}, workdir)
     from . import agent_approval
     approval_task = str(effective.get("approval_task") or checkpoint_run_id or "").strip()
@@ -1092,18 +1105,29 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
         effective["approved_tools"] = list(set(effective.get("approved_tools") or ()) | {name})
     decision = action_policy.preflight(name, args=args, sandbox=effective, known=True,
                                        known_mcp=known_mcp)
-    result = _exec_tool_impl(
-        workdir, name, args, cancel_event=cancel_event, deadline=deadline,
-        task_creator=task_creator, disabled_tools=disabled_tools,
-        sandbox=effective, checkpoint_run_id=checkpoint_run_id,
-        tool_output_run_id=tool_output_run_id)
-    text = str(result or "")
+    run_key = checkpoint_run_id or tool_output_run_id
+    blocked = data_taint.check_outbound(name, args, run_key)
+    if blocked:
+        result = blocked
+        decision = {"decision": "deny", "reason": "credential_exfiltration",
+                    "zone": "yellow"}
+    else:
+        result = _exec_tool_impl(
+            workdir, name, args, cancel_event=cancel_event, deadline=deadline,
+            task_creator=task_creator, disabled_tools=disabled_tools,
+            sandbox=effective, checkpoint_run_id=checkpoint_run_id,
+            tool_output_run_id=tool_output_run_id)
+    raw_text = str(result or "")
+    data_taint.observe(run_key, raw_text)
+    text = redact.mask_secrets(raw_text)
+    if text != raw_text:
+        text += "\n…（已遮罩输出中的凭据，原值未进入上下文）"
     failed = any(token in text for token in ("拒绝", "未执行", "失败", "错误"))
     audit.record_decision(
         name, decision.get("decision"), decision.get("zone"),
         decision.get("reason"), status="error" if failed else "returned",
         run_id=checkpoint_run_id or tool_output_run_id, args=args, result=text)
-    return result
+    return text
 
 
 # ---------------------------------------------------------------- 工具清单（协议适配）

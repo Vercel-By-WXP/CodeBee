@@ -742,3 +742,43 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
             return self._json(200, gitmod.repo_info(str(p)))
         except Exception as e:
             return self._json(200, {"repo": False, "error": str(e)[:200]})
+
+    def _api_code_map(self):
+        """代码认知图谱：GET=读状态/条目，POST=生成或部分刷新。
+
+        地图落在工作目录的 .codebee/ 下，随仓库提交；只接受本机请求，避免把
+        任意路径的结构索引暴露给局域网。POST 走全局鉴权与同源门槛。
+        """
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "代码地图仅限本机使用"})
+        from core import code_map
+        if self.command == "POST":
+            body = self._body() or {}
+            raw = str(body.get("workdir") or "").strip()
+            if not raw:
+                return self._json(400, {"error": "缺少 workdir"})
+            paths = body.get("paths") or None
+            if isinstance(paths, str):
+                paths = [x for x in re.split(r"[\s,]+", paths) if x]
+            if paths is not None and not isinstance(paths, list):
+                return self._json(400, {"error": "paths 必须是数组"})
+            try:
+                return self._json(200, code_map.build(raw, changed_paths=paths or None))
+            except (OSError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)[:300]})
+        qs = parse_qs(urlparse(self.path).query)
+        raw = (qs.get("workdir") or [""])[0].strip()
+        if not raw:
+            return self._json(400, {"error": "缺少 workdir"})
+        try:
+            result = code_map.status(raw, deep=(qs.get("deep") or [""])[0] in ("1", "true", "yes"))
+            query = (qs.get("query") or [""])[0].strip()
+            prefix = (qs.get("path") or [""])[0].strip()
+            if query or prefix:
+                result["entries"] = code_map.read_entries(
+                    raw, query=query, prefix=prefix,
+                    limit=(qs.get("limit") or ["40"])[0])
+        except (OSError, ValueError) as exc:
+            return self._json(400, {"error": str(exc)[:300]})
+        return self._json(200, result)

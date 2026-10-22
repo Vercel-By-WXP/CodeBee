@@ -272,9 +272,13 @@ def install_files(pack_id, name, files, extra=None):
         return None, "包内容为空: %s" % pack_id
     # 装前扫描：全文件合并扫一遍（纯内存静态规则）
     scan_note = ""
+    trust_source = "market" if (extra or {}).get("trust") == "unverified" else "local"
+    scan_trust = "unverified" if trust_source == "market" else "local"
     try:
         from . import skill_scan
         scan_note = skill_scan.scan_summary("\n".join(str(v) for v in files.values()))
+        scan_trust = skill_scan.trust_tier(
+            "\n".join(str(v) for v in files.values()), source=trust_source)["tier"]
     except Exception:
         scan_note = ""
     with _LOCK:
@@ -318,6 +322,7 @@ def install_files(pack_id, name, files, extra=None):
                 record["scan"] = scan_note   # 危险模式扫描结果随包记账
             if extra:
                 record.update(extra)
+            record["trust"] = scan_trust     # 扫描升级后的分级优先于来源默认
             installed[pack_id] = record
         else:
             installed[pack_id]["digest"] = digest
@@ -358,6 +363,7 @@ def install_files(pack_id, name, files, extra=None):
             _save_registry(reg)
     return {"ok": True, "id": pack_id, "name": name, "file": target,
             "already": already, "scan": scan_note, "smoke": smoke,
+            "trust": scan_trust,
             "digest": digest, "changed": changed_vs_seen,
             "warnings": warnings}, None
 
@@ -394,6 +400,7 @@ def skill_card(pack_id):
         "scopes": rec.get("scopes") or [],
         "digest": rec.get("digest") or "",
         "scan": rec.get("scan") or "",               # 装前安检结论（含风险分级）
+        "trust": rec.get("trust") or "",             # trusted/local/unverified/high-risk
         "smoke": rec.get("smoke") or "",
         "installed_at": rec.get("installed_at") or "",
         "source": {"market": "内置市场" if not remote else str(remote.get("name") or ""),

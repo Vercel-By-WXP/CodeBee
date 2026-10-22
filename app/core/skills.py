@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import atomic, novel_feedback, paths, prompt_templates, revisions
+from . import atomic, novel_feedback, paths, prompt_templates, revisions, skill_scan
 
 _LOCK = threading.RLock()
 _FILE = paths.DATA_DIR / "skills.json"
@@ -183,6 +183,23 @@ def _load_user_pack(path):
         return None
     meta, body = _parse_frontmatter(raw)
     stem = path.stem
+    source = str(meta.get("source") or "").strip().lower()
+    declared = str(meta.get("trust") or "").strip().lower()
+    if declared in ("trusted", "unverified", "high-risk"):
+        trust = declared
+    elif source in ("external", "remote"):
+        trust = "unverified"
+    else:
+        # 裸 source: market 也用于内置市场包的安装标记（已随仓库审核），
+        # 外部安装由 market_remote 显式写入 trust: unverified 区分。
+        trust = "local"
+    if trust == "trusted":
+        scan = {"tier": "trusted", "label": "", "findings": [], "injection": []}
+    else:
+        scan = skill_scan.trust_tier(
+            body, source="local" if trust == "local" else "market")
+        if trust == "high-risk" and scan["tier"] != "high-risk":
+            scan = dict(scan, tier="high-risk")
     pack = {
         "id": "user-" + hashlib.sha256(stem.encode("utf-8")).hexdigest()[:10],
         "name": str(meta.get("name") or stem),
@@ -192,6 +209,9 @@ def _load_user_pack(path):
         "persona": str(meta.get("persona") or ""),
         "builtin": False,
         "user": True,
+        "source": source or "local",
+        "trust": scan["tier"],
+        "scan": scan,
     }
     pack["body"] = body
     pack.update({k: revisions.make_revision("packrev", body, source=key)[k]
@@ -264,6 +284,8 @@ def list_packs():
                     "note": p.get("note", ""), "builtin": bool(p.get("builtin")),
                     "user": bool(p.get("user")),
                     "persona": bool(p.get("persona")),
+                    "trust": p.get("trust") or ("local" if p.get("user") else "trusted"),
+                    "risk": (p.get("scan") or {}).get("label") or "",
                     "enabled": bool(st.get("enabled", True)),
                     "chars": len(pack_text(p))})
     return out
@@ -710,7 +732,9 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
         if p.get("persona"):
             parts.append("### 【角色设定：%s】\n%s" % (p["name"], str(p["persona"]).strip()))
         if txt:
-            parts.append("### 【%s】\n%s" % (p["name"], txt))
+            warn = skill_scan.trust_envelope(p.get("trust"), p.get("scan"))
+            parts.append("### 【%s】\n%s%s" % (
+                p["name"], (warn + "\n") if warn else "", txt))
         used.append(p["id"])
 
     lessons = relevance_top(list_lessons(scope, only_enabled=True), task,

@@ -23,7 +23,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from . import atomic, paths
+from . import atomic, doc_extract, paths
 
 MAX_FILES = 12
 MAX_BYTES = 8 * 1024 * 1024  # 单文件 8MB：截图/文本足够，挡恶意大包
@@ -35,7 +35,7 @@ _ALLOWED_EXT = {
     ".py", ".js", ".ts", ".html", ".css", ".xml", ".yaml", ".yml", ".toml",
     ".pdf",
     # Office 文档：现代 zip 格式（docx/xlsx/pptx）会另抽文本伴生文件；
-    # 老式二进制（doc/xls/ppt）与 rtf/odt/ods 只落盘，由能读文件的智能体自行处理
+    # 旧式二进制（doc/xls/ppt）与 rtf/odt/ods 在本机装有转换引擎时也抽伴生文本
     ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
     ".rtf", ".odt", ".ods",
 }
@@ -450,19 +450,25 @@ def commit_to_workdir(workdir, ids):
                 # verify_task 对账——文件被换过/删过给明确诊断，不静默
                 "digest": _digest_file(adir / name)}
         # Office zip 文档抽正文 → 伴生 .txt：无头 CLI 读不了二进制容器，
-        # 有文本版所有智能体都能直接读；抽取失败只降级不拒收
-        if Path(name).suffix.lower() in _TEXT_EXTRACT_EXT:
-            try:
+        # 有文本版所有智能体都能直接读；抽取失败只降级不拒收。
+        # PDF 与旧式 doc/xls/ppt/rtf/odt/ods 走本机已装引擎（doc_extract），
+        # 没有引擎时同样只跳过伴生文件。
+        ext_lower = Path(name).suffix.lower()
+        body = None
+        try:
+            if ext_lower in _TEXT_EXTRACT_EXT:
                 body = extract_office_text(adir / name)
-            except Exception:
-                body = None
-            if body:
-                side = name + ".txt"
-                try:
-                    atomic.write_text(adir / side, body)
-                    item["text_path"] = "_attachments/" + side
-                except OSError:
-                    pass
+            elif ext_lower in doc_extract.SUPPORTED_EXT:
+                body = doc_extract.extract_text(adir / name)
+        except Exception:
+            body = None
+        if body:
+            side = name + ".txt"
+            try:
+                atomic.write_text(adir / side, body)
+                item["text_path"] = "_attachments/" + side
+            except OSError:
+                pass
         out.append(item)
     return out
 

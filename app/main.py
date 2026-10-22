@@ -383,6 +383,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 return self._api_dir_file()
             if path == "/api/git/info":
                 return self._api_git_info()
+            if path == "/api/code-map":
+                return self._api_code_map()
             if path == "/api/events":
                 return self._api_events()
             if path == "/api/control":
@@ -1664,6 +1666,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, **result})
             except (TypeError, ValueError, OSError) as exc:
                 return self._json(400, {"error": str(exc)})
+        if path == "/api/code-map":
+            return self._api_code_map()
         m = re.match(r"^/api/reviews/([^/]+)/transition$", path)
         if m:
             from core import review_requests
@@ -4002,12 +4006,15 @@ def _start_pet_keeper(port):
 
 def main():
     parser = argparse.ArgumentParser(description="CodeBee 多智能体编排台")
-    parser.add_argument("command", nargs="?", choices=("scaffold-adapter",),
+    parser.add_argument("command", nargs="?", choices=("scaffold-adapter", "code-map"),
                         help="开发辅助命令")
     parser.add_argument("--name", default="", help="适配器名称（scaffold-adapter）")
     parser.add_argument("--executable", default="", help="CLI 可执行文件（scaffold-adapter）")
     parser.add_argument("--invocation", default="argv", help="调用方式描述（scaffold-adapter）")
     parser.add_argument("--output-format", default="text", help="输出格式描述（scaffold-adapter）")
+    parser.add_argument("--workdir", default="", help="代码地图工作目录（code-map；默认当前目录）")
+    parser.add_argument("--changed", default="", help="code-map 部分刷新的路径（逗号分隔）")
+    parser.add_argument("--status", action="store_true", help="code-map 只输出漂移状态")
     parser.add_argument("--host", default="127.0.0.1",
                         help="监听地址；默认 127.0.0.1 仅本机；显式传 0.0.0.0 才允许局域网访问")
     parser.add_argument("--port", type=int, default=8765)
@@ -4074,6 +4081,25 @@ def main():
                                            executable=args.executable,
                                            invocation=args.invocation,
                                            output_format=args.output_format)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    if args.command == "code-map":
+        from core import code_map
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, ValueError):
+                pass
+        workdir = args.workdir or os.getcwd()
+        try:
+            if args.status:
+                result = code_map.status(workdir, deep=True)
+            else:
+                changed = [x for x in re.split(r"[\s,]+", args.changed) if x] if args.changed else None
+                result = code_map.build(workdir, changed_paths=changed)
+        except (OSError, ValueError) as exc:
+            raise SystemExit(str(exc))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 

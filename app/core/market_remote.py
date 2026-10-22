@@ -948,7 +948,8 @@ def _rewrite_skill_md(content, title, note, pack_id):
         title = _one_line(m_name.group(1)) if m_name else title
         note = _one_line(m_desc.group(1)) if m_desc else note
     head = ('---\nname: %s\nnote: %s\nscopes:\n- "*"\nsource: market\n'
-            "market_id: %s\n---\n\n" % (_one_line(title, 60), _one_line(note), pack_id))
+            'trust: unverified\nmarket_id: %s\n---\n\n'
+            % (_one_line(title, 60), _one_line(note), pack_id))
     return head + body.lstrip("\r\n")
 
 
@@ -1133,6 +1134,7 @@ def install_remote(entry_id, token=""):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
     res, err = market.install_files(entry_id, entry["title"], files, extra={
+        "trust": "unverified",
         "remote": {"source": entry["source_id"], "name": entry["name"],
                    "version": entry["version"], "homepage": entry["homepage"]},
     })
