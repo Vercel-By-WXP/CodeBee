@@ -8,6 +8,7 @@
  * 安全边界：
  *  - 子进程可执行文件全部是本文件内的字面量（py / python / python3）——包括
  *    TUTTI_PYTHON 覆盖时：它只允许在这三个字面量里选一个，绝不拼接任意路径；
+ *    py 的「版本-位数」点名参数（-3.13-64 等）也全是字面量降序表；
  *  - 参数数组全由字面量常量拼成，不启用 shell；
  *  - 探测只传 `--version`（不向解释器传递任何代码）；Windows 商店的 python.exe
  *    假占位会非零退出，被 catch 后自然跳过；
@@ -34,9 +35,11 @@ function parseVersion(text) {
   return { ver: major + '.' + minor, major: major, minor: minor };
 }
 
-function probePy() {
+// spec 形如 '-3.13-64'（py 启动器的「版本-位数」字面量）；null 表示不指定位数，
+// 即旧的 `py -3` 默认档。探测依旧只传 `--version`，不向解释器传递任何代码。
+function probePy(spec) {
   try {
-    return parseVersion(execFileSync('py', ['-3', '--version'],
+    return parseVersion(execFileSync('py', [spec || '-3', '--version'],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
   } catch (e) { return null; }
 }
@@ -53,16 +56,26 @@ function probePython3() {
   } catch (e) { return null; }
 }
 
-// 探测顺序：win32 优先 py 启动器（跨版本选真 3.x），其余按 python3 → python。
+// 探测顺序：win32 优先 py 启动器，且先按「新版本 64 位」降序点名（32 位解释器
+// 只有 ~2GB 地址空间，复评类任务长跑一天必炸 MemoryError——2026-10-22 实案，
+// 服务被默认档 py -3 指到 Python 3.8-32 上）；全部落空再回到旧的 py -3 →
+// python → python3，行为不会比过去差。darwin/linux 维持 python3 → python。
+// 点名不中的 spec（如未装该版本、旧启动器不认 -64 后缀）探测即失败，自然穿透。
 function resolvePython() {
   const order = process.platform === 'win32'
-    ? [['py', probePy], ['python', probePython], ['python3', probePython3]]
-    : [['python3', probePython3], ['python', probePython]];
-  for (const [name, probe] of order) {
+    ? [
+        ...['-3.13-64', '-3.12-64', '-3.11-64', '-3.10-64', '-3.9-64', '-3.8-64']
+          .map(function (spec) { return ['py', function () { return probePy(spec); }, [spec]]; }),
+        ['py', function () { return probePy(null); }, ['-3']],
+        ['python', probePython, []],
+        ['python3', probePython3, []],
+      ]
+    : [['python3', probePython3, []], ['python', probePython, []]];
+  for (const [name, probe, launcherArgs] of order) {
     const hit = probe();
     if (!hit) continue;
     if (hit.major > MIN_MAJOR || (hit.major === MIN_MAJOR && hit.minor >= MIN_MINOR)) {
-      return { name: name };
+      return { name: name, launcherArgs: launcherArgs };
     }
     return { tooOld: true, name: name, ver: hit.ver };
   }
@@ -114,29 +127,35 @@ const isReadCli = userArgs.includes('--capabilities') || userArgs.includes('--ru
 const childEnv = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' });
 // TUTTI_PYTHON 覆盖解释器：只允许在三个字面量里选（py/python/python3，.exe
 // 后缀可选、大小写不限）——环境变量永远只做「选择题」，不做「填空题」；
-// 机器上有多个解释器且探测选错时，用它切换。
+// 机器上有多个解释器且探测选错时，用它切换。覆盖到 py 时仍走默认档 -3
+// （保持既有契约：它只换可执行文件字面量，不指定版本-位数）。
 let exe = py.name;
+let pyArgs = py.launcherArgs || ['-3'];
 const ovRaw = String(process.env.TUTTI_PYTHON || '').trim().toLowerCase();
 const ov = ovRaw.endsWith('.exe') ? ovRaw.slice(0, -4) : ovRaw;
 if (ov === 'python') {
   exe = 'python';
+  pyArgs = [];
 } else if (ov === 'python3') {
   exe = 'python3';
+  pyArgs = [];
 } else if (ov === 'py') {
   exe = 'py';
+  pyArgs = ['-3'];
 }
 
 let child;
 if (exe === 'py') {
-  child = spawn('py', ['-3', MAIN, ...userArgs], { stdio: 'inherit', env: childEnv });
+  child = spawn('py', [...pyArgs, MAIN, ...userArgs], { stdio: 'inherit', env: childEnv });
 } else if (exe === 'python') {
   child = spawn('python', [MAIN, ...userArgs], { stdio: 'inherit', env: childEnv });
 } else {
   child = spawn('python3', [MAIN, ...userArgs], { stdio: 'inherit', env: childEnv });
 }
 if (!isReadCli) {
-  console.log('[CodeBee] 正在启动（Python: ' + exe + '）… 浏览器将自动打开 http://127.0.0.1:8765；'
-    + '本窗口保持开着就是服务，Ctrl+C 退出。');
+  console.log('[CodeBee] 正在启动（Python: ' + exe
+    + (exe === 'py' && pyArgs.length ? ' ' + pyArgs.join(' ') : '') + '）… '
+    + '浏览器将自动打开 http://127.0.0.1:8765；本窗口保持开着就是服务，Ctrl+C 退出。');
 }
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
