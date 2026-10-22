@@ -12596,6 +12596,10 @@ function chatToolActivityHTML(it, index, latestLogIndex, segment) {
   const cached = chatActivityCache.get(key);
   const activities = segment ? segment.activities : (cached?.activities || []);
   const groupKey = key + "\ngroup" + (segment ? ":" + segment.id : "");
+  // 空活动组整块不渲染：运行中默认展开的「执行过程」没有内容时只剩两行空态
+  // 文案，失败/换将期一串 CLI 步骤能把半屏吃成占位符（2026-10-22 用户反馈）。
+  // 进程活动仍有「查看完整 CLI 执行日志」入口；用户手动展开过的空组保留。
+  if (!activities.length && !chatDisclosureState.get(groupKey)?.open) return "";
   const icons = { read: "book", command: "code", edit: "file-text", search: "search", tool: "code" };
   const labels = { read: t("读取文件"), command: t("运行命令"), edit: t("修改文件"), search: t("搜索"), tool: t("使用工具") };
   const statuses = { completed: t("完成"), running: t("执行中"), failed: t("失败"), unknown: t("工具活动") };
@@ -12623,7 +12627,7 @@ function chatToolActivityHTML(it, index, latestLogIndex, segment) {
     (activities.length ? '<span class="chat-tool-count">' + activities.length + '</span>' : '') +
     '<span class="chat-tool-chevron">⌄</span></summary><div class="chat-tool-list" data-chat-activity-list="' + esc(groupKey) + '">' +
     (rows || '<div class="chat-tool-empty">' + esc(empty) + '</div>') +
-    (cached?.activities_truncated ? '<div class="chat-tool-empty">' + esc(t("仅显示最近的工具活动")) + '</div>' : '') +
+    (activities.length && cached?.activities_truncated ? '<div class="chat-tool-empty">' + esc(t("仅显示最近的工具活动")) + '</div>' : '') +
     '</div></details>';
 }
 
@@ -13010,22 +13014,22 @@ function drawChatFlow(run, data, active) {
     const rawBody = chatCleanText(it.text);
     const body = verdictDigestText(rawBody, true) || rawBody;
     // 运行中还没有正文：先给思考过程块（有思维链/工具活动时），正文位退化为
-    // 实时预览（stream 累计值）；两者皆无才是三点打字动画（终态无正文才落占位）
+    // 实时预览（stream 累计值）；两者皆无才是等待提示。终态无正文不再渲染
+    // 正文行——占位话并进元信息行，失败串场时每轮少占一行（2026-10-22 用户反馈）
     const liveText = it.status === "running" ? String(it.stream || "").trim() : "";
-    const bodyHtml = body ? chatBodyHTML(body)
+    const bodySection = body ? '<div class="chat-body">' + chatBodyHTML(body) + "</div>"
       : (liveText ? '<div class="chat-body chat-live-text">' + esc(liveText.slice(-4000)) + "</div>"
       : (it.status === "running"
-        ? '<div class="chat-cli-wait">' + esc(t("CLI 已启动，正在等待首段输出；可展开下方执行日志查看进程活动。")) + "</div>"
-        : esc(t("（本轮无文本输出）"))));
-    // 元信息只留 名字+时间（+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
+        ? '<div class="chat-body"><div class="chat-cli-wait">' + esc(t("CLI 已启动，等待首段输出…")) + "</div></div>"
+        : ""));
+    // 元信息只留 名字+时间（+用时+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
     const metaBad = it.status === "failed" || it.status === "cancelled";
+    const durTxt = (typeof it.duration_s === "number" && Number.isFinite(it.duration_s) && it.duration_s >= 0)
+      ? " · " + esc(t("用时")) + " " + esc(chatDurTxt(it.duration_s)) : "";
     // 智能体回复：整幅正文，元信息小字落在正文下方；
     // 悬停可复制回答原文（协议清洗后）
     const actsA = body ? '<span class="chat-acts2">' +
       '<button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button></span>" : "";
-    const duration = it.duration_s;
-    const caption = typeof duration === "number" && Number.isFinite(duration) && duration >= 0
-      ? '<div class="chat-step-caption">' + esc(t("用时")) + " " + esc(chatDurTxt(duration)) + "</div>" : "";
     const callMeta = [
       it.cli ? (it.cli === "builtin"
         ? t("调用通道") + " " + (it.who || t("内置直连"))
@@ -13033,13 +13037,13 @@ function drawChatFlow(run, data, active) {
       it.model ? t("模型") + " " + it.model : "",
       it.provider ? t("供应商") + " " + it.provider : "",
     ].filter(Boolean).join(" · ");
-    const stepMeta = [it.who, it.role, it.n != null ? "#" + it.n : "", callMeta,
+    // 步骤行不再重复 who 与失败标记（底部元信息行都有），只留路由细节与编排注释
+    const stepMeta = [it.role, it.n != null ? "#" + it.n : "", callMeta,
       it.status === "running" ? t("CLI 执行中") :
-      (it.status === "failed" ? t("失败") : (it.status === "cancelled" ? t("已取消") : t("完成"))), it.note].filter(Boolean).join(" · ");
+      (it.status === "failed" || it.status === "cancelled" ? "" : t("完成")), it.note].filter(Boolean).join(" · ");
     // 助手正文与工具活动共用左缘，不再为头像预留一列。
     return '<div class="chat-row">' +
       '<div class="chat-bubble agent">' +
-      caption +
       (stepMeta ? '<div class="chat-step-meta">' + esc(stepMeta) + "</div>" : "") +
       // 执行过程（思考/工具活动/CLI 日志）只在步骤执行中展示：终态气泡只留
       // 结果正文，过程明细去「步骤」页签回看（2026-10-22 用户拍板）
@@ -13047,9 +13051,10 @@ function drawChatFlow(run, data, active) {
         chatThinkHTML(it) +
         chatAcpEventsHTML(it) +
         chatExecutionHTML(it, idx, latestLogIndex) : "") +
-      '<div class="chat-body">' + bodyHtml + "</div>" +
-      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
-      (metaBad ? " · " + t(it.status === "failed" ? "失败" : t("已取消")) : "") + actsA + "</div>" +
+      bodySection +
+      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) + durTxt +
+      (!body && it.status !== "running" ? " · " + esc(t("本轮无文本输出")) : "") +
+      (metaBad ? " · " + esc(t(it.status === "failed" ? "失败" : "已取消")) : "") + actsA + "</div>" +
       (it.status === "running" ? chatLogHTML(it, idx, latestLogIndex) : "") +
       (Array.isArray(it.followups) && it.followups.length
         ? '<div class="chat-fups">' + it.followups.map((f) =>

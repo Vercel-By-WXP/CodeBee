@@ -401,34 +401,3 @@ def _probe_due_accounts(now=None):
             state["last_probe_at"] = now
     for aid, state in targets:
         _record_probe_result(aid, state, _probe_account(aid, state))
-
-
-# ---------------------------------------------------------------- 手动体检
-
-def quarantined_ids():
-    """当前隔离中的账号 id 快照（手动「重新体检」的账号侧目标名单）。"""
-    try:
-        with _LOCK:
-            return [aid for aid, state in _ACCOUNTS.items()
-                    if state.get("status") == "down"]
-    except Exception:
-        return []
-
-
-def probe_account(agent_id):
-    """立即探活一个隔离账号（手动「重新体检」路径）。
-
-    自动探针按 5→30 分钟退避走场；用户登录/充值后手动体检不该陪跑退避
-    （2026-10-22 实案：健康页「重新体检」只探供应商台账，那排「账号失效」
-    行最长要干等 30 分钟才轮到自动探针）。探活前把 next_probe_at 顺延一小
-    段，防止后台循环把同一账号并发双跑；结果仍走 _record_probe_result
-    （身份校验 + 恢复即清全场停用）。未知/已恢复的行按未跑处理。
-    """
-    aid = str(agent_id or "")
-    with _LOCK:
-        state = _ACCOUNTS.get(aid)
-        if not state or state.get("status") != "down":
-            return False
-        state["next_probe_at"] = time.time() + 60
-    _record_probe_result(aid, state, _probe_account(aid, state))
-    return True

@@ -931,11 +931,6 @@ def force_probe(join_timeout: float = 25.0):
     原链路（_LOCK + 身份校验，与后台探针并发无害）。join_timeout 盖住
     _probe_one 的 20s 探测上限；到点没探完的行 probe_next_at 已清零，
     后台循环下个心跳（15s）会接着探。
-
-    同轮并发重探 CLI 账号隔离台账（bench 的「账号失效」行）：账号探针
-    此前只有 5→30 分钟退避的自动路径，手动体检对它们毫无作用——用户
-    登录/充值后最长干等 30 分钟（2026-10-22 实案）。单条账号探针上限
-    35s，join 到点未完的行由 bench 后台循环按退避接力。
     """
     with _LOCK:
         targets = [(name, st) for name, st in _PROVIDERS.items()
@@ -944,13 +939,7 @@ def force_probe(join_timeout: float = 25.0):
         for _name, st in targets:
             st["probe_next_at"] = 0
             st["probe_backoff_idx"] = 0
-    account_ids = []
-    try:
-        from . import bench
-        account_ids = bench.quarantined_ids()
-    except Exception:
-        account_ids = []
-    if not targets and not account_ids:
+    if not targets:
         return 0, 0
 
     def _run(name, st):
@@ -960,22 +949,10 @@ def force_probe(join_timeout: float = 25.0):
         except Exception:
             log.exception("[health] 手动探测 %s 失败", name)
 
-    def _run_account(agent_id):
-        try:
-            from . import bench
-            bench.probe_account(agent_id)
-        except Exception:
-            log.exception("[health] 手动账号探活 %s 失败", agent_id)
-
     threads = []
     for name, st in targets:
         t = threading.Thread(target=_run, args=(name, st),
                              name="health-probe-manual", daemon=True)
-        t.start()
-        threads.append(t)
-    for agent_id in account_ids:
-        t = threading.Thread(target=_run_account, args=(agent_id,),
-                             name="bench-account-probe-manual", daemon=True)
         t.start()
         threads.append(t)
     deadline = time.time() + float(join_timeout)
@@ -984,4 +961,4 @@ def force_probe(join_timeout: float = 25.0):
         if time.time() >= deadline:
             break
     done = sum(1 for t in threads if not t.is_alive())
-    return len(targets) + len(account_ids), done
+    return len(targets), done

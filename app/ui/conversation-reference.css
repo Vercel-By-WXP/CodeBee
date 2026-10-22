@@ -44,13 +44,6 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
   font-size: 14px;
   line-height: 1.7;
 }
-.rd-chat .chat-step-caption {
-  margin-bottom: 16px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid var(--chat-rule);
-  color: var(--chat-muted);
-  font-size: 13px;
-}
 .rd-chat .chat-user-message { max-width: 74%; min-width: 0; }
 .rd-chat .chat-bubble.me {
   max-width: 100%;

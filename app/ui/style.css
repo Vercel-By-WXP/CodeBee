@@ -3533,7 +3533,7 @@ details.chat-think[open] > summary::before { transform: rotate(90deg); }
 details.chat-think[open] > summary { border-bottom: 1px dashed var(--border-strong); }
 .chat-live-text { opacity: .75; }
 .chat-live-text::after { content: "▍"; opacity: .5; animation: ct-breathe 1.2s infinite; }
-.chat-cli-wait { color: var(--muted); font-size: 12px; padding: 7px 0; }
+.chat-cli-wait { color: var(--muted); font-size: 12px; padding: 2px 0; }
 .chat-step-meta { margin: 2px 0 6px; color: var(--muted); font-size: 11px; }
 .chat-cli-card { margin-top: 10px; border-left: 2px solid color-mix(in srgb, var(--accent) 48%, var(--border)); padding-left: 9px; }
 .chat-cli-card-head { display: flex; align-items: center; gap: 6px; min-height: 19px; color: var(--muted); font: 11px/1.35 var(--mono, monospace); }
