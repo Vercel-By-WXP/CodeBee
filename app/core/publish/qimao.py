@@ -198,9 +198,12 @@ CREATE_SHORT_STORY = [
     {"do": "click_text", "text": "添加标签", "contains": True,
      "scope": "a,button,span,div"},
     {"do": "tags"},
-    # 关弹层照抄连载校准表：不带 scope 的全文精确点（scope 收窄会漏，
-    # 2026-10-22 实案：弹层开着点「确认创建」= 点空，提交按钮禁用）
+    # 关弹层必须真实鼠标：el.click() 在弹层动画/遮罩下会报 ok 但被平台吞掉
+    # （2026-10-22 实案：弹层开着点「确认创建」= 点空；同坑先例见标签芯片
+    # 0928 事故注）。click_text/click_real 双保险。
     {"do": "click_text", "text": "确定", "contains": False},
+    {"do": "click_real", "text": "确定", "tries": 10},
+    {"do": "sleep", "s": 1},
     {"do": "shot", "name": "short-story-create-filled"},
     {"do": "submit", "sel": ".js-save-book-infor-btn", "text": "确认创建"},
     # 创建成功跳编辑器 /front/book-upload?id=<book_id>（book_id 由 runner 按
