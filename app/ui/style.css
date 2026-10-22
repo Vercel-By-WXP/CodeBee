@@ -1722,9 +1722,12 @@ details.prow-hidden[open] > summary { margin-bottom: 6px; }
 .rd-bible .bible-head .sec-title { margin: 0; }
 .rd-bible .bible-head .hint { flex: 1; min-width: 120px; }
 .rd-bible .flex1 { flex: 1; }
+/* 圣经正文坐在 .rd-bible 面板底上，不是日志终端面：--log-text 已被
+ * hive-ui 共享契约重映射成深底浅字（亮色主题 #d8e5e8），借来当正文字色
+ * 会白底白字（1022 实案）。正文字色一律跟 --text 走。 */
 .rd-bible .bible-view {
   margin: 8px 0 0; font-family: var(--mono); font-size: 12px; line-height: 1.6;
-  white-space: pre-wrap; word-break: break-word; color: var(--log-text);
+  white-space: pre-wrap; word-break: break-word; color: var(--text);
   max-height: 220px; overflow: auto;
 }
 .rd-bible .bible-editor {

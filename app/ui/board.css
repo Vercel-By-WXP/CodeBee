@@ -457,10 +457,13 @@ button { font: inherit; cursor: pointer; }
 }
 .gate-title { font-size: 20px; font-weight: 700; }
 .gate-sub { color: var(--t2); font-size: 12px; margin: 7px 0 18px; }
+/* 输入框坐 --sunk（日志终端面，hive-ui 契约下亮色主题也是深底）：
+ * 字色必须跟 --term 配对，跟 --t1 会暗底配暗字（1022 实案）。 */
 #gate-token {
   display: block; width: 100%; padding: 11px 13px; text-align: center; outline: none;
-  border: 1px solid var(--line-2); border-radius: 8px; background: var(--sunk); color: var(--t1);
+  border: 1px solid var(--line-2); border-radius: 8px; background: var(--sunk); color: var(--term);
 }
+#gate-token::placeholder { color: color-mix(in srgb, var(--term) 52%, var(--sunk)); }
 #gate-ok { margin-top: 12px; padding: 10px 26px; border: 1px solid var(--live-bd); border-radius: 7px; background: var(--live); color: var(--bg); font-weight: 700; }
 #gate-ok:hover { background: var(--live-hi); }
 .gate-err { min-height: 18px; margin-top: 11px; color: var(--err); font-size: 12px; }
