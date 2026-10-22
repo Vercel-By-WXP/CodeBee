@@ -21363,8 +21363,12 @@ function updateStatusSidebar() {
         '<div class="pending-item" onclick="homeOpenRun(\'' + esc(r.id) + '\')" style="cursor:pointer">'
         + '<div class="pending-item-title">' + esc(r.title || r.id) + '</div>'
         + (r.reasons && r.reasons.length ? '<div class="pending-item-desc">' + esc(r.reasons.map((x) => t(x)).join(" · ")) + '</div>' : "")
+        + '<div class="pending-foot">'
         + '<button type="button" class="pending-go" onclick="event.stopPropagation(); homeOpenRun(\'' + esc(r.id) + '\')">'
         + t("去确认") + '<svg class="ico ico-sm" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>'
+        + '<button type="button" class="pending-ignore" title="' + esc(t("不再提醒这条待处理")) + '" onclick="event.stopPropagation(); ignorePendingRun(\'' + esc(r.id) + '\')">'
+        + t("忽略") + "</button>"
+        + "</div>"
         + "</div>"
       ).join("");
     }
@@ -21400,6 +21404,13 @@ function updateStatusSidebar() {
     usageList.innerHTML = html;
     if (usageMonth) usageMonth.textContent = (new Date().getMonth() + 1) + " " + t("月");
   }
+}
+
+/* 忽略一条待处理：交给活动模型按运行指纹记账，状态变化后自动重新出现 */
+function ignorePendingRun(id) {
+  if (!window.activityModel || typeof window.activityModel.ignore !== "function") return;
+  window.activityModel.ignore(id);
+  updateStatusSidebar();
 }
 
 /* ---------------------------------------------------------- 手机连接（扫码） */

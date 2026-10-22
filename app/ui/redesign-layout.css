@@ -1128,6 +1128,33 @@ html[data-layout="workbench"] .pending-go:hover {
   text-decoration: underline;
 }
 
+/* 待你处理：操作行（去确认 / 忽略） */
+html[data-layout="workbench"] .pending-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+html[data-layout="workbench"] .pending-foot .pending-go {
+  margin-top: 0;
+}
+
+html[data-layout="workbench"] .pending-ignore {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+html[data-layout="workbench"] .pending-ignore:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 /* 本月用量卡（demo 同款）：大数字 + 迷你趋势 + 页脚统计 */
 /* 卡头浏览▾（接管原「切换」的 pickFolder 入口） */
 html[data-layout="workbench"] .rd-input-caret {

@@ -3,6 +3,7 @@
 (function (root) {
   const READ_KEY = "orch.activity.read.v1";
   const VIEW_KEY = "orch.activity.view.v1";
+  const IGNORE_KEY = "orch.activity.ignored.v1";
   const activeStatuses = new Set(["running", "queued"]);
   // A cancelled run is already resolved and does not require a verdict.
   // Keep only runs that need follow-up in the attention bucket; otherwise a
@@ -31,10 +32,11 @@
     return date >= today ? "今天" : date >= yesterday ? "昨天" : "更早";
   }
 
-  function build(state, reads, now) {
+  function build(state, reads, now, ignoredRuns) {
     state = state || {};
     reads = reads || {};
     now = now || new Date();
+    ignoredRuns = ignoredRuns || ignored;
     const tasks = new Map((state.tasks || []).filter((task) => !task.archived).map((task) => [task.id, task]));
     const archived = new Set((state.archived_tasks || []).map((task) => task.id));
     const latest = state.task_latest || {};
@@ -46,6 +48,7 @@
     runs.forEach((run) => {
       if (!run.id || (run.task_id && (!tasks.has(run.task_id) || archived.has(run.task_id)))) return;
       const task = tasks.get(run.task_id) || {};
+      const fp = fingerprint(run);
       const isLatest = !run.task_id || !latest[run.task_id] || latest[run.task_id].id === run.id;
       const active = activeStatuses.has(run.status);
       const attention = (state.task_attention || {})[run.task_id] || {};
@@ -55,7 +58,9 @@
       if (isLatest && attention.approval_pending) reasons.push("待审批");
       if (isLatest && active && run.paused) reasons.push("已暂停");
       if (isLatest && failures.has(run.status)) reasons.push(run.status === "timeout" ? "超时" : "执行失败");
-      const needs = reasons.length > 0;
+      // Ignoring dismisses this exact run state; a rerun changes the fingerprint and comes back.
+      const muted = ignoredRuns[run.id] === fp;
+      const needs = reasons.length > 0 && !muted;
       if (!needs && !active && run.status !== "done") return;
       const step = run.current_step || {};
       const failedStep = run.failed_step || {};
@@ -63,11 +68,11 @@
       const summary = compact(needs ? (run.error || run.summary || failedStep.summary || step.summary) :
         active ? [stepText, step.summary].filter(Boolean).join(" — ") : (run.summary || step.summary));
       const time = run.ended_at || run.started_at || run.created_at || task.created_at || "";
-      const read = reads[run.id] === fingerprint(run);
+      const read = reads[run.id] === fp;
       const unread = run.status === "done" && !read;
       rows.push({ id: run.id, taskId: task.id || "", title: task.title || run.title || run.id,
         status: run.status, time, workdir: task.workdir || "", summary,
-        reasons, needs, read, unread, fingerprint: fingerprint(run),
+        reasons, needs, read, unread, fingerprint: fp,
         step: Number(failedStep.n) || 0,
         target: failures.has(run.status) ? "steps" : reasons.includes("待裁决") ? "git" :
           reasons.includes("待审批") ? "approval" : active ? "hive" : "result",
@@ -78,17 +83,20 @@
       unread: rows.filter((row) => row.unread && !row.needs).length };
   }
 
-  const model = { build, fingerprint, dayGroup };
+  let reads = {};
+  let ignored = {};
+  const model = { build, fingerprint, dayGroup, ignore };
   if (typeof module !== "undefined" && module.exports) module.exports = model;
   root.activityModel = model;   // 状态侧栏「待你处理」等处复用同一套 needs 判定
   if (typeof document === "undefined") return;
 
-  let reads = {};
   let enabled = false;
   let signature = "";
   try {
     const saved = JSON.parse(localStorage.getItem(READ_KEY) || "{}");
     if (saved && typeof saved === "object" && !Array.isArray(saved)) reads = saved;
+    const savedIgnored = JSON.parse(localStorage.getItem(IGNORE_KEY) || "{}");
+    if (savedIgnored && typeof savedIgnored === "object" && !Array.isArray(savedIgnored)) ignored = savedIgnored;
     enabled = localStorage.getItem(VIEW_KEY) === "1";
   } catch (error) { /* Storage may be unavailable; session state still works. */ }
 
@@ -96,6 +104,11 @@
     // Bounded persistent index. Reading a rerun cannot acknowledge an older/newer run.
     reads = Object.fromEntries(Object.entries(reads).slice(-1000));
     try { localStorage.setItem(READ_KEY, JSON.stringify(reads)); } catch (error) { /* memory only */ }
+  }
+
+  function saveIgnored() {
+    ignored = Object.fromEntries(Object.entries(ignored).slice(-1000));
+    try { localStorage.setItem(IGNORE_KEY, JSON.stringify(ignored)); } catch (error) { /* memory only */ }
   }
 
   function paintToggle() {
@@ -115,6 +128,15 @@
     delete reads[run.id];
     reads[run.id] = fingerprint(run);
     saveReads();
+    render();
+  }
+
+  function ignore(id) {
+    const row = build(S.state, reads).rows.find((item) => item.id === id);
+    if (!row) return;
+    delete ignored[id];
+    ignored[id] = row.fingerprint;
+    saveIgnored();
     render();
   }
 
@@ -201,10 +223,11 @@
       }
     });
     window.addEventListener("storage", (event) => {
-      if (event.key !== READ_KEY) return;
+      if (event.key !== READ_KEY && event.key !== IGNORE_KEY) return;
       try {
         const saved = JSON.parse(event.newValue || "{}");
-        if (saved && typeof saved === "object" && !Array.isArray(saved)) reads = saved;
+        if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+        if (event.key === READ_KEY) reads = saved; else ignored = saved;
       } catch (error) { return; }
       render();
     });
