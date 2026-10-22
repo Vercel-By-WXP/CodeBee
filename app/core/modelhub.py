@@ -3487,6 +3487,217 @@ def probe_wire_caps(provider_id, prefer_model="", key_id="", persist=True):
     return caps, "；".join(notes)
 
 
+# ---------------------------------------------------------------- 工具动作验证
+# 借鉴 RuiC-oc-ferry（2026-10-22 调研）：wire 探针只证「1 token 连通」，不证
+# 「模型会不会真干活」——免费通道里大量模型连通正常却只回文本不调工具，agentic
+# 步骤（CLI 写文件/内置智能体工具环）整轮空转。这里加一档动作验证：发一个
+# report_token 工具 + 随机令牌，看模型是否真把令牌送进工具调用。
+
+_TOOL_PROBE_TTL_DAYS = 7   # 判定缓存天数；到期视为无判定（免费池通道也会换血）
+
+
+def _tool_probe_prompt(token):
+    return ("请调用工具 report_token，参数 token 的值必须逐字符为：%s。"
+            "不要用文字回答。" % token)
+
+
+def _tool_probe_specs(proto):
+    """探测工具定义（openai chat 与 anthropic 两种形态，语义相同）。"""
+    schema = {"type": "object",
+              "properties": {"token": {"type": "string", "description": "探测令牌"}},
+              "required": ["token"]}
+    if proto == "anthropic":
+        return [{"name": "report_token",
+                 "description": "上报探测令牌（本探测要求必须调用本工具）",
+                 "input_schema": schema}]
+    return [{"type": "function",
+             "function": {"name": "report_token",
+                          "description": "上报探测令牌（本探测要求必须调用本工具）",
+                          "parameters": schema}}]
+
+
+def _tool_verdict_from_payload(proto, data, token):
+    """从 200 响应体判动作。返回 (verdict, why)：tool=带令牌的工具调用；
+    chat_only=只回文本；mismatch=调了工具但令牌不符（调用方重试一次）；
+    ""=无可判内容。只认本探测下发的令牌，防模型瞎猜蒙混。"""
+    try:
+        if proto == "anthropic":
+            for b in (data.get("content") or []):
+                if isinstance(b, dict) and b.get("type") == "tool_use":
+                    args = b.get("input") if isinstance(b.get("input"), dict) else {}
+                    if str(args.get("token") or "").strip() == token:
+                        return "tool", ""
+                    return "mismatch", "工具调用令牌不符（%s）" % str(args.get("token"))[:20]
+            text = "".join(str(b.get("text") or "") for b in (data.get("content") or [])
+                           if isinstance(b, dict))
+            if text.strip():
+                return "chat_only", "只回文本未调用工具"
+            return "", "响应无可判内容"
+        msg = ((data.get("choices") or [{}])[0].get("message") or {})
+        for tc in (msg.get("tool_calls") or []):
+            fn = tc.get("function") if isinstance(tc, dict) else None
+            raw = str((fn or {}).get("arguments") or "")
+            try:
+                args = json.loads(raw) if raw else {}
+            except Exception:
+                args = {}
+            if isinstance(args, dict) and str(args.get("token") or "").strip() == token:
+                return "tool", ""
+            return "mismatch", "工具调用令牌不符（%s）" % raw[:40]
+        text = msg.get("content")
+        if isinstance(text, list):
+            text = "".join(str(b.get("text") or "") for b in text if isinstance(b, dict))
+        if str(text or "").strip():
+            return "chat_only", "只回文本未调用工具"
+        return "", "响应无可判内容"
+    except Exception as exc:
+        return "", "响应解析失败: %s" % str(exc)[:80]
+
+
+def _probe_tool_once(base, api_key, target_proto, model, allow_private, token, timeout=25):
+    """对候选 base 发一次带工具的最小请求。返回 (verdict, why, err)：
+    verdict 三值或 ""（HTTP/传输失败）。openai 面只试 chat/completions——
+    只认 responses 协议的网关探不动，按无判定收场，不误标仅对话。"""
+    prompt = _tool_probe_prompt(token)
+    if target_proto == "anthropic":
+        url = base.rstrip("/") + "/v1/messages"
+        body = {"model": model, "max_tokens": 1024,
+                "tools": _tool_probe_specs("anthropic"),
+                "messages": [{"role": "user", "content": prompt}]}
+        variants = [(url, body, {"x-api-key": api_key,
+                                 "anthropic-version": "2023-06-01"}),
+                    (url, body, {"Authorization": "Bearer " + api_key,
+                                 "anthropic-version": "2023-06-01"})]
+    else:
+        b = base.rstrip("/")
+        variants = [(b + "/chat/completions",
+                     {"model": model, "max_tokens": 2048,
+                      "messages": [{"role": "user", "content": prompt}],
+                      "tools": _tool_probe_specs("openai")},
+                     {"Authorization": "Bearer " + api_key})]
+    last = ""
+    for url, body, headers in variants:
+        status, data, err = _post_json_http(url, headers, body, allow_private, timeout=timeout)
+        if 200 <= status < 300:
+            return _tool_verdict_from_payload(target_proto, data, token) + ("",)
+        api_error = _response_error_text(data)
+        last = ("HTTP %s %s" % (status, api_error) if api_error
+                else (err or "连接失败") if status == 0 else "HTTP %s" % status)
+    return "", "", last
+
+
+def probe_tool_use(provider_id, prefer_model="", key_id="", persist=True):
+    """工具动作验证：随机令牌 + report_token 工具，判「tool / chat_only」。
+
+    只回文本不算失败（模型活着），标 chat_only 供换将降权；带工具调用但令牌
+    不符换新令牌重试一次，仍不符按 chat_only 收场（动作不符重试一次、传输失败
+    不重试，均承 oc-ferry）。判定按供应商+探针模型存 tool_caps，7 天过期。
+    返回 (tool_caps, note)；未能判定时 tool_caps 为空且不改写旧判定。"""
+    import secrets as _secrets
+    with _LOCK:
+        prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    if not prov:
+        return {}, "供应商不存在"
+    if key_id:
+        keys = [k for k in _provider_keys(prov) if k["id"] == key_id and k.get("key")]
+        if not keys:
+            return {}, "密钥不存在或未启用"
+    else:
+        keys = _chain_keys(prov)
+    if not keys:
+        return {}, "该供应商未配置可用密钥"
+    ranked = _ranked(prov.get("models") or [])
+    model = (prefer_model or prov.get("model") or next(
+        (m.get("name") for m in ranked
+         if m.get("name") and m.get("enabled", True)), ""))
+    if not model:
+        model = next((m.get("name") for m in ranked if m.get("name")), "")
+    if not model:
+        return {}, "没有可用模型名——先「获取模型列表」再测"
+    allow_private = bool(prov.get("allow_private"))
+    verdict, why, note = "", "", ""
+    for proto, base in _protocol_candidates(prov):
+        if proto not in ("openai", "anthropic"):
+            continue   # google 无工具协议
+        for kk in keys:
+            token = _secrets.token_hex(4).upper()
+            v, w, err = _probe_tool_once(base, kk["key"], proto, model,
+                                         allow_private, token)
+            if v == "mismatch":
+                token = _secrets.token_hex(4).upper()
+                v, w, err = _probe_tool_once(base, kk["key"], proto, model,
+                                             allow_private, token)
+                if v == "mismatch":
+                    v, w = "chat_only", "两次工具调用令牌均不符"
+            if v in ("tool", "chat_only"):
+                verdict, why = v, w
+                break
+            if err:
+                note = err
+        if verdict:
+            break
+    if not verdict:
+        return {}, note or why or "未能判定（传输失败或无可判响应）"
+    caps = {"verdict": verdict, "checked_at": time.strftime("%Y-%m-%d %H:%M"),
+            "model": model}
+    if why:
+        caps["note"] = why[:80]
+    if persist:
+        with _LOCK:
+            data_all = _load()
+            p = next((q for q in data_all.get("providers", [])
+                      if q.get("id") == provider_id), None)
+            if p is not None:
+                p["tool_caps"] = caps
+                _save(data_all)
+    return caps, ""
+
+
+def tool_verdict(provider_id, model="", max_age_days=_TOOL_PROBE_TTL_DAYS):
+    """读供应商的工具动作判定。过期/模型对不上/无判定返回 ""。"""
+    with _LOCK:
+        prov = next((p for p in providers() if p.get("id") == provider_id), None)
+    caps = (prov or {}).get("tool_caps") or {}
+    verdict = str(caps.get("verdict") or "")
+    if not verdict:
+        return ""
+    if model and str(caps.get("model") or "") not in ("", str(model)):
+        return ""
+    try:
+        age = (time.time() - time.mktime(time.strptime(
+            str(caps.get("checked_at") or ""), "%Y-%m-%d %H:%M"))) / 86400.0
+    except Exception:
+        return ""
+    if age > float(max_age_days) or age < -1.0:
+        return ""
+    return verdict
+
+
+def chain_tool_verdict(agent_id, difficulty="default"):
+    """绑定链的工具动作画像：链上有判定且全为 chat_only → ("all_chat_only", 理由)；
+    全为 tool → ("tool", "")；任一条无判定/过期/解析不动 → ("unknown", "")。
+    供路由降级用——「部分仅对话」不算：链上备胎还能接住。"""
+    try:
+        binding = resolve_binding(agent_id, difficulty) or {}
+    except Exception:
+        return "unknown", ""
+    verdicts = []
+    for row in (binding.get("call_chain") or []):
+        if not isinstance(row, dict):
+            continue
+        pid = str(row.get("provider_id") or "")
+        if pid:
+            verdicts.append(tool_verdict(pid, model=str(row.get("model") or "")))
+    verdicts = [v for v in verdicts if v]
+    if not verdicts:
+        return "unknown", ""
+    if all(v == "chat_only" for v in verdicts):
+        return "all_chat_only", "绑定链 %d 个模型动作验证均为仅对话" % len(verdicts)
+    if all(v == "tool" for v in verdicts):
+        return "tool", ""
+    return "unknown", ""
+
+
 def classify_difficulty(goal, verify_command):
     """难度启发式（规划器 LLM 判定优先，这里只做退化）。"""
     text = goal or ""

@@ -27,7 +27,8 @@ from .builtin_agent_tools import (  # noqa: F401 - 旧调用面再导出
     CMD_DEFAULT_TIMEOUT, CMD_MAX_TIMEOUT, CMD_OUT_HEAD, CMD_OUT_TAIL, CREATE_TASK_SPEC,
     IMAGE_JPEG_BYTES, IMAGE_MAX_BYTES, IMAGE_MAX_EDGE, LIST_MAX_ENTRIES, MAX_IMAGES,
     READ_EDIT_MAX_BYTES, READ_HEAD_BYTES, READ_MAX_BYTES, READ_SEGMENT_DEFAULT_LINES,
-    READ_SEGMENT_MAX_LINES, READ_TAIL_BYTES, SEARCH_DEFAULT_RESULTS, SEARCH_MAX_FILE_BYTES,
+    READ_SEGMENT_MAX_LINES, READ_TAIL_BYTES, SCHEDULE_TASK_SPEC,
+    SEARCH_DEFAULT_RESULTS, SEARCH_MAX_FILE_BYTES,
     TOOLS_SPEC, _BIN_MAGIC, _TOOL_IMPL, _WALK_PRUNE,
     _anthropic_tools, _available_skill_rows, _bin_format, _command_timeout,
     _exec_tool, _exec_tool_impl, _guard_rel, _guess_image_mime, _is_linklike, _looks_binary,
@@ -786,7 +787,7 @@ def _norm_usage(usage):
 
 def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=None,
         on_reason=None, on_stream=None, on_activity=None, stream=True, deadline=None,
-        task_creator=None, sandbox=None, checkpoint_run_id=""):
+        task_creator=None, schedule_gateway=None, sandbox=None, checkpoint_run_id=""):
     """跑一次内置智能体（内部自带工具循环直到给出最终回答）。
 
     bi: resolve() 的返回；prompt: 本轮完整输入（目标/续轮块由 pipeline 拼）；
@@ -819,6 +820,18 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
     msgs = [{"role": "user", "content": prompt, "images": imgs}]
     candidates = list(modelhub._protocol_candidates(prov))
     tools_ok = all(proto != "google" for proto, _ in candidates)   # google wire 无工具协议
+    # 工具动作验证提示（借鉴 oc-ferry「可用·仅对话」分档）：判定是提示不是闸门，
+    # 不改行为——探测偶有误判，拦工具会误伤能干活的模型；只把风险亮给用户。
+    if log:
+        try:
+            _tv = modelhub.tool_verdict(prov.get("id") or "", model=model)
+        except Exception:
+            _tv = ""
+        if _tv == "chat_only":
+            log("[动作验证] 模型 %s 上次工具动作验证为「仅对话」，本轮工具调用可能"
+                "不被执行；可在设置页该供应商卡片重新验证" % model)
+    extra_specs = [s for s, on in ((CREATE_TASK_SPEC, bool(task_creator)),
+                                   (SCHEDULE_TASK_SPEC, bool(schedule_gateway))) if on] or None
     total_usage = {"input": 0, "cached": 0, "output": 0, "total": 0}
     mcp_called = []
     mcp_discovered = 0
@@ -937,7 +950,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                         url, headers, body = _build_request(
                             proto, pbase, kk["key"], model, system, msgs,
                             allow_tools, max_tokens=max_tokens,
-                            extra_specs=[CREATE_TASK_SPEC] if task_creator else None,
+                            extra_specs=extra_specs,
                             disabled_tools=disabled_tools, sandbox=sandbox,
                             workdir=workdir)
                         sbody = None
@@ -946,7 +959,7 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                             _, _, sbody = _build_request(
                                 proto, pbase, kk["key"], model, system, msgs,
                                 allow_tools, stream=True, max_tokens=max_tokens,
-                                extra_specs=[CREATE_TASK_SPEC] if task_creator else None,
+                                extra_specs=extra_specs,
                                 disabled_tools=disabled_tools, sandbox=sandbox,
                                 workdir=workdir)
                         effort = str(bi.get("reasoning_effort") or "").strip().lower()
@@ -1077,7 +1090,8 @@ def run(bi, prompt, workdir, timeout=180, cancel_event=None, log=None, images=No
                                              deadline=deadline, task_creator=task_creator,
                                              disabled_tools=disabled_tools, sandbox=sandbox,
                                              checkpoint_run_id=checkpoint_run_id,
-                                             tool_output_run_id=tool_output_run_id)
+                                             tool_output_run_id=tool_output_run_id,
+                                             schedule_gateway=schedule_gateway)
                             if deadline is not None and time.monotonic() >= deadline:
                                 return _deadline_fail()
                             if cancel_event is not None and cancel_event.is_set():

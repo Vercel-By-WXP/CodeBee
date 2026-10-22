@@ -875,6 +875,154 @@ CREATE_TASK_SPEC = {
 }
 
 
+SCHEDULE_TASK_SPEC = {
+    "name": "schedule_task",
+    "description": "定时/延时任务的创建与管理（对话式 future_task）：用户说「十分钟后提醒我」"
+                   "「每天早上九点跑」「周三下午执行」时使用。到点后 CodeBee 会以该 prompt 自动"
+                   "发起任务运行；创建成功只代表已登记，不要当作已执行。",
+    "args": {
+        "action": "create | list | get | enable | disable | delete | run_now",
+        "?id": "get / enable / disable / delete / run_now 的任务 ID（list 里拿）",
+        "?name": "create：任务名（简短）",
+        "?prompt": "create：到点要执行的完整指令",
+        "?workdir": "create：工作目录绝对路径；留空=当前工作目录",
+        "?kind": "create：once（默认）| daily | weekly | interval",
+        "?run_at": "once：目标时间，如 2026-10-23 09:30",
+        "?time": "daily / weekly：HH:MM",
+        "?weekday": "weekly：0-6（周一=0）",
+        "?interval_hours": "interval：每 N 小时（1-720）",
+        "?enabled": "create：是否登记后立即启用（默认 true）",
+    },
+}
+
+
+def _tool_schedule_task(workdir, args, schedule_gateway=None, sandbox=None):
+    """对话式定时任务管理（借鉴 AstrBot proactive-agent 的 future_task 形态）。
+
+    经调用方注入的 schedule_gateway 边界操作 automation（create/list_tasks/
+    get_task/set_enabled/run_now/delete 同签名）；网关缺席=当前对话无此权限。
+    工作目录沿用 create_task 的沙箱纪律：create 指定的 workdir 必须落在允许
+    范围内，任务到点才不会越界起跑。"""
+    if schedule_gateway is None:
+        return "（当前对话不支持管理定时任务）"
+    args = args if isinstance(args, dict) else {}
+    action = str(args.get("action") or "").strip().lower()
+    tid = str(args.get("id") or "").strip()
+
+    def _sched_txt(t):
+        kind = str(t.get("kind") or "")
+        if kind == "once":
+            return "once @ %s" % (t.get("run_at") or "?")
+        if kind == "daily":
+            return "每天 %s" % (t.get("time") or "?")
+        if kind == "weekly":
+            return "每周%s %s" % ("一二三四五六日"[int(t.get("weekday") or 0)]
+                              if str(t.get("weekday") or "").lstrip("-").isdigit()
+                              and 0 <= int(t.get("weekday") or 0) <= 6 else "?",
+                              t.get("time") or "?")
+        if kind == "interval":
+            return "每 %s 小时" % (t.get("interval_hours") or "?")
+        return kind or "?"
+
+    if action == "create":
+        name = str(args.get("name") or "").strip()
+        prompt = str(args.get("prompt") or "").strip()
+        if not name or not prompt:
+            return "（创建定时任务需要 name 与 prompt）"
+        requested_workdir = str(args.get("workdir") or workdir or "").strip()
+        if sandbox and requested_workdir:
+            if not _sandbox_path_allowed(requested_workdir, sandbox):
+                return "（沙箱拒绝：定时任务工作目录超出允许范围，未创建）"
+        kind = str(args.get("kind") or "once").strip().lower() or "once"
+        enabled_raw = args.get("enabled")
+        enabled = enabled_raw in (None, "", True, 1) or (
+            str(enabled_raw).strip().lower() in ("true", "1", "yes", "on"))
+        payload = {"name": name, "prompt": prompt, "kind": kind,
+                   "workdir": requested_workdir, "enabled": enabled}
+        if kind == "once":
+            payload["run_at"] = str(args.get("run_at") or "").strip()
+        elif kind in ("daily", "weekly"):
+            payload["time"] = str(args.get("time") or "").strip()
+        if kind == "weekly":
+            try:
+                payload["weekday"] = int(args.get("weekday"))
+            except (TypeError, ValueError):
+                return "（weekly 需要数字 weekday（0-6，周一=0），收到：%s）" % (
+                    args.get("weekday"),)
+        if kind == "interval":
+            try:
+                payload["interval_hours"] = int(args.get("interval_hours"))
+            except (TypeError, ValueError):
+                return "（interval 需要数字 interval_hours（1-720），收到：%s）" % (
+                    args.get("interval_hours"),)
+        try:
+            t = schedule_gateway.create(payload)
+        except ValueError as exc:
+            return "（定时任务校验未通过：%s）" % str(exc)[:300]
+        except Exception as exc:
+            return "（定时任务创建失败：%s）" % str(exc)[:300]
+        if not isinstance(t, dict) or not t.get("id"):
+            return "（定时任务创建失败：未返回任务编号）"
+        return ("定时任务已登记：%s（%s，下次运行 %s，%s）"
+                % (t["id"], _sched_txt(t), t.get("next_run") or "启用后计算",
+                   "已启用" if t.get("enabled") else "已停用"))
+
+    if action == "list":
+        try:
+            rows = list(schedule_gateway.list_tasks() or [])
+        except Exception as exc:
+            return "（定时任务读取失败：%s）" % str(exc)[:300]
+        if not rows:
+            return "当前没有定时任务。"
+        out = []
+        for t in rows[:20]:
+            out.append("· %s | %s | %s | 下次 %s | %s" % (
+                t.get("id") or "?", str(t.get("name") or "")[:40], _sched_txt(t),
+                t.get("next_run") or "—",
+                "启用" if t.get("enabled") else "停用"))
+        if len(rows) > 20:
+            out.append("…其余 %d 条略" % (len(rows) - 20))
+        return "\n".join(out)
+
+    if action in ("get", "enable", "disable", "delete", "run_now"):
+        if not tid:
+            return "（%s 需要任务 id，先用 list 查）" % action
+        try:
+            if action == "get":
+                t = schedule_gateway.get_task(tid)
+                if not t:
+                    return "（没有这个定时任务：%s）" % tid
+                return ("· %s | %s | %s | 下次 %s | %s\nprompt：%s" % (
+                    t.get("id"), str(t.get("name") or "")[:60], _sched_txt(t),
+                    t.get("next_run") or "—",
+                    "启用" if t.get("enabled") else "停用",
+                    str(t.get("prompt") or "")[:500]))
+            if action in ("enable", "disable"):
+                t = schedule_gateway.set_enabled(tid, action == "enable")
+                if not t:
+                    return "（没有这个定时任务：%s）" % tid
+                return ("已%s：%s（下次运行 %s）"
+                        % ("启用" if action == "enable" else "停用", tid,
+                           t.get("next_run") or "—"))
+            if action == "delete":
+                if not schedule_gateway.delete(tid):
+                    return "（没有这个定时任务：%s）" % tid
+                return "已删除定时任务：%s（运行产生的任务与记录不受影响）" % tid
+            t, rid = schedule_gateway.run_now(tid)
+            if t is None:
+                return "（没有这个定时任务：%s）" % tid
+            if not rid:
+                return "（定时任务 %s 立即拉起失败，详见任务列表错误信息）" % tid
+            return "已立即执行：%s（运行编号：%s；到点仍会照常触发）" % (tid, rid)
+        except ValueError as exc:
+            return "（定时任务校验未通过：%s）" % str(exc)[:300]
+        except Exception as exc:
+            return "（定时任务 %s 失败：%s）" % (action, str(exc)[:300])
+
+    return ("（action 需要是 create / list / get / enable / disable / delete / "
+            "run_now 之一，收到：%s）" % (action or "空"))
+
+
 def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
     """Create a separate task through the caller-owned task boundary."""
     if task_creator is None:
@@ -928,7 +1076,7 @@ def _tool_create_task(workdir, args, task_creator=None, sandbox=None):
 
 def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_creator=None,
                disabled_tools=None, sandbox=None, checkpoint_run_id="",
-               tool_output_run_id=""):
+               tool_output_run_id="", schedule_gateway=None):
     from . import policy
     denied = set(policy.normalize_disabled_tools(disabled_tools))
     if sandbox is None:
@@ -977,6 +1125,10 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
     if name == "create_task":
         return _tool_create_task(workdir, args or {}, task_creator=task_creator,
                                  sandbox=sandbox)
+    if name == "schedule_task":
+        return _tool_schedule_task(workdir, args or {},
+                                   schedule_gateway=schedule_gateway,
+                                   sandbox=sandbox)
     if name == "read_tool_output":
         from . import tool_outputs
         result = tool_outputs.read(tool_output_run_id, (args or {}).get("ref"),
@@ -1089,7 +1241,7 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
 
 def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creator=None,
                disabled_tools=None, sandbox=None, checkpoint_run_id="",
-               tool_output_run_id=""):
+               tool_output_run_id="", schedule_gateway=None):
     """Run one tool and emit a compact decision receipt for every call."""
     from . import action_policy, audit, data_taint, policy, redact
     effective = sandbox if isinstance(sandbox, dict) else policy.normalize_sandbox({}, workdir)
@@ -1116,7 +1268,8 @@ def _exec_tool(workdir, name, args, cancel_event=None, deadline=None, task_creat
             workdir, name, args, cancel_event=cancel_event, deadline=deadline,
             task_creator=task_creator, disabled_tools=disabled_tools,
             sandbox=effective, checkpoint_run_id=checkpoint_run_id,
-            tool_output_run_id=tool_output_run_id)
+            tool_output_run_id=tool_output_run_id,
+            schedule_gateway=schedule_gateway)
     raw_text = str(result or "")
     data_taint.observe(run_key, raw_text)
     text = redact.mask_secrets(raw_text)

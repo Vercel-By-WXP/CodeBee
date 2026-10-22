@@ -1094,11 +1094,22 @@ def _run_builtin_step(run_id, role, bi, prompt, workdir, ev, note="", images=Non
         store.stream_step(run_id, step["n"], activity=str(line or "")[:200])
 
     remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+
+    def _schedule_gateway():
+        """对话式定时任务边界（create_task 同款调用方注入）：直连对话可建/查/
+        改/删/立即执行 automation 任务；导入失败按无权限收场，不挡主对话。"""
+        try:
+            from . import automation
+        except Exception:
+            return None
+        return automation
+
     res = builtin_agent.run(bi, prompt, workdir, timeout=remaining or 180,
                             deadline=deadline, cancel_event=ev, log=_log, images=images,
                             on_reason=_on_reason, on_stream=_on_stream,
                             on_activity=_on_activity,
                             task_creator=_create_task_from_builtin,
+                            schedule_gateway=_schedule_gateway(),
                             sandbox=sandbox, checkpoint_run_id=run_id)
     try:
         _raw = res.get("raw") or {}

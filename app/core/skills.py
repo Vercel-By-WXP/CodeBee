@@ -97,6 +97,10 @@ BUILTIN_PACKS = [
      "file": "handdraw-video.md",
      "scopes": ["handdraw_video"],
      "note": "sweety-handdraw-video（MIT）方法论蒸馏：黄金5秒开场、分镜预算先行、逐笔可画与字幕唯一性硬门槛"},
+    {"id": "borrow-methodology", "name": "竞品工程方法论蒸馏",
+     "file": "borrow-methodology.md",
+     "scopes": [],
+     "note": "2026-10-22 七项目调研蒸馏：动作验证探测协议、君子协定写入、本机端点三防、技能安检五类判据、治理门、引擎钉源、长任务三底线、中继隐私边界"},
 ]
 
 # ---------------------------------------------------------------- 用户自建包（3A）

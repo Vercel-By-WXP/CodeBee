@@ -124,6 +124,21 @@ def _online_bonus(agent, role, ttype):
         return 0.0, ""
 
 
+def _tool_chain_penalty(agent_id):
+    """工具动作验证降级（借鉴 RuiC-oc-ferry 探测协议）：绑定链模型动作验证
+    全为「仅对话」时，agentic 步骤（CLI 写文件/跑命令、内置智能体工具环）
+    会整轮空转——-10 盖过历史加分区间（±24 内的常规项），但远轻于配额满额
+    -45，绝境兜底仍可选到。无判定/部分仅对话不加减：备胎还能接住。"""
+    try:
+        from . import modelhub
+        flag, _txt = modelhub.chain_tool_verdict(agent_id)
+    except Exception:
+        return 0.0, ""
+    if flag == "all_chat_only":
+        return -10.0, "，动作验证：绑定模型均为仅对话（-10.0）"
+    return 0.0, ""
+
+
 def score(agent, role, ttype, stats=None):
     """返回 (总分, 理由字符串)。配额惩罚：catalog 里配了
     quota_tokens_per_hour 的智能体，本小时用量越接近配额分越低
@@ -141,7 +156,8 @@ def score(agent, role, ttype, stats=None):
     # 才启用能力亲和度，避免旧插件/测试调用被新权重悄然改变。
     affinity, affinity_txt = (dispatch.agent_affinity(agent.get("kind"), ttype, role)
                               if use_dispatch else (0.0, "兼容模式"))
-    total = base + bb + hb + affinity + online
+    tv, tv_txt = _tool_chain_penalty(agent.get("id"))
+    total = base + bb + hb + affinity + online + tv
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -158,8 +174,8 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d，%s%s%s%s%s，总分 %s" % (
-        base, affinity_txt, btxt, htxt, online_txt, quota_txt, round(total, 1))
+    return total, "能力基线 %d，%s%s%s%s%s%s，总分 %s" % (
+        base, affinity_txt, btxt, htxt, online_txt, quota_txt, tv_txt, round(total, 1))
 
 
 def _pick_scored(agents, role, ttype, stats=None, exclude=()):

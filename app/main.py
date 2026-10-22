@@ -2490,6 +2490,17 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._json(200, {"ok": ok,
                                    "status": "passed" if ok else "failed",
                                    "wire_caps": caps, "note": note})
+        if path == "/api/models/probe-tools":
+            # 工具动作验证（借鉴 oc-ferry 探测协议）：随机令牌 + report_token
+            # 工具，判 tool / chat_only，结果存 tool_caps 供换将降权
+            from core import modelhub
+            body = self._body()
+            caps, note = modelhub.probe_tool_use(body.get("id") or "",
+                                                 prefer_model=body.get("model") or "",
+                                                 key_id=body.get("key_id") or "")
+            verdict = str((caps or {}).get("verdict") or "")
+            return self._json(200, {"ok": verdict == "tool", "verdict": verdict,
+                                    "tool_caps": caps or {}, "note": note})
         if path == "/api/models/test-model":
             from core import modelhub
             body = self._body()
