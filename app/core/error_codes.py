@@ -134,6 +134,15 @@ _MODEL_UNAVAILABLE = (
     # MODEL_UNAVAILABLE，走模型级熔断+换下一个模型，而不是把 RATE_LIMIT 连坐
     # 到整个供应商把 10 个活模型一起熔断。
     "套餐暂未开放",
+    # claude CLI 对不存在/无权限模型的报错原文（2026-10-22 起草实案："There's
+    # an issue with the selected model (glm-5.3). It may not exist or you may
+    # not have access to it."）——不含任何已知关键字的措辞，漏分类会按供应商
+    # 级记账连坐整条链；模型名提取见 _MODEL_IN_ERROR_PATTERNS。
+    "issue with the selected model",
+    "may not exist or you may not have access",
+    # mimo CLI 免费服务停摆横幅（2026-10-22 短篇实案）：exit 0 + 该横幅 =
+    # 免费通道已死，不是成功（runner 侧按假成功拦截，见 _GENERIC_DEAD_BANNERS）。
+    "free api service has ended",
 )
 _CONTEXT_OVERFLOW = (
     "input exceeds the maximum length", "maximum context length",
@@ -232,10 +241,12 @@ def is_auth_error(error):
 # 模型级错误文本里点名的模型 id 提取（2026-10-22 两实案）：
 # · grok CLI 本地校验拒绝：Couldn't set model 'glm-5.3': unknown model id
 # · 智谱套餐权限拒绝：[当前订阅套餐暂未开放GLM-5.3-FlashX权限]
+# · claude CLI 不存在/无权限模型：…the selected model (glm-5.3). It may not exist…
 # 调用方（health 模型级熔断）据此把无 model 位上报的错误归到正确模型上。
 _MODEL_IN_ERROR_PATTERNS = (
     re.compile(r"couldn't set model ['\"]([^'\"]+)['\"]", re.IGNORECASE),
     re.compile(r"暂未开放\s*([A-Za-z0-9._\-]+)\s*权限"),
+    re.compile(r"the selected model \(([A-Za-z0-9._\-]+)\)", re.IGNORECASE),
 )
 
 

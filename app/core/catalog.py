@@ -180,11 +180,17 @@ DEFAULT_CATALOG = [
     {
         "id": "gemini-cli", "name": "Gemini CLI", "cli_group": "installable",
         "note": "Google 官方编码 CLI；无头 gemini -p \"提示词\"；默认模型在 "
-                "~/.gemini/settings.json 顶层 model；凭据走个人 Google 账号 OAuth "
-                "（浏览器登录，免费额度）或 GOOGLE_API_KEY/GEMINI_API_KEY 环境变量",
+                "~/.gemini/settings.json 的 model.name（0.62+ 要求 model 是对象，"
+                "裸字符串会让 CLI 连 --version 都以退出码 41 拒起）；凭据走个人 "
+                "Google 账号 OAuth（浏览器登录，免费额度）或 "
+                "GOOGLE_API_KEY/GEMINI_API_KEY 环境变量",
         "detect": {"cli": "gemini"},
         "orch": {"kind": "generic", "command": "gemini", "argv_template": ["-p", "{prompt}"]},
-        "config": {"path": "~/.gemini/settings.json", "format": "json", "model_key": "model"},
+        # json-path + model.name：0.62.0 的 settings schema 把 model 定义为
+        # 对象（{name: ...}）。json-path 写入时遇到旧版裸字符串 model 会就地
+        # 升级成对象（_json_path_set 的非 dict 升级分支），旧格式自动迁移。
+        "config": {"path": "~/.gemini/settings.json", "format": "json-path",
+                   "model_key": "model.name"},
         "install": "npm install -g @google/gemini-cli",
         "upgrade": "npm install -g @google/gemini-cli@latest",
         "default_enabled": False,
