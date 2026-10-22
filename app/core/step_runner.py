@@ -16,6 +16,7 @@ import logging
 
 from .compaction import maybe_compact, DEFAULT_PRESSURE_THRESHOLD
 from .error_codes import ErrorCode
+from .token_meter import token_meter
 
 log = logging.getLogger(__name__)
 
@@ -72,19 +73,28 @@ def execute_step(session, run_agent_fn, prompt, *, model: str = "",
         compact_kwargs["retain_tail_tokens"] = v2_rt
     if v2_th is not None:
         compact_kwargs["threshold"] = v2_th
+    report = None
+    if model:
+        # 压力留痕：非 normal 即落 shadow 审计事件（级别、双口径体量、容量），
+        # 事后能回答「这一步发请求时上下文有多满」，不再等撑爆才知道。
+        try:
+            report = token_meter.pressure_report(session.run_id, model=model)
+            if report["level"] != "normal":
+                session.append("context_pressure", report, surface_op="shadow")
+        except Exception:
+            log.debug("pressure report failed", exc_info=True)
     if llm_caller is not None and model:
         try:
-            from .token_meter import token_meter
-            ctx = token_meter.last_context(session.run_id)
-            cap = token_meter.capacity(model)
-            if ctx > 0 and cap > 0 and ctx > cap * _PRECHECK_RATIO:
+            rep = report or token_meter.pressure_report(session.run_id, model=model)
+            if rep["next_request_tokens"] > 0 \
+                    and rep["next_ratio"] > _PRECHECK_RATIO:
                 gen_p0 = session.replace_generation()
                 if maybe_compact(session, model=model, llm_caller=llm_caller,
                                  run_id=session.run_id, **compact_kwargs) \
                         and session.replace_generation() > gen_p0:
                     log.info("precheck: last ctx~%d > %.0f%% of cap(%s)=%d, "
-                             "compacted before step", ctx, _PRECHECK_RATIO * 100,
-                             model, cap)
+                             "compacted before step", rep["next_request_tokens"],
+                             _PRECHECK_RATIO * 100, model, rep["capacity"])
         except Exception:
             log.debug("precheck skipped", exc_info=True)
     gen0 = session.replace_generation()

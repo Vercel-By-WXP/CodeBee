@@ -140,14 +140,17 @@ _SUMMARY_SYSTEM = (
 
 
 def compact_region(session, start_seq: int, end_seq: int, llm_caller,
-                   *, reason: str = "pressure"):
+                   *, reason: str = "pressure", pressure: dict = None):
     """执行一次压缩事务（四件事件，失败仍写 compaction_end 保证日志可见）。
 
     llm_caller(messages: list[dict]) -> str：一次 LLM 调用，返回摘要文本。
+    pressure：触发时的压力报告快照，随 compaction_start 落审计，事后可回答
+    「为什么在这一步压缩」。
     """
-    tx = session.append("compaction_start",
-                        {"start_seq": start_seq, "end_seq": end_seq, "reason": reason},
-                        surface_op="shadow")
+    start_data = {"start_seq": start_seq, "end_seq": end_seq, "reason": reason}
+    if pressure:
+        start_data["pressure"] = pressure
+    tx = session.append("compaction_start", start_data, surface_op="shadow")
     summary = ""
     error = ""
     try:
@@ -205,23 +208,31 @@ def compact_region(session, start_seq: int, end_seq: int, llm_caller,
 def maybe_compact(session, *, model: str = "", llm_caller=None,
                   threshold: float = DEFAULT_PRESSURE_THRESHOLD,
                   run_id: str = None,
-                  retain_tail_tokens: int = RETAIN_TAIL_TOKENS) -> bool:
-    """压力比 ≥ 阈值时触发一次压缩。返回是否执行了压缩。
+                  retain_tail_tokens: int = RETAIN_TAIL_TOKENS,
+                  meter=None) -> bool:
+    """压力达标时触发一次压缩。返回是否执行了压缩。
 
     llm_caller 缺省直接跳过（没有摘要能力就不压）。
+    触发条件二选一：累计压力比 ≥ threshold，或压力分级为 critical（下次请求
+    锚点已贴容量——被供应商拒的是下一次请求，不能等累计口径慢慢爬到线）。
     """
     if llm_caller is None:
         return False
     rid = run_id or session.run_id
-    ratio = token_meter.pressure_ratio(rid, model=model)
-    if ratio < threshold:
+    m = meter or token_meter
+    report = m.pressure_report(rid, model=model)
+    ratio = report["ratio"]
+    if ratio < threshold and report["level"] != "critical":
         return False
     start, end = select_range(session, retain_tail_tokens=retain_tail_tokens)
     if not start:
         return False
-    log.info("compaction triggered run=%s ratio=%.2f region=[%d,%d]",
-             rid, ratio, start, end)
-    return compact_region(session, start, end, llm_caller, reason=f"pressure={ratio:.2f}")
+    log.info("compaction triggered run=%s level=%s ratio=%.2f next_ratio=%.2f "
+             "region=[%d,%d]", rid, report["level"], ratio,
+             report["next_ratio"], start, end)
+    return compact_region(session, start, end, llm_caller,
+                          reason="pressure=%s ratio=%.2f" % (report["level"], ratio),
+                          pressure=report)
 
 
 def prune_summary(session):

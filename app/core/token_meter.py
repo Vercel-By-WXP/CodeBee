@@ -121,6 +121,39 @@ class TokenMeter:
         cap = cap_table.get(m, cap_table.get("", 128_000))
         return self.used(run_id) / max(cap, 1)
 
+    # 压力分级（累计口径下限）。分级判定见 pressure_report。
+    PRESSURE_BANDS = (("notice", 0.5), ("warning", 0.8), ("critical", 0.95))
+    # 物理锚点兜底：下次请求体量已贴容量（与 step_runner._PRECHECK_RATIO 同义），
+    # 即使累计口径不高也判 critical——被供应商拒的是下一次请求，不是窗口累计。
+    NEXT_ANCHOR_CRITICAL = 0.9
+
+    def pressure_report(self, run_id: str, model: str = "") -> dict:
+        """结构化压力报告：累计口径 + 下次请求锚点双口径合一。
+
+        used() 是窗口累计（多次调用叠加，系统性偏大，适合做预算闸）；
+        last_context() 是下一次请求要重发的体量（适合判「会不会被拒」）。
+        分级取两者更凶的一个：累计到 critical，或锚点已贴容量，都判 critical。
+        """
+        cap_table = self._capacity()
+        with self._lock:
+            m = model or self._last_model.get(run_id, "")
+        cap = cap_table.get(m, cap_table.get("", 128_000))
+        cap = max(int(cap or 0), 1)
+        used = self.used(run_id)
+        nxt = self.last_context(run_id)
+        ratio = used / cap
+        next_ratio = nxt / cap
+        level = "normal"
+        for name, floor in self.PRESSURE_BANDS:
+            if ratio >= floor:
+                level = name
+        if next_ratio >= self.NEXT_ANCHOR_CRITICAL:
+            level = "critical"
+        return {"level": level, "model": m, "capacity": cap,
+                "used_tokens": used, "ratio": round(ratio, 4),
+                "next_request_tokens": nxt,
+                "next_ratio": round(next_ratio, 4)}
+
     def capacity(self, model: str = "") -> int:
         """模型上下文容量（未命中用默认行）。"""
         cap_table = self._capacity()
