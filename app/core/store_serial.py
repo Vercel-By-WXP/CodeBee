@@ -45,15 +45,29 @@ def _norm_early_finish(value):
 
 
 def serial_book_chapter_numbers(task):
-    """Return chapter numbers currently present in the serial work directory."""
+    """Return chapter numbers currently present in the serial work directory.
+
+    2026-10-21 头七实案：失败批留下的跳章预稿（chapter-49.md 但 45-48 缺失）
+    会把续批起点带偏。以正史链为准取「最大连续段」：从 1 起连续才算数，
+    断点之后的孤章不计入（防跳章起点，缺口由巡检/人工补齐后再自然并入）。"""
     wd = str((task or {}).get("workdir") or "")
     if not wd:
         return []
     try:
-        return sorted({int(m.group(1)) for p in _store().Path(wd).glob("chapter-*.md")
-                       if (m := _CH_FILE_RE.match(p.name))})
+        present = sorted({int(m.group(1)) for p in _store().Path(wd).glob("chapter-*.md")
+                          if (m := _CH_FILE_RE.match(p.name))})
     except OSError:
         return []
+    if not present:
+        return []
+    # 最大连续段：从第一个章号起连续的部分（跳章后的孤章不算）
+    contiguous = [present[0]]
+    for n in present[1:]:
+        if n == contiguous[-1] + 1:
+            contiguous.append(n)
+        else:
+            break
+    return contiguous
 
 
 def serial_book_progress(task):
