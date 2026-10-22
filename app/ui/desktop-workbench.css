@@ -1818,7 +1818,9 @@
     border-left: 1px solid var(--border);
     background: var(--bg);
   }
-  body.browser-split-open #page-settings > #sub-browser .browser-shell { height: 100%; min-height: 0; border: 0; border-radius: 0; }
+  /* 工作台外壳是 .wb-shell（.browser-shell 从未存在）：选择器写错会让
+     并排面板里的工作台只撑到默认 min-height 760px，底下漏出一截容器底色。 */
+  body.browser-split-open #page-settings > #sub-browser .wb-shell { height: 100%; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
   body.browser-split-open main.chat-fill { padding-right: calc(var(--browser-split-width) + 20px); }
   body.browser-split-open main.chat-fill #run-detail.chat-mode { width: 100%; }
   /* 并排工作台占掉右半边后，中间的运行详情卡再留着会把对话挤成窄条：
@@ -1834,6 +1836,7 @@
   @media (max-width: 900px) {
     body.browser-split-open { --browser-split-width: calc(100vw - var(--workbench-rail-width, 42px)); }
     body.browser-split-open #page-settings > #sub-browser { top: 0; width: var(--browser-split-width); }
+    body.browser-split-open #page-settings > #sub-browser .wb-shell { height: 100%; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
     body.browser-split-open main.chat-fill { padding-right: 16px; }
   }
 }
