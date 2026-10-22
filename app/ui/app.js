@@ -12902,6 +12902,14 @@ function drawChatFlow(run, data, active) {
   const activityScroll = new Map(Array.from(flow.querySelectorAll("[data-chat-activity-list]")).map(list =>
     [list.dataset.chatActivityList, { top: list.scrollTop,
       pin: list.scrollHeight - list.scrollTop - list.clientHeight < 24 }]));
+  // 内联 CLI 日志块同病：整体重建丢滚动位置，运行中每帧弹回头部＝永远停在
+  // 「下达」审计头，CLI 真输出全在折叠线下看不见。同样记「贴底 or 上滑到哪」，
+  // 重绘后恢复；首次展开（旧 DOM 无对应块）默认贴底＝打开即看最新输出。
+  const logScroll = new Map(Array.from(flow.querySelectorAll("details.chat-cli-log[data-chat-log-key]")).map(d => {
+    const pre = d.querySelector(".chat-cli-log-text");
+    return [d.dataset.chatLogKey, pre ? { top: pre.scrollTop,
+      pin: pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24 } : null];
+  }));
   const latestLogIndex = items.reduce((last, it, index) =>
     (it.kind === "agent" && it.log && it.run ? index : last), -1);
   // 日志是独立文件，可能在步骤状态/正文都不变时持续增长。先于时间线签名
@@ -13058,6 +13066,13 @@ function drawChatFlow(run, data, active) {
   flow.querySelectorAll("[data-chat-activity-list]").forEach(list => {
     const prev = activityScroll.get(list.dataset.chatActivityList);
     if (prev) list.scrollTop = prev.pin ? list.scrollHeight : prev.top;
+  });
+  flow.querySelectorAll("details.chat-cli-log[data-chat-log-key]").forEach(d => {
+    if (!d.open) return;
+    const pre = d.querySelector(".chat-cli-log-text");
+    if (!pre) return;
+    const prev = logScroll.get(d.dataset.chatLogKey);
+    pre.scrollTop = prev && !prev.pin ? prev.top : pre.scrollHeight;
   });
   if (stick) chatScrollBottomNow(flow);
   const newThink = flow.querySelector('[data-think-live="1"] .ct-body');
