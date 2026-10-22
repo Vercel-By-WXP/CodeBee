@@ -129,6 +129,8 @@ from .pipeline_content import (  # noqa: F401 - 旧调用面再导出
     _tpl,
     author_review_rubric_block,
     serial_locked_chapter_block,
+    story_length_block,
+    story_spec,
 )
 
 from .pipeline_code import (  # noqa: F401 - 旧调用面再导出
@@ -2945,6 +2947,12 @@ CONTENT_DELIVERY_CONTRACTS = {
         "成文分三步：先把不设限的情节/画面/台词念头快速倾倒成素材清单，再挑出主线组织成"
         "结构，最后按结构成文——初稿期不做质量审判。",
     ]),
+    "short_story": ("短篇小说作者", [
+        "单篇完整故事：一个核心事件、一条因果链、一个兑现开篇承诺的结尾；不拆章、不写「第 X 章」标题。",
+        "开篇 600 字内进入具体冲突；结尾给出反转、揭示或情绪落点，不以「未完待续」收束。",
+        "字数不足时把既有冲突写透（场景、动作、对话与心理细节），不靠摘要、回顾或排比注水。",
+        "遵守用户给定的题材、视角和风格；未给出的核心设定不要擅自扩张。",
+    ]),
     "article": ("平台内容主编", [
         "标题、开头钩子、正文层级和结尾行动建议要适配目标平台与读者。",
         # AIWriteX 借鉴（2026-09-27）：公众号/头条/小红书等平台阅读主战场在手机，
@@ -5369,6 +5377,82 @@ def _verdict_fail_reason(overall, threshold, last_round, is_selection):
     return "；".join(reasons) or "综合 %.1f / 阈值 %.1f" % (overall, threshold)
 
 
+_STORY_EXPAND_PROMPT = """你是__ROLE__。短篇小说《__TITLE__》的稿件文件 `__FILE__` 目前字数低于任务下限，请扩写该文件（直接改写该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
+
+## 全文目标
+__GOAL__
+
+## 要求
+- 当前全文约 __COUNT__ 字，目标约 __WORDS__ 字（下限 __MIN__ 字）：本次扩写以跨过下限为准，不必一步写到目标字数。
+- 只把既有冲突和情感线写透：补具体场景、动作、对话与心理细节，让因果更完整；
+  禁止新增主线设定、禁止用摘要/回顾/排比/环境描写注水凑字。
+- 保持既有视角、文风与已写情节不变；结尾的兑现位置相应后移，不要提前收束。
+- 文件只保留小说正文和可选标题行；不写任何说明、标签或字数统计。
+- 完成后用 3 句话说明补了哪些场景。"""
+
+_STORY_TRIM_PROMPT = """你是__ROLE__。短篇小说《__TITLE__》的稿件文件 `__FILE__` 超出目标字数上限，请压缩该文件（直接改写该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
+
+## 全文目标
+__GOAL__
+
+## 要求
+- 当前全文约 __COUNT__ 字，上限 __MAX__ 字（目标约 __WORDS__ 字）：优先收紧支线、重复铺垫与可有可无的环境描写。
+- 开篇冲突、核心因果链和结尾兑现必须完整保留；压缩不改变情节走向、视角与文风。
+- 文件只保留小说正文和可选标题行；不写任何说明、标签或字数统计。
+- 完成后用 3 句话说明删了什么。"""
+
+
+def _story_word_count(workdir, ms_name):
+    try:
+        return _wc(_read_text_any_enc(os.path.join(workdir, ms_name)))
+    except Exception:
+        return 0
+
+
+def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec, ev,
+                         resume_session=None, step_wd=None):
+    """短篇字数闸（起草后调用一次）：不足扩写最多 2 轮，超出压缩 1 轮。
+
+    返回失败文案（扩写后仍欠下限/扩写步失败）或 ""（达标；超上限已在
+    步骤时间线留痕，不挡交付——上限是体验问题，下限才是废稿线）。"""
+    wd = step_wd or workdir
+    count = _story_word_count(workdir, ms_name)
+    for attempt in (1, 2):
+        if count >= spec["min_words"]:
+            break
+        prompt = _render_template_values(_STORY_EXPAND_PROMPT, {
+            "__ROLE__": _content_role(task),
+            "__TITLE__": (task.get("title") or "未命名").lstrip("# ").strip(),
+            "__FILE__": ms_name,
+            "__GOAL__": task["goal"],
+            "__COUNT__": count, "__WORDS__": spec["words"], "__MIN__": spec["min_words"],
+        })
+        res = _run_step(run_id, "length-expand-%d" % attempt,
+                        modelhub.bind_agent(impl, difficulty), prompt, wd,
+                        readonly=False, ev=ev, resume=resume_session)
+        if not res.get("ok"):
+            return ("字数闸扩写失败：%s——稿件 %d 字仍低于下限 %d，请处理后用「继续任务」复跑"
+                    % (res.get("error") or "扩写步未成功", count, spec["min_words"]))
+        count = _story_word_count(workdir, ms_name)
+    if count < spec["min_words"]:
+        return ("字数闸未过：扩写 2 轮后全文仍只有约 %d 字，低于下限 %d 字（目标约 %d 字）——"
+                "目标字数可能超出单稿可达篇幅，请调低目标或换更强的写作链后重试"
+                % (count, spec["min_words"], spec["words"]))
+    if count > spec["max_words"]:
+        prompt = _render_template_values(_STORY_TRIM_PROMPT, {
+            "__ROLE__": _content_role(task),
+            "__TITLE__": (task.get("title") or "未命名").lstrip("# ").strip(),
+            "__FILE__": ms_name,
+            "__GOAL__": task["goal"],
+            "__COUNT__": count, "__WORDS__": spec["words"], "__MAX__": spec["max_words"],
+        })
+        res = _run_step(run_id, "length-trim", modelhub.bind_agent(impl, difficulty),
+                        prompt, wd, readonly=False, ev=ev, resume=resume_session)
+        if res.get("ok"):
+            count = _story_word_count(workdir, ms_name)
+    return ""
+
+
 def _run_content_review(run, task, agents, ev, stats, mode):
     is_selection = task.get("type") == "rank_scan"
     if is_selection:
@@ -5504,7 +5588,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if task.get("type") == "translation":
                 # 翻译追加术语表先行要求（andrewyng/translation-agent 借鉴）
                 p += TRANSLATION_APPENDIX
-            if task.get("type") in ("novel", "serial_novel"):
+            if task.get("type") in ("novel", "serial_novel", "short_story"):
                 p += ("\n\n## 成稿边界\n"
                       "文件只保留小说正文和可选标题行；禁止输出或写入评审标签、"
                       "JSON、Markdown 代码围栏、任务说明、验收结果或修改说明。")
@@ -5529,6 +5613,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 # 空块不追加：零命中零噪音（空库时 prompt 与旧版字节一致）
                 p += "\n\n" + ctx_block
             p += _content_contract(task)
+            # 短篇篇幅要求（无规格返回空串，零噪音不碎旧版字节）
+            p += story_length_block(task)
             return p
 
         best_of = max(1, min(3, int(task.get("best_of") or 1)))
@@ -5573,6 +5659,19 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             store.update_run(run_id, expected_status="running", status="failed",
                              error="起草失败: %s" % draft_res.get("error"),
                              ended_at=_now())
+            return
+
+    # 1.5) 短篇字数闸（起草后、评审前）：不足自动扩写（≤2 轮）、超出压缩
+    # （1 轮，尽力而为）。mock 执行没有字数意义；扩写步本身失败或仍欠下限
+    # 即判 failed——欠字数的短篇不是半成品而是废稿，不进评审空烧配额。
+    story = story_spec(task)
+    if story and impl.get("mode") != "mock":
+        story_err = _story_length_repair(
+            run_id, task, impl, difficulty, ms_name, workdir, story, ev,
+            resume_ctx["session"] if resume_ctx else None, step_wd)
+        if story_err:
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error=story_err, ended_at=_now())
             return
 
     # 2) 评审-修订循环
@@ -5741,6 +5840,36 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                                     for d in (task.get("rubric") or DEFAULT_RUBRIC)]
     verdict = review_config.assess(verdict, review_policy)
 
+    # 2.4) 短篇终稿字数闸：修订循环可能把篇幅改塌，评审分数过线不豁免——
+    # 自动扩写一轮后仍欠下限按 failed 收口（评审已达标的语境写进错误，
+    # 不与「评审未达标」混装）。
+    story_gate_error = ""
+    story = story_spec(task)
+    if story and impl.get("mode") != "mock":
+        count = _story_word_count(workdir, ms_name)
+        if count < story["min_words"]:
+            prompt = _render_template_values(_STORY_EXPAND_PROMPT, {
+                "__ROLE__": _content_role(task),
+                "__TITLE__": (task.get("title") or "未命名").lstrip("# ").strip(),
+                "__FILE__": ms_name,
+                "__GOAL__": task["goal"],
+                "__COUNT__": count, "__WORDS__": story["words"],
+                "__MIN__": story["min_words"],
+            })
+            res = _run_step(run_id, "length-expand-final",
+                            modelhub.bind_agent(impl, difficulty), prompt,
+                            step_wd or workdir, readonly=False, ev=ev,
+                            resume=resume_ctx["session"] if resume_ctx else None)
+            if res.get("ok"):
+                count = _story_word_count(workdir, ms_name)
+            if count < story["min_words"]:
+                story_gate_error = ("终稿字数闸未过：全文约 %d 字，低于下限 %d 字"
+                                    "（目标约 %d 字）。评审已达标但篇幅不达标——"
+                                    "该写作链可能到不了这个字数，请调低目标字数"
+                                    "或换更强的写作链后重建任务"
+                                    % (count, story["min_words"], story["words"]))
+        verdict["story_words"] = count
+
     if is_selection:
         verdict.update(selection.finalize(run_id, task, manuscript, publishable, store.run_dir(run_id)))
 
@@ -5787,6 +5916,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
              "- 动态步骤：大纲 %s；评审 %d 人；最多 %d 轮（%s）" % (
                  "启用" if workflow["outline"] else "省略",
                  len(critics), rounds, workflow["reason"])]
+    if story and "story_words" in verdict:
+        lines.append("- 字数：全文约 %d 字（目标约 %d 字，闸 %d~%d）"
+                     % (verdict["story_words"], story["words"],
+                        story["min_words"], story["max_words"]))
     if route:
         lines.append("")
         lines.append("## 路由依据")
@@ -5829,7 +5962,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     # 未达标/评审失败不再是 done：质量门禁没过就是没完成（评审报告、verdict
     # 与步骤日志照常落盘，重试入口由 runNeedsRetry 的 failed 分支放行）。
-    if publishable:
+    if story_gate_error:
+        store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
+                         error=story_gate_error, summary="字数闸未过（评审已达标）",
+                         ended_at=_now())
+    elif publishable:
         store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                          summary="评审任务达标（综合 %.1f）" % overall, ended_at=_now())
     elif render_error:

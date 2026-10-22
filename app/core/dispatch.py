@@ -13,6 +13,7 @@ TYPE_DIMENSIONS = {
     "direct": "reasoning",
     "code": "coding",
     "novel": "writing",
+    "short_story": "writing",
     "serial_novel": "writing",
     "article": "writing",
     "video_script": "writing",

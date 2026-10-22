@@ -35,6 +35,12 @@ def _content_contract(task):
             constraints.append("每集约 %d 秒" % int(drama["seconds_per_episode"]))
         if constraints:
             block += "\n- 本任务规格：" + "，".join(constraints) + "；必须按此规格交付。"
+    if task.get("type") == "short_story":
+        spec = story_spec(task)
+        if spec:
+            block += ("\n- 本任务规格：全文约 %d 字（下限 %d 字、上限 %d 字），"
+                      "必须按此规格交付；结尾必须兑现开篇承诺。"
+                      % (spec["words"], spec["min_words"], spec["max_words"]))
     if task.get("type") == "rank_scan":
         from . import selection
         block += "\n" + selection.CONTRACT
@@ -153,6 +159,43 @@ def _tpl(task, key, default):
     """自定义流程的提示词覆盖：任务上带模板则用之，否则用内置默认。"""
     t = (task.get(key) or "").strip()
     return t if t else default
+
+
+# ---------------------------------------------------------------- 短篇规格（单稿字数闸）
+
+def story_spec(task):
+    """短篇规格：任务 story.words → 字数闸上下限。
+
+    下限 75%（低于即扩写/判未完成）、上限 135%（超出先压缩；超出不挡交付，
+    短一点瘪一点都发不出去，长一点平台还能截）。无规格/字数过小返回 None
+    （零噪音：老任务与 novel 流程不受影响）。"""
+    s = task.get("story")
+    if not isinstance(s, dict):
+        return None
+    try:
+        words = int(s.get("words") or 0)
+    except Exception:
+        return None
+    if words < 500:
+        return None
+    return {"words": words,
+            "min_words": max(300, int(words * 0.75)),
+            "max_words": int(words * 1.35)}
+
+
+def story_length_block(task):
+    """起草提示词里的篇幅要求块；无规格返回 ""（零噪音，字节对齐旧版）。"""
+    spec = story_spec(task)
+    if not spec:
+        return ""
+    return (
+        "\n\n## 篇幅要求\n"
+        "- 全文目标约 %d 字（正文字数，不含标题行）；下限 %d 字、上限 %d 字，成稿后按此自查。\n"
+        "- 字数不足时把既有冲突写透（具体场景、动作、对话与心理细节），"
+        "禁止用摘要、回顾、排比或环境描写注水凑字。\n"
+        "- 单篇完整故事：不写「第 X 章」分章标题；结尾必须兑现开篇的核心承诺"
+        "（反转、揭示或情绪落点），不以「未完待续」收束。"
+        % (spec["words"], spec["min_words"], spec["max_words"]))
 
 
 # ---------------------------------------------------------------- 故事圣经与评审视角

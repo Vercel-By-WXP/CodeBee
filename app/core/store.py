@@ -420,6 +420,22 @@ def create_task(payload):
                 if vper:
                     s["volume_chapters"] = vper
                 task["serial"] = s
+        # 短篇规格：目标字数。payload 显式 null 关闭流程默认（与 serial 同
+        # 语义），字段缺失沿用流程默认；数值钳位与 flows._norm_story 同口径。
+        story_value = payload.get("story", serial_unset)
+        if story_value is None:
+            pass
+        elif isinstance(story_value, dict):
+            try:
+                words = int(story_value.get("words") or 0)
+            except Exception:
+                words = 0
+            if words > 0:
+                task["story"] = {"words": max(2000, min(50000, words))}
+        else:
+            flow_story = flow.get("story")
+            if isinstance(flow_story, dict) and flow_story.get("words"):
+                task["story"] = {"words": max(2000, min(50000, int(flow_story["words"])))}
     raw_timeout = payload.get("timeout_s")
     task["timeout_s"] = (_task_timeout_s(raw_timeout)
                          if raw_timeout not in (None, "") else _default_timeout_s(task))

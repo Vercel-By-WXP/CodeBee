@@ -31,11 +31,14 @@ _AFTER_LOCATIONS = tuple(re.compile(
         r"\s*(?:(?:目录|工作区)?(?:下|里|中)(?=\s|[，,；;\r\n]|开始|先|写|做|生成|制作|整理|修复|完成|$)"
         r"|(?=[，,；;\r\n]|$))(?![^，,。；;\r\n]*[\\/])"))
 _TYPES = {"连载小说": "serial_novel", "连载写作": "serial_novel", "连载": "serial_novel",
-          "小说": "novel", "代码开发": "code", "代码": "code", "开发": "code",
+          "小说": "novel", "短篇故事": "short_story", "短篇": "short_story",
+          "短故事": "short_story", "短篇小说": "short_story",
+          "代码开发": "code", "代码": "code", "开发": "code",
           "代码修复": "code", "文档": "doc", "说明书": "doc", "文章": "article", "调研": "research",
           "研究": "research", "PPT": "presentation", "翻译": "translation",
           "短剧": "short_drama", "短剧剧本": "short_drama", "微短剧": "short_drama"}
-_GOALS = {"serial_novel": "连载写作", "novel": "小说写作", "code": "代码开发",
+_GOALS = {"serial_novel": "连载写作", "novel": "小说写作", "short_story": "短篇写作",
+          "code": "代码开发",
           "doc": "文档写作", "article": "文章写作", "short_drama": "短剧剧本创作",
           "direct": "独立执行用户目标"}
 _WORK_LEAD = re.compile(r"^(?:(?:来|用来|用于|目标是|任务是|帮我|请|开始|先|做|完成)\s*)*")
@@ -67,6 +70,8 @@ _CANCEL_TARGET = re.compile(
 _NUMBER = r"[0-9零〇一二两三四五六七八九十百千]+"
 _CHAPTERS = re.compile(r"(?:前|(?:先|开始)?写\s*前?|首批\s*|共\s*)(" + _NUMBER + r")\s*章")
 _WORDS = re.compile(r"每章\s*(?:目标|大约|约)?\s*(" + _NUMBER + r")\s*字")
+_TOTAL_WORDS = re.compile(r"([0-9]+(?:\.[0-9]+)?|" + _NUMBER + r")\s*万(?:字|来字)|"
+                          r"(?:共|全文|全篇|总|目标|大约|约)\s*(" + _NUMBER + r")\s*字")
 _EPISODES = re.compile(r"(?:共|做|写|制作|生成)?\s*(" + _NUMBER + r")\s*集")
 _EPISODE_SECONDS = re.compile(r"每集\s*(?:约|大约|目标)?\s*(" + _NUMBER + r")\s*(?:秒|s)(?!\w)", re.I)
 
@@ -180,4 +185,17 @@ def parse(text, *, workdir=""):
                     drama[key] = count
         if drama:
             payload["drama"] = drama
+    elif payload["type"] == "short_story":
+        # 目标字数：目标文本「1.2 万字/一万二千字/共 9000 字」优先，缺失沿用流程默认
+        story = dict(registered.get(task_type, {}).get("story") or {"words": 12000})
+        number = _TOTAL_WORDS.search(rest)
+        if number:
+            raw = number[1] or number[2]
+            if number[1] and "." in raw:
+                story["words"] = int(float(raw) * 10000)
+            else:
+                count = _number(raw)
+                if count:
+                    story["words"] = count * 10000 if number[1] else count
+        payload["story"] = story
     return payload

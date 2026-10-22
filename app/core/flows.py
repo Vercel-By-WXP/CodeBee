@@ -46,6 +46,13 @@ BUILTIN_FLOWS = [
      "threshold": 7.0, "rounds": 2,
      "goal_hint": "写什么（题材 / 篇幅 / 风格）",
      "note": "起草 → 多维评审 → 修订循环 → 发布门禁"},
+    {"id": "short_story", "name": "短篇故事", "icon": "i-feather", "engine": "review", "builtin": True,
+     "manuscript": "story.md",
+     "rubric": ["开篇钩子", "情节因果", "人物情感", "结尾兑现", "文风节奏"],
+     "threshold": 7.5, "rounds": 2,
+     "story": {"words": 12000},
+     "goal_hint": "题材/卖点 + 目标字数（例：1.2 万字悬疑短篇，投七猫短故事）",
+     "note": "短篇一次成文：起草 → 字数闸（不足自动扩写）→ 多维评审 → 修订循环；结尾必须兑现开篇承诺"},
     {"id": "serial_novel", "name": "连载小说", "icon": "i-library", "engine": "review", "builtin": True,
      "manuscript": "manuscript.md",
      "rubric": ["情节", "人物", "文笔", "节奏", "吸引力"],
@@ -152,7 +159,7 @@ _ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 # icon 刻意不进来：预置图标跟版本走（老 overrides 里钉的旧 emoji 会被忽略），
 # 自定义流程的 icon 在 upsert_flow 里直接落盘，不走 overrides。
 _EDITABLE = ("name", "goal_hint", "note", "manuscript", "rubric",
-             "threshold", "rounds", "serial", "draft_prompt", "critique_prompt",
+             "threshold", "rounds", "serial", "story", "draft_prompt", "critique_prompt",
              "verify_command", "best_of")
 
 
@@ -200,6 +207,20 @@ def _norm_serial(serial):
     return out
 
 
+def _norm_story(story):
+    """短篇规格：只有目标字数一个参数。短故事频道常见 0.8万-2万字，
+    钳位 2000-50000 兜住极端输入；无字数/非法值返回 None（无规格）。"""
+    if not isinstance(story, dict):
+        return None
+    try:
+        words = int(story.get("words") or 0)
+    except Exception:
+        return None
+    if words <= 0:
+        return None
+    return {"words": max(2000, min(50000, words))}
+
+
 def _norm_rubric(rubric):
     if isinstance(rubric, str):
         rubric = re.split(r"[,，、\n]+", rubric)
@@ -228,6 +249,12 @@ def _apply_overrides(base, ov):
                 f["serial"] = v
             else:
                 f.pop("serial", None)
+        elif k == "story":
+            v = _norm_story(v)
+            if v:
+                f["story"] = v
+            else:
+                f.pop("story", None)
         elif k == "threshold":
             try:
                 f["threshold"] = max(1.0, min(10.0, float(v)))
@@ -397,6 +424,9 @@ def upsert_flow(payload, source="manual"):
         serial = _norm_serial(payload.get("serial"))
         if serial:
             flow["serial"] = serial
+        story = _norm_story(payload.get("story"))
+        if story:
+            flow["story"] = story
         for key in ("draft_prompt", "critique_prompt"):
             v = str(payload.get(key) or "").strip()
             if v:
@@ -455,7 +485,7 @@ _SHARE_KIND = "codebee-flow"
 # （对端是否预置由对端的 BUILTIN_FLOWS 决定，不能跨机携带）。
 _SHARE_FIELDS = ("id", "name", "engine", "icon", "goal_hint", "note",
                  "manuscript", "rubric", "threshold", "rounds", "best_of",
-                 "serial", "draft_prompt", "critique_prompt", "verify_command")
+                 "serial", "story", "draft_prompt", "critique_prompt", "verify_command")
 
 
 def export_flow_code(flow_id):

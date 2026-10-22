@@ -87,11 +87,11 @@ def _normalize_category(category, dim=None):
 BUILTIN_PACKS = [
     {"id": "qimao-signing", "name": "七猫签约标准与写作规范",
      "file": "qimao-signing.md",
-     "scopes": ["novel", "serial_novel"],
+     "scopes": ["novel", "serial_novel", "short_story"],
      "note": "七猫经验边界、拒稿证据诊断、开篇与故事单元自检；非过签预测"},
     {"id": "fanqie-novel", "name": "番茄小说写作与流量守则",
      "file": "fanqie-novel.md",
-     "scopes": ["novel", "serial_novel"],
+     "scopes": ["novel", "serial_novel", "short_story"],
      "note": "番茄经验边界、阅读数据假设、故事单元自检与后台规则核验；非算法预测"},
     {"id": "handdraw-video", "name": "手绘讲解视频制作规范",
      "file": "handdraw-video.md",

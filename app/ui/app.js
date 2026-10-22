@@ -621,6 +621,7 @@ function flowDesc(f) {
   if (f.engine === "code") return t("实现 → 验证 →（复杂任务进）评审");
   // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑
   if (f.serial) return t("大纲 → 逐章起草评审 → 合并（可续跑）");
+  if (f.story) return t("起草 → 字数闸 → 评审修订（单篇）");
   return t("起草 → 多维评审 → 门禁");
 }
 
@@ -980,8 +981,10 @@ function onTypeChange() {
   if (bibleCreate) bibleCreate.classList.toggle("hidden", !isSerialReview);
   const dramaFields = $("f-drama-only");
   if (dramaFields) dramaFields.classList.toggle("hidden", !(isReview && flow && flow.id === "short_drama"));
+  const storyFields = $("f-story-only");
+  if (storyFields) storyFields.classList.toggle("hidden", !(isReview && flow && flow.story));
   const clearSerialFields = () => ["f-chapters", "f-words-per-ch", "f-variants", "f-branches", "f-bible",
-    "f-vol-chapters", "f-vol-spec"].forEach((id) => {
+    "f-vol-chapters", "f-vol-spec", "f-story-words"].forEach((id) => {
     const el = $(id);
     if (el) el.value = "";
   });
@@ -1017,6 +1020,13 @@ function onTypeChange() {
           ? lp.volume_chapters : (flow.serial.volume_chapters || 20);
       }
     } else clearSerialFields();
+    // 短篇目标字数预填（在 clearSerialFields 之后：非连载流程刚被清空）
+    if (flow.story) {
+      if (!$("f-story-words").value) {
+        $("f-story-words").value = (lp.story_words != null && lp.story_words !== "")
+          ? lp.story_words : flow.story.words || 12000;
+      }
+    }
   } else {
     // 隐藏控件仍保留 DOM 值；换流程时清理，避免章节/圣经状态污染下一次提交。
     clearSerialFields();
@@ -1081,8 +1091,11 @@ function recommendTaskType(goal) {
     // goal_hint 引导词对齐（2026-10-08 第二轮巡检）：serial_novel 例句
     // 「都市女频/可签约平台」、article 提示「头条/知乎」——照提示输入
     // 此前不弹类型建议（同 video_script 补词第 3 例缝隙）。
+    // 短篇在连载/长篇之前：「短篇小说/短故事」不含连载词，但会被 novel 的
+    // 「小说/短篇」截胡——专属词先接（2026-10-22 短篇流程）。
+    ["short_story", /(短篇|短故事)/i],
     ["serial_novel", /(连载|续写.*章|网文|长篇小说|女频|男频|签约平台)/i],
-    ["novel", /(小说|故事|短篇|章节)/i],
+    ["novel", /(小说|故事|章节)/i],
     ["article", /(公众号|自媒体|文章|博客|小红书|头条|知乎)/i],
     ["doc", /(文档|操作手册|说明书)/i],
     // 宽词放末位兜底（「电影排行榜文章」由前面的 article 先接住）；词形对齐
@@ -4531,6 +4544,13 @@ async function createTask() {
     } else if (flow.serial) {
       // 显式 null 覆盖 serial_novel 的流程默认，空章节就是单稿件。
       payload.serial = null;
+    }
+    // 短篇规格：目标字数（story_words 平铺一份给偏好记忆，真源是 story.words）
+    if (flow.story) {
+      const sw = Math.max(2000, Math.min(50000,
+        parseInt($("f-story-words").value, 10) || flow.story.words || 12000));
+      payload.story = { words: sw };
+      payload.story_words = sw;
     }
     const initialBible = ($("f-bible") || {}).value ? $("f-bible").value.trim() : "";
     if (initialBible && flow.serial && payload.serial) payload.story_bible = initialBible;
