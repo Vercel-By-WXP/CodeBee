@@ -5443,7 +5443,17 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
         if not res.get("ok"):
             return ("字数闸扩写失败：%s——稿件 %d 字仍低于下限 %d，请处理后用「继续任务」复跑"
                     % (res.get("error") or "扩写步未成功", count, spec["min_words"]))
+        prev = count
         count = _story_word_count(workdir, ms_name)
+        if count <= prev:
+            # 扩写步「成功」但稿件零增量＝写作链没实际干活（懒模型只汇报不动笔、
+            # 或 CLI 假成功）。同链再烧第 2 轮注定同样结局，还把锅甩给目标字数
+            # （2026-10-22 实案：mimo 停摆横幅 exit 0，两轮各 6-8 秒「done」，
+            # 4716 字原地踏步后文案怪「目标超出单稿可达篇幅」）——如实收场。
+            return ("字数闸扩写未生效：写作链未实际改动稿件（第 %d 轮扩写后仍约 %d 字，"
+                    "低于下限 %d 字）——通常是 CLI 假成功或通道停摆，"
+                    "请检查供应商健康面板或换写作链后重试"
+                    % (attempt, count, spec["min_words"]))
     if count < spec["min_words"]:
         return ("字数闸未过：扩写 2 轮后全文仍只有约 %d 字，低于下限 %d 字（目标约 %d 字）——"
                 "目标字数可能超出单稿可达篇幅，请调低目标或换更强的写作链后重试"
