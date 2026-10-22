@@ -51,7 +51,7 @@ def _task_type(ttype):
     return str(ttype or "direct")
 
 
-def _binding_bonus(agent_id, dispatch_mode=False):
+def _binding_bonus(agent_id, dispatch_mode=False, role="", ttype="direct"):
     """绑定链可用性加分/减分：解析出的调用链有备胎（≥2 条）+8；单条 = 单点
     无降级空间 +0；解析为空 -25。2026-09-16 实测：静态能力基线让配额烧干的
     codex 永远压过健康备用 CLI，绑定空的 CLI 更是连用户配置的模型都没用上
@@ -64,6 +64,10 @@ def _binding_bonus(agent_id, dispatch_mode=False):
         pref = modelhub._binding_for(agent_id)
         configured = bool(modelhub._binding_chain(pref) or pref.get("provider_id"))
         if not configured:
+            dead = _unbound_default_upstream_down(agent_id, role, ttype)
+            if dead:
+                return -45.0, ("，未绑定且 CLI 默认上游 %s 健康故障（-45.0）"
+                               % dead)
             return (0.0, "") if dispatch_mode else (-25.0, "，绑定链为空：相关步骤将判失败（-25.0）")
         b = modelhub.resolve_binding(agent_id)
         n = len((b or {}).get("call_chain") or [])
@@ -129,7 +133,8 @@ def score(agent, role, ttype, stats=None):
     base = CAPABILITY.get(agent.get("kind"), 60)
     use_dispatch = bool(agent.get("_dispatch_task_type") or
                         agent.get("dispatch_enabled"))
-    bb, btxt = _binding_bonus(agent.get("id"), dispatch_mode=use_dispatch)
+    bb, btxt = _binding_bonus(agent.get("id"), dispatch_mode=use_dispatch,
+                              role=role, ttype=ttype)
     hb = _history_bonus(stats, agent.get("id"), ttype)
     online, online_txt = _online_bonus(agent, role, ttype)
     # 保持公开 score() 的历史绝对分值；运行级候选由 pipeline 标记画像后
@@ -327,6 +332,38 @@ def agent_upstreams(agent_id, difficulty="default", task_type="", role=""):
                 if h:
                     ups.add(h)
     return ups
+
+
+def _unbound_default_upstream_down(agent_id, role="", ttype="direct"):
+    """未配置绑定时，CLI 本机默认上游是否正处健康故障。
+
+    bind_agent 在没有可用供应商时回落到 CLI 自家配置；若那家上游已被健康
+    台账判死（2026-10-22 实案：codex 的 ~/.codex/config.toml 指向 403 配额
+    网关，评审仍按静态能力分排第一），能力基线/历史胜率不该继续把它推上
+    候选首位。只认精确 host 命中；读不到上游算未知、不扣分（宁白试不误杀）。
+    """
+    try:
+        from . import health, modelhub
+        pref = modelhub._binding_for(agent_id)
+        if modelhub._binding_chain(pref) or pref.get("provider_id"):
+            return ""
+        down_names = health.down_names()
+        if not down_names:
+            return ""
+        dead_hosts = set()
+        for prov in modelhub.providers():
+            if prov.get("name") not in down_names:
+                continue
+            host = _host_of(prov.get("base_url"))
+            if host:
+                dead_hosts.add(host)
+        if not dead_hosts:
+            return ""
+        ups = agent_upstreams(agent_id, task_type=_task_type(ttype), role=role)
+        hit = sorted(ups & dead_hosts)
+        return hit[0] if hit else ""
+    except Exception:
+        return ""
 
 
 def pick_switch_candidate(agents, role, ttype, stats, exclude=(),

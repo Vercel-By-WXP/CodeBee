@@ -1850,23 +1850,32 @@ def _invalid_model(model):
 _OC_BANNER_LINE_RE = re.compile(r"^\s*>?\s*[^\s·•]+\s*[·•]\s*\S+\s*$")
 
 
-def _opencode_fast_banner_death(res):
-    """opencode 启动期秒退签名：退出码 1、总时长很短、输出清洗 ANSI 后只剩
-    启动横幅、没有任何错误文本。真实失败不走这个形态；该形态只值得原地
-    立即重试一次（配置写读竞态/端口抢占类瞬时抖动，2026-09-30 实案：
-    并行评审爆发期连续三发「退出码 1；stderr/stdout: > build · glm-5.3」，
-    数分钟后同进程自愈）。"""
+def _opencode_banner_only(res):
+    """opencode 退出码 1 且清洗 ANSI 后只剩启动横幅、没有任何错误文本。
+
+    真错误（配额/配置/网络）CLI 都会另打印文本，纯横幅形态只可能是本地
+    启动/配置抖动，责任不在上游；不论跑了 2 秒还是 2 分钟，换一个 CLI 都
+    比钉死在同一进程上重试更有机会活。"""
     if res.get("ok") or res.get("exit_code") != 1:
-        return False
-    try:
-        if float(res.get("duration") or 0) > 15.0:
-            return False
-    except (TypeError, ValueError):
         return False
     blob = clean_cli_text((res.get("stderr") or "") + "\n"
                           + (res.get("stdout") or ""))
     lines = [ln.strip() for ln in blob.splitlines() if ln.strip()]
     return bool(lines) and all(_OC_BANNER_LINE_RE.match(ln) for ln in lines)
+
+
+def _opencode_fast_banner_death(res):
+    """opencode 启动期秒退签名：横幅退出且总时长很短。
+
+    该形态只值得原地立即重试一次（配置写读竞态/端口抢占类瞬时抖动，
+    2026-09-30 实案：并行评审爆发期连续三发「退出码 1；stderr/stdout:
+    > build · glm-5.3」，数分钟后同进程自愈）；长时横幅死亡直接交给换将。"""
+    if not _opencode_banner_only(res):
+        return False
+    try:
+        return float(res.get("duration") or 0) <= 15.0
+    except (TypeError, ValueError):
+        return False
 
 
 def _opencode_salvage_complete_run(res):
@@ -2241,7 +2250,7 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                            command_context, att, {
                                                "ok": False,
                                                "error": "opencode 启动横幅后退出",
-                                               "error_code": ErrorCode.VENDOR_ERROR,
+                                               "error_code": ErrorCode.LOCAL_STATE,
                                                "raw": res,
                                                "model": att.get("model"),
                                                "attempt_ordinal": attempt + 1,
@@ -2311,6 +2320,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                     "utf-8", "replace"))
                     except Exception:
                         pass
+                banner_only = (kind == "opencode"
+                               and not (res.get("timed_out")
+                                        or res.get("cancelled")
+                                        or res.get("output_truncated"))
+                               and _opencode_banner_only(res))
                 if not (res.get("timed_out") or res.get("cancelled")
                         or res.get("output_truncated")
                         or _quota_error(out["error"]) or _transient_error(out["error"])
@@ -2321,6 +2335,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     # （真错误只走了流式管道），路由层看不到配额关键词，换将
                     # 判死因全靠猜。
                     _augment_error_from_log(out, log_path)
+                if banner_only:
+                    out["error"] += ("（仅启动横幅、无错误文本：疑似本地启动/"
+                                     "配置抖动，可换 CLI 补位）")
                 out["error_code"] = (ErrorCode.CANCELLED if res.get("cancelled")
                                       else ErrorCode.TIMEOUT if res.get("timed_out")
                                       else ErrorCode.PARSE_FAIL
@@ -2329,6 +2346,13 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                                       if _permission_error(out["error"])
                                       else classify_error_text(out["error"])
                                       or _classify_failure(res, kind=kind))
+                # 纯横幅退出是 CLI 本地启动问题（VENDOR_ERROR 只是退出码兜底），
+                # 归 LOCAL_STATE 让跨 CLI 换将闸门放行；日志里补出了真上游错误
+                # （配额/权限等）时保留更强的分类。
+                if (banner_only
+                        and error_code_value(out["error_code"])
+                        in ("", ErrorCode.VENDOR_ERROR.value)):
+                    out["error_code"] = ErrorCode.LOCAL_STATE
                 out["error"] += _login_hint(kind, out["error_code"],
                                             out["error"])
                 retryable_stream = (not res.get("output_truncated")

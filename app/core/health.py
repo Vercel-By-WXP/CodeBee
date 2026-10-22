@@ -194,7 +194,7 @@ def _is_local_false_positive(st):
             # 信号——无论当年记的码是什么，凡通用/瞬态族一律按误报清掉。
             # 结构化账号级死错（QUOTA/AUTH 等）文本仍应可分类，落不进这里。
             return code in {"", "VENDOR_ERROR", "UPSTREAM_SERVER", "NETWORK",
-                            "TIMEOUT", "RATE_LIMIT"}
+                            "TIMEOUT", "RATE_LIMIT", "LOCAL_STATE"}
         return False
     except Exception:
         return False
@@ -357,7 +357,8 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             # structured upstream signal, so a plain CLI stderr envelope with
             # that code must still be treated as local/unknown noise.
             unclassified = (code in ("", "VENDOR_ERROR", "UPSTREAM_SERVER",
-                                     "NETWORK", "TIMEOUT", "RATE_LIMIT")
+                                     "NETWORK", "TIMEOUT", "RATE_LIMIT",
+                                     "LOCAL_STATE")
                             and classify_error_text(text) is None)
         except Exception:
             unclassified = False

@@ -2447,6 +2447,83 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
     return last_result, last_impl, last_note
 
 
+def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, agents,
+                                     impl, difficulty, task_type, stats, mode,
+                                     is_selection):
+    """评审步失败时按换将语义补位（与起草共用同一份策略闸门）。
+
+    评审原先固定在同一 CLI 上重试三次：上游死链/本地启动抖动时三次都撞
+    同一堵墙，最终整轮判「评审环节失败」。这里保留解析失败的同 CLI 重试，
+    仅在 should_fallback 允许时换 CLI；作者本人、本场停用与已试候选都排除。
+    返回 (评分 JSON 或 None, 最后一次结果, 实际评审 CLI, 换将备注)。
+    """
+    from . import bench as _bench
+    from . import routing_strategy
+
+    tried = {agent.get("id")}
+    if isinstance(impl, dict) and impl.get("id"):
+        tried.add(impl.get("id"))
+    try:
+        tried |= _bench.benched_ids(run_id)
+    except Exception:
+        pass
+    dead_upstreams, blocked_upstreams = [], []
+    note = ""
+    current = agent
+    res = {}
+    for attempt in range(1, 4):
+        res = _run_step(
+            run_id, role, modelhub.bind_agent(current, difficulty), prompt,
+            workdir, readonly=True, ev=ev, note=note,
+            swap_guard={"exclude": tried, "blocked": blocked_upstreams})
+        cj = runner.extract_json(res.get("text") or "")
+        if is_selection and not res.get("ok"):
+            cj = None
+        if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                and cj["scores"]):
+            return cj, res, current, note
+        if attempt >= 3 or runner.attempt_cancelled(res):
+            break
+        try:
+            may_swap = (mode != "manual" and isinstance(impl, dict)
+                        and routing_strategy.get().should_fallback(res))
+        except Exception:
+            may_swap = False
+        if not may_swap:
+            time.sleep(2.0)
+            continue
+        ups = router.agent_upstreams(
+            current.get("id"), difficulty=difficulty,
+            task_type=task_type, role="review")
+        blocked_upstreams.extend(_forbidden_upstream_sets(res, ups))
+        if ups and not runner._permission_error(res.get("error") or ""):
+            dead_upstreams.append(ups)
+        candidate, why = router.pick_reviewer(
+            agents, impl, task_type, stats, exclude=tried,
+            dead_upstreams=dead_upstreams, difficulty=difficulty)
+        if (candidate is None or candidate.get("id") in tried
+                or candidate.get("mode") != "real"):
+            # 隔离约束把所有候选都挡掉时退回换将选路：评审继续比评审缺席
+            # 重要，同源回退会写进备注，不伪装成跨族隔离。
+            candidate, why = router.pick_switch_candidate(
+                agents, "review", task_type, stats, exclude=tried,
+                dead_upstreams=dead_upstreams, difficulty=difficulty,
+                blocked_upstreams=blocked_upstreams, failed_cli=current,
+                error=res)
+        if (candidate is None or candidate.get("id") in tried
+                or candidate.get("mode") != "real"):
+            if attempt < 3:
+                time.sleep(2.0)
+            continue
+        tried.add(candidate.get("id"))
+        switch = ("评审自动换 CLI：%s → %s（%s）；前序失败：%s" % (
+            current.get("id") or "CLI", candidate.get("id") or "CLI",
+            why or "自动路由", (res.get("error") or "评审失败")[:180]))
+        note = (note + "；" if note else "") + switch
+        current = candidate
+    return None, res, current, note
+
+
 
 
 # ---------------------------------------------------------------- direct 引擎（直连单 CLI：无拆解/评审，对话式续轮）
@@ -5458,6 +5535,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     for r in range(1, rounds + 1):
         manuscript = read_ms()
         per_agent, issues_all = {}, []
+        round_critic_errors = {}
         dimkey = ", ".join('"%s": 0' % d for d in dims)
         crit_prompt = _render_template_values(_ensure_critique_placeholders(
             _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT)), {
@@ -5477,7 +5555,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         crit_prompt = aiflavor.inject_into_prompt(crit_prompt, manuscript, task.get("type"))
         if is_selection:
             crit_prompt += _content_contract(task) + "\n" + selection.REVIEW
-        for agent in critics:
+        for idx, agent in enumerate(critics):
             role = "critique-r%d" % r
             if agent.get("mode") == "mock":
                 step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
@@ -5493,26 +5571,40 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                     pass
             else:
                 # 评审步自身失败（上游断流/输出无法解析）不等于评了 0 分：
-                # 先重试评审步，重试耗尽才按无评分记账（r-20261021-164007 实案：
-                # critic 流断在 Reconnecting 1/5，六维全 0 被当合法评审轮吞掉）。
-                cj, res = None, {}
-                for _attempt in range(1, 4):
-                    res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
-                                    crit_prompt, workdir, readonly=True, ev=ev)
-                    cj = runner.extract_json(res.get("text") or "")
-                    if is_selection and not res.get("ok"):
-                        cj = None
-                    if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-                            and cj["scores"]):
-                        break
-                    cj = None
-                    if _attempt < 3:
-                        time.sleep(2.0)
+                # 先重试评审步，可换将的失败再换 CLI，耗尽才按无评分记账
+                # （r-20261021-164007 实案：critic 流断在 Reconnecting 1/5，
+                # 六维全 0 被当合法评审轮吞掉；2026-10-22 实案：codex 默认
+                # 上游 403 死链固定重试三次，整轮评审直接判失败）。
+                cj, res, actual, swap_note = _critique_step_with_cli_fallback(
+                    run_id, role, agent, crit_prompt, workdir, ev, agents,
+                    impl, difficulty, task.get("type") or "novel", stats,
+                    mode, is_selection)
+                if actual.get("id") != agent.get("id"):
+                    critics[idx] = actual
+                    agent = actual
+                    route["critics"] = ((route.get("critics") or "") +
+                                        ("；" if route.get("critics") else "") +
+                                        swap_note)
+                    try:
+                        plan = planner.make_novel_plan(
+                            _steered_task(run_id, task), impl, critics)
+                        store.update_run(run_id, route=route, plan=plan)
+                        _record_actual_route(
+                            run_id, task, agents, stats, impl, critics=critics,
+                            implement_reason=route.get("author", ""),
+                            review_reason=route.get("critics", ""))
+                    except Exception:
+                        logging.getLogger(__name__).warning(
+                            "评审换将后的路由回写失败 run=%s", run_id,
+                            exc_info=True)
                 if not (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
                         and cj["scores"]):
+                    round_critic_errors[agent.get("id") or "CLI"] = (
+                        res.get("error") or res.get("text") or "输出无法解析")[:160]
                     cj = {"scores": {}, "issues": [],
-                          "summary": "评审输出无法解析（重试 2 次仍失败）：%s"
-                                     % (res.get("text") or "")[:150]}
+                          "summary": "评审输出无法解析（重试后仍失败）：%s"
+                                     % ((res.get("error") or res.get("text")
+                                         or "")[:150])}
             per_agent[agent["id"]] = cj
             model_issues = [_tag_review_issue(
                 issue, issue.get("chapter", "全稿评审"), "selection-review")
@@ -5542,7 +5634,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         history_rounds.append({"round": r, "means": means,
                                "per_agent": {k: v.get("scores", {}) for k, v in per_agent.items()},
                                "issues": issues_all, "passed": publishable,
-                               "critic_failed": round_critic_failed})
+                               "critic_failed": round_critic_failed,
+                               "critic_errors": round_critic_errors})
         if publishable or r == rounds:
             break
 
@@ -5698,9 +5791,13 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                          error="稿件已过评审，但成片渲染失败：%s" % render_error,
                          summary="成片渲染失败", ended_at=_now())
     elif history_rounds and history_rounds[-1].get("critic_failed"):
+        why = "；".join(
+            "%s：%s" % (aid, text) for aid, text in
+            (history_rounds[-1].get("critic_errors") or {}).items())
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
-                         error="评审环节失败（评审输出重试后仍无法解析），未获得有效评分——"
-                               "不是稿件质量问题，直接重试即可",
+                         error="评审环节失败（%s），未获得有效评分——"
+                               "不是稿件质量问题，直接重试即可"
+                               % (why or "评审输出重试后仍无法解析"),
                          summary="评审失败（综合 %.1f）" % overall, ended_at=_now())
     else:
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
