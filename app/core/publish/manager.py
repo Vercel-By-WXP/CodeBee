@@ -345,7 +345,8 @@ def _url_values(mod, book):
     只有七猫有，番茄走到第二行即断，editor_url 永远赋不上——{editor_url}
     残进 navigate，页面停在 about:blank 误报「未登录或改版」（0924 三连败）。"""
     out = {}
-    for key in ("chapter_manage_url", "draft_url", "editor_url"):
+    for key in ("chapter_manage_url", "draft_url", "editor_url",
+                "short_editor_url"):
         fn = getattr(mod, key, None)
         if callable(fn):
             out[key] = fn(book)
@@ -648,6 +649,10 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         values["volume_name"] = ""
     values["_volumes"] = list(book_ref.get("volumes") or [])
     values.update(_url_values(mod, book_ref))   # verify/draft/editor 页 URL（流程占位）
+    if short_story:
+        # 短故事流程的列表验证页占位（verify 步只吃 values 不吃 config）
+        values["short_book_manage"] = str(mod.CONFIG.get("short_book_manage") or "")
+        values["short_manage_url"] = str(mod.CONFIG.get("short_manage") or "")
     logs = []
     pending_key = ""
     if not _batch:

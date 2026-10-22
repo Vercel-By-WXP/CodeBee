@@ -19,6 +19,14 @@ CONFIG = {
     "id": "fanqie",
     "label": "番茄",
     "home": "https://fanqienovel.com/main/writer/",   # 实测 writer. 子域不存在(DNS 000)；快照实抓为主站路径
+    # 短故事频道（2026-10-22 实机探测）：与小说平级的独立作品形态。一键建书
+    # = 直达 /publish-short/new（同 tab 创建"未命名短故事"并进编辑器，URL 不
+    # 带 id，book_id 由存草稿后按名对账提取）；列表在 short-manage。
+    # "发表超6000字即有机会签约"是软门槛；硬字数界限未实测，首跑校准。
+    "short_manage": "https://fanqienovel.com/main/writer/short-manage",
+    "short_create_url": "https://fanqienovel.com/main/writer/publish-short/new",
+    "short_story_body_min_chars": 1000,
+    "short_story_body_max_chars": 50000,
     # 导航后 URL 含任一标记 → 未登录（跳到了登录/通行证页）
     "login_url_marks": ["login", "passport", "sso", "account/signin"],
     # 章节管理页计数（2026-09-28 实机校准；2026-10-08 补跨页/跨卷）：
@@ -167,9 +175,51 @@ PROBE_FORM = [
     {"do": "probe", "note": "建书表单"},
 ]
 
+# 短故事建书（2026-10-22 实机探测）：一键建——直达 /publish-short/new 即
+# 创建"未命名短故事"进编辑器（同 tab，URL 暂不带 id）。名称/正文/分类/AI
+# 声明都在编辑器链路里，由 upload_short_story_draft 与首跑校准补——本表只
+# 负责"把作品开出来"。book_id 由 runner 按名对账（reconcile_short_story_
+# book_id）提取。
+CREATE_SHORT_STORY = [
+    {"do": "navigate", "url": "{home}"},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
+    {"do": "navigate", "url": "{short_create_url}", "timeout": 40},
+    {"do": "wait", "sel": ".ProseMirror", "timeout": 20},
+    {"do": "shot", "name": "short-story-created"},
+    {"do": "url_any", "any": ["publish-short/"]},
+]
+
+# 短故事正文上传：编辑器页填名称（textarea）+ 正文（ProseMirror）→ 存草稿。
+# 第二步设置区（封面/是否使用AI/作品分类/试读/发布协议）同页右侧，存草稿若
+# 被必填项拦下，首跑以 fail-shot 校准补步（AI 声明按作者口径应选「是」）。
+UPLOAD_SHORT_STORY_DRAFT = [
+    {"do": "navigate", "url": "{short_editor_url}"},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
+    {"do": "wait", "sel": ".ProseMirror", "timeout": 20},
+    {"do": "fill", "sel": "textarea[placeholder*='短故事名称']", "key": "chapter_title"},
+    {"do": "fill", "sel": ".ProseMirror", "key": "chapter_body"},
+    {"do": "shot", "name": "fanqie-short-body-filled"},
+    {"do": "click_real", "text": "存草稿", "tries": 25},
+    {"do": "sleep", "s": 2},
+    {"do": "expect_text", "any": ["保存成功", "已保存", "草稿保存成功",
+                                   "存草稿成功"], "timeout": 15},
+    {"do": "verify", "url": "{short_manage_url}", "any": ["{book_name}"],
+     "settle": 5},
+]
+
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
+         "create_short_story": CREATE_SHORT_STORY,
+         "upload_short_story_draft": UPLOAD_SHORT_STORY_DRAFT,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
+
+
+def short_story_editor_url(book):
+    """短故事编辑器直达（publish-short/<id>；一键建后的作品页）。"""
+    bid = str((book or {}).get("book_id") or "")
+    if bid:
+        return CONFIG["home"] + "publish-short/" + bid
+    return CONFIG["short_manage"]
 
 
 def _first(meta, key):
@@ -237,35 +287,81 @@ def chapter_manage_url(book):
     return CONFIG["home"] + "book-manage"
 
 
+# 作品编号提取（番茄小说 book-info/<id>/chapter-manage/<id>/<id>/publish；
+# 短故事 publish-short/<id>）。runner 与对账共用。
+BOOK_ID_URL_RE = (r"book-info/(\d+)|chapter-manage/(\d+)|writer/(\d+)/publish"
+                  r"|publish-short/(\d+)")
+
+
 def resolve_book_id(page, book):
     """登记缺 book_id 时按书名在作家后台找回：点书卡进详情，从 URL 提取。
 
     建书成功但 id 提取落空（跳转链没走完/auto_submit=false 人工提交）的书，
-    发章前经 manager._resolve_book_id 调到这里补账；找不回返回空串不拦死。"""
+    发章前经 manager._resolve_book_id 调到这里补账；找不回返回空串不拦死。
+    小说与短故事两个列表先后各找一轮（撞名兜底不关心作品形态）。"""
     import re
     import time
     from . import flow as _flow
     title = str((book or {}).get("title") or "").strip()
     if not title:
         return ""
+    for list_url in (CONFIG["home"] + "book-manage", CONFIG["short_manage"]):
+        try:
+            page.navigate(list_url, timeout=30)
+        except Exception:
+            continue
+        r = None
+        for _try in range(6):               # 书列表慢渲染
+            r = page.call(_flow._click_match_js(), [title], 300)
+            if (r or {}).get("ok"):
+                break
+            time.sleep(1.0)
+        if not (r or {}).get("ok"):
+            continue
+        time.sleep(2.5)                     # 详情页跳转收尾
+        m = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
+        if m:
+            return next((g for g in m.groups() if g), "")
+    return ""
+
+
+def reconcile_short_story_book_id(page, book):
+    """短故事版对账：列表在 short-manage，点击作品跳 publish-short/<id>
+    （2026-10-22 实机）。与 reconcile_book_id 同契约 (found, book_id, error)。"""
+    import re
+    import time
+    title = str((book or {}).get("title") or "").strip()
+    if not title:
+        return False, "", "作品名为空"
     try:
-        page.navigate(CONFIG["home"], timeout=30)
-    except Exception:
-        return ""
-    r = None
-    for _try in range(6):                   # 书列表慢渲染
-        r = page.call(_flow._click_match_js(), [title], 300)
-        if (r or {}).get("ok"):
-            break
-        time.sleep(1.0)
-    if not (r or {}).get("ok"):
-        return ""
-    time.sleep(2.5)                         # 详情页跳转收尾
-    m = re.search(r"book-info/(\d+)|chapter-manage/(\d+)|writer/(\d+)/publish",
-                  str(page.url() or ""))
-    if not m:
-        return ""
-    return m.group(1) or m.group(2) or m.group(3) or ""
+        page.navigate(CONFIG["short_manage"], timeout=30)
+        for _try in range(6):
+            result = page.real_click_text(title, scope="a,button,[role=button],span,li,div,section",
+                                          contains=False)
+            if (result or {}).get("ok"):
+                time.sleep(2.5)
+                match = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
+                if match:
+                    return True, next((g for g in match.groups() if g), ""), ""
+                return False, "", "已点中同名短故事，但无法从平台地址提取作品编号"
+            time.sleep(1.0)
+        probe = page.call(
+            "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
+            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
+            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "(e.innerText||'').trim().includes('新建短故事'));"
+            "const loading=[...document.querySelectorAll('[class*=loading],[aria-busy=true]')].some(vis);"
+            "return{ready:document.readyState==='complete'&&location.href.includes('/short-manage'),"
+            "create,loading,titleVisible};}", title, 500)
+        if (probe and probe.get("ready") and probe.get("create") and
+                not probe.get("loading") and not probe.get("titleVisible")):
+            return False, "", ""
+        if probe and probe.get("titleVisible"):
+            return False, "", "番茄已显示同名短故事，但无法可靠打开并提取作品编号"
+        return False, "", "番茄短故事列表未完整加载"
+    except Exception as exc:
+        return False, "", str(exc)[:240]
 
 
 def reconcile_book_id(page, book):

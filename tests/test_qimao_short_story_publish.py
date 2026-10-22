@@ -8,7 +8,7 @@ book_id URL 提取与取值映射——浏览器链路本身由真机首跑校�
 import re
 import unittest
 
-from app.core.publish import qimao
+from app.core.publish import fanqie, qimao
 from app.core.publish.publish_browser import _flow_contract_ok
 
 
@@ -84,6 +84,50 @@ class QimaoShortStoryFlowTests(unittest.TestCase):
         self.assertTrue(callable(qimao.reconcile_book_id))
         src = qimao.resolve_book_id.__doc__ or ""
         self.assertIn("短故事", src)   # 撞名兜底两个列表都找
+
+
+class FanqieShortStoryTests(unittest.TestCase):
+    """番茄短故事链（2026-10-22 实机探测：一键建 publish-short/new，
+    编辑器 ProseMirror + 名称 textarea，无独立建书表单）。"""
+
+    def test_create_flow_one_shot_navigation(self):
+        steps = fanqie.FLOWS["create_short_story"]
+        joined = " ".join(str(s.get("url") or "") for s in steps)
+        self.assertIn("publish-short/new", joined)
+        self.assertTrue(any(s.get("do") == "wait"
+                            and "ProseMirror" in str(s.get("sel")) for s in steps))
+
+    def test_upload_flow_fills_name_and_body(self):
+        steps = fanqie.FLOWS["upload_short_story_draft"]
+        keys = {s.get("key") for s in steps}
+        self.assertIn("chapter_title", keys)
+        self.assertIn("chapter_body", keys)
+        body = next(s for s in steps if s.get("key") == "chapter_body")
+        self.assertIn("ProseMirror", str(body.get("sel")))
+        self.assertTrue(any(s.get("do") == "click_real"
+                            and s.get("text") == "存草稿" for s in steps))
+        self.assertTrue(_flow_contract_ok(
+            "fanqie", "upload_short_story_draft", steps))
+
+    def test_config_and_book_id_regex(self):
+        self.assertIn("short-manage", fanqie.CONFIG["short_manage"])
+        self.assertIn("publish-short/new", fanqie.CONFIG["short_create_url"])
+        m = re.search(fanqie.BOOK_ID_URL_RE,
+                      "https://fanqienovel.com/main/writer/publish-short/7699400853773353534")
+        self.assertEqual(next(g for g in m.groups() if g),
+                         "7699400853773353534")
+        self.assertEqual(
+            fanqie.short_story_editor_url({"book_id": "123"}),
+            "https://fanqienovel.com/main/writer/publish-short/123")
+        # 番茄无专用取值器 → publish_create 回落 values_create_book
+        self.assertFalse(hasattr(fanqie, "values_create_short_story"))
+        self.assertTrue(callable(fanqie.reconcile_short_story_book_id))
+
+    def test_word_bounds_platform_split(self):
+        # 七猫编辑器实抓 4000-70000；番茄未实测，先 1000-50000 首跑校准
+        self.assertEqual(qimao.CONFIG["short_story_body_min_chars"], 4000)
+        self.assertEqual(fanqie.CONFIG["short_story_body_min_chars"], 1000)
+        self.assertEqual(fanqie.CONFIG["short_story_body_max_chars"], 50000)
 
 
 if __name__ == "__main__":

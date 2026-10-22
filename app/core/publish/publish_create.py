@@ -824,8 +824,10 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                 final_name = name
                 if i > 1:
                     logs.append("第 %d 次尝试，书名《%s》" % (i, name))
-                values = (mod.values_create_short_story if is_short_story
-                          else mod.values_create_book)(dict(data, book_name=name))
+                values = ((getattr(mod, "values_create_short_story", None)
+                           or mod.values_create_book)
+                          if is_short_story else
+                          mod.values_create_book)(dict(data, book_name=name))
                 steps = _mgr()._with_tag_steps(
                     _mgr().load_flow(plat,
                                      "create_short_story" if is_short_story
