@@ -5,22 +5,38 @@ const { spawn, execFile } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
+const https = require('node:https');
 const path = require('node:path');
 
 const REGISTRY_TARBALL = version => `https://registry.npmjs.org/codebee/-/codebee-${version}.tgz`;
+const REGISTRY_HOSTS = new Set(['registry.npmjs.org']);
 
-function downloadTo(url, dest, timeout) {
+function downloadTo(url, dest, timeout, { allowedHosts = REGISTRY_HOSTS } = {}) {
   return new Promise((resolve, reject) => {
+    // The registry is https-only; a plain http client would throw
+    // ERR_INVALID_PROTOCOL. Every redirect hop is re-validated so a
+    // compromised registry response cannot bounce us off-host.
     const get = (target, redirects) => {
-      const request = http.get(target, { timeout }, response => {
-        if (response.statusCode >= 300 && response.statusCode < 400 &&
-            response.headers.location && redirects > 0) {
+      let parsed;
+      try { parsed = new URL(target); } catch { reject(new Error('引擎下载地址无效')); return; }
+      if (parsed.protocol !== 'https:' || !allowedHosts.has(parsed.hostname)) {
+        reject(new Error('引擎下载地址不受信任'));
+        return;
+      }
+      const request = https.get(parsed, { timeout }, response => {
+        const status = Number(response.statusCode || 0);
+        if (status >= 300 && status < 400 && response.headers.location && redirects > 0) {
           response.resume();
-          return get(new URL(response.headers.location, target).toString(), redirects - 1);
+          let redirected;
+          try { redirected = new URL(response.headers.location, parsed).toString(); } catch {
+            reject(new Error('引擎下载重定向无效'));
+            return;
+          }
+          return get(redirected, redirects - 1);
         }
-        if (response.statusCode !== 200) {
+        if (status !== 200) {
           response.resume();
-          return reject(new Error(`引擎下载失败 HTTP ${response.statusCode}`));
+          return reject(new Error(`引擎下载失败 HTTP ${status}`));
         }
         const file = fs.createWriteStream(dest);
         response.pipe(file);
@@ -287,4 +303,4 @@ class Backend extends EventEmitter {
   }
 }
 
-module.exports = { Backend, requestJSON };
+module.exports = { Backend, downloadTo, requestJSON, REGISTRY_HOSTS };
