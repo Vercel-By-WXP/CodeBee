@@ -707,6 +707,41 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 else:
                     raise FlowError("上线验证失败：%s 页面上没有「%s」（章节未真正发布）"
                                     % (url[:60], last_missing[:40]))
+            elif act == "format_block":
+                # 章节标题块：把包含指定文字的段落格式化为标题（execCommand
+                # formatBlock 走编辑器原生管道，与工具栏「正文→标题」切换同
+                # 效——直接改 DOM 平台数据模型不认，保存即丢）。
+                # 七猫短故事发布硬校验「至少两个章节标题」（2026-10-22 实案）。
+                text = str(st.get("text") or "")
+                block = str(st.get("block") or "h3")
+                if not text:
+                    continue
+                note(i, "标题块「%s」→%s" % (text[:20], block))
+                r = None
+                for _try in range(3):
+                    r = page.call(
+                        "(payload)=>{const j=JSON.parse(payload);"
+                        "const body=document.querySelector('.q-contenteditable');"
+                        "if(!body)return JSON.stringify({ok:false,err:'no-editor'});"
+                        "const p=[...body.querySelectorAll('p,div')]"
+                        ".find(e=>(e.innerText||'').includes(j.text));"
+                        "if(!p)return JSON.stringify({ok:false,err:'no-para'});"
+                        "const sel=window.getSelection();"
+                        "const range=document.createRange();"
+                        "range.selectNodeContents(p);"
+                        "sel.removeAllRanges();sel.addRange(range);"
+                        "document.execCommand('formatBlock', false, j.block);"
+                        "const made=body.querySelector(j.block);"
+                        "return JSON.stringify({ok:!!made});"
+                        "}", json.dumps({"text": text, "block": block},
+                                        ensure_ascii=False), 15)
+                    if (r or {}).get("ok"):
+                        break
+                    time.sleep(0.9)
+                if not (r or {}).get("ok"):
+                    raise FlowError("章节标题块「%s」设置失败：%s"
+                                    % (text[:30], (r or {}).get("err")
+                                       if r else "无响应"))
             elif act == "expect_text":
                 # 页面反馈等待（草稿保存凭据，2026-10-10）：轮询页面文本直到
                 # 出现任一成功标记（toast/状态字样）——verify 的章节管理页对

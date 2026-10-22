@@ -148,6 +148,10 @@ UPLOAD_SHORT_STORY_DRAFT = [
     {"do": "wait", "sel": ".q-contenteditable.book", "timeout": 20},
     {"do": "fill", "sel": ".q-contenteditable.book.font-size-16.edit-mask",
      "key": "chapter_body"},
+    # 「一/二」标记行 → h3 章节标题块（发布硬校验 ≥2 个章节标题）
+    {"do": "sleep", "s": 1},
+    {"do": "format_block", "text": "一", "block": "h3"},
+    {"do": "format_block", "text": "二", "block": "h3"},
     {"do": "shot", "name": "short-story-body-filled"},
     {"do": "click_real", "text": "存为草稿", "tries": 25},
     {"do": "sleep", "s": 2},
