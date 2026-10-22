@@ -397,9 +397,12 @@ def reconcile_short_story_book_id(page, book):
                 match = re.search(BOOK_ID_URL_RE, str(page.url() or ""))
                 if match:
                     return True, next((g for g in match.groups() if g), ""), ""
-                tab_id = _book_id_from_open_tabs(page)
-                if tab_id:
-                    return True, tab_id, ""
+                # 新 tab 开出有延迟：多轮枚举，别一轮定生死（2026-10-22 实案）
+                for _tab_try in range(4):
+                    tab_id = _book_id_from_open_tabs(page)
+                    if tab_id:
+                        return True, tab_id, ""
+                    time.sleep(2.0)
                 return False, "", "已点中同名短故事，但无法从平台地址提取作品编号"
             time.sleep(1.0)
         probe = page.call(
