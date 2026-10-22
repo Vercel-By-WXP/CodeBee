@@ -13194,18 +13194,24 @@ function chatResultHTML(run, res) {
   const icon = ok ? "#i-check" : (partial ? "#i-gauge" : "#i-x");
   const label = partial ? t("本轮部分完成") : (ok ? t("本轮完成") : (bad ? t("本轮失败") : t("已取消")));
   const meta = [];
-  if (res.executor) meta.push(esc(res.executor));
+  if (res.executor) meta.push('<span class="cr-pill">' + esc(res.executor) + "</span>");
   const calls = Array.isArray(res.calls) ? res.calls : [];
   calls.forEach((call) => {
     const channelLabel = call.cli === "builtin" ? t("调用通道") : t("调用 CLI");
-    const identity = [call.label || call.cli,
+    const identity = String(call.label || call.cli || "");
+    if (!identity) return;
+    // 供应商串（prov-xx@host）又长又难读：收进悬停提示，胶囊只留通道+名称+模型
+    const tip = [channelLabel + " " + identity,
       call.model ? t("模型") + " " + call.model : "",
       call.provider ? t("供应商") + " " + call.provider : ""]
       .filter(Boolean).join(" · ");
-    if (identity) meta.push(esc(channelLabel + " " + identity));
+    meta.push('<span class="cr-pill" title="' + esc(tip) + '">' +
+      "<b>" + esc(channelLabel) + "</b>" + esc(identity) +
+      (call.model ? "<i>" + esc(call.model) + "</i>" : "") +
+      "</span>");
   });
-  if (res.turns) meta.push(res.turns + " " + t("轮对话"));
-  if (res.duration_s != null) meta.push(chatDurTxt(res.duration_s));
+  if (res.turns) meta.push('<span class="cr-pill quiet">' + res.turns + " " + t("轮对话") + "</span>");
+  if (res.duration_s != null) meta.push('<span class="cr-pill quiet">' + chatDurTxt(res.duration_s) + "</span>");
   const files = res.files || [];
   const chips = files.map((f) => {
     const fUrl = urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" + encodeURIComponent(f.name));
@@ -13222,7 +13228,7 @@ function chatResultHTML(run, res) {
       '<span class="fsz">' + fmtSize(f.size) + "</span>" +
       '<span class="fbtns">' + runBtn +
       '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
-      '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg></a>' +
+      '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg></a>' +
       "</span></div>";
   }).join("");
   return '<div class="chat-row">' +
@@ -13230,10 +13236,10 @@ function chatResultHTML(run, res) {
     '<div class="chat-result' + (partial ? " partial" : ok ? "" : bad ? " bad" : " off") + '">' +
     '<div class="cr-head"><svg class="ico" aria-hidden="true"><use href="' + icon + '"></use></svg>' +
     esc(label) + "</div>" +
-    (meta.length ? '<div class="cr-meta">' + meta.join(" · ") + "</div>" : "") +
+    (meta.length ? '<div class="cr-meta">' + meta.join("") + "</div>" : "") +
     ((bad || partial) && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
     '<div class="cr-files">' + (chips
-      ? '<div class="cr-files-title">' + esc(t("产出文件")) + t("（") + files.length + t("）") + "</div>" +
+      ? '<div class="cr-files-title">' + esc(t("产出文件")) + '<b class="cr-count">' + files.length + "</b></div>" +
         '<div class="file-chips">' + chips + "</div>"
       : '<div class="cr-files-title">' + esc(t("无文件产出")) + "</div>") + "</div>" +
     (bad ? '<button class="ghost cr-steps" onclick="rdChatNavGo(\'steps\')">' +

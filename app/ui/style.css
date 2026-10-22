@@ -5009,8 +5009,38 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
   white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-result.partial .cr-err { color: var(--warn); }
 .chat-result .cr-files { margin-top: 10px; }
-.chat-result .cr-files-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.chat-result .cr-files-title { display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .chat-result .cr-steps { margin-top: 10px; font-size: 12.5px; }
+/* 元信息：每次 CLI 调用一枚胶囊（通道+名称+模型），供应商全串收进悬停提示，
+   不再「·」串成一堵文本墙；末尾轮数/耗时用无边框弱化胶囊。 */
+.chat-result .cr-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 7px; }
+.chat-result .cr-pill {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0;
+  padding: 2.5px 9px; border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--panel2); font-size: 11.5px; color: var(--text); line-height: 1.5;
+}
+.chat-result .cr-pill b { font-weight: 500; color: var(--muted); flex: none; }
+.chat-result .cr-pill i { font-style: normal; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.chat-result .cr-pill.quiet { background: none; border-color: transparent; padding-inline: 3px; color: var(--muted); }
+/* 文件条：长文件名省略不撑破、尺寸灰字、操作钮收敛成小图标钮（原先无样式裸奔）。 */
+.chat-result .file-chip .p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-result .file-chip .fsz { flex: none; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+.chat-result .file-chip .fbtns { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 2px; }
+.chat-result .file-chip .chip-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.chat-result .file-chip .chip-btn .ico { width: 13px; height: 13px; vertical-align: 0; }
+.chat-result .file-chip .chip-btn:hover { color: var(--accent); background: var(--panel2); }
+.chat-result .cr-files-title .cr-count {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1;
+  padding: 2.5px 7px; border: 1px solid var(--border-strong); border-radius: 999px;
+}
 
 /* ================================================================
    2026-09 · 对话式任务入口 + 任务概览
@@ -7163,13 +7193,7 @@ button.request-busy > * { opacity: .18; }
   background: transparent;
 }
 #run-detail.chat-mode .chat-result .cr-head { font-size: 13px; }
-#run-detail.chat-mode .chat-result .cr-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 8px;
-  font-size: 11px;
-}
+#run-detail.chat-mode .chat-result .cr-meta { margin-top: 8px; }
 #run-detail.chat-mode .chat-result .cr-files {
   margin-top: 10px;
   padding-top: 9px;
