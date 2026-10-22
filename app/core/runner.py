@@ -738,6 +738,16 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     if shell_cmd:
         # shell 串的解析器随平台：重定向/引号语法两边通用，只是解释器不同
         argv = ["cmd", "/c", shell_cmd] if os.name == "nt" else ["/bin/sh", "-c", shell_cmd]
+    # Windows 上含内层双引号的 cmd /c 串（powershell -Command "irm … | iex" 等）
+    # 不能按 argv 列表 spawn：list2cmdline 给整串再包一层引号、内层引号转义成
+    # \"，cmd 老式剥离后 PowerShell 把 -Command 的值当字符串字面量求值——原样
+    # 回显命令即退出 0，脚本一行未跑还报成功（2026-10-22 minimax-code/goose/
+    # trae 安装假「完成」实案，本机复现实锤）。改原始命令行字符串 spawn：cmd
+    # /s /c 只剥最外层一对引号，内层引号原样到达目标程序；无引号命令维持
+    # argv 列表，热路径零变化。
+    spawn_args = [str(a) for a in argv]
+    if os.name == "nt" and shell_cmd and '"' in shell_cmd:
+        spawn_args = 'cmd /s /c "' + shell_cmd + '"'
     if argv is None:
         return {"ok": False, "exit_code": None, "stdout": "", "stderr": "argv 为空",
                 "duration": 0.0, "cancelled": False, "timed_out": False,
@@ -809,7 +819,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     try:
         try:
             proc = subprocess.Popen(
-                [str(a) for a in argv], cwd=cwd, env=full_env,
+                spawn_args, cwd=cwd, env=full_env,
                 stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 creationflags=CREATE_NO_WINDOW,

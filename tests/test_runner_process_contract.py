@@ -71,6 +71,32 @@ class RunnerProcessContractTests(unittest.TestCase):
         self.assertIn("启动失败", result["stderr"])
         self.assertIn("找不到可执行文件", result["stderr"])
 
+    @unittest.skipUnless(os.name == "nt", "cmd /c 引号剥离只在 Windows")
+    def test_quoted_shell_cmd_reaches_powershell_intact(self):
+        # 2026-10-22 minimax-code/goose 安装假「完成」实案：cmd /c + argv 列表
+        # 会把内层引号转义成 \"，PowerShell 把 -Command 的值当字符串字面量回显
+        # 即退出 0，脚本一行未跑。修复 = 原始字符串 cmd /s /c "…" spawn。
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "probe.ps1"
+            script.write_text("Write-Output 'MARKER-OK-123'\n", encoding="utf-8")
+            ps = Path(os.environ.get("SystemRoot", r"C:\Windows"),
+                      "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+            shell_cmd = ('%s -NoProfile -ExecutionPolicy Bypass -Command '
+                         '"irm %s | iex"' % (ps, script))
+            result = runner.run_process(shell_cmd=shell_cmd, cwd=tmp, timeout=60)
+
+        self.assertTrue(result["ok"], result)
+        self.assertIn("MARKER-OK-123", result["stdout"])
+        # stdout 出现命令原文（irm …）= 脚本没执行、只回显，即修复前的假成功
+        self.assertNotIn("irm", result["stdout"])
+
+    @unittest.skipUnless(os.name == "nt", "cmd /c 内建 echo 只在 Windows")
+    def test_unquoted_shell_cmd_still_runs_via_cmd_c(self):
+        result = runner.run_process(shell_cmd="echo CODEBEE-SHELL-OK", timeout=15)
+
+        self.assertTrue(result["ok"], result)
+        self.assertIn("CODEBEE-SHELL-OK", result["stdout"])
+
     def test_audit_log_redacts_argv_secrets_and_is_private_on_posix(self):
         with tempfile.TemporaryDirectory() as tmp:
             script = Path(tmp) / "fake_log_cli.py"
