@@ -18,9 +18,15 @@ from app.core import health
 class ForceProbeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        # force_probe 同轮并发重探 bench 账号台账：隔离它的残留行，
+        # 否则先跑的 bench 系测试文件留下的 down 行会混进计数并触发真探活
+        from app.core import bench
+        bench.init(self.tmp.name, start_probe=False)
         health.init(self.tmp.name, start_probe=False)
 
     def tearDown(self):
+        from app.core import bench
+        bench.init(self.tmp.name, start_probe=False)
         health.init(self.tmp.name, start_probe=False)
         self.tmp.cleanup()
 
