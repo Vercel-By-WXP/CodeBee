@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 
 from . import dispatch, history, model_family, modelhub, upstream
 
@@ -139,6 +141,54 @@ def _tool_chain_penalty(agent_id):
     return 0.0, ""
 
 
+# ---------------------------------------------------------------- 会话粘性
+# magpie「stays=」借鉴（2026-10-22 调研）：厂商 prompt cache 按「同模型+同
+# 前缀」命中（≥1024 token 才值得保留），连载多轮修订每轮全稿重喂，中途换
+# CLI/换模型 = 整轮缓存作废全价重付。同一（角色,任务类型）在 TTL 内选过的
+# CLI 续选给小额亲和分——只做平票裁决：+4 落在历史加分区间内，远小于工具
+# 降级 -10 与配额 -45，健康/配额/动作验证信号照样一票压过粘性。仅真实 CLI
+# 参与（mock/演示代理不粘）；进程内存态，服务重启清零，TTL 到期自动失效。
+STICKY_TTL_S = 600
+STICKY_BONUS = 4.0
+_STICKY = {"by_key": {}, "lock": threading.Lock()}
+
+
+def sticky_reset():
+    """清空粘性记忆（测试隔离用；服务运行期无需调用）。"""
+    with _STICKY["lock"]:
+        _STICKY["by_key"].clear()
+
+
+def _sticky_remember(role, ttype, agent_id):
+    aid = str(agent_id or "")
+    if not aid:
+        return
+    now = time.time()
+    key = (str(role or ""), _task_type(ttype))
+    with _STICKY["lock"]:
+        for k in [k for k, v in _STICKY["by_key"].items()
+                  if now - v[1] > STICKY_TTL_S]:
+            _STICKY["by_key"].pop(k, None)   # 顺手清过期，防字典慢性增长
+        _STICKY["by_key"][key] = (aid, now)
+
+
+def _sticky_bonus(agent, role, ttype):
+    if agent.get("mode") != "real":
+        return 0.0, ""
+    key = (str(role or ""), _task_type(ttype))
+    with _STICKY["lock"]:
+        hit = _STICKY["by_key"].get(key)
+    if not hit:
+        return 0.0, ""
+    aid, ts = hit
+    if not aid or time.time() - ts > STICKY_TTL_S:
+        return 0.0, ""
+    if str(agent.get("id") or "") != aid:
+        return 0.0, ""
+    return (STICKY_BONUS,
+            "，会话粘性：延续上一轮选择保 prompt cache（%+.1f）" % STICKY_BONUS)
+
+
 def score(agent, role, ttype, stats=None):
     """返回 (总分, 理由字符串)。配额惩罚：catalog 里配了
     quota_tokens_per_hour 的智能体，本小时用量越接近配额分越低
@@ -157,7 +207,8 @@ def score(agent, role, ttype, stats=None):
     affinity, affinity_txt = (dispatch.agent_affinity(agent.get("kind"), ttype, role)
                               if use_dispatch else (0.0, "兼容模式"))
     tv, tv_txt = _tool_chain_penalty(agent.get("id"))
-    total = base + bb + hb + affinity + online + tv
+    sv, sticky_txt = _sticky_bonus(agent, role, ttype)
+    total = base + bb + hb + affinity + online + tv + sv
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -174,8 +225,9 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d，%s%s%s%s%s%s，总分 %s" % (
-        base, affinity_txt, btxt, htxt, online_txt, quota_txt, tv_txt, round(total, 1))
+    return total, "能力基线 %d，%s%s%s%s%s%s%s，总分 %s" % (
+        base, affinity_txt, btxt, htxt, online_txt, quota_txt, tv_txt,
+        sticky_txt, round(total, 1))
 
 
 def _pick_scored(agents, role, ttype, stats=None, exclude=()):
@@ -213,7 +265,10 @@ def pick(agents, role, ttype, stats=None, exclude=()):
         logging.getLogger(__name__).warning(
             "routing strategy selection failed; using builtin: %s",
             type(exc).__name__)
-        return _pick_scored(pool, role, ttype, stats, exclude=exclude)
+        sel, reason = _pick_scored(pool, role, ttype, stats, exclude=exclude)
+        if sel is not None:
+            _sticky_remember(role, ttype, sel.get("id"))
+        return sel, reason
 
     if result is None:
         return None, ""
@@ -223,7 +278,10 @@ def pick(agents, role, ttype, stats=None, exclude=()):
     if not isinstance(result, dict) or not result.get("id"):
         logging.getLogger(__name__).warning(
             "routing strategy returned an invalid CLI; using builtin")
-        return _pick_scored(pool, role, ttype, stats, exclude=exclude)
+        sel, reason = _pick_scored(pool, role, ttype, stats, exclude=exclude)
+        if sel is not None:
+            _sticky_remember(role, ttype, sel.get("id"))
+        return sel, reason
     selected_id = str(result.get("id"))
     excluded = {str(value) for value in (exclude or ())}
     selected = next((agent for agent in pool
@@ -233,7 +291,11 @@ def pick(agents, role, ttype, stats=None, exclude=()):
     if selected is None:
         logging.getLogger(__name__).warning(
             "routing strategy selected a CLI outside its candidate pool; using builtin")
-        return _pick_scored(pool, role, ttype, stats, exclude=exclude)
+        sel, reason = _pick_scored(pool, role, ttype, stats, exclude=exclude)
+        if sel is not None:
+            _sticky_remember(role, ttype, sel.get("id"))
+        return sel, reason
+    _sticky_remember(role, ttype, selected_id)
     fallback_reason = "策略 %s" % type(strategy).__name__
     return selected, str(reason or fallback_reason)
 
@@ -350,6 +412,34 @@ def agent_upstreams(agent_id, difficulty="default", task_type="", role=""):
     return ups
 
 
+def _upstream_cooldown_remaining(agent_id, difficulty="default", ttype="",
+                                 role=""):
+    """候选上游里最短的剩余熔断秒数（换将「最快解禁先用」的排序键）。
+
+    只统计健康台账里真实在计时的熔断（provider 级 circuit + 模型级
+    open_until 取最小）。返回 None=查不到任何熔断时间——调用方维持原
+    评分序，不假装知道。"""
+    try:
+        from . import health
+        ups = agent_upstreams(agent_id, difficulty=difficulty,
+                              task_type=ttype, role=role)
+        if not ups:
+            return None
+        names = set()
+        for prov in modelhub.providers():
+            h = _host_of(prov.get("base_url"))
+            if h in ups and prov.get("name"):
+                names.add(prov["name"])
+        best = None
+        for name in names:
+            rem = health.cooldown_remaining(name)
+            if rem is not None:
+                best = rem if best is None else min(best, rem)
+        return best
+    except Exception:
+        return None
+
+
 def _unbound_default_upstream_down(agent_id, role="", ttype="direct"):
     """未配置绑定时，CLI 本机默认上游是否正处健康故障。
 
@@ -436,6 +526,8 @@ def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
 
     best, reason = _choose(exclude)
     if best is None or (not dead_upstreams and not blocked_sets):
+        if best is not None:
+            _sticky_remember(role, ttype, best.get("id"))
         return best, reason
     deferred = []
     while best is not None:
@@ -453,10 +545,25 @@ def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
         best, reason = _choose(exclude | {
             x.get("id") for x, _ in deferred})
     if best is None and deferred:
-        best, reason = deferred[0]  # 异上游全灭：同上游里挑最高的顶上
+        # 异上游全灭：同上游里挑**最快解禁**的顶上（magpie smart「最快重置的
+        # 先用」借鉴，2026-10-22 调研）——健康台账有熔断时刻的按剩余秒数升序，
+        # 查不到时间的维持原评分序，不假装知道。
+        def _rem(item):
+            r = _upstream_cooldown_remaining(item[0].get("id"), difficulty,
+                                             ttype, role)
+            return r if r is not None else float("inf")
+
+        ranked = sorted(deferred, key=_rem)
+        best, reason = ranked[0]
+        rem = _rem(ranked[0])
+        if rem != float("inf"):
+            reason = ("同上游候选均受限，按最快解禁顶上 %s（熔断约 %.0f 分钟后解除）"
+                      % (best.get("id"), rem / 60.0))
     elif deferred:
         reason = ("%s（%s 与死者同上游，延后让位异上游候选）"
                   % (reason, deferred[-1][0].get("id")))
+    if best is not None:
+        _sticky_remember(role, ttype, best.get("id"))
     return best, reason
 
 

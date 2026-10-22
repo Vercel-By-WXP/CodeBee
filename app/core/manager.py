@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import glob
 import hashlib
 import json
@@ -37,7 +38,8 @@ CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 VERSION_TTL = 300  # 版本缓存 5 分钟
 
 _LOCK = threading.RLock()
-_STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0, "detect_ev": None}
+_STATE = {"detected": {}, "versions": {}, "detect_ts": 0.0, "detect_ev": None,
+          "ver_sweep": False}   # ver_sweep：版本补探扫尾线程在飞标记
 
 # 能自动写入默认模型的 config.format（其余格式只能手动编辑）
 _WRITABLE_FORMATS = ("toml-line", "toml-section", "json", "json-path", "jsonc",
@@ -391,11 +393,8 @@ def _cli_version_output(cli, timeout=VER_PROBE_TIMEOUT):
     return out.splitlines()[0][:60] if out else None
 
 
-def version_of(entry):
-    """版本探测：CLI 走 --version；UWP 读 AppxManifest；exe 走 PowerShell（惰性缓存）。
-
-    每条目持在飞锁：管理页轮询/多标签并发打到缓存失效窗口时，串行到一次
-    探测，其余直接吃缓存结果——并发裸探会把挂死的 CLI 探测成排堆。"""
+def _probe_version(entry):
+    """同步探测单条目版本并落缓存（持每条目在飞锁；TTL 内直接吃缓存）。"""
     eid = entry["id"]
     with _version_probe_lock(eid):
         with _LOCK:
@@ -414,6 +413,48 @@ def version_of(entry):
         with _LOCK:
             _STATE["versions"][eid] = (time.time(), version or "-")
         return version or "-"
+
+
+def _sweep_versions():
+    """后台把全部条目的过期/缺失版本补齐（串行，避免 CLI 子进程风暴）。"""
+    try:
+        for e in catalog.load():
+            try:
+                _probe_version(e)
+            except Exception:
+                pass
+    finally:
+        with _LOCK:
+            _STATE["ver_sweep"] = False
+
+
+def refresh_versions_async():
+    """后台补一轮全部条目版本（启动预热/重新检测后调用；在飞去重）。"""
+    with _LOCK:
+        if _STATE["ver_sweep"]:
+            return
+        _STATE["ver_sweep"] = True
+        threading.Thread(target=_sweep_versions,
+                         name="version-sweep", daemon=True).start()
+
+
+def version_of(entry, wait=False):
+    """版本探测（stale-while-revalidate）。
+
+    `cli --version` 是子进程探测，Windows 下 npm 垫片一条要 1-2 秒，10 条
+    串行 ≈ 16 秒。热路径（管理页/每次开页的 /api/catalog）绝不能背这个
+    成本：缓存新鲜直接返回；过期/冷缓存立即吐旧值或 "-"，把补探踢到后台
+    单线程扫尾（在飞去重，探测风暴只起一个扫尾）。wait=True 是显式场景
+    （更新对比 / 重新检测按钮）才同步等真值。"""
+    eid = entry["id"]
+    with _LOCK:
+        cached = _STATE["versions"].get(eid)
+    if cached and time.time() - cached[0] < VERSION_TTL:
+        return cached[1]
+    if wait:
+        return _probe_version(entry)
+    refresh_versions_async()
+    return cached[1] if cached else "-"
 
 
 # ---------------------------------------------------------------- TOML 表内键
@@ -674,28 +715,131 @@ def read_model(entry):
     return None
 
 
-def _atomic_write_bytes(path, data):
+def _atomic_write_bytes(path, data, meta=None):
     """CLI 自家配置写盘统一走临时文件 + os.replace 原子替换。
 
     就地 write_bytes 有「截断→重写」窗口：并行评审爆发期多个 CLI 同时被
     拉起（bind_agent 先同步配置再 spawn），正在启动的 CLI 恰好读配置就会
     读到半截文件——opencode 对残缺 jsonc 的反应正是打一行横幅就退出码 1
     （2026-09-30 14:56 实案）。os.replace 原地换名，读者要么见旧要么见新。
+
+    magpie 写入纪律三件（2026-10-22 调研借鉴）挂在本咽喉：
+    - 跨进程 .codebee-lock + 同进程线程锁串行写者；
+    - stash 台账：替换前旧字节入册（bind_ledger），可按路径还原；
+    - applied 台账：每个配置文件最后一次被我们写成什么/何时，可审计。
+    台账只增见识不拦写：入册失败绝不影响配置写盘本身。
     """
     path = str(path)
     d = os.path.dirname(path) or "."
-    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".",
-                               suffix=".tmp", dir=d)
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-        os.replace(tmp, path)
-    except Exception:
+    resolved = os.path.realpath(path)
+    with _config_write_lock(resolved):
+        prev = None
         try:
-            os.remove(tmp)
+            with open(resolved, "rb") as fh:
+                prev = fh.read()
         except OSError:
+            prev = None
+        fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".",
+                                   suffix=".tmp", dir=d)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
+        try:
+            from . import bind_ledger
+            bind_ledger.record_write(resolved, prev, data, meta=meta)
+        except Exception:
             pass
-        raise
+
+
+_CONFIG_LOCK_SUFFIX = ".codebee-lock"
+_CONFIG_LOCK_STALE_S = 60.0    # 持锁超过此秒数视为崩溃残留，强制接管
+_CONFIG_LOCK_WAIT_S = 5.0      # 正常写盘毫秒级；等满此时长还没拿到也接管
+_ATOMIC_LOCKS = {}             # 解析路径 -> threading.Lock
+_ATOMIC_LOCKS_GUARD = threading.Lock()
+
+
+@contextlib.contextmanager
+def _config_write_lock(resolved):
+    """配置写盘双保险锁：进程内线程锁 + 配置旁 .codebee-lock 文件锁（带
+    pid+时间戳，崩溃残留超时强制接管）。文件锁是尽力而为：删不掉残留就
+    放弃文件锁继续写（线程锁仍在），绝不让锁本身堵死配置写盘。"""
+    with _ATOMIC_LOCKS_GUARD:
+        tl = _ATOMIC_LOCKS.setdefault(resolved, threading.Lock())
+    with tl:
+        lockfile = resolved + _CONFIG_LOCK_SUFFIX
+        mine = "%d %.6f" % (os.getpid(), time.time())
+        deadline = time.time() + _CONFIG_LOCK_WAIT_S
+        for _ in range(200):
+            try:
+                fd = os.open(lockfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, mine.encode("utf-8"))
+                os.close(fd)
+                break
+            except FileExistsError:
+                try:
+                    age = time.time() - os.path.getmtime(lockfile)
+                except OSError:
+                    age = _CONFIG_LOCK_STALE_S + 1.0  # 已消失，下轮直接建
+                if age > _CONFIG_LOCK_STALE_S or time.time() >= deadline:
+                    try:
+                        os.remove(lockfile)
+                    except OSError:
+                        break  # 残留删不掉：放弃文件锁（线程锁仍在）
+                    continue
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            try:
+                with open(lockfile, "r", encoding="utf-8") as fh:
+                    owner = fh.read().strip()
+            except OSError:
+                owner = None
+            if owner == mine:
+                try:
+                    os.remove(lockfile)
+                except OSError:
+                    pass
+
+
+def cli_process_alive(entry):
+    """该 CLI 是否有存活进程（magpie「目标程序运行中拒写」的探测脚）。
+
+    按 detect.cli 的可执行名匹配命令行：Windows 走 PowerShell CIM（node
+    宿主的 CLI 进程名是 node.exe，必须按命令行匹配才探得到 kimi-code），
+    POSIX 用 pgrep -f。返回 True/False；探测失败或超时返回 None——未知
+    一律放行（宁白写不误拦）。只用于交互打开前的守卫；编排链路的运行期
+    写盘（换将必需）不经本函数，绝不被守卫卡死。"""
+    cli = str(((entry or {}).get("detect") or {}).get("cli") or "").strip()
+    if not cli:
+        return None
+    try:
+        if os.name == "nt":
+            ps_exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                                  "System32", "WindowsPowerShell", "v1.0",
+                                  "powershell.exe")
+            if not os.path.isfile(ps_exe):
+                ps_exe = "powershell"
+            ps = ("Get-CimInstance Win32_Process | "
+                  "Where-Object { $_.CommandLine -like '*%s*' } | "
+                  "Select-Object -First 1 ProcessId | ConvertTo-Json -Compress"
+                  % cli.replace("'", "''"))
+            r = subprocess.run([ps_exe, "-NoProfile", "-Command", ps],
+                               capture_output=True, creationflags=CREATE_NO_WINDOW,
+                               timeout=10)
+            raw = r.stdout.decode("utf-8", "replace").strip()
+            return bool(raw and raw.lower() != "null")
+        r = subprocess.run(["pgrep", "-f", cli], capture_output=True, timeout=10)
+        return bool(r.stdout.strip())
+    except Exception:
+        return None
 
 
 def write_model(entry, model):
@@ -1899,11 +2043,20 @@ def launch(entry, open_browser=True):
         binding = {}
     env = os.environ.copy()
     env.update(binding.get("env") or {})
-    notes = _sync_launch_model(entry, binding)
+    name = entry.get("name", entry["id"])
+    if cli_process_alive(entry):
+        # magpie「目标程序运行中拒写」纪律（2026-10-22 调研借鉴）：该 CLI 已有
+        # 存活进程时跳过写盘段——它退出时可能回写自家配置（opencode 在界面里改
+        # 模型即写盘、服务端形态常驻），此刻落盘会被顶掉或顶掉它。只拦交互打开
+        # 这条路并如实说明；编排链路 sync_runtime_config 不经此守卫（换将依赖
+        # 运行期写盘）。探测未知（None）放行。
+        notes = ["检测到 %s 已有运行中的进程，本次跳过配置写盘（避免与其退出时"
+                 "的回写互相覆盖）；需要换绑请先退出该会话" % name]
+    else:
+        notes = _sync_launch_model(entry, binding)
     if is_dsh and not (binding.get("env") or {}) and not _dsh_key_present():
         notes.append("未发现 dsh 密钥：打开后可能需在 dsh 内登录配置；"
                      "要打开即用，请到「模型调度（可选）」页给 DeepSeek Harness 指定 openai 协议供应商")
-    name = entry.get("name", entry["id"])
     kind = (launch.get("kind") or "console").lower()
     extra = ("；".join(notes)) if notes else ""
 
@@ -2248,6 +2401,11 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
     detect_all(force=True)
     with _LOCK:
         _STATE["versions"].pop(entry["id"], None)
+    try:
+        _probe_version(entry)   # 装完当场探新版本：version_of 已改 SWR，冷缓存只会吐 "-"，
+                                # 不在这补一针，升级成功后界面要等下轮扫尾才见新版本号
+    except Exception:
+        pass
     if winget_noop and detect_entry(entry)["installed"]:
         # winget 说「已装且无可升级」、复检也在装：install 语义（确保在装）已达成
         refresh_update_async(entry)
@@ -2306,7 +2464,7 @@ def check_update(entry, force=False):
         cached = _UPDATE_CACHE.get(eid)
         if cached and time.time() - cached[0] < UPDATE_TTL:
             return cached[1]
-    current = version_of(entry)
+    current = version_of(entry, wait=True)   # 更新对比要真值，不吃 SWR 旧值/占位
     cur_num = ".".join(str(x) for x in _ver_tuple(current)) or "-"
     result = {"current": current, "latest": None, "updatable": None, "note": ""}
 

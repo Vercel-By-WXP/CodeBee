@@ -588,6 +588,34 @@ def snapshot():
         return result
 
 
+def cooldown_remaining(provider: str):
+    """供应商剩余熔断秒数（换将「最快解禁先用」排序用，magpie smart 借鉴）。
+
+    provider 级 circuit_open_until 与模型级 model_circuits[*].open_until 取
+    最小正值。返回 None=台账无此供应商，或 down 而无任何可预期解禁时间；
+    0.0=没有在计时的熔断（未被拦或已到点待探针确认）。"""
+    with _LOCK:
+        st = _PROVIDERS.get(provider)
+        if not st:
+            return None
+        now = _now()
+        cands = []
+        until = float(st.get("circuit_open_until") or 0)
+        if until > now:
+            cands.append(until - now)
+        for row in (st.get("model_circuits") or {}).values():
+            if not isinstance(row, dict):
+                continue
+            u = float(row.get("open_until") or 0)
+            if u > now:
+                cands.append(u - now)
+        if cands:
+            return min(cands)
+        if st.get("status") == "down":
+            return None
+        return 0.0
+
+
 def is_down(provider: str) -> bool:
     """链降级查询：该供应商当前是否 down（供 resolve_binding 跳过）。"""
     with _LOCK:
