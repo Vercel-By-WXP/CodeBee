@@ -1462,30 +1462,6 @@ def _report_key(att, out):
         pass
 
 
-# CLI 通道停摆横幅（exit 0 假成功家族）：免费服务下线时 CLI 打一行 error
-# 横幅就正常退出（2026-10-22 mimo 实案 "error: MiMo free API service has
-# ended. Sign in or configure a third-party API."）。签名从窄：只收确切短语，
-# 不做 "error:" 前缀泛匹配——转录里回显提示词时会把无辜运行误杀。
-_GENERIC_DEAD_BANNERS = (
-    "free api service has ended",
-)
-
-
-def _generic_dead_banner(res):
-    """exit 0 但输出里带停摆横幅时返回横幅行（供错误文案），否则 None。"""
-    if res.get("ok") is not True or res.get("cancelled") or res.get("timed_out"):
-        return None
-    for stream in (res.get("stderr"), res.get("stdout")):
-        for line in str(stream or "").splitlines():
-            plain = clean_cli_text(line).strip().lower()
-            if not plain:
-                continue
-            for marker in _GENERIC_DEAD_BANNERS:
-                if marker in plain:
-                    return clean_cli_text(line).strip()[:300]
-    return None
-
-
 def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_output=False):
     """根据 run_process 结果 + 解析结果，返回 ErrorCode 字符串。
 
@@ -2564,19 +2540,6 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["text"] = clean_cli_text(res["stdout"]).strip()
                 if not out["text"]:
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
-                if out["ok"]:
-                    # 退出码 0 不代表成功（同 codex 的 turn.failed 家族）：CLI 免费通道
-                    # 停摆时打一行 error 横幅就正常退出，转录里全是横幅垃圾而没有回答
-                    # ——不拦的话编排者把横幅当成果往下传，字数闸白白烧掉扩写轮
-                    # （2026-10-22 短篇实案：mimo "free API service has ended"
-                    # exit 0，两轮扩写各 6-8 秒「done」，字数原地踏步）。
-                    dead = _generic_dead_banner(res)
-                    if dead:
-                        out["ok"] = False
-                        out["text"] = ""
-                        out["error"] = "CLI 通道停摆（exit 0）：%s" % dead
-                        out["error_code"] = (classify_error_text(dead)
-                                             or ErrorCode.VENDOR_ERROR)
             retryable_stream = (not out.get("ok")
                                 and stream_retries < STREAM_RETRY_N
                                 and _stream_retryable_failure(

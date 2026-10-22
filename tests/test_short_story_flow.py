@@ -164,39 +164,15 @@ class StoryLengthGateTests(unittest.TestCase):
             (wd / "story.md").write_text("短" * 100, encoding="utf-8")
             task = self._make_task(str(wd), words=1000)
             spec = story_spec(task)   # min 750
-            # 扩写步"成功"但每轮只挤出零头（+60 字），两轮耗尽仍欠下限
-            def fake_expand(run_id, role, agent, prompt, cwd, **kwargs):
-                p = Path(cwd) / "story.md"
-                p.write_text(p.read_text(encoding="utf-8") + "续" * 60,
-                             encoding="utf-8")
-                return {"ok": True, "text": ""}
-
+            # 扩写步"成功"但不改文件 → 两轮耗尽仍欠下限
             with mock.patch("app.core.pipeline._run_step",
-                            side_effect=fake_expand):
+                            return_value={"ok": True, "text": ""}):
                 err = _story_length_repair(
                     "run-1", task, {"id": "impl", "mode": "real"}, "default",
                     "story.md", str(wd), spec, None, step_wd=str(wd))
             self.assertIn("字数闸未过", err)
             self.assertIn("750", err)
             self.assertIn("1000", err)
-
-    def test_zero_delta_expand_fails_fast_with_honest_message(self):
-        # 扩写步「成功」但稿件零增量＝写作链没实际干活（CLI 假成功/通道停摆/
-        # 懒模型只汇报不动笔）：第 1 轮就如实收场，不烧第 2 轮、不甩锅目标字数
-        # （2026-10-22 mimo 停摆横幅 exit 0 实案）
-        with tempfile.TemporaryDirectory() as tmp:
-            wd = Path(tmp)
-            (wd / "story.md").write_text("短" * 100, encoding="utf-8")
-            task = self._make_task(str(wd), words=1000)
-            spec = story_spec(task)   # min 750
-            with mock.patch("app.core.pipeline._run_step",
-                            return_value={"ok": True, "text": ""}) as step:
-                err = _story_length_repair(
-                    "run-1", task, {"id": "impl", "mode": "real"}, "default",
-                    "story.md", str(wd), spec, None, step_wd=str(wd))
-            self.assertIn("字数闸扩写未生效", err)
-            self.assertIn("100", err)
-            self.assertEqual(step.call_count, 1)
 
     def test_expand_step_writes_until_threshold_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
