@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import zlib
 import json
 import pick_dialog  # noqa: F401 - desktop_host 动态经 main.pick_dialog 访问
 import logging
@@ -130,6 +131,17 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
               cache_control=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
+        hdrs = dict(headers or {})
+        # 动态 JSON 大响应自动 gzip（state 载荷 ~0.5MB，远程/手机拉取砍 4 倍；
+        # level 1 换 ~4x 压缩比，CPU 每响应几毫秒）。静态路径自带压缩体 +
+        # Content-Encoding 头，这里看到已有编码头就不动，不会二次压缩。
+        if (code == 200 and len(body) > 2048
+                and ctype.split(";")[0].strip() == "application/json"
+                and "Content-Encoding" not in hdrs
+                and "gzip" in (self.headers.get("Accept-Encoding") or "")):
+            body = gzip.compress(body, 1)
+            hdrs["Content-Encoding"] = "gzip"
+            hdrs.setdefault("Vary", "Accept-Encoding")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -137,7 +149,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "no-referrer")
-        for k, v in (headers or {}).items():
+        for k, v in hdrs.items():
             self.send_header(k, v)
         self.end_headers()
         try:
@@ -3510,7 +3522,21 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Accel-Buffering", "no")  # 防 nginx/隧道缓冲 SSE
+        # 流式 gzip：每次 bump 推 ~0.5MB，远程/手机链路是大头；Z_SYNC_FLUSH
+        # 逐事件落盘，EventSource/浏览器对 Content-Encoding 透明解压。
+        emit_gz = "gzip" in (self.headers.get("Accept-Encoding") or "")
+        if emit_gz:
+            self.send_header("Content-Encoding", "gzip")
         self.end_headers()
+        co = gzip.compressobj(1, zlib.DEFLATED, 16 + zlib.MAX_WBITS) if emit_gz else None
+
+        def emit(text):
+            if co is not None:
+                self.wfile.write(co.compress(text.encode("utf-8"))
+                                 + co.flush(zlib.Z_SYNC_FLUSH))
+            else:
+                self.wfile.write(text.encode("utf-8"))
+            self.wfile.flush()
         try:
             # 半死连接（对端消失/网络黑洞）的写会无限挂起钉死线程；给足量
             # 超时让它必然显形成异常 → 线程退出 → 客户端断流重连自愈
@@ -3529,8 +3555,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             # 「完成」侧栏「在跑」实案）。此前靠 sent_ctrl=None 首轮必不等
             # 的巧合工作，这里改成显式行为。
             payload = _state_payload_json(cid, ver)
-            self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
-            self.wfile.flush()
+            emit("data: " + payload + "\n\n")
             sent_ctrl = remote.control_view(cid)
             last_send = time.time()
             while True:
@@ -3541,8 +3566,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     # 空闲心跳：真发出去的字节让中间层不掐空闲流，也让半死
                     # 连接在下一次写时尽早报错（注释行，EventSource 不派发事件）
                     if time.time() - last_send >= SSE_PING_S:
-                        self.wfile.write(b": ping\n\n")
-                        self.wfile.flush()
+                        emit(": ping\n\n")
                         last_send = time.time()
                     continue  # 超时醒来且无变化
                 if uver_now != uver:
@@ -3551,15 +3575,14 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     # 事件，前端据此刷新左下角用量条，不构建/推送全量状态。
                     # 2s 醒来才查一次版本号：两次醒来之间落多少条记录都合并
                     # 成一个事件，推送频率天然有上界。
-                    self.wfile.write(("event: usage\ndata: " +
-                                      json.dumps({"v": uver_now}) + "\n\n").encode("utf-8"))
+                    emit("event: usage\ndata: " +
+                         json.dumps({"v": uver_now}) + "\n\n")
                     uver = uver_now
                     last_send = time.time()
                 if ver == store.state_version() and ctrl == sent_ctrl:
                     continue  # 只需要补 usage 事件，状态与控制权都没变
                 payload = _state_payload_json(cid, ver)
-                self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
-                self.wfile.flush()
+                emit("data: " + payload + "\n\n")
                 sent_ctrl = ctrl
                 last_send = time.time()
         except Exception:
@@ -3961,7 +3984,7 @@ def _state_payload(client_id="", ver=None):
     return {
         "v": ver,
         "agents": agents,
-        "tasks": tasks,
+        "tasks": [_state_task_active(t) for t in tasks],
         "task_attention": activity.task_attention(tasks, latest),
         # 归档任务默认隐藏；目标/上下文可能很大，只有查看或恢复时再按需读取。
         "archived_tasks": [_state_task_summary(t) for t in store.list_tasks(archived=True)],
@@ -4008,6 +4031,27 @@ def _state_task_summary(task):
     fields = ("id", "title", "type", "engine", "workdir", "status",
               "created_at", "archived", "git_state", "serial")
     return {key: task[key] for key in fields if key in task}
+
+
+# state 载荷里活动任务 goal 的长度上限。goal 是用户自由文本，实测最大 346KB
+# （重写任务把整段旧文塞在 goal 里）；它随每次 /api/state 与 SSE 推送出海，
+# 是载荷的最大单点。超限截断 + goal_truncated 打标，全量走 /detail 按需读。
+GOAL_STATE_LIMIT = 2000
+
+
+def _state_task_active(task):
+    """活动任务的 state 投影：goal 超限截断打标。
+
+    截断只落在浅拷贝上——store 的活字典绝不能原地改（编排链、详情接口、
+    续跑都在读全量 goal）。前端「基于此任务新建」看到 goal_truncated 会改
+    从 /detail 取全量再预填（loadTaskForPrefill）。"""
+    goal = task.get("goal")
+    if not isinstance(goal, str) or len(goal) <= GOAL_STATE_LIMIT:
+        return task
+    t = dict(task)
+    t["goal"] = goal[:GOAL_STATE_LIMIT]
+    t["goal_truncated"] = True
+    return t
 
 
 def _state_run_summary(run):

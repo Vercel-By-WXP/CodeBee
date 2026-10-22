@@ -231,7 +231,9 @@ function wbDraw() {
         (task.type ? "<span>" + esc(task.type) + "</span>" : "") +
         (task.serial ? "<span>" + (task.serial.chapters || 0) + t(" 章") + "</span>" : "") +
         "</div>" +
-        (task.goal ? '<div class="wb-task-goal">' + esc(task.goal) + "</div>" : "");
+        (task.goal ? '<div class="wb-task-goal">' +
+          esc((task.goal || "").slice(0, 160)) +
+          ((task.goal || "").length > 160 ? "…" : "") + "</div>" : "");
     }
   }
   
@@ -5756,7 +5758,9 @@ let _taskStepRenderToken = 0;
 
 async function loadTaskForPrefill(id) {
   const active = ((S.state || {}).tasks || []).find((x) => x.id === id);
-  if (active) return active;
+  // state 里的活动任务 goal 超限会被截断（goal_truncated 打标）：预填必须
+  // 拿全量，否则用户一保存就把旧任务的 goal 覆盖成残文——落到 /detail 取原文
+  if (active && !active.goal_truncated) return active;
   const cached = _taskDetailCache.get(id);
   if (cached) return cached;
   if (_taskDetailInflight.has(id)) return _taskDetailInflight.get(id);
