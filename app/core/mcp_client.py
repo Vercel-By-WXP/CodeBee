@@ -690,6 +690,11 @@ def configured_servers():
     This is intentionally a read-only view.  It includes the same plugin
     declarations merged by ``main.py`` as the built-in tool loop, so ACP and
     future external transports cannot silently receive a different MCP set.
+    HTTP (url) entries are excluded: the ACP ``mcpServers`` wire field is
+    stdio-shaped (command/args/env) — url servers are a built-in-loop
+    transport only and would be misread by ACP agents.
     """
     servers, error = parse_servers(_settings_text())
-    return [] if error or not servers else servers
+    if error or not servers:
+        return []
+    return [s for s in servers if s.get("command")]

@@ -12274,7 +12274,7 @@ async function chatSummarizeDirect() {
   if (btn) { btn.disabled = true; }
   try {
     const data = await api("/api/tasks/" + encodeURIComponent(taskId) + "/direct-summary", {
-      method: "POST", body: {} });
+      method: "POST", body: "{}" });
     if (data && data.ok && data.summary)
       toast(t("已生成对话摘要（{0} 字，覆盖 {1} 轮），续轮自动携带",
         String(data.summary.text || "").length, String(data.summary.runs_covered || 0)));

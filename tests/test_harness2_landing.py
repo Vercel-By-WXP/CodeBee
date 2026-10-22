@@ -103,6 +103,12 @@ class SkillDraftTests(unittest.TestCase):
         ok2, err2 = skills.discard_draft(info["file"])
         self.assertFalse(ok2)
 
+    def test_path_guard_rejects_drive_and_traversal(self):
+        # Windows 盘相对路径（C:x.md）与遍历名必须拒——drafts 目录逃逸面
+        for bad in ("C:evil.md", "..\\evil.md", "../evil.md", "a/b.md", "plain.txt"):
+            self.assertIsNotNone(skills.promote_draft(bad)[1], bad)
+            self.assertIsNotNone(skills.discard_draft(bad)[1], bad)
+
     def test_tool_save_skill_draft_writes_and_reports(self):
         out = bat._tool_save_skill_draft({
             "name": "排查套路", "content": "先看日志尾部",
@@ -641,6 +647,25 @@ class FrontendWiringTests(unittest.TestCase):
         js = (self.ROOT / "app" / "ui" / "app.js").read_text(encoding="utf-8")
         self.assertIn("/api/market/remote/sources", js)
         self.assertIn("mkrUpdate", js)
+
+    def test_acp_mcp_view_is_stdio_only(self):
+        # ACP 的 mcpServers wire 字段是 stdio 形态：url 条目不得混入
+        cfg = json.dumps([
+            {"name": "stdio1", "command": "npx", "args": ["-y", "x"]},
+            {"name": "http1", "url": "https://mcp.example.com/mcp"},
+        ])
+        mcp_client.set_settings_text(lambda: cfg)
+        try:
+            servers = mcp_client.configured_servers()
+        finally:
+            mcp_client.set_settings_text(None)
+        self.assertEqual([s["name"] for s in servers], ["stdio1"])
+
+    def test_serial_shrink_keeps_global_block(self):
+        # 起草重试/复赛降级重组时全局指令块必须原样保留在头部（两处调用点）
+        src = (self.ROOT / "app" / "core" / "pipeline.py").read_text(encoding="utf-8")
+        self.assertEqual(src.count('_gblk + "\\n\\n" + shrunk_block'), 1)
+        self.assertEqual(src.count('_gblk + "\\n\\n" + race_shrunk_block'), 1)
 
 
 if __name__ == "__main__":

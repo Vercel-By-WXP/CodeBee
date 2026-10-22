@@ -361,7 +361,8 @@ def promote_draft(filename):
     启用即接管既有安检链（_load_user_pack 的 skill_scan 分级），目标名冲突
     拒绝。返回 (包名, 错误)。"""
     fname = str(filename or "").strip()
-    if not fname.endswith(".md") or "/" in fname.replace("\\", "/") or ".." in fname:
+    if (not fname.endswith(".md") or "/" in fname.replace("\\", "/")
+            or ".." in fname or ":" in fname or "\\" in fname):
         return None, "非法草稿文件名: %s" % fname
     src = _draft_dir() / fname
     if not src.is_file():
@@ -386,7 +387,8 @@ def promote_draft(filename):
 def discard_draft(filename):
     """丢弃草稿（删除 drafts/ 下文件）。返回 (True, None) 或 (False, 错误)。"""
     fname = str(filename or "").strip()
-    if not fname.endswith(".md") or "/" in fname.replace("\\", "/") or ".." in fname:
+    if (not fname.endswith(".md") or "/" in fname.replace("\\", "/")
+            or ".." in fname or ":" in fname or "\\" in fname):
         return False, "非法草稿文件名: %s" % fname
     src = _draft_dir() / fname
     if not src.is_file():

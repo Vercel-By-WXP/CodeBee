@@ -4078,9 +4078,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         # 长提示词在容量受限通道（讯飞托管 35B 等）上会挂起/秒拒
                         # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
                         # 边界，保大纲/前情/本章要点（2026-09-17 七猫实测：全量
-                        # 30KB 对讯飞必挂）
+                        # 30KB 对讯飞必挂）。用户全局指令（A5）不参与收缩：8KB 封顶
+                        # 的高优先级指令降级时原样保留在头部。
                         shrunk_block, shrink_note = _serial_shrunk_block(
                             sk_lessons, bible, kb_block)
+                        if _gblk:
+                            shrunk_block = _gblk + "\n\n" + shrunk_block
                         use_prompt = prompt.replace(sk_block, shrunk_block) + dup_fix_note
                     elif draft_attempt and dup_fix_note:
                         # 同作者重试带上一稿的重复证据（消重指令）——同提示重跑
@@ -4249,9 +4252,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 # 其他真实智能体，不足时同作者开新会话凑数。
                 scored_variants = []
                 # 复赛降级块（算一次）：与非赛马起草重试同源（_serial_shrunk_block）
-                # ——预算内与 sk_block 字节级一致（replace 等于原样），超预算才真降级
+                # ——预算内与 sk_block 字节级一致（replace 等于原样），超预算才真降级；
+                # 用户全局指令（A5）不参与收缩，原样保留在头部
                 race_shrunk_block, race_shrink_note = _serial_shrunk_block(
                     sk_lessons, bible, kb_block)
+                if _gblk:
+                    race_shrunk_block = _gblk + "\n\n" + race_shrunk_block
                 for race_round in range(2):
                     # 全变体失败（网关突发限流）→ 60s 退避重赛一轮，别一章判死
                     if race_round:
