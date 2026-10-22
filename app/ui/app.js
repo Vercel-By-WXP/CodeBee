@@ -6457,10 +6457,6 @@ function renderSideTasks() {
 /* 主视图打开详情面板的公共部分：留在任务树，主栏切到运行/任务详情 */
 function showDetailInMain() {
   S.tab = "runs";
-  // 本函数刻意不走 switchTab（name==="runs" 且详情未开时会先 closeRun），离开主页的
-  // composer 搬回契约就得自己扛：否则 .cmp-box 困在隐藏 page-home，对话「返回」回
-  // #sub-tasks 只剩问候语和类型 chips（2026-10-22 实案）
-  homeUnmountComposer();
   const main = document.querySelector("main");
   if (main) main.classList.remove("browser-page-active");
   // 详情面板住在 page-settings 壳里：暖色皮肤停在工作台主页（page-home）时点侧栏任务行，
@@ -7066,6 +7062,7 @@ function drawTaskDetail(key, runs, appendFrom) {
   setEditRetry(latest.task_id, latest.status,
     !!((S.state || {}).tasks || []).some((x) => x.id === latest.task_id));
   S.lastRun = latest;
+  syncBrowserSplitTask(latest.task_id);
   const sum = (f) => runs.reduce((a, r) => a + (Number(r[f]) || 0), 0);
   const aggregate = paging ? Object.assign({}, paging.totals || {}, {
     steps: allSteps,
@@ -7354,6 +7351,7 @@ function closeRun() {
   rdTabReset();
   stopLogLive();
   stopHiveTick();
+  closeBrowserSplit();   // 并排工作台只属于详情视图：离开详情（设置/主页/列表）一并收起
   detailSideReset();
   $("run-detail").classList.add("hidden");
   syncInspBtn();
@@ -7923,6 +7921,7 @@ async function renderRunDetail() {
       && rcLatestTask.status !== "running" && rcLatestTask.status !== "queued"));
   setEditRetry(run.task_id, run.status, !!rcTask);
   S.lastRun = run;
+  syncBrowserSplitTask(run.task_id);
   renderRunOutcome(run);
   renderDetailOverview(run, [run], rcTask);
   const bp = $("btn-pause");
@@ -9312,23 +9311,41 @@ window.toggleBrowserSplit = function () {
     return;
   }
   const open = !document.body.classList.contains("browser-split-open");
-  const button = $("btn-browser-split");
   if (open) {
     if (detailSideTaskKey()) wbTaskId = detailSideTaskKey();
     try { if (wbTaskId) localStorage.setItem(WB_TASK_STORAGE_KEY, wbTaskId); } catch (e) { /* local preference only */ }
-    document.body.classList.add("browser-split-open");
+    applyBrowserSplit(true);
     wbDraw();
   } else {
-    document.body.classList.remove("browser-split-open");
-  }
-  if (button) {
-    button.classList.toggle("active", open);
-    button.setAttribute("aria-pressed", open ? "true" : "false");
-    const label = t(open ? t("关闭并排浏览器") : t("并排打开浏览器"));
-    button.title = label;
-    button.setAttribute("aria-label", label);
+    applyBrowserSplit(false);
   }
 };
+
+/* 并排工作台是详情视图的附属面板：开关状态同步到 body 与顶栏按钮。
+ * 离开详情时由 closeRun 统一关闭——设置/主页/任务列表都没有任务上下文，
+ * 留着会横盖半个页面。 */
+function applyBrowserSplit(open) {
+  document.body.classList.toggle("browser-split-open", open);
+  const button = $("btn-browser-split");
+  if (!button) return;
+  button.classList.toggle("active", open);
+  button.setAttribute("aria-pressed", open ? "true" : "false");
+  const label = t(open ? t("关闭并排浏览器") : t("并排打开浏览器"));
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
+
+function closeBrowserSplit() {
+  if (document.body.classList.contains("browser-split-open")) applyBrowserSplit(false);
+}
+
+/* 并排工作台跟着详情目标走：切到另一个任务就把它切过去，别让右栏停在上一个任务。 */
+function syncBrowserSplitTask(key) {
+  if (!document.body.classList.contains("browser-split-open") || !key || key === wbTaskId) return;
+  wbTaskId = key;
+  try { localStorage.setItem(WB_TASK_STORAGE_KEY, wbTaskId); } catch (e) { /* local preference only */ }
+  wbDraw();
+}
 
 /* side 数据落位：meta 条任务累计组 + 版本面板重画（内部再按数据源取舍） */
 function applyDetailSide() {

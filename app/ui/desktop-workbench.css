@@ -1821,6 +1821,15 @@
   body.browser-split-open #page-settings > #sub-browser .browser-shell { height: 100%; min-height: 0; border: 0; border-radius: 0; }
   body.browser-split-open main.chat-fill { padding-right: calc(var(--browser-split-width) + 20px); }
   body.browser-split-open main.chat-fill #run-detail.chat-mode { width: 100%; }
+  /* 并排工作台占掉右半边后，中间的运行详情卡再留着会把对话挤成窄条：
+     收起整列（含停靠日志），父网格同步收回成单列；关掉并排即恢复。 */
+  body.browser-split-open main.chat-fill #run-detail.chat-mode {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
+    column-gap: 0;
+  }
+  body.browser-split-open main.chat-fill #run-detail.chat-mode > #rd-railcol { display: none; }
+  body.browser-split-open #run-detail.chat-mode .rd-pane[data-pane="chat"] { padding-right: 0; }
   #btn-browser-split.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
   @media (max-width: 900px) {
     body.browser-split-open { --browser-split-width: calc(100vw - var(--workbench-rail-width, 42px)); }

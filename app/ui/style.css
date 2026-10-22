@@ -716,8 +716,12 @@ body.side-resizing iframe { pointer-events: none; }
   color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
 }
 .wb-eyebrow .ico { width: 12px; height: 12px; }
-.wb-title { margin: 0; color: var(--text); font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
-.wb-sub { margin: 0; color: var(--muted); font-size: 11.5px; }
+.wb-title {
+  margin: 0; color: var(--text); font-size: 18px; font-weight: 700; letter-spacing: -.02em;
+  /* 任务名常是整条工程路径：窄面板里溢出会画到右侧分段控件底下，压成单行省略 */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-sub { margin: 0; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-seg {
   display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--panel2); flex: none;
