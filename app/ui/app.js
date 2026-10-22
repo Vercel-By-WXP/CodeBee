@@ -12838,12 +12838,10 @@ function drawChatFlow(run, data, active) {
     (it.kind === "agent" && it.log && it.run ? index : last), -1);
   // 日志是独立文件，可能在步骤状态/正文都不变时持续增长。先于时间线签名
   // 闸门轮询最新/运行中的日志，否则 DOM 不重建时 CLI 输出会停留在旧尾部。
-  items.forEach((it, index) => {
-    if (it.kind !== "agent" || !it.log || !it.run) return;
-    const key = chatLogKey(it.run, it.log), cached = chatActivityCache.get(key);
-    if (it.status === "running" || ((index === latestLogIndex ||
-        chatDisclosureState.get(key + "\ngroup")?.open) && (!cached || cached.step_status !== it.status)))
-      chatLoadLog(it.run, it.log);
+  items.forEach((it) => {
+    // 终态气泡不再渲染执行过程/CLI 日志，日志与活动轮询只服务运行中的步骤
+    if (it.kind !== "agent" || it.status !== "running" || !it.log || !it.run) return;
+    chatLoadLog(it.run, it.log);
   });
   // 增量闸门：时间线任何可见输入（状态/正文/思考/实时流/活动/追问/已送达）
   // 都没变才跳过重建——保滚动位置与折叠态。维度少了不行：只看 live 长度的话，
@@ -12947,13 +12945,16 @@ function drawChatFlow(run, data, active) {
       '<div class="chat-bubble agent">' +
       caption +
       (stepMeta ? '<div class="chat-step-meta">' + esc(stepMeta) + "</div>" : "") +
-      chatThinkHTML(it) +
-      chatAcpEventsHTML(it) +
-      chatExecutionHTML(it, idx, latestLogIndex) +
+      // 执行过程（思考/工具活动/CLI 日志）只在步骤执行中展示：终态气泡只留
+      // 结果正文，过程明细去「步骤」页签回看（2026-10-22 用户拍板）
+      (it.status === "running" ?
+        chatThinkHTML(it) +
+        chatAcpEventsHTML(it) +
+        chatExecutionHTML(it, idx, latestLogIndex) : "") +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : t("已取消")) : "") + actsA + "</div>" +
-      chatLogHTML(it, idx, latestLogIndex) +
+      (it.status === "running" ? chatLogHTML(it, idx, latestLogIndex) : "") +
       (Array.isArray(it.followups) && it.followups.length
         ? '<div class="chat-fups">' + it.followups.map((f) =>
           '<button type="button" class="chat-fup-btn" data-fup="' + esc(f.prompt || "") +
