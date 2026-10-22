@@ -19786,15 +19786,15 @@ function helpChapterBody(id) {
       '<p class="help-p">' + t("设置 → 用量统计：每次调用的模型、token 与费用按多个维度聚合展示，历史运行会在启动时自动回填——每个任务花了多少，一目了然。") + '</p>';
   }
   if (id === "faq") {
-    return '<div class="help-qa"><b>' + t("点「获取模型列表」报 404？") + '</b><p>' + t("部分网关不提供模型列表接口，属正常现象；只要能正常对话就不用管，模型名手工填即可。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("报 503 / 无可用渠道？") + '</b><p>' + t("该模型当前没有可用渠道，最常见是余额耗尽。查一下余额或换个模型；同一厂商配了多把 Key 会自动轮换。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("「冷却中」是什么意思？") + '</b><p>' + t("一把 Key 连续失败会被暂停 30 分钟，防止反复撞墙烧钱，到期自动恢复；也可以在密钥旁手动重置。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("任务一直显示「排队」？") + '</b><p>' + t("编排任务满载（达到并发上限）时自动转入「排队中」，每 15 秒尝试补跑，最长等 10 分钟，超时才判失败；排队不占额外资源，取消随时可停。direct 对话走独立轻量通道，不占编排并发额度。自动续跑的退避等待会显示预定恢复时间；服务重启遗留的排队记录由恢复机制立即接管或收口。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("状态里写着「将于 HH:MM 自动续跑」？") + '</b><p>' + t("这一步失败了，正在退避等待自动重试，到点会接着跑，不需要手动干预；等不及也可以在详情页手动重试。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("生成的文件在哪？") + '</b><p>' + t("写作类任务的章节、封面、报告都落在任务的运行目录，详情页「成果」页签可浏览和预览。代码类任务则在仓库的任务分支上改代码，详情页「版本」里审阅后再合并。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("忘了令牌 / 手机打不开页面？") + '</b><p>' + t("服务启动日志里有带令牌的完整访问地址；远程设备必须用带令牌的 URL 打开（或在令牌门里输入一次），否则会一直要求授权。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("升级后数据会丢吗？") + '</b><p>' + t("不会。任务、配置、用量台账都在独立的数据目录里，升级只替换程序本体；老版本装新版会自动沿用原数据目录。") + '</p></div>' +
-      '<div class="help-qa"><b>' + t("页面打不开 / 服务起不来？") + '</b><p>' + t("多半是默认端口 8765 被旧进程占着：结束旧的 python 进程，或启动时用 --port 换个端口。还不行就到 GitHub 提 Issue。") + '</p></div>';
+    return '<details class="help-qa"><summary>' + t("点「获取模型列表」报 404？") + '</summary><p>' + t("部分网关不提供模型列表接口，属正常现象；只要能正常对话就不用管，模型名手工填即可。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("报 503 / 无可用渠道？") + '</summary><p>' + t("该模型当前没有可用渠道，最常见是余额耗尽。查一下余额或换个模型；同一厂商配了多把 Key 会自动轮换。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("「冷却中」是什么意思？") + '</summary><p>' + t("一把 Key 连续失败会被暂停 30 分钟，防止反复撞墙烧钱，到期自动恢复；也可以在密钥旁手动重置。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("任务一直显示「排队」？") + '</summary><p>' + t("编排任务满载（达到并发上限）时自动转入「排队中」，每 15 秒尝试补跑，最长等 10 分钟，超时才判失败；排队不占额外资源，取消随时可停。direct 对话走独立轻量通道，不占编排并发额度。自动续跑的退避等待会显示预定恢复时间；服务重启遗留的排队记录由恢复机制立即接管或收口。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("状态里写着「将于 HH:MM 自动续跑」？") + '</summary><p>' + t("这一步失败了，正在退避等待自动重试，到点会接着跑，不需要手动干预；等不及也可以在详情页手动重试。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("生成的文件在哪？") + '</summary><p>' + t("写作类任务的章节、封面、报告都落在任务的运行目录，详情页「成果」页签可浏览和预览。代码类任务则在仓库的任务分支上改代码，详情页「版本」里审阅后再合并。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("忘了令牌 / 手机打不开页面？") + '</summary><p>' + t("服务启动日志里有带令牌的完整访问地址；远程设备必须用带令牌的 URL 打开（或在令牌门里输入一次），否则会一直要求授权。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("升级后数据会丢吗？") + '</summary><p>' + t("不会。任务、配置、用量台账都在独立的数据目录里，升级只替换程序本体；老版本装新版会自动沿用原数据目录。") + '</p></details>' +
+      '<details class="help-qa"><summary>' + t("页面打不开 / 服务起不来？") + '</summary><p>' + t("多半是默认端口 8765 被旧进程占着：结束旧的 python 进程，或启动时用 --port 换个端口。还不行就到 GitHub 提 Issue。") + '</p></details>';
   }
   const ch = HELP_CHAPTERS.find((c) => c.id === id);
   if (ch && ch.todo) {
@@ -19816,8 +19816,26 @@ function renderHelp() {
   }
   const body = $("help-body");
   if (body) {
-    body.innerHTML = helpChapterBody(helpCur);
+    body.innerHTML = helpChapterBody(helpCur) + helpPagerHtml();
   }
+  const main = $("help-main");
+  if (main) { main.scrollTop = 0; updateHelpProgress(); }
+}
+/* 底部翻页条：上一章/下一章（FAQ 类长章少回目录一趟）；首尾章对应侧留空 */
+function helpPagerHtml() {
+  const idx = HELP_CHAPTERS.findIndex((c) => c.id === helpCur);
+  const prev = idx > 0 ? HELP_CHAPTERS[idx - 1] : null;
+  const next = idx >= 0 && idx < HELP_CHAPTERS.length - 1 ? HELP_CHAPTERS[idx + 1] : null;
+  return '<nav class="help-pager">' +
+    (prev ? '<button class="pg-btn" onclick="helpGo(\'' + prev.id + '\')"><small><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>' + t("上一章") + '</small><b>' + t(prev.label) + '</b></button>' : '<span class="pg-spacer"></span>') +
+    (next ? '<button class="pg-btn next" onclick="helpGo(\'' + next.id + '\')"><small>' + t("下一章") + '<svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></small><b>' + t(next.label) + '</b></button>' : '<span class="pg-spacer"></span>') +
+    '</nav>';
+}
+function updateHelpProgress() {
+  const m = $("help-main"), bar = $("help-progress-bar");
+  if (!m || !bar) return;
+  const max = m.scrollHeight - m.clientHeight;
+  bar.style.width = (max > 0 ? Math.min(100, (m.scrollTop / max) * 100) : 0) + "%";
 }
 function setHelpChapter(id) {
   helpCur = HELP_CHAPTERS.some((c) => c.id === id) ? id : "quickstart";
@@ -19872,6 +19890,10 @@ document.addEventListener("click", (e) => {
   if (!btn) return;
   welcomeOpen({ topic: btn.dataset.helpTopic });
 });
+
+// 帮助中心阅读进度条：.help-main 是滚动容器，元素静态存在，启动时接一次即可
+const helpMainEl = $("help-main");
+if (helpMainEl) helpMainEl.addEventListener("scroll", updateHelpProgress, { passive: true });
 
 function renderSu() {
   const info = $("su-info");
