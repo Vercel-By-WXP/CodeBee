@@ -93,7 +93,9 @@ class FanqieShortStoryTests(unittest.TestCase):
     def test_create_flow_one_shot_navigation(self):
         steps = fanqie.FLOWS["create_short_story"]
         joined = " ".join(str(s.get("url") or "") for s in steps)
-        self.assertIn("publish-short/new", joined)
+        # 模板占位 + config 实值两头锁（改版删键/删步都能红）
+        self.assertIn("{short_create_url}", joined)
+        self.assertIn("publish-short/new", fanqie.CONFIG["short_create_url"])
         self.assertTrue(any(s.get("do") == "wait"
                             and "ProseMirror" in str(s.get("sel")) for s in steps))
 
