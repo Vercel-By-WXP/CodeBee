@@ -338,7 +338,7 @@
       <button class="set-item" data-sub="usage" data-search="用量统计 token 成本 台账 调用 usage costs ledger"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg><span data-i18n="用量统计">用量统计</span></button>
       <button class="set-item" data-sub="data" data-search="数据与备份 导入 导出 恢复 清理 data backup import export restore"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><span data-i18n="数据与备份">数据与备份</span></button>
       <div data-i18n="外观与软件" class="set-group">外观与软件</div>
-      <button class="set-item" data-sub="appearance" data-search="皮肤 外观 主题 语言 明暗 字体 桌面蜜蜂 appearance theme language dark light font"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="皮肤">皮肤</span></button>
+      <button class="set-item" data-sub="appearance" data-search="皮肤 外观 主题 语言 明暗 字体 桌面蜜蜂 语音 口述 词表 麦克风 appearance theme language dark light font voice dictation lexicon mic"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="皮肤">皮肤</span></button>
       <button id="btn-guide" class="set-item" data-sub="__guide" data-search="帮助中心 指南 文档 教程 help guide docs"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg><span data-i18n="帮助中心">帮助中心</span></button>
       <button id="btn-about" class="set-item" data-sub="about" data-search="关于与更新 版本 更新 诊断 报告 about version update diagnostics"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="关于与更新">关于与更新</span></button>
       <button id="btn-phone" class="set-item" data-sub="__phone" data-search="手机连接 远程 手机 phone remote"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg><span data-i18n="手机连接">手机连接</span></button>
@@ -1936,6 +1936,14 @@
             <!-- 语言名一律用本语言书写，不翻译 -->
             <button class="seg-btn" data-lang="zh"><span>中文</span></button>
             <button class="seg-btn" data-lang="en">English</button>
+          </div>
+          <h3 class="sec-title" data-i18n="语音输入">语音输入</h3>
+          <div class="field"><label data-i18n="语音纠偏词表（一行一条）">语音纠偏词表（一行一条）</label>
+            <textarea id="set-voice-terms" rows="4" style="width:100%;font-family:var(--mono,monospace);font-size:12px" placeholder="错误写法→正确写法；或只写术语如 CodeBee" data-i18n-ph="错误写法→正确写法；或只写术语如 CodeBee"></textarea>
+            <div class="input-row" style="margin-top:6px">
+              <button class="ghost small" type="button" onclick="saveVoiceTerms()" data-i18n="保存词表">保存词表</button>
+            </div>
+            <p class="hint" data-i18n="对话条麦克风按钮口述转文字后按本词表纠偏：「错误→正确」整词替换专有名词；或只写一个术语（如 CodeBee），把识别出的各种大小写统一成该拼法。词表只存本机这台设备；麦克风按钮需浏览器支持（Chrome/Edge）。">对话条麦克风按钮口述转文字后按本词表纠偏：「错误→正确」整词替换专有名词；或只写一个术语（如 CodeBee），把识别出的各种大小写统一成该拼法。词表只存本机这台设备；麦克风按钮需浏览器支持（Chrome/Edge）。</p>
           </div>
           <h3 data-i18n="明暗" class="sec-title">明暗</h3>
           <div id="skin-mode" class="seg" role="group" aria-label="明暗模式" data-i18n-aria="明暗模式">

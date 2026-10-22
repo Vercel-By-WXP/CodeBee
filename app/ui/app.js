@@ -14471,22 +14471,40 @@ function bindVoiceInput() {
   });
 }
 
-/* 语音识别结果纠偏（借鉴 lexicon 个人词典）：设置里维护的专有名词表
- * （localStorage orch.voice_terms，一行一个「错误→正确」或直接「术语」），
- * 识别结果做逐词替换。人名/书名/项目名是识别高频错位，词表是最小可用解。 */
+/* 语音识别结果纠偏（借鉴 lexicon 个人词典）：设置→外观→语音输入里维护的
+ * 专有名词表（localStorage orch.voice_terms，一行一个「错误→正确」或直接「术语」）。
+ * 「错误→正确」整词替换；裸术语把大小写漂移的识别结果统一成给定拼法
+ * （codebee/CodeBee→CodeBee），只动独立成词的出现，避免 "AI" 改坏 "said"。 */
 function voiceFixup(text) {
   let terms = [];
   try {
     const raw = localStorage.getItem("orch.voice_terms") || "";
     terms = raw.split("\n").map((l) => l.trim()).filter(Boolean);
   } catch (e) {}
-  for (const t of terms) {
-    const m = t.split("→");
+  for (const term of terms) {
+    const m = term.split("→");
     if (m.length === 2 && m[0].trim() && m[1].trim()) {
       text = text.split(m[0].trim()).join(m[1].trim());
+    } else {
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      try { text = text.replace(new RegExp("(?<![A-Za-z0-9])" + escaped + "(?![A-Za-z0-9])", "gi"), term); } catch (e) {}
     }
   }
   return text;
+}
+
+/* 设置页词表编辑器：词表与皮肤同族只存本机（localStorage），保存即写回，
+ * 下一次口述立即生效，无需重启或刷新之外的任何动作。 */
+function loadVoiceTerms() {
+  const ta = $("set-voice-terms");
+  if (!ta) return;
+  try { ta.value = localStorage.getItem("orch.voice_terms") || ""; } catch (e) { ta.value = ""; }
+}
+function saveVoiceTerms() {
+  const ta = $("set-voice-terms");
+  if (!ta) return;
+  try { localStorage.setItem("orch.voice_terms", ta.value); toast(t("语音词表已保存")); }
+  catch (e) { toast(t("保存失败，请重试"), true); }
 }
 
 /* ---------------------------------------------------------- 外观：布局 + 皮肤 + 明暗（换肤） */
@@ -19258,6 +19276,7 @@ async function loadSettings() {
     const mcp = $("set-mcp-servers");
     if (mcp && S.settings) mcp.value = S.settings.mcp_servers || "";
     fillNotifyPush();
+    loadVoiceTerms();
     fillBackupRemote();
     syncPetModeSeg();
     syncPetSkinSeg();
