@@ -2410,12 +2410,25 @@ def run_mgmt_command(entry, op, cancel_event=None, log_path=None):
                                 # 不在这补一针，升级成功后界面要等下轮扫尾才见新版本号
     except Exception:
         pass
-    if winget_noop and detect_entry(entry)["installed"]:
+    det_now = detect_entry(entry)
+    if winget_noop and det_now["installed"]:
         # winget 说「已装且无可升级」、复检也在装：install 语义（确保在装）已达成
         refresh_update_async(entry)
         return {"ok": True, "exit_code": res["exit_code"], "command": cmd,
                 "error": "",
                 "note": "winget 报已安装且无可用升级，复检确认本机在装"}
+    if res["ok"] and op in ("install", "upgrade") and entry.get("detect") \
+            and not det_now["installed"]:
+        # 退出码 0 ≠ 装上了：2026-10-22 minimax 实案，被引号绞碎的 PowerShell
+        # 把 -Command 当字符串回显即退 0，安装器一行未跑仍记「完成」。收口以
+        # 复检为准——探测不出时界面徽章照样「未安装」，报告不能比徽章乐观；
+        # 若是探测表缺口漏检，这条报错正好把缺口点出来。无 detect 配置的条目
+        # 复检恒 False，不适用本闸。
+        where = det_now.get("detail") or ""
+        return {"ok": False, "exit_code": res["exit_code"], "command": cmd,
+                "error": "命令退出码 0，但复检本机仍未检出 %s%s。安装脚本可能静默"
+                         "失败或装到了探测范围之外，完整输出见日志。"
+                         % (entry["id"], ("（探测点 %s）" % where) if where else "")}
     if res["ok"]:
         # 安装/升级成功即作废该条目的更新检查缓存并后台复检：否则 10 分钟 TTL
         # 内徽章仍显示「有新版本」，诱导同版本重装（重装易撞 EBUSY 文件锁，

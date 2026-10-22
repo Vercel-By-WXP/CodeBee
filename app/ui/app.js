@@ -15334,10 +15334,12 @@ function mgmtPanel(agentId) {
   if (!st) return "";
   const running = st.status === "queued" || st.status === "running";
   const chip = statusChip(st.status || "queued");
+  // 占位符「-」彼此也相等：版本里没有数字就不配宣称「已是最新」（2026-10-22 minimax 假完成实案）
   const vcmp = (st.versionBefore || st.versionAfter)
     ? '<span class="hint">' + t("版本 ") + esc(st.versionBefore || "?") + " → <b>" +
       esc(st.versionAfter || "…") + "</b>" +
-      (st.status === "done" && st.versionBefore && st.versionAfter === st.versionBefore
+      (st.status === "done" && /\d/.test(st.versionBefore || "") &&
+       st.versionAfter === st.versionBefore
         ? t("（已是最新版本，无需升级）") : "") + "</span>"
     : "";
   // 运行且暂无输出时给"等待中"提示（npm 下载阶段本来就有一段静默期）
