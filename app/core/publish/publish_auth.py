@@ -583,27 +583,16 @@ def saved_session_slots():
 
 
 def resume_saved_sessions():
-    """Reopen known publishing profiles and detect reusable login cookies.
+    """Passively re-check saved sessions on browsers that are already running.
 
-    This removes the manual reconnect step after a service restart.  A fresh
-    login, QR scan, or platform challenge still follows the normal waiting
-    login state and cannot be bypassed by this recovery path.
-
-    A slot verified recently (shared ``launch_probe_at`` stamp) is skipped:
-    a cookie cannot change while no browser runs, so re-launching every
-    profile on every restart only made the login/writer windows pop back up
-    each boot (2026-10-21/22 实案). The next real publish preflight still
-    connects on demand, so correctness moves to first-use, not boot time.
+    2026-10-22 拍板：无人值守绝不拉窗，登录/扫码只发生在用户手动点
+    「连接平台」的时候。开机只复核还活着的浏览器；浏览器没开的账号
+    不核验，等下一次真实发布预检给出「连接平台」指引，用户一连上
+    自动续跑。
     """
-    now = time.time()
     started = 0
     for slot in _mgr().saved_session_slots():
-        state = _mgr()._st(slot)
-        try:
-            last_probe = float(state.get("launch_probe_at") or 0)
-        except (TypeError, ValueError):
-            last_probe = 0.0
-        if now - last_probe < _mgr().LOGIN_REPROBE_MIN_S:
+        if not _mgr().browser_running(slot):
             continue
         plat, sep, account = slot.partition("@")
         thread = threading.Thread(

@@ -251,7 +251,8 @@ class SavedPublishSessionResumeTests(unittest.TestCase):
 
         self.assertEqual(slots, ["fanqie", "qimao@writer2", "qimao@writer3"])
 
-    def test_resume_starts_login_checks_for_each_saved_profile(self):
+    def test_resume_starts_login_checks_only_for_running_browsers(self):
+        """attach-only：浏览器没开的账号跳过，绝不拉窗（2026-10-22 拍板）。"""
         from core.publish import manager
 
         class ImmediateThread:
@@ -263,16 +264,21 @@ class SavedPublishSessionResumeTests(unittest.TestCase):
             def start(self):
                 self.target(*self.args, **self.kwargs)
 
+        alive = mock.Mock()
+        alive.alive.return_value = True
+        dead = mock.Mock()
+        dead.alive.return_value = False
         with mock.patch.object(manager, "saved_session_slots",
                                return_value=["fanqie", "qimao@writer2"]), \
+             mock.patch.object(manager, "_browsers",
+                               {"fanqie": alive, "qimao@writer2": dead}), \
              mock.patch.object(manager, "connect") as connect, \
              mock.patch.object(manager.threading, "Thread", ImmediateThread):
             started = manager.resume_saved_sessions()
 
-        self.assertEqual(started, 2)
+        self.assertEqual(started, 1)
         self.assertEqual(connect.call_args_list, [
             mock.call(plat="fanqie", account="", unattended=True),
-            mock.call(plat="qimao", account="writer2", unattended=True),
         ])
 
 

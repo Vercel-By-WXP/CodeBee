@@ -42,6 +42,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                     "platforms": {"fanqie": {"status": "waiting_login"}}}), \
                 mock.patch.object(manager, "_ACTION_LOCKS", {}), \
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager.ledger, "record"):
             ok, error = manager.connect("fanqie", unattended=True)
         self.assertFalse(ok)
@@ -72,6 +73,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                 mock.patch.object(manager, "_state", {"platforms": {}}),
                 mock.patch.object(manager, "_ACTION_LOCKS", {}),
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)),
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")),
                 mock.patch.object(manager, "sync_published",
                                   side_effect=lambda task, platform, **kw: manager._login_guard(platform)),
                 mock.patch.object(manager, "_quality_release_guard", return_value={"allowed": True}),
@@ -382,6 +384,8 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                     stack.enter_context(mock.patch.object(manager, "_state", {
                         "platforms": {platform: {"status": "waiting_login"}}}))
                     stack.enter_context(mock.patch.object(manager, "_ACTION_LOCKS", {}))
+                    stack.enter_context(mock.patch.object(
+                        manager, "_unattended_attach_gate", return_value=(True, "")))
                     open_page = stack.enter_context(mock.patch.object(
                         manager, "_open_page", return_value=(object(), page)))
                     record = stack.enter_context(mock.patch.object(manager.ledger, "record"))
@@ -417,6 +421,8 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                 "platforms": {"fanqie": {"status": "waiting_login"}}}))
             stack.enter_context(mock.patch.object(manager, "_ACTION_LOCKS", {}))
             stack.enter_context(mock.patch.object(
+                manager, "_unattended_attach_gate", return_value=(True, "")))
+            stack.enter_context(mock.patch.object(
                 manager, "_open_page", return_value=(object(), page)))
             stack.enter_context(mock.patch.object(manager.ledger, "record"))
 
@@ -434,6 +440,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                 mock.patch.object(manager, "STATUS_FILE", Path(temp) / "state.json"), \
                 mock.patch.object(manager, "_state", {"platforms": {}}), \
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager.ledger, "record"):
             for _ in range(2):
                 self.assertFalse(manager.connect("fanqie", unattended=True)[0])
@@ -596,6 +603,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                 mock.patch.object(store, "get_task", return_value={"id": "task-auth"}), \
                 mock.patch.object(ledger, "book_for", return_value={"title": "测试"}), \
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "_resolve_book_id", return_value="42") as resolve, \
                 mock.patch.object(ledger, "save_book"), \
                 mock.patch.object(ledger, "record"), \
@@ -648,6 +656,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                 mock.patch.object(manager, "STATUS_FILE", Path(temp) / "state.json"), \
                 mock.patch.object(manager, "_state", {"platforms": {}}), \
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager.threading, "Thread") as thread, \
                 mock.patch.object(manager, "_finalize_login_wait"):
             self.assertEqual(manager.connect("fanqie"), (True, ""))
@@ -736,14 +745,28 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         self.assertEqual(error, waiting_error)
         opened.assert_not_called()
 
+    def test_unattended_connect_never_launches_for_a_connected_slot(self):
+        from core.publish import manager
+
+        dead = mock.Mock()
+        dead.alive.return_value = False
+        with mock.patch.object(manager, "_state", {
+                "platforms": {"qimao": {"status": "connected"}}}), \
+                mock.patch.object(manager, "_browsers", {"qimao": dead}), \
+                mock.patch.object(manager, "_open_page") as opened:
+            ok, error = manager._connect_unattended("qimao", "", "qimao")
+        self.assertFalse(ok)
+        self.assertIn("平台浏览器未运行", error)
+        self.assertIn("连接平台", error)
+        opened.assert_not_called()
+
     def test_unattended_connect_fails_fast_after_restart_without_browser(self):
         from core.publish import manager
 
         with mock.patch.object(manager, "_state", {
                 "platforms": {"qimao": {
                     "status": "waiting_login",
-                    "error": "平台等待登录或安全验证，验证完成后自动重试",
-                    "launch_probe_at": manager.time.time()}}}), \
+                    "error": "平台等待登录或安全验证，验证完成后自动重试"}}}), \
                 mock.patch.object(manager, "_browsers", {}), \
                 mock.patch.object(manager, "_open_page") as opened:
             ok, error = manager._connect_unattended("qimao", "", "qimao")
@@ -751,9 +774,14 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         self.assertIn("平台等待登录", error)
         opened.assert_not_called()
 
-    def test_startup_session_resume_skips_recently_verified_slots(self):
+    def test_startup_session_resume_only_checks_running_browsers(self):
+        """开机扫查 attach-only：浏览器没开的账号不核验、不拉窗。"""
         from core.publish import manager
 
+        alive = mock.Mock()
+        alive.alive.return_value = True
+        dead = mock.Mock()
+        dead.alive.return_value = False
         started = []
 
         class FakeThread:
@@ -765,55 +793,29 @@ class PublishAuthRecoveryTests(unittest.TestCase):
 
         with mock.patch.object(manager, "_state", {
                 "platforms": {
-                    "fanqie": {"status": "connected", "last_login": "10-22",
-                               "launch_probe_at": manager.time.time()},
-                    "qimao": {"status": "waiting_login", "last_login": "10-21",
-                              "launch_probe_at": 1.0}}}), \
+                    "fanqie": {"status": "connected", "last_login": "10-22"},
+                    "qimao": {"status": "waiting_login", "last_login": "10-21"}}}), \
+                mock.patch.object(manager, "_browsers",
+                                  {"fanqie": alive, "qimao": dead}), \
                 mock.patch.object(manager.ledger, "load_books",
                                   return_value={}), \
                 mock.patch.object(manager.threading, "Thread", FakeThread):
             n = manager.resume_saved_sessions()
         self.assertEqual(n, 1)
-        self.assertEqual([kw["plat"] for kw in started], ["qimao"])
+        self.assertEqual([kw["plat"] for kw in started], ["fanqie"])
 
-    def test_unattended_connect_still_verifies_once_before_throttling(self):
+    def test_unattended_connect_gate_silent_for_running_browser(self):
+        """闸只拦「浏览器没在跑」：活浏览器时放行、不产生任何副作用。"""
         from core.publish import manager
 
-        page = AuthPage(manager.qimao.CONFIG["home"])
-
-        def fake_open_page(slot, preserve_tabs=False):
-            browser = mock.Mock()
-            browser.alive.return_value = True
-            manager._browsers[slot] = browser  # 像真 _ensure_browser 一样登记
-            return browser, page
-
-        with mock.patch.object(manager, "_state", {
-                "platforms": {"qimao": {
-                    "status": "waiting_login",
-                    "error": "平台等待登录或安全验证，验证完成后自动重试"}}}), \
-                mock.patch.object(manager, "_browsers", {}), \
-                mock.patch.object(manager, "STATUS_FILE",
-                                  Path("nul") / "unused-state.json"), \
-                mock.patch.object(manager, "_save"), \
-                mock.patch.object(manager, "_open_page",
-                                  side_effect=fake_open_page) as opened, \
-                mock.patch.object(manager, "_probe_login_pages",
-                                  return_value=(False,
-                                                "https://zuozhe.qimao.com/front/register-login",
-                                                page)):
-            ok, error = manager._connect_unattended("qimao", "", "qimao")
-            self.assertFalse(ok)
-            opened.assert_called_once()
-            launched_at = manager._state["platforms"]["qimao"]["launch_probe_at"]
-            self.assertGreater(launched_at, 0)
-
-            # 第二次紧跟着的重试在限频窗口内：不再开页。
-            with mock.patch.object(manager, "_browsers", {}), \
-                    mock.patch.object(manager, "_open_page") as reopened:
-                ok2, error2 = manager._connect_unattended("qimao", "", "qimao")
-            self.assertFalse(ok2)
-            self.assertIn("平台等待登录", error2)
-            reopened.assert_not_called()
+        browser = mock.Mock()
+        browser.alive.return_value = True
+        with mock.patch.object(manager, "_browsers", {"qimao": browser}), \
+                mock.patch.object(manager, "_state", {
+                    "platforms": {"qimao": {"status": "connected"}}}):
+            ok, error = manager._unattended_attach_gate("qimao")
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
 
     def test_auth_watchdog_retries_error_slot_after_auth_state_rotation(self):
         from core.publish import manager
@@ -869,6 +871,8 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         challenge = AuthPage("https://verify.example/challenge", "")
         with mock.patch.object(manager, "_open_page",
                                return_value=(object(), primary)), \
+                mock.patch.object(manager, "_unattended_attach_gate",
+                                  return_value=(True, "")), \
                 mock.patch.object(manager, "_st",
                                    return_value={"status": "connected"}), \
                 mock.patch.object(manager, "_probe_login_pages",
@@ -891,6 +895,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                 mock.patch.object(manager, "_state", {
                     "platforms": {"fanqie": {"status": "connected"}}}), \
                 mock.patch.object(manager, "_ACTION_LOCKS", {}), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "_open_page",
                                    return_value=(object(), primary)), \
                 mock.patch.object(manager, "_probe_login_pages",

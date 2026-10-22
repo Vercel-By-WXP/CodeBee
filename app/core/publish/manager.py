@@ -39,12 +39,6 @@ STATUS_FILE = paths.PUBLISH_DIR / "state.json"
 # another click on “连接平台”.  It never navigates a non-empty challenge tab
 # and never attempts to solve credentials or CAPTCHA controls.
 AUTH_WATCH_INTERVAL_S = 30.0
-# A waiting_login profile with no live browser may not be woken by every
-# unattended retry: the login window would pop back up on each scheduler
-# tick and service restart (2026-10-21 实案). Unattended verification still
-# needs a launch to re-check the saved cookies, so allow it at most once per
-# this window; a human「连接」click always launches immediately.
-LOGIN_REPROBE_MIN_S = 6 * 3600
 # Optional, already-issued browser auth state for unattended deployments.
 # The default directory is outside the repository and is intentionally not
 # created by the app.  A state file is a secret-bearing artifact: callers
@@ -314,6 +308,9 @@ def _with_tag_steps(steps, groups, values, mod=None):
 
 def _login_guard(plat):
     """动作前的登录前置，现场复核浏览器页面，避免 stale connected。"""
+    ok_gate, why_gate = _unattended_attach_gate(plat)
+    if not ok_gate:
+        return False, why_gate
     try:
         _b, page = _open_page(plat, preserve_tabs=True)
         status = _st(plat).get("status")
@@ -966,6 +963,8 @@ from .publish_browser import (  # noqa: E402,F401 - 旧调用面再导出
     _page_is_empty,
     _probe_login_pages,
     _remember_auth_page,
+    _unattended_attach_gate,
+    browser_running,
     connect,
     disconnect,
     load_flow,

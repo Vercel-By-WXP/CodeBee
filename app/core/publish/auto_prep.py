@@ -52,6 +52,10 @@ def _prepare_book(task_id, platform):
         slot = manager.slot_of(platform, acc)
     except (TypeError, ValueError) as exc:
         return False, str(exc)
+    # 无人值守闸：作品找回/建书都要开平台页，浏览器没跑就挂起（绝不拉窗）。
+    ok_gate, why_gate = manager._unattended_attach_gate(slot)
+    if not ok_gate:
+        return False, why_gate
 
     # Legacy bindings can contain a title without the canonical platform ID.
     # Resolve that binding from the already authenticated author console before

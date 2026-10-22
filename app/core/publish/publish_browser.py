@@ -525,35 +525,38 @@ def connect(plat, account="", unattended=False):
         registration_lock.release()
 
 
+def browser_running(slot):
+    """Whether a live controlled browser exists for the slot (never launches)."""
+    browser = _mgr()._browsers.get(slot)
+    return bool(browser and browser.alive())
+
+
+def _unattended_attach_gate(slot):
+    """无人值守动作的浏览器闸：只许 attach 已在跑的实例，绝不 launch。
+
+    2026-10-22 拍板：登录/扫码只发生在用户手动点「连接平台」的时候；
+    定时发布、批次重试、run 续跑、启动扫查遇到浏览器没开一律挂起并
+    给出「连接平台」指引，用户一连上，下一轮重试自动续跑。
+    返回 (ok, error)。
+    """
+    if browser_running(slot):
+        return True, ""
+    state = _mgr()._st(slot)
+    if str(state.get("status") or "") == "waiting_login":
+        return False, str(state.get("error")
+                          or "平台等待登录或安全验证，验证完成后自动重试")
+    return False, ("平台浏览器未运行：为避免无人值守时强拉登录窗，"
+                   "请在发布台点「连接平台」，连接后即可发布并自动续跑")
+
+
 def _connect_unattended(plat, account, slot):
     """Verify a saved session while holding the profile's action lock."""
     acc = str(account or "").strip()
-    # A waiting_login profile with no live browser may only be re-verified at
-    # LOGIN_REPROBE_MIN_S intervals: the session cannot be checked without
-    # launching a window, and launching on every scheduler/batch/run retry
-    # made the login page pop back up forever (2026-10-21 实案：每次重启都弹).
-    # The first attempt after the state appears still verifies once, so a
-    # stale waiting_login mark cannot become a permanent lock; a human
-    # 「连接」click takes the interactive path and is never throttled.
-    state = _mgr()._st(slot)
-    if str(state.get("status") or "") == "waiting_login":
-        browser = _mgr()._browsers.get(slot)
-        if browser is None or not browser.alive():
-            try:
-                last_probe = float(state.get("launch_probe_at") or 0)
-            except (TypeError, ValueError):
-                last_probe = 0.0
-            if time.time() - last_probe < _mgr().LOGIN_REPROBE_MIN_S:
-                return False, str(
-                    state.get("error")
-                    or "平台等待登录或安全验证，验证完成后自动重试")
+    ok_gate, error = _mgr()._unattended_attach_gate(slot)
+    if not ok_gate:
+        return False, error
     try:
-        had_browser = _mgr()._browsers.get(slot)
         _b, page = _mgr()._open_page(slot, preserve_tabs=True)
-        if had_browser is None and _mgr()._browsers.get(slot) is not None:
-            # A browser process (re)appeared for this verification: stamp the
-            # reprobe window so follow-up retries stop relaunching it.
-            _mgr()._set(slot, launch_probe_at=time.time())
         # A login/challenge can span several retries. Observe its current page
         # without refreshing it, so recovery never invalidates an in-progress
         # verification. Once it clears, the normal batch reconciles and resumes.

@@ -160,6 +160,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                     mock.patch.object(ledger, "book_for", return_value={
                         "book_id": "book-1"}), \
                     mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                     mock.patch.object(manager, "automatic_release_kwargs", return_value={
                         "force": False, "force_confirmed": False,
                         "force_reason": ""}), \
@@ -191,6 +192,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                 mock.patch.object(contracts, "publish_allowed", return_value=True), \
                 mock.patch.object(ledger, "book_for", return_value=None), \
                 mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(auto, "_batch_slot_lock", return_value=lock), \
                 mock.patch.object(auto, "_remember_automatic_batch") as remember, \
                 mock.patch.object(auto.threading, "Thread", return_value=thread) as thread_type, \
@@ -220,6 +222,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                     mock.patch.object(ledger, "book_for", return_value={
                         "book_id": "book-1", "title": "作品"}), \
                     mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                     mock.patch.object(manager, "automatic_release_kwargs", return_value={
                         "force": False, "force_confirmed": False,
                         "force_reason": ""}), \
@@ -256,6 +259,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                     mock.patch.object(ledger, "book_for", return_value={
                         "book_id": "book-1", "title": "作品"}), \
                     mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                     mock.patch.object(manager, "automatic_release_kwargs", return_value={
                         "force": False, "force_confirmed": False,
                         "force_reason": ""}), \
@@ -816,6 +820,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                     "status": "done", "data": {"book_name": "作品"}}), \
                 mock.patch.object(ledger, "book_for", side_effect=books), \
                 mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "create_book_async",
                                   side_effect=create_results) as create, \
                 mock.patch.object(manager, "connect", return_value=(True, "")), \
@@ -840,6 +845,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                 mock.patch.object(ledger, "book_for", return_value=existing), \
                 mock.patch.object(manager, "slot_of", return_value="qimao@writer"), \
                 mock.patch.object(manager, "_open_page", return_value=(object(), page)), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "_check_login", return_value=(True, "url")), \
                 mock.patch.object(manager, "_resolve_book_id", return_value="book-42") as resolve, \
                 mock.patch.object(ledger, "save_book") as save, \
@@ -1027,6 +1033,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                     "status": "done", "data": {"book_name": "作品"}}), \
                 mock.patch.object(ledger, "book_for", return_value=None), \
                 mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "create_book_async",
                                   return_value=(False, "作品名不符合平台要求")) as create, \
                 mock.patch.object(auto, "_batch_sleep") as wait:
@@ -1056,6 +1063,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                 mock.patch.object(ledger, "book_for", side_effect=[None, {
                     "book_id": "book-1", "source": "create"}]), \
                 mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "create_book_async", return_value=(True, "")), \
                 mock.patch.object(manager, "_st", return_value={"status": "connected"}), \
                 mock.patch.object(bookmeta, "generate_async", generate), \
@@ -1090,6 +1098,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
                 mock.patch.object(ledger, "book_for", side_effect=[None, None, {
                     "book_id": "book-1", "source": "create"}]), \
                 mock.patch.object(manager, "slot_of", return_value="qimao"), \
+                mock.patch.object(manager, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(manager, "create_book_async", return_value=(True, "")) as create, \
                 mock.patch.object(manager, "_st", return_value={"status": "connected"}), \
                 mock.patch.object(bookmeta, "generate_async", generate), \
@@ -1582,6 +1591,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
 
         page = Page()
         with mock.patch.object(publisher, "_open_page", return_value=(object(), page)), \
+                mock.patch.object(publisher, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(publisher, "_check_login",
                                   return_value=(False, page.url())), \
                 mock.patch.object(publisher, "_set") as set_state, \
@@ -1604,6 +1614,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
 
         with mock.patch.object(publisher, "_state", {"platforms": {}}), \
                 mock.patch.object(publisher, "_open_page", return_value=(object(), Page())), \
+                mock.patch.object(publisher, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(publisher, "_check_login",
                                   return_value=(True, "https://writer.example/home")), \
                 mock.patch.object(publisher, "_set") as set_state, \
@@ -1651,6 +1662,7 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
 
         with mock.patch.object(publisher, "_state", {"platforms": {}}), \
                 mock.patch.object(publisher, "_open_page", return_value=(object(), Page())), \
+                mock.patch.object(publisher, "_unattended_attach_gate", return_value=(True, "")), \
                 mock.patch.object(publisher, "_set") as set_state, \
                 mock.patch.object(publisher.ledger, "record") as record, \
                 mock.patch.object(publisher.threading, "Thread") as thread:
