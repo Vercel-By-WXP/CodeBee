@@ -439,18 +439,35 @@ def read_chapter(fp):
 
 
 def _story_body_with_sections(body):
-    """短故事正文补「一/二」分节标记：首行插「一」，非空段中点前插「二」。
+    """短故事正文补章节分节标记：按每章 ≤1500 字切 N 段，标记「一二三四…」。
 
-    短篇没有章节名，但两平台的发布/校验都认章节划分（番茄认正文里的
-    数字标识；七猫要求 ≥2 个章节标题块）。标记行交给写作链格式化为
-    标题块；作者可在平台上把「一/二」改成正式章节名。"""
+    短篇没有章节名，但两平台的发布都按章节划分校验：番茄认正文数字标识
+    （软提示可忽略）；七猫发布硬校验「≥2 个章节标题」且**每章 500~1500 字**
+    （2026-10-22 发布实案：两章各 2300 字被拦，4 章 ×~1190 字通过）。标记行
+    由写作链格式化为标题块；作者可在平台上把「一/二」改成正式章节名。"""
+    nums = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
     lines = body.splitlines()
+    total = sum(len(ln) for ln in lines)
+    n = max(2, min(len(nums), -(-total // 1500)))
     nonempty = [i for i, ln in enumerate(lines) if ln.strip()]
-    if len(nonempty) >= 4:
-        lines.insert(nonempty[len(nonempty) // 2], "二")
-    else:
-        lines.append("二")
-    return "一\n" + "\n".join(lines)
+    if len(nonempty) < n * 2:
+        lines.append(nums[1])
+        return nums[0] + "\n" + "\n".join(lines)
+    per = len(nonempty) / float(n)
+    out = [nums[0]]
+    placed = 1
+    for idx, ln in enumerate(lines):
+        if (not ln.strip()) and placed < n:
+            # 空行处插下一段标记（贴着非空段更自然）
+            if len([i for i in nonempty if i <= idx]) >= per * placed:
+                out.append(nums[placed])
+                placed += 1
+                continue
+        out.append(ln)
+    while placed < n:
+        out.append(nums[placed])
+        placed += 1
+    return "\n".join(out)
 
 
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
