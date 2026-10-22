@@ -152,6 +152,14 @@ STICKY_TTL_S = 600
 STICKY_BONUS = 4.0
 _STICKY = {"by_key": {}, "lock": threading.Lock()}
 
+# 连败冷却：败绩扣分封顶 -24，压不过高能力基线——2026-10-22 codex 实案：
+# 历史 0/6（-18）仍以 45 分压过 opencode 38 分先跑，白烧 250s 确认失败才让位。
+# 近窗 3 连败（起草/实现位，见 history.STREAK_WINDOW_S）-100 一记沉底：健康者
+# 永远排在前面，仅当全场都在冷却里才兜底当选；冷却中同时停用粘性加成（续选
+# 一个正在连败的 CLI 保 prompt cache 是负优化）。败迹出窗自愈，无需人工拉黑。
+STREAK_BENCH_MIN = 3
+STREAK_BENCH_PENALTY = -100.0
+
 
 def sticky_reset():
     """清空粘性记忆（测试隔离用；服务运行期无需调用）。"""
@@ -208,7 +216,16 @@ def score(agent, role, ttype, stats=None):
                               if use_dispatch else (0.0, "兼容模式"))
     tv, tv_txt = _tool_chain_penalty(agent.get("id"))
     sv, sticky_txt = _sticky_bonus(agent, role, ttype)
-    total = base + bb + hb + affinity + online + tv + sv
+    bench, bench_txt = 0.0, ""
+    if agent.get("mode") != "mock":
+        streak = int(((stats.get(agent.get("id")) or {}).get(ttype) or {})
+                     .get("streak") or 0)
+        if streak >= STREAK_BENCH_MIN:
+            bench = STREAK_BENCH_PENALTY
+            if sv:
+                sv, sticky_txt = 0.0, "，粘性停用（连败冷却）"
+            bench_txt = "，近窗 %d 连败冷却（%+.0f）" % (streak, bench)
+    total = base + bb + hb + affinity + online + tv + sv + bench
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
     quota_txt = ""
@@ -225,9 +242,9 @@ def score(agent, role, ttype, stats=None):
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
-    return total, "能力基线 %d，%s%s%s%s%s%s%s，总分 %s" % (
+    return total, "能力基线 %d，%s%s%s%s%s%s%s%s，总分 %s" % (
         base, affinity_txt, btxt, htxt, online_txt, quota_txt, tv_txt,
-        sticky_txt, round(total, 1))
+        sticky_txt, bench_txt, round(total, 1))
 
 
 def _pick_scored(agents, role, ttype, stats=None, exclude=()):
