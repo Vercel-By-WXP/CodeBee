@@ -192,6 +192,9 @@ CREATE_SHORT_STORY = [
      "scope": ".el-select-dropdown__item"},
     {"do": "fill", "sel": ".q-highlight-box-content [contenteditable=true]",
      "key": "summary"},
+    # 主角名是必填（2026-10-22 fail-shot 实证：缺它确认创建置灰）；三个
+    # textarea 无区分选择器，按标签填（连载校准表同款 fill_label）
+    {"do": "fill_label", "label": "主角名", "key": "protagonist"},
     {"do": "click_text", "text": "添加标签", "contains": True,
      "scope": "a,button,span,div"},
     {"do": "tags"},
@@ -252,6 +255,7 @@ def values_create_short_story(meta):
     return {
         "title": (meta.get("book_name") or "").strip(),
         "summary": (meta.get("summary") or "").strip(),
+        "protagonist": (meta.get("protagonist_1") or "").strip(),
         "target_reader": (meta.get("target_reader") or "").strip(),
         "category_main": (meta.get("category_main") or "").strip(),
         "category_sub": (meta.get("category_sub") or "").strip(),
