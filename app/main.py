@@ -3552,10 +3552,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         if emit_gz:
             self.send_header("Content-Encoding", "gzip")
         self.end_headers()
-        # gzip 容器必须用 zlib.compressobj 的 16+MAX_WBITS 拼——gzip 模块
-        # 没有 compressobj 属性（2026-10-22 实案：写成 gzip.compressobj 后
-        # 所有带 Accept-Encoding: gzip 的浏览器 SSE 连接连炸）
-        co = zlib.compressobj(1, zlib.DEFLATED, 16 + zlib.MAX_WBITS) if emit_gz else None
+        co = gzip.compressobj(1, zlib.DEFLATED, 16 + zlib.MAX_WBITS) if emit_gz else None
 
         def emit(text):
             if co is not None:
