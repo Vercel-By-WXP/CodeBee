@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """Versioned project memory stored inside each workspace.
 
-New candidates are approved automatically after integrity checks.  The journal
-still keeps explicit review transitions for legacy or manually held entries.
+Candidates must pass a deterministic self-judgment gate before entering:
+runs that failed their own gates and runs that produced no reusable facts
+stay out, and identical facts from reruns collapse into the first entry.
+Qualified candidates are approved automatically after integrity checks.
+The journal still keeps explicit review transitions for legacy or manually
+held entries.
 """
 from __future__ import annotations
 
@@ -21,6 +25,13 @@ MAX_ENTRY_CHARS = 4000
 DEFAULT_TTL_DAYS = 180
 _LOCK = threading.RLock()
 _LOG = logging.getLogger(__name__)
+
+# 自判闸：这些行只说明「跑过」，对后续会话没有可复用的价值。
+_ENTRY_BOILERPLATE_PREFIXES = ("- 任务目标：", "- 任务流程：", "- 完成时间：")
+_ENTRY_BOILERPLATE_LINES = (
+    "- 直连任务未执行独立验证或评审，执行完成不代表质量验收通过",)
+_FAILED_GATE_RE = re.compile(
+    r"^- (?:质量门禁|发布门禁|发布结果|评审|验证)：未通过\s*$")
 
 
 def _file(workdir):
@@ -80,6 +91,43 @@ def _read(path):
     return latest
 
 
+def _selfjudge(content):
+    """Deterministic value gate for candidate/entry content.
+
+    A failed gate line means the run recorded a transient failure — the
+    passing rerun lands later, so the failure itself is not knowledge.
+    Content that reduces to goal/engine/time boilerplate carries nothing a
+    future session could reuse.  Unknown line shapes count as substantive:
+    when unsure, keep.
+    """
+    text = str(content or "")
+    substantive = 0
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _FAILED_GATE_RE.match(line):
+            return False, "门禁未通过"
+        if line.startswith(_ENTRY_BOILERPLATE_PREFIXES) or line in _ENTRY_BOILERPLATE_LINES:
+            continue
+        substantive += 1
+    if not substantive:
+        return False, "无可复用事实"
+    return True, ""
+
+
+def _facts_digest(title, content):
+    """Stable digest of facts ignoring the completion timestamp.
+
+    Reruns of the same goal with the same outcome differ only in 完成时间;
+    this digest lets capture collapse them into the first entry.
+    """
+    lines = [ln for ln in str(content or "").splitlines()
+             if not ln.strip().startswith("- 完成时间：")]
+    payload = str(title or "").strip() + "\0" + "\n".join(lines)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _candidate(*, source_run="", title="", facts=None, now=None):
     facts = [str(x).strip()[:500] for x in (facts or []) if str(x).strip()]
     content = "\n".join("- " + x for x in facts)[:MAX_ENTRY_CHARS]
@@ -90,6 +138,7 @@ def _candidate(*, source_run="", title="", facts=None, now=None):
     return {"id": digest[:24], "source_run": str(source_run or "")[:100],
            "title": str(title or "")[:200], "content": content,
            "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+           "facts_sha256": _facts_digest(title, content),
            "created_at": stamp, "expires_at": stamp + DEFAULT_TTL_DAYS * 86400,
            "status": "approved", "version": 1, "updated_at": stamp,
            "reviewed_at": stamp, "approval_mode": "automatic"}
@@ -233,6 +282,9 @@ def _run_candidate(task, run):
         created_at = time.mktime(time.strptime(run.get("ended_at") or "", "%Y-%m-%d %H:%M:%S"))
     except (TypeError, ValueError):
         created_at = time.time()
+    ok, _reason = _selfjudge("\n".join("- " + x for x in facts))
+    if not ok:
+        return None  # 自判闸：失败的尝试或只有套话的运行不产生项目记忆。
     return _candidate(source_run=run["id"], title=title,
                       facts=facts, now=created_at)
 
@@ -247,23 +299,60 @@ def capture_run(task, run):
         for row in _read(path).values():
             if row.get("source_run") == run["id"] or row["id"] == candidate["id"]:
                 return row  # Never replace an earlier approval/rejection on backfill.
+            known = row.get("facts_sha256") or _facts_digest(
+                row.get("title"), row.get("content"))
+            if known == candidate["facts_sha256"]:
+                return row  # 同一事实的重复 run 不再入账，也不推翻已有裁决。
         _append(path, candidate)
         return candidate
 
 
 def backfill(tasks, runs):
-    """Recover missing candidates without model calls or changing review state."""
+    """Recover missing candidates without model calls.
+
+    Startup also retracts earlier automatic approvals that fail the current
+    self-judgment gate; entries a human decided stay untouched.
+    """
     # Startup runs this before accepting requests. Share the lock with live
     # capture, and read each workspace journal only once for the run batch.
     with _LOCK:
         return _backfill(tasks, runs)
 
 
+def _demote_unqualified_locked(path, latest, *, now=None):
+    """Archive automatic approvals that the self-judgment gate would reject.
+
+    Deliberately narrow: only rows no human ever decided (approval_mode is
+    automatic, digest still verified, not expired) are demoted, and demotion
+    lands as a reversible archived transition instead of a deletion.
+    """
+    stamp = float(now if now is not None else time.time())
+    demoted = 0
+    for entry_id, row in latest.items():
+        if (row.get("status") != "approved"
+                or row.get("approval_mode") != "automatic"
+                or _content_digest(row.get("content")) != row.get("content_sha256")
+                or 0 < _number(row.get("expires_at")) <= stamp):
+            continue
+        ok, reason = _selfjudge(row.get("content"))
+        if ok:
+            continue
+        updated = dict(row, status="archived",
+                       version=int(row.get("version") or 1) + 1,
+                       updated_at=stamp, reviewed_at=stamp,
+                       demoted_reason="自动入账自判未通过：%s" % reason)
+        _append(path, updated)
+        latest[entry_id] = updated
+        demoted += 1
+    return demoted
+
+
 def _backfill(tasks, runs):
     by_id = {task["id"]: task for task in tasks if task.get("id")}
-    result = {"legacy": 0, "runs": 0, "errors": 0}
+    result = {"legacy": 0, "runs": 0, "errors": 0, "demoted": 0}
     sources = {}
     existing_ids = {}
+    known_facts = {}
     for task in by_id.values():
         workdir = task.get("workdir")
         if not workdir:
@@ -288,9 +377,14 @@ def _backfill(tasks, runs):
                 path = _file(workdir)
                 latest = _read(path)
                 _approve_pending_locked(path, latest)
+                result["demoted"] += _demote_unqualified_locked(path, latest)
                 sources[key] = {row["source_run"] for row in latest.values()
                                 if isinstance(row.get("source_run"), str)}
                 existing_ids[key] = set(latest)
+                known_facts[key] = {
+                    (row.get("facts_sha256") or _facts_digest(
+                        row.get("title"), row.get("content")))
+                    for row in latest.values()}
         except (OSError, ValueError) as exc:
             result["errors"] += 1
             _LOG.warning("项目记忆迁移失败（任务 %s）：%s", task["id"], exc)
@@ -304,10 +398,12 @@ def _backfill(tasks, runs):
             if run.get("id") in sources.get(key, set()):
                 continue
             row = _run_candidate(task, run)
-            if row and row["id"] not in existing_ids.get(key, set()):
+            if (row and row["id"] not in existing_ids.get(key, set())
+                    and row["facts_sha256"] not in known_facts.get(key, set())):
                 _append(_file(task["workdir"]), row)
                 sources.setdefault(key, set()).add(run["id"])
                 existing_ids.setdefault(key, set()).add(row["id"])
+                known_facts.setdefault(key, set()).add(row["facts_sha256"])
                 result["runs"] += 1
         except (OSError, ValueError, TypeError) as exc:
             result["errors"] += 1

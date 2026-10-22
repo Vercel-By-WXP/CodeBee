@@ -4339,8 +4339,9 @@ def main():
     memory_recovery = project_memory.backfill(
         store.list_tasks(), store.list_runs(limit=None, include_hidden=True))
     if any(memory_recovery.values()):
-        print("[CodeBee] 项目记忆：迁移旧记录 %d 条，回填完成记录 %d 条，失败 %d 项"
-              % (memory_recovery["legacy"], memory_recovery["runs"], memory_recovery["errors"]),
+        print("[CodeBee] 项目记忆：迁移旧记录 %d 条，回填完成记录 %d 条，自判回收 %d 条，失败 %d 项"
+              % (memory_recovery["legacy"], memory_recovery["runs"],
+                 memory_recovery.get("demoted", 0), memory_recovery["errors"]),
               flush=True)
     _step("正在启动健康探针…")
     health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
