@@ -6,6 +6,8 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 ## 未发布
 
+- **对话「返回」后输入框消失治了（主页 composer 困在隐藏 page-home 实案）**：workbench 主页把 `#sub-tasks .cmp-box` 搬进 `#rd-input-slot`（homeMountComposer），而从侧栏点任务行进对话走 `showDetailInMain`——它刻意不走 switchTab（会先 closeRun 抹掉 detailTaskKey），却因此漏掉「离开主页搬回 composer」的契约；对话点「返回」（closeRun 的回任务页分支）也不搬回，`.cmp-box` 困在隐藏的 page-home 里，表单只剩问候语和类型 chips。修法：`showDetailInMain` 进详情时自行 `homeUnmountComposer()`（与 switchTab/exitSettings 同契约，侧栏行/检查器/建任务后跳转等主视图入口全收敛在这一个函数）；新增 tests/test_ui_home_composer_back.py 切片回归（假 DOM 真跑搬运对+进详情路径，变异验证过红）。
+
 - **记忆中心/运行详情/文件检查点全线「服务内部错误」治了（store 路由遮蔽复发案）**：90e24d1 在 `_route_get`/`_route_post` 中段的评测台路由里写了 `from core import evalbench, store`——函数内 import 把 `store` 变成整个路由函数的局部名，凡在该行**之前**引用 `store` 的路由（记忆中心、项目记忆、运行详情、文件检查点、手机状态等）一进就 `UnboundLocalError`，统一被 500 兜底接住；`/api/state`、经验库、知识库不碰 `store` 幸存，形成「半站瘫痪」假象。2026-10-20 15:59 同步脚本把带毒代码镜像进 npm 副本并重启后爆发。修法：两处毒 import 拔除（模块顶层本就导入 store）+ 新增 AST 静态闸 tests/test_route_store_shadow_guard.py（路由函数体内任何绑定 store 的函数级 import 直接测试失败），杜绝 065c030b（0.1.70）以来第三次同类事故。
 
 ## v0.1.119（2026-10-18）

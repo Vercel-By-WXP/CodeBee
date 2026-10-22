@@ -6457,6 +6457,10 @@ function renderSideTasks() {
 /* 主视图打开详情面板的公共部分：留在任务树，主栏切到运行/任务详情 */
 function showDetailInMain() {
   S.tab = "runs";
+  // 本函数刻意不走 switchTab（name==="runs" 且详情未开时会先 closeRun），离开主页的
+  // composer 搬回契约就得自己扛：否则 .cmp-box 困在隐藏 page-home，对话「返回」回
+  // #sub-tasks 只剩问候语和类型 chips（2026-10-22 实案）
+  homeUnmountComposer();
   const main = document.querySelector("main");
   if (main) main.classList.remove("browser-page-active");
   // 详情面板住在 page-settings 壳里：暖色皮肤停在工作台主页（page-home）时点侧栏任务行，
