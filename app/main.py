@@ -579,6 +579,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 except Exception:
                     pass
                 return self._json(200, v)
+            if path == "/api/agent-skills":
+                # Agent Skills 开源标准（SKILL.md）：本地导入件的清单与安检状态
+                from core import agent_skills
+                return self._json(200, {"skills": agent_skills.list_skills()})
             if path == "/api/plugins":
                 # 本地插件（.codex-plugin/plugin.json 契约）：发现+安装台账的
                 # 聚合视图。坏 manifest 以 blocked/broken 行呈现，不 500。
@@ -2639,6 +2643,26 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "file": None, "count": 0,
                                         "note": "no eligible lessons"})
             return self._json(200, {"ok": True, "file": fname, "count": n})
+        if path == "/api/agent-skills/import":
+            # 本地导入开源 Agent Skills（文件夹或 .zip，可一次多技能）：解包/
+            # 类型白名单/可执行件剥离走 market_remote 同款安全件，装前静态安检，
+            # 导入后默认停用待审阅
+            from core import agent_skills
+            res, err = agent_skills.import_path((self._body() or {}).get("path") or "")
+            if err:
+                return self._json(400, {"error": err})
+            return self._json(200, dict(ok=True, **res))
+        if path == "/api/agent-skills/op":
+            from core import agent_skills
+            body = self._body()
+            err = agent_skills.skill_op(body.get("name") or "", body.get("op") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True})
+        if path == "/api/agent-skills/read":
+            # 技能随包文本文件预览（安检审阅用）：穿越/超大/非文本在模块内拒绝
+            from core import agent_skills
+            body = self._body()
+            text, err = agent_skills.read_file(body.get("name") or "", body.get("path") or "")
+            return self._json(400, {"error": err}) if err else self._json(200, {"ok": True, "text": text})
         if path == "/api/knowledge/op":
             from core import knowledge
             body = self._body()

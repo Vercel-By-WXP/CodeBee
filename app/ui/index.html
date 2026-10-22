@@ -1515,6 +1515,13 @@
             <button class="hhelp" data-help-topic="features" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button></div>
           <p class="hint"><span data-i18n="系统自己的经验沉淀：">系统自己的经验沉淀：</span><b data-i18n="内置规范包">内置规范包</b><span data-i18n="（如七猫签约标准，自动注入同类任务的规划与评审提示词） 与">（如七猫签约标准，自动注入同类任务的规划与评审提示词）
             与</span><b data-i18n="运行中自动学到的教训">运行中自动学到的教训</b><span data-i18n="（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。">（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</span></p>
+          <h3 class="sec-title"><span data-i18n="Agent Skills（开源标准）">Agent Skills（开源标准）</span></h3>
+          <p class="hint" data-i18n="导入社区开源的 Agent Skills 技能包（SKILL.md 标准，如 anthropics/skills）：填文件夹或 .zip 的本地路径，一次可含多个技能。导入时剥离脚本/钩子等可执行件并做静态安检，导入后默认停用——审阅确认后再启用，启用即自动注入同类任务的提示词。">导入社区开源的 Agent Skills 技能包（SKILL.md 标准，如 anthropics/skills）：填文件夹或 .zip 的本地路径，一次可含多个技能。导入时剥离脚本/钩子等可执行件并做静态安检，导入后默认停用——审阅确认后再启用，启用即自动注入同类任务的提示词。</p>
+          <div style="display:flex;gap:8px;align-items:center;margin:4px 0 10px">
+            <input id="agentskill-path" type="text" style="flex:1;min-width:240px" placeholder="例如 E:\downloads\skills-main 或 E:\downloads\skills-main.zip" data-i18n-ph="例如 E:\downloads\skills-main 或 E:\downloads\skills-main.zip">
+            <button class="ghost small" onclick="agentSkillImport()" data-i18n="导入 Agent Skills">导入 Agent Skills</button>
+          </div>
+          <div id="agent-skills" class="cards" style="margin-bottom:14px"></div>
           <h3 data-i18n="内置规范包" class="sec-title">内置规范包</h3>
           <div id="skill-packs" class="cards"></div>
           <h3 class="sec-title"><span data-i18n="自动沉淀的教训">自动沉淀的教训</span> <span class="tag" id="skill-count"></span></h3>

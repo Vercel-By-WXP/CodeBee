@@ -257,28 +257,46 @@ def _save(data):
 
 # ---------------------------------------------------------------- 内置经验包
 
+_FM_STRIP_RE = re.compile(r"(?s)\A---\s*\n(.*?)\n---\s*\n?")
+
+
 def pack_text(pack):
-    """读取包正文（内置包相对 skillpacks/，用户包 file 为绝对路径）。文件缺失返回空串。"""
+    """读取包正文（内置包相对 skillpacks/，用户包与 Agent Skills 包 file 为绝对路径）。
+    文件缺失返回空串。"""
     try:
-        if pack.get("user"):
+        if pack.get("user") or pack.get("agent"):
             p = Path(pack["file"])
-            return p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
-        p = (PACK_DIR / pack["file"]).resolve()
-        if PACK_DIR.resolve() not in p.parents or not p.is_file():
-            return ""
-        return p.read_text(encoding="utf-8", errors="replace")
+            txt = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+        else:
+            p = (PACK_DIR / pack["file"]).resolve()
+            if PACK_DIR.resolve() not in p.parents or not p.is_file():
+                return ""
+            txt = p.read_text(encoding="utf-8", errors="replace")
+        if pack.get("agent"):
+            # Agent Skills 标准件：frontmatter 是元数据不是指令，注入前剥掉；
+            # 尾部附随包资料清单（渐进披露：有文件读取能力的 CLI 可按需 Read）
+            txt = _FM_STRIP_RE.sub("", txt, count=1)
+            if txt.strip() and pack.get("appendix"):
+                txt = txt.rstrip() + "\n\n" + pack["appendix"]
+        return txt
     except Exception:
         return ""
 
 
 def all_packs():
-    """内置 + 用户自建包的并集（3A 多源分层：同名场景下内置优先）。"""
+    """内置 + 用户自建包 + Agent Skills 开源导入包的并集（3A 多源分层：同名场景下内置优先）。"""
     builtin = [dict(p) for p in BUILTIN_PACKS]
     builtin_ids = {p["id"] for p in builtin}
     out = list(builtin)
     for up in user_packs():
         if up["id"] not in builtin_ids:
             out.append(up)
+    try:
+        # Agent Skills（SKILL.md 开源标准）导入件；模块缺失（如 npm 副本未同步）时软降级
+        from . import agent_skills
+        out.extend(agent_skills.packs())
+    except Exception:
+        pass
     return out
 
 
@@ -290,7 +308,7 @@ def list_packs():
         st = state.get(p["id"]) or {}
         out.append({"id": p["id"], "name": p["name"], "scopes": p["scopes"],
                     "note": p.get("note", ""), "builtin": bool(p.get("builtin")),
-                    "user": bool(p.get("user")),
+                    "user": bool(p.get("user")), "agent": bool(p.get("agent")),
                     "persona": bool(p.get("persona")),
                     "trust": p.get("trust") or ("local" if p.get("user") else "trusted"),
                     "risk": (p.get("scan") or {}).get("label") or "",

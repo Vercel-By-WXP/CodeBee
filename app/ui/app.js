@@ -15922,13 +15922,14 @@ async function loadSkills() {
   try {
     S.skills = await api("/api/skills");
   } catch (e) { S.skills = null; }
+  loadAgentSkills();
   renderSkills();
 }
 
 function renderSkills() {
   const box = $("skill-packs");
   if (!box || !S.skills) return;
-  const packs = S.skills.packs || [], lessons = S.skills.lessons || [];
+  const packs = (S.skills.packs || []).filter((p) => !p.agent), lessons = S.skills.lessons || [];
   box.innerHTML = packs.map((p) => {
     const card = p.card;
     const cardHtml = card
@@ -16014,6 +16015,88 @@ async function skillLessonOp(id, op) {
   try { await api("/api/skills/lesson-op", { method: "POST", body: JSON.stringify({ id, op }) }); }
   catch (e) { toast(e.message, true); return; }
   loadSkills();
+}
+
+/* Agent Skills（开源标准 SKILL.md）：本地导入 → 剥离可执行件 + 静态安检 →
+ * 默认停用；审阅后启用即并入经验库注入链（block_for 通配预算内注入）。 */
+async function loadAgentSkills() {
+  try { S.agentSkills = await api("/api/agent-skills"); }
+  catch (e) { S.agentSkills = null; }
+  renderAgentSkills();
+}
+
+function renderAgentSkills() {
+  const box = $("agent-skills");
+  if (!box) return;
+  if (!S.agentSkills) {
+    box.innerHTML = '<div class="empty">' + t("Agent Skills 列表不可用（后端未同步）") + "</div>";
+    return;
+  }
+  const list = S.agentSkills.skills || [];
+  box.innerHTML = list.map((s) => {
+    const files = s.files || [];
+    const filesHtml = files.length
+      ? '<div class="facts">' + t("随包资料 ") + files.length + t(" 个：") +
+        files.slice(0, 5).map((f) =>
+          '<a href="javascript:void(0)" onclick="agentSkillRead(\'' + esc(s.name) + '\', \'' + esc(f.path) + '\')">' + esc(f.path) + "</a>").join("、") +
+        (files.length > 5 ? t(" 等") : "") + "</div>"
+      : "";
+    const findings = (s.findings || []).map((f) => "「" + esc(f.category || "") + "」").join("");
+    return '<div class="card' + (s.enabled ? "" : " off") + '"><div class="head">' +
+      '<span class="name">🧩 ' + esc(s.name) + "</span>" +
+      '<span class="tag">' + esc((s.scopes || ["*"]).join(" / ")) + "</span>" +
+      (s.license ? '<span class="tag" title="' + t("开源许可证") + '">' + esc(s.license) + "</span>" : "") +
+      (s.trust === "high-risk"
+        ? '<span class="tag" style="color:var(--err,#d33)">' + t("高危（静态安检）") + "</span>"
+        : (s.trust === "unverified"
+          ? '<span class="tag" title="' + t("外部内容，注入时按不可信参考资料包裹") + '">' + t("未审核") + "</span>" : "")) +
+      (s.enabled ? '<span class="tag ok">' + t("启用中") + "</span>" : '<span class="tag">' + t("已停用") + "</span>") + "</div>" +
+      '<div class="note">' + esc(s.description || "") + "</div>" +
+      (findings ? '<div class="note" style="color:var(--bad)">' + t("安检发现：") + findings + "</div>" : "") +
+      '<div class="facts">' + t("正文 ") + "<b>" + s.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
+      filesHtml +
+      '<div class="ops"><button class="ghost small" onclick="agentSkillOp(\'' + esc(s.name) + '\', \'' +
+      (s.enabled ? "disable" : "enable") + '\')">' + (s.enabled ? t("停用") : t("启用")) + "</button>" +
+      '<button class="danger small" onclick="agentSkillOp(\'' + esc(s.name) + '\', \'delete\')">' + t("删除") + "</button>" +
+      "</div></div>";
+  }).join("") || '<div class="empty">' + t("还没有导入的开源技能") + "</div>";
+}
+
+async function agentSkillImport() {
+  const el = $("agentskill-path");
+  const path = (el && el.value || "").trim();
+  if (!path) { toast(t("先填技能文件夹或 .zip 的路径"), true); return; }
+  let res;
+  try { res = await api("/api/agent-skills/import", { method: "POST", body: JSON.stringify({ path }) }); }
+  catch (e) { toast(e.message, true); return; }
+  const imported = res.imported || [], errors = res.errors || [];
+  loadAgentSkills();
+  if (S.skills) loadSkills();
+  if (!imported.length) { toast(errors[0] || t("没有可导入的技能"), true); return; }
+  let body = imported.map((x) => "<div style='margin:4px 0'>📦 <b>" + esc(x.name) + "</b> " +
+    (x.label ? '<span class="tag">' + esc(x.label) + "</span>" : "") +
+    '<div class="note">' + esc(x.description || "") + "</div>" +
+    ((x.warns || []).length ? '<div class="note">' + t("提示：") + esc(x.warns.join("；")) + "</div>" : "") + "</div>").join("");
+  if (errors.length) body += '<div class="note" style="color:var(--bad)">' + t("未导入：") + esc(errors.join("；")) + "</div>";
+  if ((res.stripped || []).length) body += '<div class="note">' + t("已剥离可执行件：") + esc(res.stripped.join("、")) + "</div>";
+  body += '<p class="hint">' + t("已导入 {0} 个技能，全部默认停用——安检审阅后再启用。", imported.length) + "</p>";
+  openModal(t("Agent Skills 导入结果"), body);
+}
+
+async function agentSkillOp(name, op) {
+  if (op === "delete" && !await uiConfirm(t("删除该技能？随包文件与启停记录会一并删除。"), { ok: t("删除"), danger: true })) return;
+  try { await api("/api/agent-skills/op", { method: "POST", body: JSON.stringify({ name, op }) }); }
+  catch (e) { toast(e.message, true); return; }
+  loadAgentSkills();
+  if (S.skills) loadSkills();
+}
+
+async function agentSkillRead(name, path) {
+  let res;
+  try { res = await api("/api/agent-skills/read", { method: "POST", body: JSON.stringify({ name, path }) }); }
+  catch (e) { toast(e.message, true); return; }
+  openModal(t("技能文件预览：") + path,
+    '<pre style="max-height:60vh;overflow:auto;white-space:pre-wrap;margin:0">' + esc(res.text || "") + "</pre>");
 }
 
 /* ---------------------------------------------------------- 知识库 */
