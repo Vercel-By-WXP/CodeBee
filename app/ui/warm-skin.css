@@ -4,7 +4,8 @@
  */
 
 /* 暖色纸张·夜间版 */
-html[data-skin="warm"] {
+html[data-skin="warm"],
+html[data-skin="warm"][data-theme="dark"] {
   --bg: #1a1916;
   --sidebar: #222019;
   --panel: #252320;
@@ -134,4 +135,50 @@ html[data-skin="warm"][data-theme="light"] .seg-btn.active {
 html[data-skin="warm"][data-theme="dark"] .seg-btn.active {
   background: var(--accent);
   color: #fff;
+}
+
+
+/* hive-ui 的 html[data-skin][data-theme]（权重 0,2,1）会把 legacy 变量别名到共享
+ * 中性面。暖皮必须用同权重把表面与品牌色重新钉回，否则夜间会落回冷灰、强调色
+ * 会冒默认绿；日间原本只是靠更晚加载的同权重规则才没被盖住。 */
+html[data-skin="warm"][data-theme] {
+  --cb-brand: var(--accent);
+  --cb-brand-strong: var(--accent);
+  --cb-brand-alt: var(--accent2);
+  --cb-bg-0: var(--bg);
+  --cb-bg-nav: var(--sidebar);
+  --cb-bg-rail: var(--sidebar);
+  --cb-bg-sidebar: var(--sidebar);
+  --cb-bg-1: var(--panel);
+  --cb-bg-2: var(--panel2);
+  --cb-bg-inset: color-mix(in srgb, var(--accent) 5%, var(--panel2));
+  --cb-bg-nav-hover: color-mix(in srgb, var(--accent) 8%, var(--sidebar));
+  --cb-bg-nav-selected: color-mix(in srgb, var(--accent) 14%, var(--sidebar));
+  --cb-text-1: var(--text);
+  --cb-text-2: var(--muted);
+  --cb-text-3: color-mix(in srgb, var(--muted) 82%, var(--text));
+  --cb-line: var(--border);
+  --cb-line-strong: var(--border-strong);
+  --cb-canvas: var(--bg);
+  --cb-surface: var(--panel);
+  --cb-ink: var(--text);
+  --cb-muted: var(--muted);
+  --cb-hover: var(--panel2);
+  --cb-active: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  --cb-active-text: var(--accent);
+  --cb-accent: var(--accent);
+  --cb-rail-bg: var(--sidebar);
+  --cb-rail-text: var(--muted);
+  --cb-divider: var(--border);
+  --cb-divider-soft: var(--border);
+  --cb-button-bg: var(--panel);
+  --cb-button-border: var(--border-strong);
+  --cb-button-hover: var(--panel2);
+  --cb-card-border: var(--border);
+  --cb-focus: var(--accent);
+  --cb-focus-ring: color-mix(in srgb, var(--accent) 16%, transparent);
+  --cb-topbar: color-mix(in srgb, var(--sidebar) 92%, transparent);
+  --cb-log-bg: var(--log-bg);
+  --cb-log-text: var(--log-text);
+  --cb-shadow-card: var(--shadow);
 }

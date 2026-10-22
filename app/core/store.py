@@ -1132,8 +1132,13 @@ def get_run(run_id):
 
 
 def list_runs(limit=60):
+    """运行历史列表：已从列表移除（record_deleted）的记录不再返回。
+
+    任务详情/成果走 task_runs / latest_run_by_task，仍能拿到隐藏记录作锚点。
+    """
     with LOCK:
-        ids = sorted(_RUNS.keys(), reverse=True)
+        ids = sorted((rid for rid, run in _RUNS.items()
+                      if not run.get("record_deleted")), reverse=True)
         selected = ids if limit is None else ids[:limit]
         return [_RUNS[i] for i in selected]
 
@@ -1142,7 +1147,8 @@ def latest_run_by_task():
     """每个任务的最近一次运行（含 steps），全量扫描不受 list_runs 窗口限制。
 
     侧栏靠它给每个任务展示真实近况；从未运行过的任务不在返回值里。
-    run id 含时间戳，字典序即新旧序。
+    run id 含时间戳，字典序即新旧序。record_deleted 的记录仍是任务锚点：
+    运行列表可以清空，但任务详情与成果不能因此失去入口。
     """
     with LOCK:
         best = {}
@@ -1174,7 +1180,10 @@ def task_run_stats():
 
 
 def task_runs(task_id):
-    """某任务的全部运行（新→旧，含 steps）。任务级详情视图用，按需拉全量。"""
+    """某任务的全部运行（新→旧，含 steps）。任务级详情视图用，按需拉全量。
+
+    包含 record_deleted 的记录：从全局运行列表移除不等于抹掉任务执行史。
+    """
     with LOCK:
         runs = [dict(r) for r in _RUNS.values() if r.get("task_id") == task_id]
     runs.sort(key=_creation_sort_key, reverse=True)
@@ -1414,8 +1423,39 @@ def _schedule_run_dir_cleanup(run_id):
                      daemon=True).start()
 
 
+def _mark_run_record_deleted(run):
+    """把记录从运行列表隐藏；任务、日志、报告与成果目录一律不动。
+
+    运行记录是任务的执行史：报告在 run 目录里，成品在工作目录里，任务详情
+    还要靠最新 run 作为锚点。物理删目录会让「任务还在、成果却打不开」，
+    所以这里只做标记；真正的物理清理只发生在删除任务时。
+    """
+    if run.get("record_deleted"):
+        return False
+    run["record_deleted"] = True
+    run["record_deleted_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    return True
+
+
+def _persist_run_record_deleted(run):
+    try:
+        atomic.write_json(paths.RUNS_DIR / run["id"] / "run.json", run)
+        return True
+    except OSError as exc:
+        with LOCK:
+            run.pop("record_deleted", None)
+            run.pop("record_deleted_at", None)
+        logging.getLogger(__name__).warning(
+            "run record hide failed for run %s: %s", run.get("id"), exc)
+        return False
+
+
 def delete_run(run_id):
-    """删除一条运行记录（内存 + 磁盘目录）。返回 (ok, 错误信息)。"""
+    """从运行列表移除一条记录；不删除任务、日志、报告或工作目录成果。
+
+    记录通过 run.json 的 record_deleted 标记隐藏，磁盘目录保留；删除任务时
+    才会连同全部运行目录一起物理清理。返回 (ok, 错误信息)。
+    """
     if not _valid_id(run_id):
         return False, "非法的记录 ID"
     with LOCK:
@@ -1424,8 +1464,10 @@ def delete_run(run_id):
             return False, "记录不存在"
         if run.get("status") in ("queued", "running"):
             return False, "运行中的记录不能删除，请先取消"
-        del _RUNS[run_id]
-    _schedule_run_dir_cleanup(run_id)
+        if not _mark_run_record_deleted(run):
+            return True, ""
+    if not _persist_run_record_deleted(run):
+        return False, "删除记录失败：无法写入磁盘"
     bump_state()
     return True, ""
 
@@ -1733,47 +1775,56 @@ def read_run_file(run_id, rel):
 
 
 def delete_runs(run_ids):
-    """批量删除运行记录。跳过排队中/运行中的记录。
+    """批量从运行列表移除记录；任务、日志、报告与成果文件都保留。
 
-    返回 (删除数, 跳过数, 错误信息)：非法 ID 与运行中的记录都计入跳过，
-    合法且已结束的记录照常删除，不因个别非法 ID 整体失败。
+    返回 (删除数, 跳过数, 错误信息)：非法 ID、排队/运行中、已隐藏的记录都
+    计入跳过，合法且已结束的记录照常移除，不因个别非法 ID 整体失败。
     """
     if not isinstance(run_ids, (list, tuple)):
         return 0, 0, "ids 必须是数组"
-    deleted, skipped, bad = 0, 0, 0
-    for run_id in run_ids:
-        rid = str(run_id)
-        if not _valid_id(rid):
-            bad += 1
-            continue
-        with LOCK:
+    skipped, bad = 0, 0
+    targets = []
+    with LOCK:
+        for run_id in run_ids:
+            rid = str(run_id)
+            if not _valid_id(rid):
+                bad += 1
+                continue
             run = _RUNS.get(rid)
-            if not run or run.get("status") in ("queued", "running"):
+            if not run or run.get("status") in ("queued", "running") \
+                    or not _mark_run_record_deleted(run):
                 skipped += 1
                 continue
-            del _RUNS[rid]
-        _schedule_run_dir_cleanup(rid)
-        deleted += 1
+            targets.append(run)
+    failed = sum(1 for run in targets if not _persist_run_record_deleted(run))
+    deleted = len(targets) - failed
     if deleted:
         bump_state()
-    return deleted, skipped, ("有 %d 条非法记录 ID" % bad) if bad else ""
+    errors = []
+    if bad:
+        errors.append("有 %d 条非法记录 ID" % bad)
+    if failed:
+        errors.append("有 %d 条记录未能写入磁盘" % failed)
+    return deleted, skipped, "；".join(errors)
 
 
 def clear_runs():
-    """一键清除全部运行记录（跳过排队中/运行中的）。返回 (删除数, 跳过数)。"""
+    """一键从运行列表移除全部已结束记录；任务、日志、报告与成果都保留。
+
+    返回 (移除数, 运行中跳过数)。运行目录不物理删除，删任务时才整条清理。
+    """
     with LOCK:
         targets, skipped = [], 0
-        for rid, r in _RUNS.items():
+        for r in _RUNS.values():
             if r.get("status") in ("queued", "running"):
                 skipped += 1
-            else:
-                targets.append(rid)
-        for rid in targets:
-            del _RUNS[rid]
-    for rid in targets:
-        _schedule_run_dir_cleanup(rid)
-    bump_state()
-    return len(targets), skipped
+            elif _mark_run_record_deleted(r):
+                targets.append(r)
+    failed = sum(1 for run in targets if not _persist_run_record_deleted(run))
+    deleted = len(targets) - failed
+    if deleted:
+        bump_state()
+    return deleted, skipped
 
 
 def archive_task(task_id, archived=True):

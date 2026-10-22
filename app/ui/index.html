@@ -28,19 +28,26 @@
 <link rel="stylesheet" href="hive-ui.css">
 <link rel="stylesheet" href="warm-skin.css">
 <link rel="stylesheet" href="redesign-layout.css">
+<link rel="stylesheet" href="skin-gradients.css">
 <link rel="stylesheet" href="atlas.css">
-<!-- 首屏预涂：在样式表之后、绘制之前定好皮肤与明暗 + 语言，避免刷新时闪一下默认配色。
-     皮肤值不在这里校验——非法值匹配不到任何 html[data-skin=...] 规则，首涂落经典底色，
-     app.js 加载后会按 currentSkin() 校正为默认皮肤。 -->
+<!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
+     皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
+     首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
+     旧版只有「暖纸皮肤」自带工作台布局：没有 orch.layout 的老用户按暖纸迁移到 workbench。 -->
 <script>
 (function () {
   try {
     document.documentElement.dataset.skin = localStorage.getItem("orch.skin") || "ocean";
     document.documentElement.dataset.theme = localStorage.getItem("orch.theme") === "dark" ? "dark" : "light";
+    const layout0 = localStorage.getItem("orch.layout");
+    document.documentElement.dataset.layout = (layout0 === "classic" || layout0 === "workbench")
+      ? layout0
+      : (document.documentElement.dataset.skin === "warm" ? "workbench" : "classic");
     document.documentElement.dataset.lang = localStorage.getItem("orch.lang") === "en" ? "en" : "zh";
     document.documentElement.lang = document.documentElement.dataset.lang === "en" ? "en" : "zh-CN";
   } catch (e) {
     document.documentElement.dataset.skin = "ocean";
+    document.documentElement.dataset.layout = "classic";
     document.documentElement.dataset.theme = "light";
     document.documentElement.dataset.lang = "zh";
   }
@@ -121,6 +128,8 @@
   <symbol id="i-idcard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="10.5" r="2"/><path d="M5.5 15.5a2.5 2.5 0 0 1 5 0"/><path d="M13.5 10H18"/><path d="M13.5 14H18"/></symbol>
   <!-- 任务详情面板开合（#btn-insp）：箭头方向由 CSS 变量穿透 use 影子树切换，开着=‹ 收起，关着=› 展开 -->
   <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15.5 4v16"/><path d="m11 9.5-2.5 2.5 2.5 2.5" style="display:var(--insp-chev-open,none)"/><path d="m10 9.5 2.5 2.5-2.5 2.5" style="display:var(--insp-chev-closed,inline)"/></symbol>
+  <!-- 右侧状态栏开合（#btn-status-rail）：右列面板 + 指向右的折叠箭头 -->
+  <symbol id="i-rail-right" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M16 4v16"/><path d="m9 9 3 3-3 3"/></symbol>
 </svg>
 <div id="drawer-mask" aria-hidden="true"></div>
 <div id="app">
@@ -194,7 +203,7 @@
            点它们只换主栏内容，左栏任务树原地不动（app.js switchTab 的 main 形态）；
            对应入口已从下面设置导航移除，同一页不再两处重复。 -->
       <div class="side-quick">
-        <!-- 工作台入口：仅暖色皮肤显示（暖皮下 rail 已移除，这里是主页唯一常驻入口） -->
+        <!-- 工作台入口：仅 workbench 布局显示（该布局下 rail 已移除，这里是主页唯一常驻入口） -->
         <button class="qitem rd-qitem-home" id="btn-q-home" data-page="home" title="工作台" data-i18n-title="工作台">
           <svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg>
           <span data-i18n="工作台">工作台</span>
@@ -377,6 +386,9 @@
         </div>
         <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
         <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
+        <!-- 状态栏开合：只在 workbench 布局桌面端出现（CSS 守卫），与左侧菜单的
+             顶栏开合钮对称；收起后列宽同步归零，见 redesign-layout.css -->
+        <button id="btn-status-rail" class="pill icon-only" type="button" aria-controls="status-sidebar" aria-pressed="true" title="收起 / 展开状态栏" aria-label="收起 / 展开状态栏" data-i18n-title="收起 / 展开状态栏" data-i18n-aria="收起 / 展开状态栏"><svg class="ico" aria-hidden="true"><use href="#i-rail-right"></use></svg></button>
         <!-- 详情面板开关：贴动作组最右 = 紧挨面板弹出的那一侧，空间映射一致 -->
         <button id="btn-insp" class="pill icon-only" type="button" onclick="toggleInspector()" title="打开任务详情" aria-label="打开任务详情" data-i18n-title="打开任务详情" data-i18n-aria="打开任务详情"><svg class="ico" aria-hidden="true"><use href="#i-panel"></use></svg></button>
         <button id="btn-browser-split" class="pill icon-only" type="button" onclick="toggleBrowserSplit()" title="并排打开浏览器" aria-label="并排打开浏览器" aria-pressed="false" data-i18n-title="并排打开浏览器" data-i18n-aria="并排打开浏览器"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></button>
@@ -399,7 +411,7 @@
     </aside>
 
     <main>
-    <!-- ================= 主页（暖色皮肤专属，默认隐藏） ================= -->
+    <!-- ================= 主页（workbench 布局专属，默认隐藏） ================= -->
     <section id="page-home" class="page rd-home hidden">
       <div class="rd-home-head">
         <div class="rd-home-date" id="rd-home-date"></div>
@@ -407,42 +419,11 @@
         <p class="rd-home-sub" data-i18n="拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。">拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。</p>
       </div>
 
-      <!-- 任务输入卡 -->
+      <!-- 任务输入卡：不再是简化假身——真表单的 .cmp-box 由 showHome 原样搬入
+           （ID 全不变：目录菜单/类型菜单/专家/附件/能力菜单主页直接可用，
+           发送即真实提交不跳页）；离开主页时搬回 #sub-tasks .form -->
       <div class="rd-input-card">
-        <div class="rd-input-head">
-          <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
-          <!-- 两段式卡头：左侧 目录+浏览▾（接管原「切换」），右侧 分支胶囊；
-               名称不再单独占位，全路径本身就是身份 -->
-          <span class="rd-input-path" id="rd-input-path">默认工作目录</span>
-          <button class="rd-input-caret" type="button" onclick="homePickWorkspace()" title="浏览本机目录" data-i18n-title="浏览本机目录">
-            <svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
-          </button>
-          <!-- 分支胶囊由 renderHome 探测真实 /api/git/info 后填充；探不到保持 hidden，不放假分支名 -->
-          <span class="rd-input-branch" id="rd-input-branch" hidden></span>
-        </div>
-        <textarea class="rd-input-area" id="rd-input-area" rows="3" data-i18n-ph="描述要完成的目标，或粘贴一段指令…" placeholder="描述要完成的目标，或粘贴一段指令…"></textarea>
-        <div class="rd-input-foot">
-          <div class="rd-input-actions">
-            <!-- 执行模式分段控（demo 同款）：直接执行=带字走真实提交链；
-                 专家编排=带字落真实表单，挑好流程再开跑。发送/Enter 跟随当前段 -->
-            <div class="rd-mode-seg" id="rd-mode-seg" role="group" aria-label="执行模式" data-i18n-aria="执行模式">
-              <button type="button" class="on" data-mode="direct" data-i18n="直接执行">直接执行</button>
-              <button type="button" data-mode="expert" data-i18n="专家编排">专家编排</button>
-            </div>
-            <button class="rd-btn-icon" title="附件" aria-label="附件" onclick="homeToForm()">
-              <svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg>
-            </button>
-            <span class="rd-cmp-gap" aria-hidden="true"></span>
-            <!-- 思考档位：与真实表单 #f-thinking 同源（标准/自动/快速/深度），点击轮换，提交时写入表单 -->
-            <button class="rd-model-pick" id="rd-model-pick" type="button" title="思考档位（与任务表单同步）" data-i18n-title="思考档位（与任务表单同步）">
-              <span id="rd-model-pick-text">思考 · 标准</span>
-              <svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
-            </button>
-          </div>
-          <button class="rd-send-btn" title="发送" aria-label="发送" onclick="homeSend()">
-            <svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>
-          </button>
-        </div>
+        <div id="rd-input-slot"></div>
       </div>
 
       <!-- 快速开始（demo 同款）：模板按钮把成形的指令填进输入框，用户过目再发送，不自动提交 -->
@@ -1848,6 +1829,10 @@
             <button data-i18n="夜间" class="seg-btn" data-mode="dark">夜间</button>
             <button data-i18n="日间" class="seg-btn" data-mode="light">日间</button>
           </div>
+          <h3 class="sec-title"><span data-i18n="布局">布局</span> <span class="tag" id="layout-cur"></span></h3>
+          <!-- 布局与配色是两条独立配置：布局卡只决定页面骨架，不参与取色 -->
+          <div id="layout-grid" class="layout-grid"></div>
+          <p class="hint" data-i18n="布局决定页面骨架，配色单独选择，两者可任意组合。切换布局不会改变当前配色。">布局决定页面骨架，配色单独选择，两者可任意组合。切换布局不会改变当前配色。</p>
           <h3 class="sec-title"><span data-i18n="皮肤">皮肤</span> <span class="tag" id="skin-cur"></span></h3>
           <div id="skin-grid" class="skin-grid"></div>
           <h3 class="sec-title" data-i18n="桌面蜜蜂">桌面蜜蜂</h3>
@@ -2000,7 +1985,7 @@
     </section>
     </main>
 
-    <!-- ================= 右侧状态侧栏（仅暖色皮肤桌面端显示） ================= -->
+    <!-- ================= 右侧状态侧栏（仅 workbench 布局桌面端显示） ================= -->
     <aside id="status-sidebar" aria-label="状态概览" data-i18n-aria="状态概览">
       <!-- 正在运行 -->
       <div class="status-card">
@@ -2019,12 +2004,12 @@
         <div id="status-running-list"></div>
         <!-- 运行记录页的批量操作搬进全局状态卡（用户指定）：暂停/放行跟随
              pause_control 显隐（renderPauseAllButton 在每次状态刷新时同步），
-             清除=删除全部已结束记录（有危险确认） -->
+             清除=把已结束记录移出列表；任务、日志与成果文件都保留 -->
         <div class="status-card-actions">
-          <button type="button" data-i18n="全部暂停" id="btn-pause-all" class="status-mini-btn hidden" onclick="pauseAllRuns()" title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响" data-i18n-title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响">全部暂停</button>
-          <button type="button" data-i18n="全部清除" id="btn-clear-runs" class="status-mini-btn danger" onclick="clearRuns()" title="删除全部已结束的运行记录（运行中的会保留）" data-i18n-title="删除全部已结束的运行记录（运行中的会保留）">全部清除</button>
+          <button type="button" data-i18n="全部暂停" id="btn-pause-all" class="ghost small hidden" onclick="pauseAllRuns()" title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响" data-i18n-title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响">全部暂停</button>
+          <button type="button" data-i18n="全部清除" id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="把全部已结束记录移出运行列表（任务、日志与成果文件都保留）" data-i18n-title="把全部已结束记录移出运行列表（任务、日志与成果文件都保留）">全部清除</button>
         </div>
-        <p class="status-card-note" data-i18n="删除全部已结束记录（含日志与报告），不可恢复；运行中的保留。">删除全部已结束记录（含日志与报告），不可恢复；运行中的保留。</p>
+        <p class="status-card-note" data-i18n="只把记录移出列表；任务、日志与成果文件都保留，运行中的记录不能清除。">只把记录移出列表；任务、日志与成果文件都保留，运行中的记录不能清除。</p>
         <button type="button" id="status-queue-link" class="status-rail-link"><span data-i18n="运行队列">运行队列</span><svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
       </div>
 
@@ -2054,9 +2039,9 @@
     </aside>
   </div>
 
-  <!-- ================= 底部标签栏（仅暖色皮肤移动端显示） ================= -->
+  <!-- ================= 底部标签栏（仅 workbench 布局移动端显示） ================= -->
   <nav id="mobile-tabbar" aria-label="主导航" data-i18n-aria="主导航">
-    <button class="tab-item active" data-tab="home" onclick="switchTab('overview')">
+    <button class="tab-item active" data-tab="home" onclick="switchTab('home')">
       <svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg>
       <span data-i18n="工作台">工作台</span>
     </button>

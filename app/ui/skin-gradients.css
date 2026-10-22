@@ -1,0 +1,326 @@
+/* CodeBee UI —— 弥散渐变配色（海盐 / 樱雾 / 暮霞 / 珊瑚）
+ * 配色与布局彻底解耦：本文件只改颜色，结构由 html[data-layout] 决定。
+ * 每套皮肤给全「日间 / 夜间」两版变量，并同步覆盖 hive-ui 的 --cb-* 表面
+ * 契约——否则设置页等 hive 组件会继续用中性灰，只有主区变色。
+ * 弥散背景走 --bg-art（多层 radial-gradient），只在这 4 套皮肤上启用。 */
+
+/* ================= 海盐 · 蓝紫 × 薄荷 × 湖青 ================= */
+html[data-skin="sea"],
+html[data-skin="sea"][data-theme="dark"] {
+  --bg: #0c1424;
+  --sidebar: #0a1120;
+  --panel: #141f33;
+  --panel2: #1b2a44;
+  --border: rgba(190, 215, 255, .11);
+  --border-strong: rgba(190, 215, 255, .22);
+  --text: #e9f1ff;
+  --muted: #93a8c7;
+  --accent: #6f9bff;
+  --accent2: #45c2d6;
+  --ok: #35c99b;
+  --warn: #f0b429;
+  --bad: #f2637a;
+  --chip-queued-bg: #1b2a44;
+  --log-bg: #09111e;
+  --log-text: #bccbe4;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  --uc-in: #6f9bff;
+  --uc-ca: #45c2d6;
+  --uc-out: #9ad4cb;
+  --cb-brand: #6f9bff;
+  --cb-brand-strong: #8bb0ff;
+  --cb-brand-alt: #45c2d6;
+  --bg-art: radial-gradient(56% 48% at 12% 4%, rgba(89, 139, 253, .24), transparent 70%), radial-gradient(58% 50% at 90% 10%, rgba(53, 179, 201, .18), transparent 72%), radial-gradient(60% 54% at 70% 100%, rgba(154, 212, 203, .10), transparent 74%);
+}
+
+html[data-skin="sea"][data-theme="light"] {
+  --bg: #f4f9ff;
+  --sidebar: #edf4ff;
+  --panel: #ffffff;
+  --panel2: #eaf2fe;
+  --border: #d9e6fa;
+  --border-strong: #bed2f2;
+  --text: #15233b;
+  --muted: #5d7190;
+  --accent: #3f63d2;
+  --accent2: #168b9f;
+  --ok: #0d8a72;
+  --warn: #a9761a;
+  --bad: #d23c58;
+  --chip-queued-bg: #eaf2fe;
+  --log-bg: #f6faff;
+  --log-text: #33475f;
+  --shadow: 0 10px 30px rgba(43, 78, 133, .10);
+  --uc-in: #598bfd;
+  --uc-ca: #35b3c9;
+  --uc-out: #9ad4cb;
+  --cb-brand: #3f63d2;
+  --cb-brand-strong: #3253bd;
+  --cb-brand-alt: #168b9f;
+  --bg-art: radial-gradient(58% 52% at 12% 6%, rgba(89, 139, 253, .20), transparent 70%), radial-gradient(54% 48% at 88% 12%, rgba(154, 212, 203, .34), transparent 72%), radial-gradient(64% 58% at 72% 96%, rgba(53, 179, 201, .16), transparent 74%);
+}
+
+/* ================= 樱雾 · 紫罗兰 × 樱花粉 × 奶白 ================= */
+html[data-skin="blossom"],
+html[data-skin="blossom"][data-theme="dark"] {
+  --bg: #150f24;
+  --sidebar: #110b1d;
+  --panel: #1e1633;
+  --panel2: #2a1f45;
+  --border: rgba(232, 210, 255, .11);
+  --border-strong: rgba(232, 210, 255, .22);
+  --text: #f2ebff;
+  --muted: #a795c2;
+  --accent: #b18cff;
+  --accent2: #f08ab0;
+  --ok: #35c99b;
+  --warn: #f0b429;
+  --bad: #f2637a;
+  --chip-queued-bg: #2a1f45;
+  --log-bg: #0f0a1a;
+  --log-text: #cdc0e0;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  --uc-in: #b18cff;
+  --uc-ca: #f08ab0;
+  --uc-out: #f7dfd9;
+  --cb-brand: #b18cff;
+  --cb-brand-strong: #c7a9ff;
+  --cb-brand-alt: #f08ab0;
+  --bg-art: radial-gradient(54% 48% at 12% 4%, rgba(148, 95, 250, .28), transparent 70%), radial-gradient(56% 50% at 90% 8%, rgba(246, 152, 184, .20), transparent 72%), radial-gradient(58% 52% at 72% 100%, rgba(247, 223, 217, .08), transparent 74%);
+}
+
+html[data-skin="blossom"][data-theme="light"] {
+  --bg: #fcf8ff;
+  --sidebar: #f7f0ff;
+  --panel: #ffffff;
+  --panel2: #f3ebff;
+  --border: #eadcfb;
+  --border-strong: #d9c2f3;
+  --text: #271b3b;
+  --muted: #6f5b8b;
+  --accent: #7a45d8;
+  --accent2: #c2587f;
+  --ok: #0d8a72;
+  --warn: #a9761a;
+  --bad: #d23c58;
+  --chip-queued-bg: #f3ebff;
+  --log-bg: #fbf7ff;
+  --log-text: #4a3a5f;
+  --shadow: 0 10px 30px rgba(91, 58, 138, .10);
+  --uc-in: #945ffa;
+  --uc-ca: #f698b8;
+  --uc-out: #c77fe8;
+  --cb-brand: #7a45d8;
+  --cb-brand-strong: #6736c4;
+  --cb-brand-alt: #c2587f;
+  --bg-art: radial-gradient(58% 52% at 10% 8%, rgba(148, 95, 250, .18), transparent 70%), radial-gradient(52% 46% at 88% 12%, rgba(246, 152, 184, .30), transparent 72%), radial-gradient(62% 56% at 70% 96%, rgba(247, 223, 217, .55), transparent 76%);
+}
+
+/* ================= 暮霞 · 薰衣草 × 蜜黄 × 藕粉 ================= */
+html[data-skin="dusk"],
+html[data-skin="dusk"][data-theme="dark"] {
+  --bg: #171326;
+  --sidebar: #130f20;
+  --panel: #211a33;
+  --panel2: #2c2342;
+  --border: rgba(230, 220, 245, .11);
+  --border-strong: rgba(230, 220, 245, .22);
+  --text: #f2edfa;
+  --muted: #ac9ec2;
+  --accent: #c3a8ff;
+  --accent2: #f6c76a;
+  --ok: #35c99b;
+  --warn: #f0b429;
+  --bad: #f2637a;
+  --chip-queued-bg: #2c2342;
+  --log-bg: #100c1b;
+  --log-text: #d2c8e2;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  --uc-in: #c3a8ff;
+  --uc-ca: #f6c76a;
+  --uc-out: #e2adb4;
+  --cb-brand: #c3a8ff;
+  --cb-brand-strong: #d4bfff;
+  --cb-brand-alt: #f6c76a;
+  --bg-art: radial-gradient(54% 48% at 12% 4%, rgba(187, 173, 230, .26), transparent 70%), radial-gradient(56% 50% at 90% 8%, rgba(254, 201, 109, .16), transparent 72%), radial-gradient(58% 52% at 72% 100%, rgba(226, 173, 180, .12), transparent 74%);
+}
+
+html[data-skin="dusk"][data-theme="light"] {
+  --bg: #fbf8ff;
+  --sidebar: #f7f2fd;
+  --panel: #fffefd;
+  --panel2: #f4eefc;
+  --border: #e9e1f3;
+  --border-strong: #d7c9e8;
+  --text: #2a2338;
+  --muted: #72658a;
+  --accent: #8064c8;
+  --accent2: #b97b1f;
+  --ok: #0d8a72;
+  --warn: #a9761a;
+  --bad: #d23c58;
+  --chip-queued-bg: #f4eefc;
+  --log-bg: #fdfaff;
+  --log-text: #4b405e;
+  --shadow: 0 10px 30px rgba(82, 68, 118, .10);
+  --uc-in: #8a6cc9;
+  --uc-ca: #e0a53a;
+  --uc-out: #c98a93;
+  --cb-brand: #8064c8;
+  --cb-brand-strong: #6c52b5;
+  --cb-brand-alt: #b97b1f;
+  --bg-art: radial-gradient(58% 52% at 12% 8%, rgba(187, 173, 230, .34), transparent 72%), radial-gradient(52% 48% at 88% 10%, rgba(254, 201, 109, .24), transparent 72%), radial-gradient(64% 58% at 72% 96%, rgba(226, 173, 180, .30), transparent 76%);
+}
+
+/* ================= 珊瑚 · 珊瑚橘 × 暖粉 × 象牙白 ================= */
+html[data-skin="coral"],
+html[data-skin="coral"][data-theme="dark"] {
+  --bg: #1d1210;
+  --sidebar: #170d0b;
+  --panel: #291a16;
+  --panel2: #35231e;
+  --border: rgba(255, 220, 210, .10);
+  --border-strong: rgba(255, 220, 210, .20);
+  --text: #fdf0ea;
+  --muted: #c2a79d;
+  --accent: #ff8f79;
+  --accent2: #e0a878;
+  --ok: #35c99b;
+  --warn: #f0b429;
+  --bad: #f2637a;
+  --chip-queued-bg: #35231e;
+  --log-bg: #150c0a;
+  --log-text: #e0c9c0;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  --uc-in: #ff8f79;
+  --uc-ca: #e0a878;
+  --uc-out: #f0b4a9;
+  --cb-brand: #ff8f79;
+  --cb-brand-strong: #ffab99;
+  --cb-brand-alt: #e0a878;
+  --bg-art: radial-gradient(54% 48% at 12% 4%, rgba(240, 130, 110, .24), transparent 70%), radial-gradient(56% 50% at 90% 8%, rgba(240, 180, 169, .16), transparent 72%), radial-gradient(58% 52% at 72% 100%, rgba(254, 254, 241, .07), transparent 74%);
+}
+
+html[data-skin="coral"][data-theme="light"] {
+  --bg: #fff9f5;
+  --sidebar: #fdf1ea;
+  --panel: #fffdfb;
+  --panel2: #fbeee7;
+  --border: #f2ddd2;
+  --border-strong: #e6c6b7;
+  --text: #35221c;
+  --muted: #86695e;
+  --accent: #c94f38;
+  --accent2: #b06a52;
+  --ok: #0d8a72;
+  --warn: #a9761a;
+  --bad: #c73c55;
+  --chip-queued-bg: #fbeee7;
+  --log-bg: #fffaf7;
+  --log-text: #5a433a;
+  --shadow: 0 10px 30px rgba(138, 82, 62, .10);
+  --uc-in: #e0604a;
+  --uc-ca: #b06a5a;
+  --uc-out: #d9a24a;
+  --cb-brand: #c94f38;
+  --cb-brand-strong: #b03f2a;
+  --cb-brand-alt: #b06a52;
+  --bg-art: radial-gradient(58% 52% at 12% 8%, rgba(240, 130, 110, .28), transparent 72%), radial-gradient(52% 48% at 88% 10%, rgba(240, 180, 169, .40), transparent 74%), radial-gradient(66% 58% at 72% 96%, rgba(254, 254, 241, .85), transparent 78%);
+}
+
+/* ================= 共享表面契约：hive-ui 组件跟随皮肤 ================= */
+html[data-skin="sea"][data-theme],
+html[data-skin="blossom"][data-theme],
+html[data-skin="dusk"][data-theme],
+html[data-skin="coral"][data-theme] {
+  --cb-bg-0: var(--bg);
+  --cb-bg-nav: var(--sidebar);
+  --cb-bg-rail: var(--sidebar);
+  --cb-bg-sidebar: var(--panel);
+  --cb-bg-1: var(--panel);
+  --cb-bg-2: var(--panel2);
+  --cb-bg-inset: color-mix(in srgb, var(--accent) 5%, var(--panel2));
+  --cb-bg-nav-hover: color-mix(in srgb, var(--accent) 8%, var(--sidebar));
+  --cb-bg-nav-selected: color-mix(in srgb, var(--accent) 14%, var(--sidebar));
+  --cb-text-1: var(--text);
+  --cb-text-2: var(--muted);
+  --cb-text-3: color-mix(in srgb, var(--muted) 82%, var(--text));
+  --cb-line: var(--border);
+  --cb-line-strong: var(--border-strong);
+  --cb-brand: var(--accent);
+  --cb-brand-strong: var(--accent);
+  --cb-brand-alt: var(--accent2);
+  --cb-canvas: var(--bg);
+  --cb-surface: var(--panel);
+  --cb-ink: var(--text);
+  --cb-muted: var(--muted);
+  --cb-hover: var(--panel2);
+  --cb-active: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  --cb-active-text: var(--accent);
+  --cb-accent: var(--accent);
+  --cb-rail-bg: var(--sidebar);
+  --cb-rail-text: var(--muted);
+  --cb-divider: var(--border);
+  --cb-divider-soft: var(--border);
+  --cb-button-bg: var(--panel);
+  --cb-button-border: var(--border-strong);
+  --cb-button-hover: var(--panel2);
+  --cb-card-border: var(--border);
+  --cb-focus: var(--accent);
+  --cb-focus-ring: color-mix(in srgb, var(--accent) 16%, transparent);
+  --cb-topbar: color-mix(in srgb, var(--sidebar) 92%, transparent);
+  --cb-log-bg: var(--log-bg);
+  --cb-log-text: var(--log-text);
+  --cb-shadow-card: var(--shadow);
+}
+
+/* 弥散背景：只在这 4 套皮肤上铺，其它皮肤保持原有平面底色 */
+html[data-skin="sea"] body,
+html[data-skin="blossom"] body,
+html[data-skin="dusk"] body,
+html[data-skin="coral"] body {
+  background-color: var(--bg);
+  background-image: var(--bg-art, none);
+  background-attachment: fixed;
+}
+
+html[data-skin="sea"] #app,
+html[data-skin="blossom"] #app,
+html[data-skin="dusk"] #app,
+html[data-skin="coral"] #app {
+  background: transparent;
+}
+
+/* body 的弥散渐变会被 mainwrap/main/topbar/sidebar 各自刷的不透明底色盖住。
+ * 这 4 套皮肤把承载层让开（卡片仍用 --panel 保可读性），侧栏与顶栏改成
+ * 半透明 + 模糊，让渐变从后面透上来。 */
+html[data-skin="sea"] #mainwrap,
+html[data-skin="blossom"] #mainwrap,
+html[data-skin="dusk"] #mainwrap,
+html[data-skin="coral"] #mainwrap,
+html[data-skin="sea"] main,
+html[data-skin="blossom"] main,
+html[data-skin="dusk"] main,
+html[data-skin="coral"] main {
+  background: transparent;
+}
+
+html[data-skin="sea"] .topbar,
+html[data-skin="blossom"] .topbar,
+html[data-skin="dusk"] .topbar,
+html[data-skin="coral"] .topbar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+html[data-skin="sea"] #sidebar,
+html[data-skin="blossom"] #sidebar,
+html[data-skin="dusk"] #sidebar,
+html[data-skin="coral"] #sidebar,
+html[data-skin="sea"] #status-sidebar,
+html[data-skin="blossom"] #status-sidebar,
+html[data-skin="dusk"] #status-sidebar,
+html[data-skin="coral"] #status-sidebar {
+  background: color-mix(in srgb, var(--panel) 68%, transparent);
+  backdrop-filter: blur(18px);
+}

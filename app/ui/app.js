@@ -5742,14 +5742,15 @@ function renderRunList() {
   if (S.detailRunId) return;
   const box = $("run-list");
   if (!box) return;
-  const runs = ((S.state && S.state.runs) || []).slice(0, 30);
+  const allRuns = (S.state && S.state.runs) || [];
+  const runs = allRuns.slice(0, 30);
   const pickable = new Set(runs.filter(runDeletable).map((r) => r.id));
   // 记录被删/转为活跃后清掉残留勾选，避免下次批量误删
   S.selRuns = S.selRuns || {};
   for (const id of Object.keys(S.selRuns)) if (!pickable.has(id)) delete S.selRuns[id];
   const selN = Object.keys(S.selRuns).length;
   const clr = $("btn-clear-runs");
-  if (clr) clr.disabled = !runs.length;
+  if (clr) clr.disabled = !allRuns.some(runDeletable);
   if (!runs.length) { box.innerHTML = '<div class="empty">' + t("暂无运行记录") + '</div>'; return; }
   const tools = '<div class="run-tools">' +
     '<label class="toggle"><input type="checkbox"' +
@@ -5776,7 +5777,8 @@ function renderRunList() {
       "</div>" +
       '<span class="chip ' + esc(r.status || "") + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="time" title="' + esc(r.created_at) + '">' + esc(relTime(r.created_at)) + "</span>" +
-      '<button class="danger small" title="' + t("删除该记录") + '" onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div></div>';
+      '<button class="danger small" title="' + (can ? t("删除该记录") : t("运行中的记录不可删除，请先取消")) + '"' + (can ? "" : " disabled") +
+      ' onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div></div>';
   }).join("");
 }
 
@@ -6915,7 +6917,7 @@ function drawTaskDetail(key, runs, appendFrom) {
 }
 
 async function deleteRun(id) {
-  if (!await uiConfirm(t("删除该运行记录（含全部日志与报告）？不可恢复。"), { ok: t("删除"), danger: true })) return;
+  if (!await uiConfirm(t("把该记录移出运行列表？任务、日志与成果文件都会保留。"), { ok: t("删除"), danger: true })) return;
   try {
     await api("/api/runs/" + encodeURIComponent(id) + "/delete", { method: "POST" });
   } catch (e) { toast(t("删除失败：") + e.message, true); return; }
@@ -6945,7 +6947,7 @@ function clearRunSel() { S.selRuns = {}; renderRunList(); }
 async function deleteSelectedRuns() {
   const ids = Object.keys(S.selRuns || {});
   if (!ids.length) return;
-  if (!await uiConfirm(t("删除所选 ") + ids.length + t(" 条运行记录（含全部日志与报告）？不可恢复。"), { ok: t("删除"), danger: true })) return;
+  if (!await uiConfirm(t("把所选 ") + ids.length + t(" 条记录移出运行列表？任务、日志与成果文件都会保留。"), { ok: t("删除"), danger: true })) return;
   let r;
   try {
     r = await api("/api/runs/delete", { method: "POST", body: JSON.stringify({ ids }) });
@@ -6957,14 +6959,14 @@ async function deleteSelectedRuns() {
 }
 
 async function clearRuns() {
-  if (!await uiConfirm(t("清除全部运行记录（含日志与报告）？运行中的记录会保留，需先取消。不可恢复。"), { ok: t("清除"), danger: true })) return;
+  if (!await uiConfirm(t("把全部已结束记录移出运行列表？任务、日志与成果文件都会保留；运行中的记录不能清除。"), { ok: t("清除"), danger: true })) return;
   let r;
   try {
     r = await api("/api/runs/clear", { method: "POST" });
   } catch (e) { toast(t("清除失败：") + e.message, true); return; }
   S.selRuns = {};
-  if (S.detailRunId) closeRun();
-  if (r && r.skipped) toast(t("已清除 ") + r.count + t(" 条；另有 ") + r.skipped + t(" 条运行中的记录已保留（请先取消再清除）。"));
+  if (r && r.skipped) toast(t("已从列表移除 ") + r.count + t(" 条；另有 ") + r.skipped + t(" 条运行中的记录已保留（请先取消再清除）。"));
+  else if (r) toast(t("已从列表移除 ") + r.count + t(" 条记录。"));
   poll();
 }
 
@@ -13842,10 +13844,11 @@ function voiceFixup(text) {
   return text;
 }
 
-/* ---------------------------------------------------------- 外观：皮肤 + 明暗（换肤） */
-/* 调色板全部在 style.css（html[data-skin="X"]，每套含夜间/日间两版变量）；这里只放顺序
- * 与文案。卡片预览色块用 skinPalette 从 CSS 变量实时取值，不在 JS 里重复写色值——
- * 皮肤改色只需要动 style.css，预览与真实界面不会各自漂移。 */
+/* ---------------------------------------------------------- 外观：布局 + 皮肤 + 明暗（换肤） */
+/* 布局与配色是两条独立配置：布局只改页面骨架（data-layout），配色只改变量（data-skin）。
+ * 调色板全部在 style.css / skin-gradients.css（html[data-skin="X"]，每套含夜间/日间
+ * 两版变量）；这里只放顺序与文案。卡片预览色块用 skinPalette 从 CSS 变量实时取值，
+ * 不在 JS 里重复写色值——改色只需要动 CSS，预览与真实界面不会各自漂移。 */
 const SKINS = [
   { id: "ocean", name: t("深海"), desc: t("藏青底色 + 天蓝强调，夜间长时间盯任务更沉静（默认）") },
   { id: "apple", name: t("苹果"), desc: t("System Blue + 毛玻璃纵深 + 大圆角，Apple HIG 风格") },
@@ -13854,7 +13857,11 @@ const SKINS = [
   { id: "paper", name: t("简白"), desc: t("纯白画布 + 浅灰分区 + 克制蓝强调，Codex 式极简明亮") },
   { id: "forest", name: t("森野"), desc: t("墨绿底色 + 青翠强调，偏自然的护眼配色") },
   { id: "amber", name: t("暖阳"), desc: t("暖棕底色 + 琥珀强调，纸感暖调") },
-  { id: "warm", name: t("暖纸"), desc: t("米白底色 + 琥珀强调，护眼工作台风格") },
+  { id: "warm", name: t("暖纸"), desc: t("米白底色 + 琥珀强调，护眼暖调") },
+  { id: "sea", name: t("海盐"), desc: t("弥散渐变：蓝紫 × 薄荷 × 湖青，清透克制") },
+  { id: "blossom", name: t("樱雾"), desc: t("弥散渐变：紫罗兰 × 樱花粉 × 奶白，柔和轻盈") },
+  { id: "dusk", name: t("暮霞"), desc: t("弥散渐变：薰衣草 × 蜜黄 × 藕粉，黄昏暖调") },
+  { id: "coral", name: t("珊瑚"), desc: t("弥散渐变：珊瑚橘 × 暖粉 × 象牙白，落日暖调") },
   { id: "violet", name: t("霓虹"), desc: t("暗紫底色 + 品红强调，霓虹感强") },
   { id: "contrast", name: t("高对比"), desc: t("纯黑 / 纯白 + 硬边框、去阴影，弱视与强光环境更清晰") },
 ];
@@ -13862,9 +13869,24 @@ const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 const SKIN_KEY = "orch.skin";
 const THEME_KEY = "orch.theme";
 
+const LAYOUTS = [
+  { id: "classic", name: t("经典工作区"), desc: t("左侧任务树 + 居中主栏，一屏专注当前任务（默认）") },
+  { id: "workbench", name: t("工作台"), desc: t("首页输入卡 + 右侧状态栏，全局进度与待办一眼可见") },
+];
+const LAYOUT_IDS = new Set(LAYOUTS.map((x) => x.id));
+const LAYOUT_KEY = "orch.layout";
+
 function currentSkin() {
   const s = localStorage.getItem(SKIN_KEY) || "";
   return SKIN_IDS.has(s) ? s : "ocean";   // 值缺失/非法（如换过版本）一律回落深海
+}
+
+/* 布局独立于皮肤：没有布局键的老用户按原暖纸皮肤迁移到工作台布局，落盘后
+ * 再换配色不会把布局一起带走（旧版暖纸=布局，新版已拆成两条配置）。 */
+function currentLayout() {
+  const v = localStorage.getItem(LAYOUT_KEY) || "";
+  if (LAYOUT_IDS.has(v)) return v;
+  return currentSkin() === "warm" ? "workbench" : "classic";
 }
 
 function currentMode() { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
@@ -13878,18 +13900,20 @@ function skinPalette(id, mode) {
   root.dataset.theme = mode;
   const cs = getComputedStyle(root);
   const get = (n) => cs.getPropertyValue(n).trim();
-  const pal = { bg: get("--bg"), sidebar: get("--sidebar"), accent: get("--accent"), accent2: get("--accent2"), text: get("--text") };
+  const pal = { bg: get("--bg"), sidebar: get("--sidebar"), accent: get("--accent"), accent2: get("--accent2"), text: get("--text"), art: get("--bg-art") };
   root.dataset.skin = skin0;
   root.dataset.theme = theme0;
   return pal;
 }
 
-/* 把皮肤 + 明暗落到根属性，并同步顶栏两个入口、手机状态栏色 */
+/* 把布局 + 皮肤 + 明暗落到根属性，并同步顶栏两个入口、手机状态栏色 */
 function applyAppearance() {
   const root = document.documentElement;
-  const skin = currentSkin(), mode = currentMode();
+  const skin = currentSkin(), mode = currentMode(), layout = currentLayout();
+  if (!localStorage.getItem(LAYOUT_KEY)) localStorage.setItem(LAYOUT_KEY, layout);
   root.dataset.skin = skin;
   root.dataset.theme = mode;
+  root.dataset.layout = layout;
   const dark = mode === "dark";
   const th = $("btn-theme");
   if (th) th.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-' + (dark ? "moon" : "sun") + '"></use></svg>';
@@ -13918,16 +13942,29 @@ function setSkin(id) {
   toast(t("已换肤：") + (s ? t(s.name) : id) + t("（") + (currentMode() === "dark" ? t("夜间") : t("日间")) + t("）"));
 }
 
+/* 布局切换只动骨架：留在设置页可即时对比配色，不强行跳页；
+ * 若当前已经在主页而新布局没有主页，退出设置时由 exitSettings 落到真实表单。 */
+function setLayout(id) {
+  if (!LAYOUT_IDS.has(id)) return;
+  localStorage.setItem(LAYOUT_KEY, id);
+  applyAppearance();
+  renderAppearance();
+  if (id !== "workbench" && S.tab === "home") exitSettings(true);
+  const l = LAYOUTS.find((x) => x.id === id);
+  toast(t("已切换布局：") + (l ? t(l.name) : id));
+}
+
 function toggleTheme() { setThemeMode(currentMode() === "light" ? "dark" : "light"); }
 
 // The task board is a separate page but shares these persisted appearance
 // preferences. Keep an already-open workbench in sync when the board changes
 // either value in another tab/window.
 window.addEventListener("storage", (event) => {
-  if (event.key !== SKIN_KEY && event.key !== THEME_KEY) return;
+  if (event.key !== SKIN_KEY && event.key !== THEME_KEY && event.key !== LAYOUT_KEY) return;
   applyAppearance();
   renderAppearance();
   renderCodePreviews();
+  if (event.key === LAYOUT_KEY && currentLayout() !== "workbench" && S.tab === "home") exitSettings(true);
 });
 
 /* 暖色皮肤主页：渲染日期 + 最近任务（数据全部来自 S.state.runs，无假数） */
@@ -13939,34 +13976,8 @@ function renderHome() {
     dateEl.textContent = (now.getMonth() + 1) + " 月 " + now.getDate() + " 日 · 星期" + weekdays[now.getDay()];
   }
 
-  // 卡头工作目录：#f-workdir 覆盖值优先，否则读真实默认目录（S.settings）。
-  // 全路径本身就是身份，不再单独摆项目名。
-  const branchEl = $("rd-input-branch");
-  const overrideWd = (($("f-workdir") || {}).value || "").trim();
-  const effWd = overrideWd || ((S.settings || {}).default_workdir_effective || "").trim();
-  // 分支胶囊：对生效目录探真实 /api/git/info（同目录只探一次）；探不到保持隐藏
-  if (branchEl) {
-    if (effWd && S.homeGitWd !== effWd) {
-      S.homeGitWd = effWd;
-      S.homeGitBranch = "";
-      api("/api/git/info?workdir=" + encodeURIComponent(effWd))
-        .then((info) => {
-          if (info && info.repo && S.homeGitWd === effWd) {
-            S.homeGitBranch = info.branch || "";
-            renderHome();
-          }
-        })
-        .catch(() => {});
-    }
-    branchEl.textContent = S.homeGitBranch || "";
-    branchEl.hidden = !S.homeGitBranch;
-  }
-  // 完整路径（卡头主标识，浏览▾ 在旁接管 pickFolder）；无目录时回落占位文案
-  const pathEl = $("rd-input-path");
-  if (pathEl) {
-    pathEl.textContent = effWd || t("默认工作目录");
-    pathEl.title = effWd || t("工作目录 · 留空用默认");
-  }
+  // 卡头目录/分支展示已随主页假身一并移除：主页直接载真表单 composer，
+  // 工作目录与分支信息由 composer 自身的 cmp-wd 行与 git 行承载。
 
   const listEl = $("rd-recent-list");
   if (!listEl) return;
@@ -13992,6 +14003,21 @@ function renderHome() {
   }).join("");
 }
 
+/* 主页直载真表单 composer：主页不放简化假身，把 #sub-tasks .cmp-box 原样
+ * 搬进 #rd-input-slot——ID 全不变，目录/类型/专家/附件/能力菜单在主页直接
+ * 可用，发送即真实提交不跳页；离开主页搬回 #sub-tasks .form 原位。 */
+function homeMountComposer() {
+  const slot = $("rd-input-slot"), box = document.querySelector("#sub-tasks .cmp-box");
+  if (!slot || !box || box.parentElement === slot) return;
+  slot.appendChild(box);
+}
+function homeUnmountComposer() {
+  const box = document.querySelector("#rd-input-slot .cmp-box");
+  if (!box) return;
+  const form = document.querySelector("#sub-tasks .form");
+  if (form) form.appendChild(box);
+}
+
 /* 暖色皮肤主页显隐：与 switchTab 同一套状态（tab/mainPage/settings-mode/页名），
  * 不走 switchTab 本体——那套会把 .page 全收进 page-settings 体系 */
 function showHome() {
@@ -13999,6 +14025,7 @@ function showHome() {
   S.tab = "home";
   S.mainPage = "";
   stopAutoPoll();
+  homeMountComposer();
   document.body.classList.remove("settings-mode", "files-mode");
   const main = document.querySelector("main");
   if (main) main.classList.remove("browser-page-active");
@@ -14021,49 +14048,33 @@ function homeOpenRun(id) {
   sideOpenRun(id);
 }
 
-/* 主页输入卡 → 真实任务表单：把已输入文字带过去并聚焦。
- * 主页不另建提交链路，创建任务仍走既有表单校验与流程。 */
-/* 主页输入卡 → 真实任务表单：把已输入文字带过去并聚焦。
- * 主页不另建提交链路，创建任务仍走既有表单校验与流程；
- * opts.submit = 直接执行/发送：带字过去后点真实 #btn-create 提交，主页不是假入口。 */
-function homeToForm(preset, opts) {
-  const homeArea = $("rd-input-area");
-  const text = (preset != null ? preset : (homeArea ? homeArea.value : "")).trim();
-  exitSettings(true);   // 强制落到真实表单，不经暖色主页分支
-  const goal = $("f-goal");
-  if (goal && text) {
-    goal.value = text;
-    goal.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-  if (goal) goal.focus();
-  if (homeArea) homeArea.value = "";
-  if (opts && opts.submit && text) {
-    const th = $("f-thinking");
-    if (th && S.homeThinking) th.value = S.homeThinking;
-    const submit = $("btn-create");
-    if (submit && !submit.disabled) submit.click();
-  }
-}
+/* 主页已直载真表单 composer（见 homeMountComposer）：旧的主页假身桥接
+ * （homeToForm/homeSend/homePickWorkspace）随假身 DOM 一并移除，
+ * 主页的输入/发送/目录选择全由真表单自身的 ID 链路承担。 */
 
-/* 主页发送（跟随执行模式分段控）：直接执行=带字走真实提交链；
- * 专家编排=带字落真实表单，挑好流程再开跑 */
-function homeSend() {
-  const seg = $("rd-mode-seg");
-  const expert = !!(seg && seg.querySelector('[data-mode="expert"].on'));
-  homeToForm(null, expert ? {} : { submit: true });
-}
-
-/* 主页「切换」工作目录：落到真实表单并打开目录浏览器（pickFolder 为真源） */
-function homePickWorkspace() {
-  exitSettings(true);
-  if (typeof pickFolder === "function") { pickFolder("f-workdir"); return; }
-  const wd = $("f-workdir");
-  if (wd) wd.focus();
-}
-
-/* 外观页：皮肤卡片（点选即换） + 明暗分段控。选中态同时给描边与勾选，
- * 不只靠颜色深浅传达，保证在高对比等皮肤下也一眼可辨。 */
+/* 外观页：布局卡片 + 皮肤卡片（点选即换） + 明暗分段控。选中态同时给描边与
+ * 勾选，不只靠颜色深浅传达，保证在高对比等皮肤下也一眼可辨。 */
 function renderAppearance() {
+  const layoutGrid = $("layout-grid");
+  if (layoutGrid) {
+    const curLayout = currentLayout();
+    layoutGrid.innerHTML = LAYOUTS.map((l) => {
+      const prev = l.id === "workbench"
+        ? '<span class="layout-prev lp-workbench" aria-hidden="true"><span class="lp-side"><i></i><i></i><i></i></span><span class="lp-main"><i class="lp-card"></i><i class="lp-bar w70"></i><i class="lp-bar w45"></i></span><span class="lp-status"><i></i><i></i><i></i></span></span>'
+        : '<span class="layout-prev lp-classic" aria-hidden="true"><span class="lp-rail"></span><span class="lp-side"><i></i><i></i><i></i></span><span class="lp-main"><i class="lp-bar w70"></i><i class="lp-bar w45"></i><i class="lp-card"></i></span></span>';
+      return '<button type="button" class="layout-card' + (l.id === curLayout ? " active" : "") + '" data-layout="' + l.id + '" title="' + esc(t(l.desc)) + '" onclick="setLayout(\'' + l.id + '\')">'
+        + prev
+        + '<span class="layout-meta"><span class="layout-name">' + esc(t(l.name)) + '</span>'
+        + '<svg class="ico layout-check" aria-hidden="true"><use href="#i-check"></use></svg></span>'
+        + '<span class="layout-desc">' + esc(t(l.desc)) + '</span>'
+        + '</button>';
+    }).join("");
+  }
+  const layoutTag = $("layout-cur");
+  if (layoutTag) {
+    const l = LAYOUTS.find((x) => x.id === currentLayout());
+    layoutTag.textContent = l ? t(l.name) : currentLayout();
+  }
   const grid = $("skin-grid");
   if (!grid) return;
   const cur = currentSkin(), mode = currentMode();
@@ -14072,7 +14083,7 @@ function renderAppearance() {
     return '<button type="button" class="skin-card' + (s.id === cur ? " active" : "") + '" data-skin="' + s.id + '" title="' + esc(t(s.desc)) + '">'
       + '<span class="skin-prev" aria-hidden="true">'
       + '<span class="pv-side" style="background:' + p.sidebar + '"></span>'
-      + '<span class="pv-main" style="background:' + p.bg + '">'
+      + '<span class="pv-main" style="background:' + (p.art ? p.art + "," : "") + p.bg + '">'
       + '<span class="pv-bar w85" style="background:' + p.accent + '"></span>'
       + '<span class="pv-bar w60" style="background:' + p.text + ';opacity:.3"></span>'
       + '<span class="pv-bar w40" style="background:' + p.accent2 + '"></span>'
@@ -20882,7 +20893,21 @@ function sideUsageRenderRuns() {
   el.title = n ? t("正在运行或排队 ") + n + t(" 个任务") : "";
 }
 
-/* 状态侧栏更新（暖色皮肤专属）：正在运行 / 待处理 / 本月用量 */
+/* 右侧状态栏开合（与左侧菜单同一套 body 类开关，见 redesign-layout.css）：
+ * 偏好落 localStorage，默认展开；非 workbench 布局没有这条栏，类留着也无副作用。 */
+const STATUS_RAIL_KEY = "orch.statusRail";
+function applyStatusRail() {
+  const collapsed = localStorage.getItem(STATUS_RAIL_KEY) === "hidden";
+  document.body.classList.toggle("status-rail-collapsed", collapsed);
+  const btn = $("btn-status-rail");
+  if (btn) btn.setAttribute("aria-pressed", collapsed ? "false" : "true");
+}
+function toggleStatusRail() {
+  localStorage.setItem(STATUS_RAIL_KEY, localStorage.getItem(STATUS_RAIL_KEY) === "hidden" ? "shown" : "hidden");
+  applyStatusRail();
+}
+
+/* 状态侧栏更新（workbench 布局）：正在运行 / 待处理 / 本月用量 */
 function updateStatusSidebar() {
   // 批量暂停钮已搬进状态卡（全局可达）：显隐/文案跟随 pause_control，
   // 原本只在运行列表渲染时刷新，这里每次状态刷新都同步一次
@@ -21439,7 +21464,8 @@ function collapseDrawerIfMobile() {
 function switchTab(name, shell) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
-  if (name === "home") { showHome(); return; }  // 暖色皮肤主页（showHome 内含 renderHome）
+  if (name === "home") { showHome(); return; }  // 工作台布局主页（showHome 内含 renderHome）
+  homeUnmountComposer();   // 离开主页：真表单 composer 搬回 #sub-tasks .form（showHome 进页时搬入）
   // 详情开着时切去别的页：详情一并关掉（它是 runs 子页的住户，name==="runs" 除外）。
   // 不关会留两个残留：S.detailRunId 让顶栏标题卡在「运行详情」；对话态详情给 main
   // 挂的 chat-fill（overflow:hidden 锁滚动，见 renderChatNav）留在原地——设置/概览
@@ -21494,11 +21520,12 @@ function switchTab(name, shell) {
 }
 
 /* 退出设置/回到新建任务表单：左栏恢复任务树，主栏回到任务页。
- * forceForm=true：跳过暖色主页直落真实任务表单（主页输入卡的
+ * forceForm=true：跳过工作台主页直落真实任务表单（主页输入卡的
  * 执行/发送按钮用——它们必须落到能真正创建任务的表单，不能空转） */
 function exitSettings(forceForm) {
+  homeUnmountComposer();   // 离开主页形态：真表单 composer 搬回 #sub-tasks .form
   if (S.detailRunId || S.detailTaskKey) closeRun();   // 设置运行列表开着详情就回表单：一并关掉，防 chat-fill 锁滚动与标题残留
-  if (!forceForm && currentSkin() === "warm") { showHome(); return; }
+  if (!forceForm && currentLayout() === "workbench") { showHome(); return; }
   S.tab = "tasks";
   $("sub-tasks").classList.remove("mobile-composing");
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
@@ -21986,6 +22013,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelector("main").addEventListener("scroll", apnSyncActive, { passive: true });
   syncLangMode();
   $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
+  const statusRailBtn = $("btn-status-rail");
+  if (statusRailBtn) statusRailBtn.addEventListener("click", toggleStatusRail);
+  applyStatusRail();
   /* 侧栏宽度拖拽：grid 列宽走 --side-w，拖动实时跟手，松手落 localStorage，双击复原。
    * 仅桌面网格布局生效（窄屏侧栏是固定宽抽屉，手柄已 display:none） */
   (() => {
@@ -22072,41 +22102,16 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");
   applyAppearance();
   $("btn-create").addEventListener("click", createTask);
-  // 主页输入卡：Enter 发送（跟随执行模式段），Shift+Enter 换行
-  const homeArea = $("rd-input-area");
-  if (homeArea) homeArea.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); homeSend(); }
-  });
-  // 快速开始（demo 同款）：把成形指令填进输入框，用户过目再发送，不自动提交
+  // 快速开始：把成形指令填进真表单 #f-goal（composer 已直载主页），用户过目再发送
   const qsBtns = $("rd-qs-buttons");
   if (qsBtns) qsBtns.addEventListener("click", (e) => {
     const b = e.target.closest(".rd-qs-btn");
-    const area = $("rd-input-area");
-    if (b && area && b.dataset.suggest) {
-      area.value = b.dataset.suggest;
-      area.dispatchEvent(new Event("input", { bubbles: true }));
-      area.focus();
+    const goal = $("f-goal");
+    if (b && goal && b.dataset.suggest) {
+      goal.value = b.dataset.suggest;
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+      goal.focus();
     }
-  });
-  // 执行模式分段控：直接执行=真实提交链；专家编排=落真实表单挑流程
-  const homeSeg = $("rd-mode-seg");
-  if (homeSeg) homeSeg.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-mode]");
-    if (!b) return;
-    homeSeg.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x === b));
-  });
-  // 思考档位轮换：与真实表单 #f-thinking 同源，提交时写入
-  const HOME_THINKING = [
-    { v: "standard", face: "标准" }, { v: "auto", face: "自动" },
-    { v: "low", face: "快速" }, { v: "high", face: "深度" },
-  ];
-  const homePick = $("rd-model-pick");
-  if (homePick) homePick.addEventListener("click", () => {
-    const cur = HOME_THINKING.findIndex((x) => x.v === (S.homeThinking || "standard"));
-    const next = HOME_THINKING[(cur + 1) % HOME_THINKING.length];
-    S.homeThinking = next.v;
-    const txt = $("rd-model-pick-text");
-    if (txt) txt.textContent = t("思考 · ") + t(next.face);
   });
   // 状态栏「运行队列」→ 运行记录页
   const queueLink = $("status-queue-link");
@@ -22408,8 +22413,8 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSettings();          // 启动即拉设置：新建表单「默认选中默认路径」依赖它
   suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
   maybeWelcome();          // 首次启动弹欢迎引导（orch.welcomed 记账，只弹一次）
-  // 暖色皮肤默认落在主页（showHome 内含 renderHome）
-  if (currentSkin() === "warm") showHome();
+  // 工作台布局默认落在主页（showHome 内含 renderHome）
+  if (currentLayout() === "workbench") showHome();
 });
 
 /* ===== 命令面板（Ctrl+K / 侧栏搜索行）：任务直达 + 快捷命令 ===== */
