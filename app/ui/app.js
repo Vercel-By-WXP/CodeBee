@@ -10,7 +10,7 @@ function codebeeDocumentTitle(lang) {
 document.title = codebeeDocumentTitle((localStorage.getItem("orch.lang") || "zh").toLowerCase());
 
 const $ = (id) => document.getElementById(id);
-const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, experts: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, templateBudget: null, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
+const S = { state: null, catalog: null, catSig: "", providers: null, bindings: null, modelsSig: "", bindSig: "", tab: "tasks", mainPage: "", /* 主栏正显示的全局页（"" = 新建任务表单）；左栏是任务树还是设置导航看 body.settings-mode */ detailRunId: null, forceStartRunId: null, pollTimer: null, showArchived: false, /* 会话内开关：每次加载默认隐藏已归档、图标不选中（不持久化，见 btn-side-arch） */ selProvs: {}, selModels: {}, selRuns: {}, provStatus: "enabled", mlistStatus: "enabled", /* 供应商/模型列表状态过滤：默认只看启用，停用的点对应 chip 才现身 */ bindSel: {}, catalogChecking: false, updateCheckAt: 0, control: null, sseLive: false, es: null, flows: null, experts: null, orch: null, skills: null, orchSig: "", settings: null, sessionAgents: new Set(), atts: [], cmpPlugins: [], capabilities: null, gitInfo: null, gitWb: null, gitWbKey: "", gitWbAt: 0, gitWbBusy: false, creatingTask: false, templateBudget: null, inspKey: null, inspData: null, inspSig: "", inspAt: 0, inspTab: "git", inspAutoSig: "", rdTab: null, rdTabSig: "", rdTabPin: false, _rdCtx: {}, taskContracts: {}, lastPrefs: null, prefsApplied: false, sideUsage: null, sideUsageAt: 0, ovUsage: null, ovDays: undefined, coverPrompt: null };
 
 // 第二批运营能力的轻量 UI 缓存；后端接口不存在时各面板仍保持可用。
 const UI_FEATURES = { reviewPolicy: null, templates: null, analytics: null, analyticsDays: 1, interventions: [], cliDiscovery: null };
@@ -6669,6 +6669,18 @@ function setResumeNowBtn(run) {
   S.resumeNowRunId = inBackoff ? run.id : null;
 }
 
+/* 「强制起跑」：被同工作目录互斥挡下的排队 run（blocked_by 非空）可人工
+ * 放行并行起跑。只认 queued + blocked_by；点按钮先过确认弹窗（共享任务
+ * 计划/项目记忆的风险），后端落 force_start 标记，起跑后的互斥检查见标记
+ * 放行并留痕 warning。占用解除后自然起跑的 run 不亮按钮（无需强制）。 */
+function setForceStartBtn(run) {
+  const b = $("btn-force-start");
+  if (!b) return;
+  const blocked = !!(run && run.status === "queued" && run.blocked_by);
+  b.classList.toggle("hidden", !blocked);
+  S.forceStartRunId = blocked ? run.id : null;
+}
+
 /* 任务级详情：聚合该任务所有 run 的步骤。
  * 有任务档案的从 /api/tasks/<id>/runs 拉全量——前端 run 窗口只有最近 40 条，
  * 窗口外的历史会被算丢；无主运行组（管理操作/任务已删）仍用窗口数据。
@@ -6716,6 +6728,7 @@ function renderTaskDetail() {
   setEditRetry(tk ? tk.id : "", tk ? tk.status : "", !!tk);
   syncArchBtn(tk, tk && (tk.status === "running" || tk.status === "queued"));
   setResumeNowBtn(null);   // 退避与否要看 run 数据，先收起防上一个任务残留
+  setForceStartBtn(null);   // 同理：blocked_by 要看 run 数据，先收起防残留
   const isTask = ((S.state || {}).tasks || []).some((t2) => t2.id === key);
   renderProjectMemoryControls(key);
   if (isTask) {
@@ -7107,6 +7120,7 @@ function drawTaskDetail(key, runs, appendFrom) {
   $("btn-cancel").classList.toggle("hidden", !activeRun);
   S.cancelTargetRunId = activeRun ? activeRun.id : null;
   setResumeNowBtn(activeRun && activeRun.status === "queued" ? activeRun : null);
+  setForceStartBtn(activeRun && activeRun.status === "queued" ? activeRun : null);
   const bp2 = $("btn-pause");
   if (bp2 && activeRun) {
     bp2.classList.toggle("hidden", false);
@@ -7888,6 +7902,7 @@ async function renderRunDetail() {
   $("btn-cancel").classList.toggle("hidden", !active);
   S.cancelTargetRunId = active ? run.id : null;
   setResumeNowBtn(run.status === "queued" ? run : null);   // 在 sig 守卫前：退避相位由 etaBucket 分钟桶兜底刷新
+  setForceStartBtn(run.status === "queued" ? run : null);   // 同在前：blocked_by 随 run 刷新
   $("btn-delete").classList.toggle("hidden", active);
   $("btn-share").classList.toggle("hidden", active);   // 分享页：结束后可生成自包含 HTML
   $("btn-talk").classList.toggle("hidden", !(run.task_id && !chatEngineIsDirect(run)));
@@ -11784,6 +11799,29 @@ async function resumeNow() {
   }
 }
 
+/* 强制起跑：人工判定两个任务不冲突，跳过工作目录互斥立即并行。任务级详情
+ * 没有 S.detailRunId，目标用渲染时钉好的 forceStartRunId（与 resumeNow 同款
+ * 约定）。确认弹窗明示共享状态风险，同意才发请求。 */
+async function forceStart() {
+  const rid = S.detailRunId || S.forceStartRunId;
+  if (!rid) return;
+  const ok = await uiConfirm(
+    t("强制并行起跑：两个任务将共用同一工作目录的任务计划与项目记忆，可能互相覆盖。确认它们互不冲突？"),
+    { ok: t("强制起跑") });
+  if (!ok) return;
+  let r;
+  try {
+    r = await api("/api/runs/" + encodeURIComponent(rid) + "/force_start", { method: "POST" });
+  } catch (e) { toast(t("操作失败：") + (e && e.message ? e.message : t("网络异常")), true); return; }
+  if (r && r.ok) {
+    toast(t("已强制起跑，与占用任务并行"));
+    chatJumpLatest();
+    refreshState();
+  } else {
+    toast((r && r.error) || t("操作失败"), true);
+  }
+}
+
 /* ---------------------------------------------------- 运行中指挥（消息信箱） */
 /* 用户在详情页往运行中的任务「递话」：文字 + 附件（截图/文件）。
  * 无头 CLI 插不进正在跑的进程，指令在下一次步骤下达前由后端 drain 注入。
@@ -12838,10 +12876,12 @@ function drawChatFlow(run, data, active) {
     (it.kind === "agent" && it.log && it.run ? index : last), -1);
   // 日志是独立文件，可能在步骤状态/正文都不变时持续增长。先于时间线签名
   // 闸门轮询最新/运行中的日志，否则 DOM 不重建时 CLI 输出会停留在旧尾部。
-  items.forEach((it) => {
-    // 终态气泡不再渲染执行过程/CLI 日志，日志与活动轮询只服务运行中的步骤
-    if (it.kind !== "agent" || it.status !== "running" || !it.log || !it.run) return;
-    chatLoadLog(it.run, it.log);
+  items.forEach((it, index) => {
+    if (it.kind !== "agent" || !it.log || !it.run) return;
+    const key = chatLogKey(it.run, it.log), cached = chatActivityCache.get(key);
+    if (it.status === "running" || ((index === latestLogIndex ||
+        chatDisclosureState.get(key + "\ngroup")?.open) && (!cached || cached.step_status !== it.status)))
+      chatLoadLog(it.run, it.log);
   });
   // 增量闸门：时间线任何可见输入（状态/正文/思考/实时流/活动/追问/已送达）
   // 都没变才跳过重建——保滚动位置与折叠态。维度少了不行：只看 live 长度的话，
@@ -12945,16 +12985,13 @@ function drawChatFlow(run, data, active) {
       '<div class="chat-bubble agent">' +
       caption +
       (stepMeta ? '<div class="chat-step-meta">' + esc(stepMeta) + "</div>" : "") +
-      // 执行过程（思考/工具活动/CLI 日志）只在步骤执行中展示：终态气泡只留
-      // 结果正文，过程明细去「步骤」页签回看（2026-10-22 用户拍板）
-      (it.status === "running" ?
-        chatThinkHTML(it) +
-        chatAcpEventsHTML(it) +
-        chatExecutionHTML(it, idx, latestLogIndex) : "") +
+      chatThinkHTML(it) +
+      chatAcpEventsHTML(it) +
+      chatExecutionHTML(it, idx, latestLogIndex) +
       '<div class="chat-body">' + bodyHtml + "</div>" +
       '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
       (metaBad ? " · " + t(it.status === "failed" ? "失败" : t("已取消")) : "") + actsA + "</div>" +
-      (it.status === "running" ? chatLogHTML(it, idx, latestLogIndex) : "") +
+      chatLogHTML(it, idx, latestLogIndex) +
       (Array.isArray(it.followups) && it.followups.length
         ? '<div class="chat-fups">' + it.followups.map((f) =>
           '<button type="button" class="chat-fup-btn" data-fup="' + esc(f.prompt || "") +
@@ -22358,6 +22395,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (taskId) retryTask(taskId);
   });
   $("btn-resume-now").addEventListener("click", resumeNow);
+  $("btn-force-start").addEventListener("click", forceStart);
   /* 日志控制台高度：顶边手柄拖拽调整（localStorage 记忆），双击复位为默认弹性高度 */
   (() => {
     const grip = $("rd-log-grip"), box = $("rd-log");

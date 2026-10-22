@@ -535,6 +535,42 @@ def enqueue_now(run_id):
     return True, ""
 
 
+def force_start_run(run_id):
+    """强制起跑：无视同工作目录互斥立即入队起跑（详情页「强制起跑」按钮）。
+
+    与 enqueue_now 的差别：不要求处于退避窗口，专服务被 _workdir_blocker
+    打回排队的工作目录占用等待者。先在 run 上落 force_start 标记（起跑后的
+    互斥检查见到标记即放行并留痕 warning），再摘到点补跑 Timer 立即 enqueue。
+    用户点按钮 = 人工判定两个任务不冲突；共享的任务计划/项目记忆风险由前端
+    确认弹窗明示。满载排队者点这个按钮意义不大（起跑仍会转回排队），但
+    force_start 标记保留，等空位起跑时同样跳过互斥。返回 (ok, err)。"""
+    from . import store
+    run = store.get_run(run_id)
+    if not run:
+        return False, "运行不存在"
+    if run.get("status") != "queued":
+        return False, "该运行已不在排队等待中"
+    if str(run.get("kind") or "orchestration") != "orchestration" or not run.get("task_id"):
+        return False, "该运行不支持强制起跑"
+    if store.update_run(run_id, expected_status="queued", force_start=True,
+                        blocked_by="") is None:
+        return False, "运行状态已变化，请刷新后重试"
+    with _timer_lock:
+        old = _deferred_timers.pop(run_id, None)
+    if old is not None:
+        old.cancel()
+    # UI 别再显示「将于 HH:MM 自动续跑」：本 run 已改为人工强制语义
+    store.update_run(run_id, resume_enqueue_at="")
+    try:
+        enqueue({"kind": "orchestration", "run_id": run_id,
+                 "task_id": run.get("task_id")})
+    except DuplicateJobError:
+        pass   # 到点 Timer 抢先起跑/已被取消接管：标记已落，目的达成
+    except Exception as exc:
+        return False, "强制起跑失败：%s" % str(exc)[:160]
+    return True, ""
+
+
 def restore_deferred_resumes(limit=None, now=None):
     """重建重启前的自动续跑退避 Timer；返回成功恢复的数量。"""
     import time as _t

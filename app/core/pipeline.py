@@ -6505,17 +6505,31 @@ def _execute_run_impl(run_id):
     # 两任务同目录并行会互相覆盖/干扰（禅道双单实案：A 的评审 diff 混进 B 的
     # 任务计划）。后来者回滚 queued 并挂 60s 重试 Timer——先来者完成后的
     # 下一拍自动放行（「将于 HH:MM 自动续跑」对用户可见）。
+    # 人工逃生口（2026-10-22 用户拍板「限制得太死」）：run 带 force_start
+    # 标记（详情页「强制起跑」按钮，确认弹窗已明示共享状态风险）时放行并行，
+    # 留痕 warning 可对账；默认行为不变。回滚时落 blocked_by（归一化目录），
+    # 前端靠它决定是否亮「强制起跑」按钮。
     try:
         _blocker = _workdir_blocker(task, run_id)
-        if True:
+        if _blocker is not None:
             _wd = (task.get("workdir") or "").rstrip("/\\")
-            if _blocker is not None:
+            _bt = (_blocker.get("title") or _blocker.get("id") or "")[:24]
+            _run_now = store.get_run(run_id) or {}
+            if _run_now.get("force_start"):
+                _warns = _run_now.get("warnings") or []
+                store.update_run(run_id, warnings=_warns + [
+                    "已强制并行起跑：无视工作目录占用「%s」。两个任务共享任务计划/项目记忆等目录级状态，注意互相覆盖"
+                    % _bt])
+                print("[CodeBee] 强制并行：%s 无视「%s」的工作目录占用直接起跑"
+                      % (task.get("title") or task.get("id"), _bt), flush=True)
+            else:
                 _resume_at = time.strftime("%Y-%m-%d %H:%M:%S",
                                            time.localtime(time.time() + 60))
                 store.update_run(run_id, expected_status="running", status="queued",
                                  started_at="", resume_enqueue_at=_resume_at,
-                                 warnings=["工作目录被运行中任务「%s」占用，排队等待（任务完成即唤醒，60 秒定时兜底）"
-                                           % ((_blocker.get("title") or _blocker.get("id") or "")[:24])])
+                                 blocked_by=_wd,
+                                 warnings=["工作目录被运行中任务「%s」占用，排队等待（任务完成即唤醒，60 秒定时兜底；确认互不冲突可在详情页强制起跑）"
+                                           % _bt])
                 try:
                     store.update_task_status(task.get("id"), "queued")
                 except Exception:
@@ -6526,8 +6540,7 @@ def _execute_run_impl(run_id):
                      "task_id": task.get("id")},
                     60)
                 print("[CodeBee] 工作目录被「%s」占用：%s 排队等待，任务完成即唤醒（60 秒定时兜底）"
-                      % ((_blocker.get("title") or _blocker.get("id") or "")[:24],
-                         task.get("title") or task.get("id")), flush=True)
+                      % (_bt, task.get("title") or task.get("id")), flush=True)
                 return
     except Exception:
         pass   # 检测失败不挡主流程

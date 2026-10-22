@@ -461,6 +461,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if path == "/api/models/sources":
                 from core import modelhub
                 return self._json(200, {"sources": modelhub.sources()})
+            if path == "/api/models/bind-ledger":
+                # magpie 纪律借鉴：CLI 配置写盘台账（applied 审计 + stash 摘要）
+                from core import bind_ledger
+                return self._json(200, bind_ledger.view())
             if path == "/api/flows":
                 return self._json(200, {"flows": flows.list_flows()})
             if path == "/api/experts":
@@ -2317,6 +2321,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             # 选择不等退避窗口）。设备控制权由 do_POST 顶部的统一写闸把关。
             ok, err = jobs.enqueue_now(m.group(1))
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
+        m = re.match(r"^/api/runs/([^/]+)/force_start$", path)
+        if m:
+            # 强制起跑：人工判定同目录两个任务不冲突，跳过工作目录互斥立即
+            # 并行起跑（前端确认弹窗已明示共享状态风险）。同一写闸把关。
+            ok, err = jobs.force_start_run(m.group(1))
+            return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
         m = re.match(r"^/api/runs/([^/]+)/delete$", path)
         if m:
             ok, err = store.delete_run(m.group(1))
@@ -2525,6 +2535,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                                      difficulty_routing=body.get("difficulty_routing"),
                                      chain=body.get("chain"))
             return self._json(200, {"ok": True, "binding": b})
+        if path == "/api/models/bind-ledger/restore":
+            # magpie 字节级还原纪律：当前内容仍=我们最后一次写入才动手，
+            # 被人动过即拒绝（错误信息如实说明）
+            from core import bind_ledger
+            res = bind_ledger.restore((self._body() or {}).get("path") or "")
+            return self._json(200 if res.get("ok") else 400, res)
         if path == "/api/flows":
             flow, err = flows.upsert_flow(self._body())
             if err:
@@ -3942,7 +3958,8 @@ def _state_run_summary(run):
     fields = ("id", "task_id", "kind", "op", "title", "status", "created_at",
               "started_at", "ended_at", "summary", "error", "paused", "pause_phase",
               "pause_requested_at", "pause_reached_at", "direct_session",
-              "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens")
+              "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens",
+              "blocked_by")
     fields += ("project_memory_id",)
     summary = {key: run[key] for key in fields if key in run}
     run_steps = run.get("steps") or []

@@ -3247,6 +3247,10 @@
 
     // —— 报告区 / 状态 / 杂项 ——
     "将于 {0} 自动续跑": "Auto-resumes at {0}",
+    "强制起跑": "Force start",
+    "无视同工作目录互斥立即并行起跑；两个任务会共享任务计划与项目记忆，确认互不冲突再用": "Force-start now, ignoring the same-workdir mutex; both tasks share the task plan and project memory — only use when they truly don't conflict",
+    "强制并行起跑：两个任务将共用同一工作目录的任务计划与项目记忆，可能互相覆盖。确认它们互不冲突？": "Force parallel start: both tasks will share the same workdir's task plan and project memory and may overwrite each other. Confirm they don't conflict?",
+    "已强制起跑，与占用任务并行": "Force-started — now running alongside the occupying task",
     "报告读取失败（{0}），稍后自动重试": "Report load failed ({0}) — will retry automatically",
     "网络异常": "Network error",
     "本次运行进行中：报告结束后在这里生成，实时进度看「步骤」页签": "This run is still in progress: the report appears here once it finishes — watch live progress in the Steps tab",
