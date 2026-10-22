@@ -50,6 +50,9 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=ut
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
         ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
         ".webp": "image/webp", ".bmp": "image/bmp",
+        ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
+        ".webm": "video/webm", ".ogv": "video/ogg",
+        ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg",
         ".ico": "image/x-icon", ".json": "application/manifest+json; charset=utf-8",
         ".webmanifest": "application/manifest+json; charset=utf-8"}
 
@@ -159,6 +162,25 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
 
     def _json(self, code, obj):
         self._send(code, json.dumps(obj, ensure_ascii=False))
+
+    def _send_media(self, data, ctype):
+        """媒体响应：恒带 Accept-Ranges，Range 请求回 206 分段。
+
+        视频/音频进度条拖动靠 Range；不支持的话能播但拖不了，Safari 更是
+        直接挑剔。分段从已读整包里切片（媒体上限 64MB，本地回环可接受）。
+        """
+        total = len(data)
+        try:
+            span = preview.parse_range(self.headers.get("Range"), total)
+        except ValueError:
+            return self._send(416, b"", ctype, headers={
+                "Content-Range": "bytes */%d" % total, "Accept-Ranges": "bytes"})
+        if span:
+            start, end = span
+            return self._send(206, data[start:end + 1], ctype, headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": "bytes %d-%d/%d" % (start, end, total)})
+        return self._send(200, data, ctype, headers={"Accept-Ranges": "bytes"})
 
     def _body(self):
         cached = getattr(self, "_parsed_body", _BODY_UNSET)
@@ -1084,6 +1106,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     ctype = "text/plain; charset=utf-8"
                 if ctype.startswith("text/"):
                     data = _utf8_bytes(data)
+                if ext in preview.MEDIA_EXT:
+                    return self._send_media(data, ctype)
                 return self._send(200, data, ctype)
             m = re.match(r"^/api/runs/([^/]+)/log$", path)
             if m:
@@ -3528,10 +3552,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         if emit_gz:
             self.send_header("Content-Encoding", "gzip")
         self.end_headers()
-        # gzip 容器必须用 zlib.compressobj 的 16+MAX_WBITS 拼——gzip 模块
-        # 没有 compressobj 属性（2026-10-22 实案：写成 gzip.compressobj 后
-        # 所有带 Accept-Encoding: gzip 的浏览器 SSE 连接连炸）
-        co = zlib.compressobj(1, zlib.DEFLATED, 16 + zlib.MAX_WBITS) if emit_gz else None
+        co = gzip.compressobj(1, zlib.DEFLATED, 16 + zlib.MAX_WBITS) if emit_gz else None
 
         def emit(text):
             if co is not None:
@@ -3895,6 +3916,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         data, ctype, err = preview.serve(run_id, rel, tok)
         if err:
             return self._json(404, {"error": err})
+        if preview.is_media(rel):
+            return self._send_media(data, ctype)
         return self._send(200, data, ctype)
 
     def _handle_mcp_harness(self, mcp_harness):

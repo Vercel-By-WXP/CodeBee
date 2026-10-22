@@ -41,9 +41,18 @@ PREVIEW_EXT = {
     ".html", ".htm", ".css", ".js", ".mjs", ".cjs", ".json", ".map",
     ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif",
     ".woff", ".woff2", ".ttf", ".otf", ".eot",
-    ".mp3", ".wav", ".ogg", ".mp4", ".webm",
+    ".mp3", ".wav", ".ogg", ".m4a", ".mp4", ".webm", ".m4v", ".mov", ".ogv",
     ".txt", ".md", ".csv", ".xml", ".wasm", ".yml", ".yaml", ".toml",
 }
+
+# 媒体成品（视频/音频）：浏览器原生会播，没有网页时它本身就是可预览的入口
+# （手绘视频这类任务整个工作目录里可能只有一只 mp4）。
+MEDIA_VIDEO_EXT = {".mp4", ".webm", ".m4v", ".mov", ".ogv"}
+MEDIA_AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a"}
+MEDIA_EXT = MEDIA_VIDEO_EXT | MEDIA_AUDIO_EXT
+# 媒体单独给更大的体积上限：视频天然比网页资源大一个量级，4MiB 会把正常
+# 成片拦在门外。仍是只读挂载，放大上限不改变信任边界。
+MEDIA_MAX_FILE = 64 << 20
 
 # 页签条里列出的扩展名（比可挂载范围窄）：图片/字体是资源不是「文件」，
 # 给它们开页签只是噪音。
@@ -72,8 +81,9 @@ _MIME = {
     ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif",
     ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf",
     ".otf": "font/otf", ".eot": "application/vnd.ms-fontobject",
-    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
-    ".mp4": "video/mp4", ".webm": "video/webm",
+    ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg",
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
+    ".webm": "video/webm", ".ogv": "video/ogg",
     ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
     ".csv": "text/plain; charset=utf-8", ".xml": "text/xml; charset=utf-8",
     ".wasm": "application/wasm",
@@ -90,6 +100,47 @@ _HTML_RE = re.compile(r"<html\b[^>]*>", re.I)
 
 def _ext(name):
     return Path(str(name or "")).suffix.lower()
+
+
+def is_media(name):
+    """是否媒体成品（视频/音频）：体积上限与 Range 响应都按它走。"""
+    return _ext(name) in MEDIA_EXT
+
+
+def size_cap(name):
+    """单文件体积上限：媒体给独立大额，其余照旧。"""
+    return MEDIA_MAX_FILE if is_media(name) else MAX_FILE
+
+
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def parse_range(header, total):
+    """解析单段 Range 请求头（bytes=a- / bytes=a-b / bytes=-n）。
+
+    返回 (start, end) 闭区间；没有 Range 头，或畸形/多段等不支持的形态，
+    返回 None 按整包 200 处理（RFC 允许忽略不认识的 Range，不能因怪头把
+    视频播挂）；语法合法但无法满足（起点越界、逆序）抛 ValueError，调用方
+    回 416。视频进度条拖动依赖 206：不给 Range 支持，能播但拖不了。
+    """
+    header = str(header or "").strip()
+    if not header:
+        return None
+    m = _RANGE_RE.match(header)
+    if not m or (not m.group(1) and not m.group(2)):
+        return None
+    if m.group(1):
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else total - 1
+    else:
+        n = int(m.group(2))
+        if n <= 0:
+            raise ValueError("unsatisfiable")
+        start = max(0, total - n)
+        end = total - 1
+    if start >= total or start > end:
+        raise ValueError("unsatisfiable")
+    return start, min(end, total - 1)
 
 
 def safe_rel(rel):
@@ -198,7 +249,7 @@ def serve(run_id, rel, tok=""):
     if err:
         return None, "", err
     try:
-        if p.stat().st_size > MAX_FILE:
+        if p.stat().st_size > size_cap(p.name):
             return None, "", "文件过大，不支持预览"
         data = p.read_bytes()
     except OSError as e:
@@ -236,6 +287,21 @@ def _pick_entry(avail):
     return best[1] if best else ""
 
 
+def _pick_media_entry(avail):
+    """没有 HTML 时的兜底入口：挑媒体成品，视频优先于音频，其次最浅、最新。"""
+    best = None
+    for f in avail:
+        name = f["name"]
+        ext = _ext(name)
+        if ext not in MEDIA_EXT:
+            continue
+        key = (0 if ext in MEDIA_VIDEO_EXT else 1,
+               name.count("/"), -int(f.get("mtime") or 0), name)
+        if best is None or key < best[0]:
+            best = (key, name)
+    return best[1] if best else ""
+
+
 def _tab_key(f):
     name = f["name"]
     return (_TAB_ORDER.get(_ext(name), 9), name.count("/"),
@@ -252,8 +318,11 @@ def preview_path(run_id, tok):
 
 
 def list_app(run_id, tok=""):
-    """本任务可预览的网页应用。返回前端渲染页签条所需的全部信息。
+    """本任务可预览的成品应用。返回前端渲染页签条所需的全部信息。
 
+    入口优先挑 HTML（网页应用），没有 HTML 时回退挑媒体成品——手绘视频这类
+    任务整个工作目录可能只有一只 mp4，它就是成品本身，浏览器原生会播；此时
+    返回带 "media": True（前端据此把「网页成品」文案换成「媒体成品」）。
     {"ok": False, "reason": "no_run"|"no_workdir"|"no_steps"|"no_html"} 表示没有
     可预览的东西（前端据此把「预览」页签整体隐藏，不打扰非前端任务）。
     """
@@ -269,8 +338,12 @@ def list_app(run_id, tok=""):
         return {"ok": False, "reason": "no_steps"}
     avail = [f for f in (files or [])
              if _ext(f["name"]) in PREVIEW_EXT
-             and int(f.get("size") or 0) <= MAX_FILE]
+             and int(f.get("size") or 0) <= size_cap(f["name"])]
     entry = _pick_entry(avail)
+    media = False
+    if not entry:
+        entry = _pick_media_entry(avail)
+        media = bool(entry)
     if not entry:
         return {"ok": False, "reason": "no_html", "workdir": wd}
     edir = entry.rsplit("/", 1)[0] if "/" in entry else ""
@@ -288,6 +361,9 @@ def list_app(run_id, tok=""):
             break
     # 入口一定在，且一定排第一（页签条第一格就是"这个应用"，运行视图另占一格）
     names = [entry] + [n for n in names if n != entry]
-    return {"ok": True, "entry": entry, "workdir": wd,
-            "base": preview_path(run_id, tok),
-            "files": [{"name": n, "ext": _ext(n).lstrip(".")} for n in names]}
+    out = {"ok": True, "entry": entry, "workdir": wd,
+           "base": preview_path(run_id, tok),
+           "files": [{"name": n, "ext": _ext(n).lstrip(".")} for n in names]}
+    if media:
+        out["media"] = True
+    return out

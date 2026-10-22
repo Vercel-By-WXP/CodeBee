@@ -599,6 +599,8 @@
     "该任务没有可预览的网页成品": "No previewable web page for this task",
     "暂无网页成品": "No web output yet",
     "最近一次运行没有可预览的网页，请在详情页查看成果": "The latest run produced no previewable web page — check outputs in the task detail",
+    "媒体成品预览": "Media output preview",
+    "网页成品预览": "Web output preview",
     "上一章": "Previous chapter",
     "下一章": "Next chapter",
     "选择章节": "Select chapter",

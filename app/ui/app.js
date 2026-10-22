@@ -390,7 +390,7 @@ async function wbMountWebPreview(run) {
       frame.classList.remove("hidden");
     }
     if (stageActions) stageActions.innerHTML = '<button class="chip" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg>' + t("新窗口打开") + "</button>";
-    if (footHint) footHint.textContent = t("网页成品预览");
+    if (footHint) footHint.textContent = t(d.media ? "媒体成品预览" : "网页成品预览");
   } else {
     if (empty) {
       empty.classList.remove("hidden");
@@ -10199,6 +10199,16 @@ const FP_TXT = new Set(["md", "txt", "log", "csv", "yml", "yaml", "ini", "toml",
 const FP_DOCX = new Set(["docx"]);   // 只认 OOXML；legacy .doc 二进制不在此列
 const FP_PDF = new Set(["pdf"]);
 const FP_XLSX = new Set(["xlsx"]);   // 只认 OOXML；legacy .xls 二进制不在此列
+// 媒体成品：video/audio 标签原生播放（与后端 /preview、/file 的媒体白名单同口径）
+const FP_MEDIA_VIDEO = new Set(["mp4", "m4v", "mov", "webm", "ogv"]);
+const FP_MEDIA = new Set([...FP_MEDIA_VIDEO, "mp3", "m4a", "wav", "ogg"]);
+
+/* 媒体播放器（弹窗与详情页页签共用）：src 由调用方给完整已鉴权地址。
+ * 不自动播——弹窗里突然出声是惊吓；preload=metadata 只拉时长不整包下载。 */
+function fpMediaHTML(url, isVideo) {
+  const tag = isVideo ? "video" : "audio";
+  return '<div class="fp-media"><' + tag + ' controls preload="metadata" src="' + url + '"></' + tag + "></div>";
+}
 
 function _fpExt(name) { return (String(name).split(".").pop() || "").toLowerCase(); }
 
@@ -10414,6 +10424,7 @@ async function _fpPreviewUrl(url, name, size, opts) {
     if (FP_DOCX.has(ext)) { await _fpRenderDocx(url); return; }
     if (FP_PDF.has(ext)) { await _fpRenderPdf(url); return; }
     if (FP_XLSX.has(ext)) { await _fpRenderXlsx(url); return; }
+    if (FP_MEDIA.has(ext)) { _fpSetBody(fpMediaHTML(url, FP_MEDIA_VIDEO.has(ext))); return; }
     _fpSetBody('<div class="fp-hint">' + esc(t("二进制文件不预览，可下载查看。")) + "</div>");
   } catch (e) {
     _fpSetBody('<div class="fp-hint">' + esc(t("内容读取失败：") + (e.message || e)) + "</div>");
@@ -10819,6 +10830,15 @@ async function pvLoadCode(name) {
   }
 }
 
+/* 媒体成品页签：原生播放器，不走 codeBlockHTML——二进制当文本渲染就是乱码墙 */
+function pvLoadMedia(name) {
+  const el = $("rd-pv-code");
+  if (!el) return;
+  const ext = String(name).split(".").pop().toLowerCase();
+  const url = urlAuth("/api/runs/" + encodeURIComponent(pvRunId) + "/file?name=" + encodeURIComponent(name));
+  el.innerHTML = fpMediaHTML(url, FP_MEDIA_VIDEO.has(ext));
+}
+
 function pvDraw() {
   const box = $("rd-preview");
   if (!box) return;
@@ -10843,7 +10863,11 @@ function pvDraw() {
       esc(pvApp.workdir || "") + "</span>";
     hint.classList.remove("hidden");
   }
-  if (pvView !== "run") { pvCodeSig = pvView; pvLoadCode(pvView); }
+  if (pvView !== "run") {
+    const pvExt = String(pvView).split(".").pop().toLowerCase();
+    if (FP_MEDIA.has(pvExt)) { pvCodeSig = pvView; pvLoadMedia(pvView); }
+    else { pvCodeSig = pvView; pvLoadCode(pvView); }
+  }
 }
 
 window.pvGo = function (view) {
@@ -10852,10 +10876,12 @@ window.pvGo = function (view) {
   pvDraw();
 };
 window.pvReload = function () {
-  // 重挂 iframe：加时间戳绕缓存；代码视图则重取当前文件
+  // 重挂 iframe：加时间戳绕缓存；媒体页签重挂播放器；代码视图则重取当前文件
   if (pvView === "run") {
     const f = $("rd-pv-frame");
     if (f) f.src = urlAuth(pvRunUrl()) + (String(pvRunUrl()).includes("?") ? "&" : "?") + "_=" + Date.now();
+  } else if (FP_MEDIA.has(String(pvView).split(".").pop().toLowerCase())) {
+    pvLoadMedia(pvView);
   } else {
     pvLoadCode(pvView);
   }

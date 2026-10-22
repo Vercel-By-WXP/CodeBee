@@ -2373,6 +2373,12 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 /* 图片：居中直显，太大等比缩 */
 #file-pop .fp-img { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 14px; }
 #file-pop .fp-img img { max-width: 100%; max-height: calc(86vh - 120px); border-radius: 8px; }
+/* 媒体成品（视频/音频）：居中播放，高度保底不让弹窗瘪下去 */
+#file-pop .fp-media, .pv-media { display: flex; align-items: center; justify-content: center; padding: 14px; }
+#file-pop .fp-media { min-height: 320px; }
+#file-pop .fp-media video, #file-pop .fp-media audio,
+.pv-media video, .pv-media audio { width: 100%; max-width: 860px; border-radius: 8px; outline: none; }
+.pv-media audio { max-width: 560px; }
 
 /* —— 成品文件列表换成 Git 变更清单同款行样式（只作用于检查器成品 TAB）—— */
 #insp-pane-files .file-chips { flex-direction: column; flex-wrap: nowrap; gap: 2px; }
