@@ -717,6 +717,7 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
     meta = store.inherited_book_meta(task, plat)
     if meta.get("status") != "done" or not meta.get("data"):
         return False, "请先生成该平台的作品信息"
+    is_short_story = str((task or {}).get("type") or "") == "short_story"
     if _mgr()._st(slot).get("status") == "busy":
         return False, "该平台有操作正在进行中"
     existing = _mgr().ledger.book_for(task_id, plat)
@@ -796,7 +797,6 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
         # 短故事（short_story 任务）走独立建书流：频道/表单/编辑器与小说不同
         # （qimao.CREATE_SHORT_STORY，2026-10-22 实机校准），但对账/取值/登记
         # 同一套机制；operation/ledger 动作名保持 create_book（本质都是建书）。
-        is_short_story = str((task or {}).get("type") or "") == "short_story"
         try:
             b, page = _mgr()._open_page(slot)
             # 书名全平台唯一（2026-09-30 马甲案）：撞名是建书常见死法，撞了
