@@ -195,8 +195,9 @@ CREATE_SHORT_STORY = [
     {"do": "click_text", "text": "添加标签", "contains": True,
      "scope": "a,button,span,div"},
     {"do": "tags"},
-    {"do": "click_text", "text": "确定", "contains": False,
-     "scope": "[class*=qm-book-tag] .qm-btn"},
+    # 关弹层照抄连载校准表：不带 scope 的全文精确点（scope 收窄会漏，
+    # 2026-10-22 实案：弹层开着点「确认创建」= 点空，提交按钮禁用）
+    {"do": "click_text", "text": "确定", "contains": False},
     {"do": "shot", "name": "short-story-create-filled"},
     {"do": "submit", "sel": ".js-save-book-infor-btn", "text": "确认创建"},
     # 创建成功跳编辑器 /front/book-upload?id=<book_id>（book_id 由 runner 按
