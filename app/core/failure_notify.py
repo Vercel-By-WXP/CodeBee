@@ -26,6 +26,7 @@ import time
 import uuid
 
 from . import atomic
+from .error_codes import attempt_verdict
 
 log = logging.getLogger(__name__)
 
@@ -236,6 +237,13 @@ def record_all_candidates_failed(*, run_id: str, task_id: str = "", role: str = 
     attempts = [a for a in (attempts or ()) if isinstance(a, dict)]
     if not attempts or any(a.get("ok") for a in attempts):
         return {"recorded": False, "reason": "chain_not_exhausted"}
+    verdicts = [attempt_verdict(False, a.get("error_code") or error_code)
+                for a in attempts]
+    if all(verdict == "blocked" for verdict in verdicts):
+        # 全链都没有拿到产物判断（模型不可用/上游故障/凭据或配额拦住）：
+        # 这不能证明任务本身连续失败，不累加计数，也不发「候选链」告警。
+        return {"recorded": False, "reason": "blocked_no_product_judgment",
+                "verdict": "blocked", "candidate_count": len(attempts)}
     key = _scope(role)
     now = time.time()
     event = _event_from_attempts(run_id=run_id, task_id=task_id, role=role,

@@ -34,6 +34,14 @@ def document():
             "task_id": {"type": "string"}, "run_id": {"type": "string"}}},
         "Evidence": {"type": "object", "required": ["status"], "properties": {
             "id": {"type": "string"}, "criterion": {"type": "string", "maxLength": 500},
+            "kind": {"type": "string", "enum": ["assertion", "test", "artifact_hash",
+                                                "human_review", "acceptance_case", "manual",
+                                                "read", "poll", "stdout", "process_exit",
+                                                "screenshot"],
+                     "description": "断言/测试/产物指纹/人工复核/验收矩阵算验证证据；"
+                                    "read、poll、stdout、process_exit、screenshot 只是观察，"
+                                    "完成回执不计入 criteria_passed。缺省为 manual。"},
+            "verified": {"type": "boolean"},
             "status": {"type": "string", "enum": ["passed", "failed", "unknown", "not_evaluated"]},
             "summary": {"type": "string", "maxLength": 2000},
             "source": {"type": "string", "maxLength": 80}, "created_at": {"type": "string"}}},

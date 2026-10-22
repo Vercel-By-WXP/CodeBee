@@ -1240,7 +1240,7 @@ def _finish_attempt_ledger(ledger, run_id, command_context, att, out):
             ((att.get("provider") or {}).get("name", "")
              if isinstance(att.get("provider"), dict) else ""),
             out.get("model") or att.get("model") or "", ok=bool(out.get("ok")),
-            error=out.get("error") or "", usage=usage,
+            error=out.get("error") or "", error_code=out.get("error_code"), usage=usage,
             duration_s=raw.get("duration", 0.0), retry_class=retry_class,
             ttft_ms=(raw.get("first_token_ms") or 0),
             tokens_per_sec=(raw.get("tokens_per_sec") or 0),

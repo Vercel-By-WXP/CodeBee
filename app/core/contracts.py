@@ -18,6 +18,24 @@ _EVIDENCE_MAX = 300
 _EVIDENCE_LIST_MAX = 20
 _EVIDENCE_TEXT_MAX = 300
 _COVERAGE_STATUSES = ("complete", "partial", "unknown")
+# 什么算「验证证据」（借鉴 tester-army/e2e 的 verified checks）：断言、测试
+# 运行、产物指纹、人工复核、验收矩阵结论算；读取、轮询、stdout、进程退出码、
+# 截图只是观察，不能把「看到了」写成「验证过了」。缺省 kind 走 manual，
+# 兼容旧生产者的既有记录；显式传入未知 kind 则拒绝。
+_EVIDENCE_KIND_VERIFIED = {
+    "assertion": True,
+    "test": True,
+    "artifact_hash": True,
+    "human_review": True,
+    "acceptance_case": True,
+    "manual": True,
+    "read": False,
+    "poll": False,
+    "stdout": False,
+    "process_exit": False,
+    "screenshot": False,
+}
+EVIDENCE_KINDS = tuple(_EVIDENCE_KIND_VERIFIED)
 _MISSING = object()
 _CASE_KEYWORDS = {
     "correctness": ("正确", "验证", "测试", "质量", "correct", "test", "verify"),
@@ -116,10 +134,15 @@ def normalize_evidence(evidence):
     status = str(evidence.get("status") or "unknown").lower()
     if status not in ("passed", "failed", "unknown", "not_evaluated"):
         raise ValueError("证据状态无效")
+    kind = str(evidence.get("kind") or "manual").strip().lower()
+    if kind not in _EVIDENCE_KIND_VERIFIED:
+        raise ValueError("证据类型无效")
     source = str(evidence.get("source") or "manual").strip()[:80] or "manual"
     unknown = evidence.get("unknown", evidence.get("unknowns"))
     return {
         "criterion": str(evidence.get("criterion") or "")[:500],
+        "kind": kind,
+        "verified": _EVIDENCE_KIND_VERIFIED[kind],
         "status": status,
         "summary": str(evidence.get("summary") or "")[:2000],
         "source": source,
@@ -215,6 +238,7 @@ def record_acceptance_cases(task_id, cases, actor="system"):
             if not matched:
                 continue
             add_evidence(task_id, {"criterion": text, "status": status,
+                                   "kind": "acceptance_case",
                                    "summary": case.get("reason") or
                                              "acceptance matrix: " + name,
                                    "source": "acceptance"}, actor=actor)
@@ -307,9 +331,14 @@ def complete(task_id, run):
             if row.get("criterion"):
                 latest[row["criterion"]] = row
         checked = [latest.get(c) for c in criteria]
+        passed = [row for row in checked if row and row.get("status") == "passed"]
+        # 旧记录没有 verified 字段：normalize_evidence 早已把它们归入 manual，
+        # 按已验证处理，避免历史契约在升级后突然掉绿。
+        verified_passed = sum(1 for row in passed if row.get("verified", True))
         receipt = {"version": 1, "task_id": str(task_id), "run_id": run.get("id"),
                    "run_status": run.get("status"), "criteria_total": len(criteria),
-                   "criteria_passed": sum(1 for row in checked if row and row.get("status") == "passed"),
+                   "criteria_passed": verified_passed,
+                   "criteria_passed_unverified": len(passed) - verified_passed,
                    "criteria_failed": sum(1 for row in checked if row and row.get("status") == "failed"),
                    "criteria_unverified": sum(1 for row in checked if not row or row.get("status") not in ("passed", "failed")),
                    "evidence_ids": [row.get("id") for row in checked if row],

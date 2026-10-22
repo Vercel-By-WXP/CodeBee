@@ -264,6 +264,40 @@ def is_account_dead_error(code) -> bool:
     return error_code_value(code) in ACCOUNT_DEAD_CODES
 
 
+# 判决轴（借鉴 tester-army/e2e 的 passed / failed / blocked）：
+# blocked 表示环境、凭据、配额、时钟或自动化能力挡住了这次尝试，还没有
+# 对产出本身做出判断；它不是产品失败，不该计入「候选链连续失败」，也
+# 不该驱逐账号/缓存。VENDOR_ERROR 是未归类的兜底值，按产品失败保守处理。
+BLOCKED_CODES = frozenset({
+    ErrorCode.ENV_BLOCK.value,
+    ErrorCode.CANCELLED.value,
+    ErrorCode.TIMEOUT.value,
+    ErrorCode.NETWORK.value,
+    ErrorCode.UPSTREAM_SERVER.value,
+    ErrorCode.MISSING_CREDENTIAL.value,
+    ErrorCode.AUTH.value,
+    ErrorCode.FORBIDDEN.value,
+    ErrorCode.QUOTA.value,
+    ErrorCode.RATE_LIMIT.value,
+    ErrorCode.LOCAL_STATE.value,
+    ErrorCode.MODEL_UNAVAILABLE.value,
+    ErrorCode.TOOL_LAUNCH.value,
+    ErrorCode.SIGNAL_IGNORED.value,
+})
+
+
+def is_blocked_code(code) -> bool:
+    """True 当错误码表示「没拿到产物判断」而不是产品失败。"""
+    return error_code_value(code) in BLOCKED_CODES
+
+
+def attempt_verdict(ok, code="") -> str:
+    """单次尝试的判决：passed / failed / blocked。"""
+    if ok:
+        return "passed"
+    return "blocked" if is_blocked_code(code) else "failed"
+
+
 _SAFE_ERROR_SUMMARIES = {
     ErrorCode.VENDOR_ERROR: "供应商或 CLI 调用失败（未识别具体原因）",
     ErrorCode.VENDOR_REFUSAL: "上游拒绝了本次请求",

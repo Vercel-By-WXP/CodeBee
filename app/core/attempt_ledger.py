@@ -8,7 +8,13 @@ import re
 import time
 from pathlib import Path
 
+from .error_codes import attempt_verdict, classify_error_text, error_code_value
+
 _SECRET = re.compile(r"(?i)(sk-[A-Za-z0-9_-]+|Bearer\s+[A-Za-z0-9._-]+|api[_ -]?key\s*[:=]\s*[^\s;]+)")
+
+ATTEMPT_VERDICTS = ("passed", "failed", "blocked")
+# 回放缓存状态词汇（tester-army/e2e）：写盘、保留、未验证、驱逐、无变化、未写入。
+CACHE_STATUSES = ("saved", "kept", "unconfirmed", "evicted", "no-change", "not-written")
 
 
 def error_fingerprint(value):
@@ -33,18 +39,28 @@ class AttemptLedger:
         self._append(row)
         return row
 
-    def finish(self, run_id, role, provider, model, *, ok, error="", usage=None,
-               duration_s=0.0, retry_class="", ttft_ms=0.0, tokens_per_sec=0.0, **extra):
+    def finish(self, run_id, role, provider, model, *, ok, error="", error_code="",
+               usage=None, duration_s=0.0, retry_class="", ttft_ms=0.0,
+               tokens_per_sec=0.0, cache_status="", **extra):
         usage = usage if isinstance(usage, dict) else {}
+        code = error_code_value(error_code)[:64]
+        if not code and error:
+            code = error_code_value(classify_error_text(error))[:64]
+        status = str(cache_status or "").strip().lower()
+        if status not in CACHE_STATUSES:
+            status = ""
         row = {"event": "finish", "ts": time.time(), "run_id": str(run_id),
                "role": str(role), "provider": str(provider), "model": str(model),
                "ok": bool(ok), "duration_s": float(duration_s or 0),
                "usage": {k: int(v or 0) for k, v in usage.items()
                          if k in ("input", "output", "cached", "reasoning", "total")},
-               "retry_class": str(retry_class or ""),
+               "retry_class": str(retry_class or ""), "error_code": code,
+               "verdict": attempt_verdict(ok, code),
                "error_fingerprint": error_fingerprint(error) if error else "",
                "error": str(error or "")[:500], "ttft_ms": float(ttft_ms or 0),
                "tokens_per_sec": float(tokens_per_sec or 0), **extra}
+        if status:
+            row["cache_status"] = status
         self._append(row)
         return row
 
@@ -62,16 +78,25 @@ class AttemptLedger:
     def summary(self, run_id):
         rows = self.for_run(run_id)
         retry = {}
+        verdicts = {name: 0 for name in ATTEMPT_VERDICTS}
+        cache_statuses = {}
         total = cached = 0
         for row in rows:
             if row.get("retry_class"):
                 retry[row["retry_class"]] = retry.get(row["retry_class"], 0) + 1
+            verdict = row.get("verdict")
+            if verdict not in ATTEMPT_VERDICTS:
+                verdict = attempt_verdict(row.get("ok"), row.get("error_code") or "")
+            verdicts[verdict] += 1
+            status = row.get("cache_status")
+            if status in CACHE_STATUSES:
+                cache_statuses[status] = cache_statuses.get(status, 0) + 1
             usage = row.get("usage") or {}
             total += int(usage.get("total") or usage.get("input") or 0) + int(usage.get("output") or 0)
             cached += int(usage.get("cached") or 0)
         return {"run_id": str(run_id), "attempts": len(rows),
-                "successful": sum(1 for x in rows if x.get("ok")),
-                "failed": sum(1 for x in rows if not x.get("ok")),
+                "successful": verdicts["passed"], "failed": verdicts["failed"],
+                "verdicts": verdicts, "cache_statuses": cache_statuses,
                 "tokens": total, "cached": cached, "retry_classes": retry}
 
 
