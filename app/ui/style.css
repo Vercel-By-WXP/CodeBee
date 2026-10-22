@@ -2379,6 +2379,12 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 #file-pop .fp-media video, #file-pop .fp-media audio,
 .pv-media video, .pv-media audio { width: 100%; max-width: 860px; border-radius: 8px; outline: none; }
 .pv-media audio { max-width: 560px; }
+/* 详情页预览页签的原生渲染成品（视频/音频/图片/PDF）：居中、不溢出 */
+.pv-native { display: flex; align-items: center; justify-content: center; padding: 14px; min-height: 320px; }
+.pv-native video { width: 100%; max-width: 860px; border-radius: 8px; outline: none; }
+.pv-native audio { width: 100%; max-width: 560px; }
+.pv-native img { max-width: 100%; max-height: calc(86vh - 220px); border-radius: 8px; }
+.pv-native iframe { width: 100%; height: min(72vh, 860px); border: 1px solid var(--border); border-radius: 8px; background: var(--panel-solid, #fff); }
 
 /* —— 成品文件列表换成 Git 变更清单同款行样式（只作用于检查器成品 TAB）—— */
 #insp-pane-files .file-chips { flex-direction: column; flex-wrap: nowrap; gap: 2px; }

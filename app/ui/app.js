@@ -345,14 +345,20 @@ async function wbOpenPreview() {
   if (d && d.ok && d.base && d.entry) {
     window.open(urlAuth(d.base + d.entry), "_blank");
   } else {
-    toast(t("该任务没有可预览的网页成品"), true);
+    toast(t("该任务没有可预览的成品"), true);
   }
 }
 
-/* 工作台网页成品挂载：iframe 只认 /preview/<run>/<令牌>/<入口> 的只读静态挂载；
+/* 入口 kind → 底部提示文案（后端 list_app 返回 web|video|audio|image|pdf） */
+const WB_PV_KIND_HINT = {
+  web: "网页成品预览", video: "媒体成品预览", audio: "媒体成品预览",
+  image: "图片成品预览", pdf: "文档成品预览",
+};
+
+/* 工作台成品挂载：iframe 只认 /preview/<run>/<令牌>/<入口> 的只读静态挂载；
  * /api/runs/<id>/preview 是元数据接口，吐的是 ok/no_html 的 JSON——当页面开就是
  * 一行裸 JSON。挂载信息随 run 走：同 run 重画只把 iframe 亮回来，换 run/换任务/
- * 切视图即作废在飞的响应（wbPvSeq 闸门），也不给没有网页成品的任务硬开窗口。 */
+ * 切视图即作废在飞的响应（wbPvSeq 闸门），也不给没有可预览成品的任务硬开窗口。 */
 function wbPreviewReset() {
   wbPvMounted = "";
   const frame = $("wb-frame");
@@ -390,12 +396,12 @@ async function wbMountWebPreview(run) {
       frame.classList.remove("hidden");
     }
     if (stageActions) stageActions.innerHTML = '<button class="ghost small" type="button" onclick="wbOpenPreview()"><svg class="ico" aria-hidden="true"><use href="#i-external"></use></svg><span>' + esc(t("新窗口打开")) + "</span></button>";
-    if (footHint) footHint.textContent = t(d.media ? "媒体成品预览" : "网页成品预览");
+    if (footHint) footHint.textContent = t(WB_PV_KIND_HINT[d.kind] || "网页成品预览");
   } else {
     if (empty) {
       empty.classList.remove("hidden");
-      empty.querySelector("h3").textContent = t("暂无网页成品");
-      empty.querySelector("p").textContent = t("最近一次运行没有可预览的网页，请在详情页查看成果");
+      empty.querySelector("h3").textContent = t("暂无可预览的成品");
+      empty.querySelector("p").textContent = t("最近一次运行没有可预览的成品文件，请在详情页查看成果");
     }
     if (stageActions) stageActions.innerHTML = "";
     if (footHint) footHint.textContent = "";
@@ -10202,6 +10208,10 @@ const FP_XLSX = new Set(["xlsx"]);   // 只认 OOXML；legacy .xls 二进制不�
 // 媒体成品：video/audio 标签原生播放（与后端 /preview、/file 的媒体白名单同口径）
 const FP_MEDIA_VIDEO = new Set(["mp4", "m4v", "mov", "webm", "ogv"]);
 const FP_MEDIA = new Set([...FP_MEDIA_VIDEO, "mp3", "m4a", "wav", "ogg"]);
+// 详情页预览页签里浏览器原生可渲染的成品（不走 codeBlockHTML 的集合）：
+// 媒体播放器 / 图片直显 / PDF 交给内置阅读器——二进制当文本渲染就是乱码墙
+const FP_IMG_PV = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "avif"]);
+const FP_NATIVE_PV = new Set([...FP_MEDIA, ...FP_IMG_PV, "pdf"]);
 
 /* 媒体播放器（弹窗与详情页页签共用）：src 由调用方给完整已鉴权地址。
  * 不自动播——弹窗里突然出声是惊吓；preload=metadata 只拉时长不整包下载。 */
@@ -10830,13 +10840,23 @@ async function pvLoadCode(name) {
   }
 }
 
-/* 媒体成品页签：原生播放器，不走 codeBlockHTML——二进制当文本渲染就是乱码墙 */
-function pvLoadMedia(name) {
+/* 原生渲染成品页签（视频/音频/图片/PDF）：交给浏览器原生能力，不走
+ * codeBlockHTML——二进制当文本渲染就是乱码墙。src 均带鉴权的 file 地址。 */
+function pvLoadNativeFile(name) {
   const el = $("rd-pv-code");
   if (!el) return;
-  const ext = String(name).split(".").pop().toLowerCase();
+  const ext = _fpExt(name);
   const url = urlAuth("/api/runs/" + encodeURIComponent(pvRunId) + "/file?name=" + encodeURIComponent(name));
-  el.innerHTML = fpMediaHTML(url, FP_MEDIA_VIDEO.has(ext));
+  let inner;
+  if (FP_MEDIA.has(ext)) {
+    const tag = FP_MEDIA_VIDEO.has(ext) ? "video" : "audio";
+    inner = '<' + tag + ' controls preload="metadata" src="' + url + '"></' + tag + ">";
+  } else if (FP_IMG_PV.has(ext)) {
+    inner = '<img alt="' + esc(name) + '" src="' + url + '">';
+  } else {
+    inner = '<iframe src="' + url + '" title="' + esc(name) + '"></iframe>';   // pdf：内置阅读器
+  }
+  el.innerHTML = '<div class="pv-native">' + inner + "</div>";
 }
 
 function pvDraw() {
@@ -10864,9 +10884,9 @@ function pvDraw() {
     hint.classList.remove("hidden");
   }
   if (pvView !== "run") {
-    const pvExt = String(pvView).split(".").pop().toLowerCase();
-    if (FP_MEDIA.has(pvExt)) { pvCodeSig = pvView; pvLoadMedia(pvView); }
-    else { pvCodeSig = pvView; pvLoadCode(pvView); }
+    pvCodeSig = pvView;
+    if (FP_NATIVE_PV.has(_fpExt(pvView))) pvLoadNativeFile(pvView);
+    else pvLoadCode(pvView);
   }
 }
 
@@ -10876,12 +10896,12 @@ window.pvGo = function (view) {
   pvDraw();
 };
 window.pvReload = function () {
-  // 重挂 iframe：加时间戳绕缓存；媒体页签重挂播放器；代码视图则重取当前文件
+  // 重挂 iframe：加时间戳绕缓存；原生渲染页签重挂播放器/图片/PDF；代码视图则重取
   if (pvView === "run") {
     const f = $("rd-pv-frame");
     if (f) f.src = urlAuth(pvRunUrl()) + (String(pvRunUrl()).includes("?") ? "&" : "?") + "_=" + Date.now();
-  } else if (FP_MEDIA.has(String(pvView).split(".").pop().toLowerCase())) {
-    pvLoadMedia(pvView);
+  } else if (FP_NATIVE_PV.has(_fpExt(pvView))) {
+    pvLoadNativeFile(pvView);
   } else {
     pvLoadCode(pvView);
   }

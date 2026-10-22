@@ -35,7 +35,7 @@ def _fake_store(workdir, files, task_id="t-1"):
 
 
 class PickEntryTests(unittest.TestCase):
-    """入口挑选：HTML 优先；无 HTML 回退媒体，视频压音频。"""
+    """入口挑选：HTML 优先；无 HTML 按视频>音频>图片>PDF 回退。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -52,16 +52,16 @@ class PickEntryTests(unittest.TestCase):
         ])
         self.assertTrue(out["ok"])
         self.assertEqual(out["entry"], "handdraw.mp4")
-        self.assertTrue(out["media"])
+        self.assertEqual(out["kind"], "video")
 
-    def test_html_takes_precedence_over_media(self):
+    def test_html_takes_precedence_over_native(self):
         out = self._list([
             {"name": "index.html", "size": 100, "mtime": 5},
             {"name": "handdraw.mp4", "size": 1800, "mtime": 20},
         ])
         self.assertTrue(out["ok"])
         self.assertEqual(out["entry"], "index.html")
-        self.assertNotIn("media", out)
+        self.assertEqual(out["kind"], "web")
 
     def test_video_beats_audio_same_depth(self):
         out = self._list([
@@ -70,15 +70,54 @@ class PickEntryTests(unittest.TestCase):
         ])
         self.assertEqual(out["entry"], "handdraw.mp4")
 
-    def test_no_html_no_media_still_no_html(self):
+    def test_image_entry_for_poster_only_task(self):
+        out = self._list([
+            {"name": "report.md", "size": 100, "mtime": 10},
+            {"name": "poster.png", "size": 500_000, "mtime": 20},
+        ])
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["entry"], "poster.png")
+        self.assertEqual(out["kind"], "image")
+
+    def test_pdf_entry_for_report_only_task(self):
+        out = self._list([{"name": "report.pdf", "size": 300_000, "mtime": 1}])
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["entry"], "report.pdf")
+        self.assertEqual(out["kind"], "pdf")
+
+    def test_native_tier_order_video_audio_image_pdf(self):
+        out = self._list([
+            {"name": "a.png", "size": 100, "mtime": 99},
+            {"name": "b.pdf", "size": 100, "mtime": 98},
+            {"name": "c.mp3", "size": 100, "mtime": 97},
+            {"name": "d.mp4", "size": 100, "mtime": 96},
+        ])
+        self.assertEqual(out["entry"], "d.mp4")
+        out = self._list([
+            {"name": "a.png", "size": 100, "mtime": 99},
+            {"name": "b.pdf", "size": 100, "mtime": 98},
+            {"name": "c.mp3", "size": 100, "mtime": 97},
+        ])
+        self.assertEqual(out["entry"], "c.mp3")
+        out = self._list([
+            {"name": "a.png", "size": 100, "mtime": 99},
+            {"name": "b.pdf", "size": 100, "mtime": 98},
+        ])
+        self.assertEqual(out["entry"], "a.png")
+
+    def test_no_html_no_native_still_no_html(self):
         out = self._list([{"name": "report.md", "size": 100, "mtime": 1}])
         self.assertFalse(out["ok"])
         self.assertEqual(out["reason"], "no_html")
 
-    def test_oversized_media_excluded_from_entry_pick(self):
-        # 超过媒体上限（64MiB）的 mp4 不进候选——与文本超 4MiB 同口径
+    def test_oversized_native_excluded_from_entry_pick(self):
+        # 超过原生渲染上限（64MiB）的 mp4/png 不进候选——与文本超 4MiB 同口径
         out = self._list([
             {"name": "huge.mp4", "size": preview.MEDIA_MAX_FILE + 1, "mtime": 1},
+        ])
+        self.assertFalse(out["ok"])
+        out = self._list([
+            {"name": "huge.png", "size": preview.MEDIA_MAX_FILE + 1, "mtime": 1},
         ])
         self.assertFalse(out["ok"])
 
@@ -110,7 +149,7 @@ class ServeMediaTests(unittest.TestCase):
         self.assertEqual(len(data), big.stat().st_size)
 
     def test_media_over_media_cap_rejected(self):
-        # 媒体超限用小文件+收紧上限来测，不真的写 64MiB
+        # 原生渲染超限用小文件+收紧上限来测，不真的写 64MiB
         old_cap = preview.MEDIA_MAX_FILE
         preview.MEDIA_MAX_FILE = 8
         try:
@@ -120,6 +159,16 @@ class ServeMediaTests(unittest.TestCase):
             self.assertIn("过大", err)
         finally:
             preview.MEDIA_MAX_FILE = old_cap
+
+    def test_png_and_pdf_served_with_native_mime(self):
+        (Path(self.wd) / "poster.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"p" * 100)
+        (Path(self.wd) / "report.pdf").write_bytes(b"%PDF-1.7" + b"q" * 100)
+        data, ctype, err = self._serve("poster.png")
+        self.assertIsNone(err)
+        self.assertEqual(ctype, "image/png")
+        data, ctype, err = self._serve("report.pdf")
+        self.assertIsNone(err)
+        self.assertEqual(ctype, "application/pdf")
 
     def test_text_over_web_cap_still_rejected(self):
         (Path(self.wd) / "note.txt").write_bytes(b"x")

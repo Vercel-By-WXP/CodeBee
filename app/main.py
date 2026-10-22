@@ -53,6 +53,7 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=ut
         ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
         ".webm": "video/webm", ".ogv": "video/ogg",
         ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg",
+        ".pdf": "application/pdf",
         ".ico": "image/x-icon", ".json": "application/manifest+json; charset=utf-8",
         ".webmanifest": "application/manifest+json; charset=utf-8"}
 

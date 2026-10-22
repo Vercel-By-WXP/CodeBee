@@ -42,16 +42,20 @@ PREVIEW_EXT = {
     ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif",
     ".woff", ".woff2", ".ttf", ".otf", ".eot",
     ".mp3", ".wav", ".ogg", ".m4a", ".mp4", ".webm", ".m4v", ".mov", ".ogv",
+    ".pdf",
     ".txt", ".md", ".csv", ".xml", ".wasm", ".yml", ".yaml", ".toml",
 }
 
-# 媒体成品（视频/音频）：浏览器原生会播，没有网页时它本身就是可预览的入口
-# （手绘视频这类任务整个工作目录里可能只有一只 mp4）。
+# 原生可渲染成品（视频/音频/图片/PDF）：浏览器自己会播会显，没有网页时它
+# 本身就是可预览的入口（手绘视频整个工作目录可能只有一只 mp4，海报任务可能
+# 只有一张 png，报告任务可能只有一份 pdf）。
 MEDIA_VIDEO_EXT = {".mp4", ".webm", ".m4v", ".mov", ".ogv"}
 MEDIA_AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a"}
 MEDIA_EXT = MEDIA_VIDEO_EXT | MEDIA_AUDIO_EXT
-# 媒体单独给更大的体积上限：视频天然比网页资源大一个量级，4MiB 会把正常
-# 成片拦在门外。仍是只读挂载，放大上限不改变信任边界。
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".svg", ".ico"}
+PDF_EXT = {".pdf"}
+# 原生渲染成品单独给更大的体积上限：视频/高清图/pdf 天然比网页资源大一个量级，
+# 4MiB 会把正常成品拦在门外。仍是只读挂载，放大上限不改变信任边界。
 MEDIA_MAX_FILE = 64 << 20
 
 # 页签条里列出的扩展名（比可挂载范围窄）：图片/字体是资源不是「文件」，
@@ -84,6 +88,7 @@ _MIME = {
     ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg",
     ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
     ".webm": "video/webm", ".ogv": "video/ogg",
+    ".pdf": "application/pdf",
     ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
     ".csv": "text/plain; charset=utf-8", ".xml": "text/xml; charset=utf-8",
     ".wasm": "application/wasm",
@@ -108,8 +113,9 @@ def is_media(name):
 
 
 def size_cap(name):
-    """单文件体积上限：媒体给独立大额，其余照旧。"""
-    return MEDIA_MAX_FILE if is_media(name) else MAX_FILE
+    """单文件体积上限：原生渲染成品（视频/音频/图片/PDF）给独立大额，其余照旧。"""
+    return (MEDIA_MAX_FILE if _ext(name) in (MEDIA_EXT | IMAGE_EXT | PDF_EXT)
+            else MAX_FILE)
 
 
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -287,16 +293,30 @@ def _pick_entry(avail):
     return best[1] if best else ""
 
 
-def _pick_media_entry(avail):
-    """没有 HTML 时的兜底入口：挑媒体成品，视频优先于音频，其次最浅、最新。"""
+# 无网页时的入口回退链：视频 > 音频 > 图片 > PDF（越靠前越像「主成品」）
+_FALLBACK_TIERS = ((MEDIA_VIDEO_EXT, "video"), (MEDIA_AUDIO_EXT, "audio"),
+                   (IMAGE_EXT, "image"), (PDF_EXT, "pdf"))
+
+
+def _entry_kind(name):
+    """入口成品类别：前端据此切换提示文案与渲染方式。"""
+    ext = _ext(name)
+    for exts, kind in _FALLBACK_TIERS:
+        if ext in exts:
+            return kind
+    return "web"
+
+
+def _pick_fallback_entry(avail):
+    """没有 HTML 时的兜底入口：按回退链挑原生渲染成品，同层级最浅、最新。"""
     best = None
     for f in avail:
         name = f["name"]
-        ext = _ext(name)
-        if ext not in MEDIA_EXT:
+        tier = next((i for i, (exts, _k) in enumerate(_FALLBACK_TIERS)
+                     if _ext(name) in exts), None)
+        if tier is None:
             continue
-        key = (0 if ext in MEDIA_VIDEO_EXT else 1,
-               name.count("/"), -int(f.get("mtime") or 0), name)
+        key = (tier, name.count("/"), -int(f.get("mtime") or 0), name)
         if best is None or key < best[0]:
             best = (key, name)
     return best[1] if best else ""
@@ -320,9 +340,10 @@ def preview_path(run_id, tok):
 def list_app(run_id, tok=""):
     """本任务可预览的成品应用。返回前端渲染页签条所需的全部信息。
 
-    入口优先挑 HTML（网页应用），没有 HTML 时回退挑媒体成品——手绘视频这类
-    任务整个工作目录可能只有一只 mp4，它就是成品本身，浏览器原生会播；此时
-    返回带 "media": True（前端据此把「网页成品」文案换成「媒体成品」）。
+    入口优先挑 HTML（网页应用）；没有网页时按 视频 > 音频 > 图片 > PDF 回退
+    挑原生渲染成品——手绘视频整个工作目录可能只有一只 mp4，海报任务可能只有
+    一张 png，报告任务可能只有一份 pdf，它们就是成品本身。返回带 "kind"
+    （web|video|audio|image|pdf），前端据此换提示文案与渲染方式。
     {"ok": False, "reason": "no_run"|"no_workdir"|"no_steps"|"no_html"} 表示没有
     可预览的东西（前端据此把「预览」页签整体隐藏，不打扰非前端任务）。
     """
@@ -340,10 +361,11 @@ def list_app(run_id, tok=""):
              if _ext(f["name"]) in PREVIEW_EXT
              and int(f.get("size") or 0) <= size_cap(f["name"])]
     entry = _pick_entry(avail)
-    media = False
+    kind = "web"
     if not entry:
-        entry = _pick_media_entry(avail)
-        media = bool(entry)
+        entry = _pick_fallback_entry(avail)
+        if entry:
+            kind = _entry_kind(entry)
     if not entry:
         return {"ok": False, "reason": "no_html", "workdir": wd}
     edir = entry.rsplit("/", 1)[0] if "/" in entry else ""
@@ -361,9 +383,6 @@ def list_app(run_id, tok=""):
             break
     # 入口一定在，且一定排第一（页签条第一格就是"这个应用"，运行视图另占一格）
     names = [entry] + [n for n in names if n != entry]
-    out = {"ok": True, "entry": entry, "workdir": wd,
-           "base": preview_path(run_id, tok),
-           "files": [{"name": n, "ext": _ext(n).lstrip(".")} for n in names]}
-    if media:
-        out["media"] = True
-    return out
+    return {"ok": True, "entry": entry, "kind": kind, "workdir": wd,
+            "base": preview_path(run_id, tok),
+            "files": [{"name": n, "ext": _ext(n).lstrip(".")} for n in names]}
