@@ -3165,7 +3165,7 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
   align-items: center; justify-content: center; flex: none; }
 #btn-create.round .ico { width: 17px; height: 17px; }
 /* 快捷类型 chips：内置流程一键选定（选中态 .on） */
-.cmp-quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 2px 2px; }
+.cmp-quick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 10px 2px 2px; }
 .cmp-quick:empty { display: none; }
 .cmp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
   border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text);
@@ -4656,7 +4656,7 @@ main .panel.wide {
 }
 #sub-tasks .cmp-quick {
   margin: 12px 0 2px;
-  gap: 6px;
+  gap: 12px;
 }
 #sub-tasks .cmp-chip {
   min-height: 30px;
