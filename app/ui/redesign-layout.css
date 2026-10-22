@@ -14,12 +14,32 @@
   display: none !important;
 }
 
+/* rail 列移除后 #app 必须同步回落两列——三层皮肤把 #app 定义成
+ * 46px rail + 侧栏 + 主区，只 display:none 掉 rail 会让侧栏滑进
+ * 46px 列被压成竖条、主区挤进侧栏列（2026-10-21 实拍翻车根因） */
+html[data-skin="warm"] #app {
+  grid-template-columns: var(--side-w, 216px) minmax(0, 1fr);
+}
+
+html[data-skin="warm"] body.side-collapsed #app {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+html[data-skin="warm"] body.inspector-open #app {
+  grid-template-columns: var(--side-w, 216px) minmax(0, 1fr) minmax(280px, 340px);
+}
+
+html[data-skin="warm"] body.side-collapsed.inspector-open #app {
+  grid-template-columns: 0 minmax(0, 1fr) minmax(280px, 340px);
+}
+
 /* ================= 右侧状态侧栏（桌面端，仅暖色皮肤） ================= */
 html[data-skin="warm"] #mainwrap {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  grid-template-rows: auto 1fr;
-  height: 100vh;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
 }
 
 html[data-skin="warm"] .topbar {
@@ -28,7 +48,15 @@ html[data-skin="warm"] .topbar {
 
 html[data-skin="warm"] main {
   grid-column: 1;
+  grid-row: 2;
   overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+html[data-skin="warm"] #change-summary {
+  grid-column: 1;
+  grid-row: 3;
 }
 
 html[data-skin="warm"] #status-sidebar {
@@ -73,6 +101,21 @@ html[data-skin="warm"] .status-card-count {
   background: var(--panel2);
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+/* 急停钮挂在「正在运行」卡头部右端（原侧栏底栏紧贴设置齿轮，误触风险高）：
+ * 尺寸从 34px foot-btn 收敛进卡头行高，红 X 语义不变，显隐逻辑不变（有活跃任务才现身） */
+html[data-skin="warm"] .status-card-head .status-card-count { margin-left: auto; }
+html[data-skin="warm"] #btn-kill-all {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  margin-left: 6px;
+}
+html[data-skin="warm"] #btn-kill-all .ico {
+  width: 13px;
+  height: 13px;
 }
 
 /* 运行中任务项 */
@@ -127,6 +170,11 @@ html[data-skin="warm"] .progress-fill {
 html[data-skin="warm"] .pending-item {
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+html[data-skin="warm"] .pending-item:hover {
+  background: var(--panel2);
 }
 
 html[data-skin="warm"] .pending-item:last-child {
@@ -156,37 +204,88 @@ html[data-skin="warm"] .pending-action:hover {
   text-decoration: underline;
 }
 
-/* 用量统计 */
-html[data-skin="warm"] .usage-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+/* 用量行：标签左、值右，单位随值走（fmtTok/fmtUsd 自带） */
+html[data-skin="warm"] .usage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-html[data-skin="warm"] .usage-stat {
-  text-align: center;
+html[data-skin="warm"] .usage-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
 }
 
-html[data-skin="warm"] .usage-stat-value {
-  font-size: 18px;
+html[data-skin="warm"] .usage-row b {
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
 }
 
-html[data-skin="warm"] .usage-stat-label {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
 /* 移动端隐藏状态侧栏 */
 @media (max-width: 768px) {
+  /* 暖皮 #app 桌面规则特异性(0,2,1)压过基座移动端单列(1,0,0)——
+   * 侧栏 display:none 后 216px 列仍占位，主区被挤成一条。此处必须显式收回单列 */
+  html[data-skin="warm"] #app,
+  html[data-skin="warm"] body.side-collapsed #app,
+  html[data-skin="warm"] body.inspector-open #app,
+  html[data-skin="warm"] body.side-collapsed.inspector-open #app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   html[data-skin="warm"] #mainwrap {
     grid-template-columns: 1fr;
   }
 
   html[data-skin="warm"] #status-sidebar {
     display: none !important;
+  }
+
+  /* 主页窄屏内边距 */
+  html[data-skin="warm"] .rd-home {
+    padding: 20px 16px;
+  }
+
+  html[data-skin="warm"] .rd-input-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}
+
+/* ================= 任务表单页：fixed 空态居中公式重算 =================
+ * 桌面工作台层把 #sub-tasks .form 写成 fixed + 手算居中（硬编码旧布局
+ * rail 52px + 侧栏 288px）。暖皮 rail 已移除、主区右侧多了 280px 状态栏，
+ * 旧公式整体偏右且溢出到状态栏底下。标题/提示也在 .form 内，一并修正。 */
+@media (min-width: 769px) {
+  html[data-skin="warm"] #sub-tasks .form {
+    left: calc(var(--side-w, 216px) + (100vw - var(--side-w, 216px) - 280px) / 2);
+    width: min(900px, calc(100vw - var(--side-w, 216px) - 280px - 48px));
+  }
+
+  html[data-skin="warm"] body.side-collapsed #sub-tasks .form {
+    left: calc((100vw - 280px) / 2);
+    width: min(900px, calc(100vw - 280px - 48px));
+  }
+
+  html[data-skin="warm"] body.inspector-open #sub-tasks .form {
+    left: calc(var(--side-w, 216px) + (100vw - var(--side-w, 216px) - 280px - var(--workbench-inspector-width, 320px)) / 2);
+    width: min(900px, calc(100vw - var(--side-w, 216px) - 280px - var(--workbench-inspector-width, 320px) - 48px));
+  }
+
+  html[data-skin="warm"] body.side-collapsed.inspector-open #sub-tasks .form {
+    left: calc((100vw - 280px - var(--workbench-inspector-width, 320px)) / 2);
+    width: min(900px, calc(100vw - 280px - var(--workbench-inspector-width, 320px) - 48px));
+  }
+}
+
+/* 移动端单列：直接视口居中 */
+@media (max-width: 768px) {
+  html[data-skin="warm"] #sub-tasks .form {
+    left: 50%;
+    width: min(900px, calc(100vw - 48px));
   }
 }
 
@@ -372,15 +471,78 @@ html[data-skin="warm"] .side-rail {
   display: none !important;
 }
 
-/* 隐藏旧概览页（暖色皮肤下用新主页替代） */
-html[data-skin="warm"] #sub-overview {
+/* rail 藏掉后，原挂在 rail 的入口必须从侧栏底部工具栏补回来：
+ * 急停 / 设置 / 编排者厂商 / 手机连接（基座层把 .side-foot 全局 display:none，
+ * 功能全在 rail 上，不同步恢复就是丢功能） */
+html[data-skin="warm"] .side-foot {
+  display: flex !important;
+}
+
+/* 「工作台」导航项：默认隐藏，仅暖色皮肤显示（新元素守卫规矩） */
+.rd-qitem-home {
   display: none !important;
 }
 
-/* 显示新主页 */
-html[data-skin="warm"] #page-home {
-  display: block !important;
+html[data-skin="warm"] .rd-qitem-home {
+  display: flex !important;
 }
+
+/* 暖皮下恢复快捷导航：rail 移除后这里是概览/运行记录/自动化/浏览器的
+ * 唯一入口（基座某层把 .side-quick 全局 display:none，导航原本全靠 rail） */
+html[data-skin="warm"] .side-quick {
+  display: flex !important;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 10px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* 新聊天 / 快捷导航 / 导航项三者同盒：左缘已对齐，宽高也一致。
+ * ui-polish 的 #btn-new-task 是 ID 特异性（min-height:42px），这里必须带 ID 才压得住 */
+html[data-skin="warm"] #btn-new-task,
+html[data-skin="warm"] .side-main > .new-task {
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+}
+
+html[data-skin="warm"] .side-quick .qitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  text-align: left;
+}
+
+html[data-skin="warm"] .side-quick .qitem:hover {
+  background: var(--panel2);
+}
+
+html[data-skin="warm"] .side-quick .qitem.active {
+  background: var(--panel2);
+}
+
+/* 主页显隐完全走 .hidden 类切换（与 .page 家族一致）。
+ * 切勿给 #page-home 写 display:block !important——那会顶掉 .hidden，
+ * 切到任何页主页都叠在最上层（S6 截图实锤过）。初始 HTML 自带 hidden，
+ * 暖皮 boot 时 showHome() 摘掉；非暖皮永远藏着，无需 CSS 兜底。 */
+
+/* 注意：不藏 #sub-overview——「概览」仍是独立功能页（KPI/趋势/长目标），
+ * 主页是新增入口而非替代；藏了它 switchTab('overview') 就是白屏。 */
 
 /* ================= 新主页样式 ================= */
 html[data-skin="warm"] .rd-home {
@@ -605,11 +767,298 @@ html[data-skin="warm"] .rd-qs-btn {
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s ease;
+  /* 按钮文案来自真实任务标题，长度不可控：单行省略，不撑破排布 */
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 html[data-skin="warm"] .rd-qs-btn:hover {
   background: var(--panel2);
   border-color: var(--border-strong);
+}
+
+/* 输入卡头：完整路径（demo 同款 名称+路径+分支 并列） */
+html[data-skin="warm"] .rd-input-path {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 执行模式分段控（demo 同款 seg）：容器浅底、选中白底浮起 */
+html[data-skin="warm"] .rd-mode-seg {
+  display: inline-flex;
+  background: var(--panel2);
+  border-radius: 9px;
+  padding: 2px;
+  gap: 2px;
+}
+
+html[data-skin="warm"] .rd-mode-seg button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+html[data-skin="warm"] .rd-mode-seg button.on {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 520;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* 思考档位（demo 同款 model-pick）：描边幽灵钮 */
+html[data-skin="warm"] .rd-model-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+html[data-skin="warm"] .rd-model-pick:hover {
+  background: var(--panel2);
+}
+
+html[data-skin="warm"] .rd-cmp-gap {
+  flex: 1;
+}
+
+/* 状态栏：运行中计数脉冲点（有活跃任务才亮） */
+html[data-skin="warm"] #status-running-count.live::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--bad);
+  margin-right: 5px;
+  animation: rd-pulse 2s infinite;
+}
+
+@keyframes rd-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* 运行条目：右侧角色名 + 首字头像 */
+html[data-skin="warm"] .running-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 百分比恒占位不被角色名挤丢 */
+html[data-skin="warm"] .running-item-progress {
+  flex: none;
+  margin-left: auto;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-skin="warm"] .running-item-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-skin="warm"] .ri-avatar {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--accent);
+  font-style: normal;
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 「运行队列 →」底部链接行（demo 同款 rail-link） */
+html[data-skin="warm"] .status-rail-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  padding-top: 10px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  font-size: 11.5px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+html[data-skin="warm"] .status-rail-link:hover {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+/* 运行卡批量操作（原运行记录页头部按钮搬入）：迷你文字钮一行 */
+html[data-skin="warm"] .status-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* 危险钮旁常驻后果旁注：细则贴着动作本身，不等确认框才出现 */
+html[data-skin="warm"] .status-card-note {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* 设置模式下的任务表单 composer 校色：hive-ui 层在 settings-mode 给
+ * #page-settings 全部 input/textarea 刷冷灰 --cb-bg-inset（#eef2f5），暖皮里发蓝；
+ * 发送钮主色被中性层盖掉。两处按暖皮变量校回（ocean 本就冷调，不受影响）。 */
+html[data-skin="warm"] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-skin="warm"] body.settings-mode #page-settings textarea {
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+}
+
+html[data-skin="warm"] #sub-tasks #btn-create {
+  background: linear-gradient(110deg, var(--accent), color-mix(in srgb, var(--accent2) 82%, var(--accent)));
+  color: #fff;
+}
+
+html[data-skin="warm"] .status-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+html[data-skin="warm"] .status-mini-btn:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+html[data-skin="warm"] .status-mini-btn.danger {
+  color: var(--bad);
+}
+
+html[data-skin="warm"] .status-mini-btn.danger:hover {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 8%, var(--panel));
+}
+
+/* 待你处理：「去确认 →」文字按钮 */
+html[data-skin="warm"] .pending-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+html[data-skin="warm"] .pending-go:hover {
+  text-decoration: underline;
+}
+
+/* 本月用量卡（demo 同款）：大数字 + 迷你趋势 + 页脚统计 */
+/* 卡头浏览▾（接管原「切换」的 pickFolder 入口） */
+html[data-skin="warm"] .rd-input-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+html[data-skin="warm"] .rd-input-caret:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+/* 分支胶囊推到卡头右端 */
+html[data-skin="warm"] .rd-input-branch {
+  margin-left: auto;
+}
+
+/* 用量展示只留右侧状态栏一份（大数字+趋势）：侧栏底部迷你卡暖皮不再重复渲染 */
+html[data-skin="warm"] #side-usage {
+  display: none !important;
+}
+
+/* 用量卡头月份位 */
+html[data-skin="warm"] .status-card-month {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+html[data-skin="warm"] .usage-big {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+html[data-skin="warm"] .usage-big span {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+html[data-skin="warm"] .usage-spark {
+  display: block;
+  width: 100%;
+  height: 40px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+html[data-skin="warm"] .usage-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 最近任务 */

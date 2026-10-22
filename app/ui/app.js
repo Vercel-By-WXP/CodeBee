@@ -104,6 +104,29 @@ function wbSetView(view) {
   wbDraw();
 }
 
+/* 工作台「控制台」视图：人类可读的运行事实摘要 + 可折叠原始 JSON。
+ * 此前直接 JSON.stringify(run) 整坨倒出，取消/无步骤的 run 只剩一屏裸数据。 */
+function wbConsoleHtml(run) {
+  const row = (k, v) => (v !== "" && v != null ? '<div class="wb-kv"><span>' + esc(k) + "</span><b>" + v + "</b></div>" : "");
+  const mins = (run.started_at && run.ended_at)
+    ? Math.max(1, Math.round((new Date(String(run.ended_at).replace(" ", "T"))
+      - new Date(String(run.started_at).replace(" ", "T"))) / 60000))
+    : 0;
+  let html = row(t("状态"), esc(runStatusText(run)))
+    + row(t("原因"), run.error ? esc(run.error) : (run.summary ? esc(run.summary) : ""))
+    + row(t("创建时间"), esc(run.created_at || ""))
+    + row(t("开始"), run.started_at ? esc(run.started_at) : "—")
+    + row(t("结束"), run.ended_at ? esc(run.ended_at) : "—")
+    + (mins ? row(t("耗时"), mins + t(" 分钟")) : "")
+    + (Number(run.auto_resumes) > 0 ? row(t("自动续跑"), esc(String(run.auto_resumes)) + t(" 次")) : "")
+    + (Number(run.tokens) > 0 ? row(t("Token"), esc(fmtTok(run.tokens))) : "")
+    + (Number(run.cost_usd) > 0 ? row(t("费用"), esc(fmtUsd(run.cost_usd))) : "");
+  if (!html) html = '<div class="wb-kv"><span></span><b>' + esc(t("暂无运行信息")) + "</b></div>";
+  html += '<details class="wb-raw"><summary>' + esc(t("原始数据")) + "</summary><pre>"
+    + esc(JSON.stringify(run, null, 2)) + "</pre></details>";
+  return html;
+}
+
 function wbDraw() {
   wbPvSeq++;
   wbNpSeq++;
@@ -163,7 +186,7 @@ function wbDraw() {
     wbPreviewReset();
     if (console_) {
       console_.classList.remove("hidden");
-      console_.textContent = run ? JSON.stringify(run, null, 2) : t("暂无运行日志");
+      console_.innerHTML = run ? wbConsoleHtml(run) : esc(t("暂无运行日志"));
     }
     if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("控制台");
     if (stageNote) stageNote.textContent = run ? run.id : "";
@@ -2185,6 +2208,7 @@ function applyState(d) {
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
   memoryCenterMaybeRefresh();
   updateStatusSidebar(); // 暖色皮肤状态侧栏
+  if (S.tab === "home") renderHome();   // 停在主页时：最近任务列表跟着刷新
   if (S.tab === "browser") {
     browserRenderTaskContext();
     browserLoadPublishState(browserCurrentTask());
@@ -6128,9 +6152,15 @@ function showDetailInMain() {
   S.tab = "runs";
   const main = document.querySelector("main");
   if (main) main.classList.remove("browser-page-active");
+  // 详情面板住在 page-settings 壳里：暖色皮肤停在工作台主页（page-home）时点侧栏任务行，
+  // 壳必须一并翻回 page-settings，否则详情在隐藏页面里铺开＝点了没反应（2026-10-21 实案，
+  // 同 homeOpenRun 先 switchTab 的老坑）。这里不走 switchTab：name==="runs" 且 detailRunId
+  // 还没设时会先 closeRun，把调用方刚写好的 detailTaskKey 抹掉。
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-runs"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
-  document.body.classList.remove("settings-mode");
+  document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", b.dataset.page === "runs"));
+  document.body.classList.remove("settings-mode", "files-mode");
   syncRailState();
   syncInspBtn();
   renderPageCrumb();
@@ -13900,54 +13930,135 @@ window.addEventListener("storage", (event) => {
   renderCodePreviews();
 });
 
-/* 暖色皮肤主页：渲染日期 + 最近任务 */
+/* 暖色皮肤主页：渲染日期 + 最近任务（数据全部来自 S.state.runs，无假数） */
 function renderHome() {
-  // 日期
   const dateEl = $("rd-home-date");
   if (dateEl) {
     const now = new Date();
     const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
-    const weekday = weekdays[now.getDay()];
-    dateEl.textContent = `${month} 月 ${day} 日 · 星期${weekday}`;
+    dateEl.textContent = (now.getMonth() + 1) + " 月 " + now.getDate() + " 日 · 星期" + weekdays[now.getDay()];
   }
 
-  // 最近任务
-  const listEl = $("rd-recent-list");
-  if (listEl) {
-    const runs = (S.state && S.state.runs) || [];
-    const recent = runs.slice(0, 5);
-    if (recent.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px" data-i18n="暂无任务">暂无任务</div>';
-    } else {
-      listEl.innerHTML = recent.map((r) => {
-        const status = r.status || "completed";
-        const dotClass = status === "running" ? "running" : status === "queued" ? "waiting" : status === "failed" ? "failed" : "completed";
-        const progress = r.progress ? Math.round(r.progress) + "%" : "—";
-        const meta = [r.project_name || "", r.flow_name || "", r.created_at ? formatRelativeTime(r.created_at) : ""].filter(Boolean).join(" · ");
-        return '<div class="rd-task-item" onclick="openTask(\'' + esc(r.id || "") + '\')">'
-          + '<span class="rd-task-dot ' + dotClass + '"></span>'
-          + '<div class="rd-task-info">'
-          + '<div class="rd-task-title">' + esc(r.title || r.id || "") + '</div>'
-          + '<div class="rd-task-meta">' + esc(meta) + '</div>'
-          + '</div>'
-          + '<span class="rd-task-progress">' + progress + '</span>'
-          + '<svg class="ico rd-task-arrow" aria-hidden="true"><use href="#i-chevron-r"></use></svg>'
-          + '</div>';
-      }).join("");
+  // 卡头工作目录：#f-workdir 覆盖值优先，否则读真实默认目录（S.settings）。
+  // 全路径本身就是身份，不再单独摆项目名。
+  const branchEl = $("rd-input-branch");
+  const overrideWd = (($("f-workdir") || {}).value || "").trim();
+  const effWd = overrideWd || ((S.settings || {}).default_workdir_effective || "").trim();
+  // 分支胶囊：对生效目录探真实 /api/git/info（同目录只探一次）；探不到保持隐藏
+  if (branchEl) {
+    if (effWd && S.homeGitWd !== effWd) {
+      S.homeGitWd = effWd;
+      S.homeGitBranch = "";
+      api("/api/git/info?workdir=" + encodeURIComponent(effWd))
+        .then((info) => {
+          if (info && info.repo && S.homeGitWd === effWd) {
+            S.homeGitBranch = info.branch || "";
+            renderHome();
+          }
+        })
+        .catch(() => {});
     }
+    branchEl.textContent = S.homeGitBranch || "";
+    branchEl.hidden = !S.homeGitBranch;
+  }
+  // 完整路径（卡头主标识，浏览▾ 在旁接管 pickFolder）；无目录时回落占位文案
+  const pathEl = $("rd-input-path");
+  if (pathEl) {
+    pathEl.textContent = effWd || t("默认工作目录");
+    pathEl.title = effWd || t("工作目录 · 留空用默认");
+  }
+
+  const listEl = $("rd-recent-list");
+  if (!listEl) return;
+  const runs = (S.state && S.state.runs) || [];
+  const recent = runs.slice(0, 5);
+  if (recent.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">' + t("暂无任务") + "</div>";
+    return;
+  }
+  listEl.innerHTML = recent.map((r) => {
+    const dotClass = r.status === "running" ? "running" : r.status === "queued" ? "waiting" : r.status === "failed" ? "failed" : "completed";
+    const progress = r.progress != null ? Math.round(r.progress) + "%" : "—";
+    const meta = [r.project_name || r.project || "", r.flow_name || r.flow || "", relTime(r.created_at || r.started_at || "")].filter(Boolean).join(" · ");
+    return '<div class="rd-task-item" onclick="homeOpenRun(\'' + esc(r.id || "") + '\')">'
+      + '<span class="rd-task-dot ' + dotClass + '"></span>'
+      + '<div class="rd-task-info">'
+      + '<div class="rd-task-title">' + esc(r.title || r.id || "") + '</div>'
+      + '<div class="rd-task-meta">' + esc(meta) + '</div>'
+      + '</div>'
+      + '<span class="rd-task-progress">' + progress + '</span>'
+      + '<svg class="ico rd-task-arrow" aria-hidden="true"><use href="#i-chevron-r"></use></svg>'
+      + '</div>';
+  }).join("");
+}
+
+/* 暖色皮肤主页显隐：与 switchTab 同一套状态（tab/mainPage/settings-mode/页名），
+ * 不走 switchTab 本体——那套会把 .page 全收进 page-settings 体系 */
+function showHome() {
+  if (S.detailRunId || S.detailTaskKey) closeRun();
+  S.tab = "home";
+  S.mainPage = "";
+  stopAutoPoll();
+  document.body.classList.remove("settings-mode", "files-mode");
+  const main = document.querySelector("main");
+  if (main) main.classList.remove("browser-page-active");
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-home"));
+  document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", b.id === "btn-q-home"));
+  document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.remove("active"));
+  const title = $("page-title");
+  if (title) title.textContent = t("工作台");
+  const crumb = $("crumb-root");
+  if (crumb) crumb.classList.add("hidden");
+  renderHome();
+  syncInspectorVis();
+}
+
+/* 主页点最近任务：详情面板都住在 page-settings 壳里，而主页游离在壳外——
+ * 先把壳切回运行页再 sideOpenRun，否则详情在一个隐藏页面里翻开（=点了没反应） */
+function homeOpenRun(id) {
+  switchTab("runs", "main");
+  sideOpenRun(id);
+}
+
+/* 主页输入卡 → 真实任务表单：把已输入文字带过去并聚焦。
+ * 主页不另建提交链路，创建任务仍走既有表单校验与流程。 */
+/* 主页输入卡 → 真实任务表单：把已输入文字带过去并聚焦。
+ * 主页不另建提交链路，创建任务仍走既有表单校验与流程；
+ * opts.submit = 直接执行/发送：带字过去后点真实 #btn-create 提交，主页不是假入口。 */
+function homeToForm(preset, opts) {
+  const homeArea = $("rd-input-area");
+  const text = (preset != null ? preset : (homeArea ? homeArea.value : "")).trim();
+  exitSettings(true);   // 强制落到真实表单，不经暖色主页分支
+  const goal = $("f-goal");
+  if (goal && text) {
+    goal.value = text;
+    goal.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (goal) goal.focus();
+  if (homeArea) homeArea.value = "";
+  if (opts && opts.submit && text) {
+    const th = $("f-thinking");
+    if (th && S.homeThinking) th.value = S.homeThinking;
+    const submit = $("btn-create");
+    if (submit && !submit.disabled) submit.click();
   }
 }
 
-function showHome() {
-  // 隐藏所有页面，显示主页
-  document.querySelectorAll(".page").forEach((p) => p.classList.add("hidden"));
-  const homePage = $("page-home");
-  if (homePage) homePage.classList.remove("hidden");
-  // 更新页面标题
-  const pageTitle = $("page-title");
-  if (pageTitle) pageTitle.textContent = t("工作台");
+/* 主页发送（跟随执行模式分段控）：直接执行=带字走真实提交链；
+ * 专家编排=带字落真实表单，挑好流程再开跑 */
+function homeSend() {
+  const seg = $("rd-mode-seg");
+  const expert = !!(seg && seg.querySelector('[data-mode="expert"].on'));
+  homeToForm(null, expert ? {} : { submit: true });
+}
+
+/* 主页「切换」工作目录：落到真实表单并打开目录浏览器（pickFolder 为真源） */
+function homePickWorkspace() {
+  exitSettings(true);
+  if (typeof pickFolder === "function") { pickFolder("f-workdir"); return; }
+  const wd = $("f-workdir");
+  if (wd) wd.focus();
 }
 
 /* 外观页：皮肤卡片（点选即换） + 明暗分段控。选中态同时给描边与勾选，
@@ -20346,7 +20457,8 @@ function renderUsage() {
     [t("按步骤角色"), (u.by_role || []).map((r) => Object.assign({}, r, { key: roleName(r.key) }))],
     [t("按任务类型"), u.by_task_type],
   ].map(([title, rows]) => usageDimTable(title, rows)).join("");
-  $("usage-recent").innerHTML = usageRecentTable(u.recent || []);
+  $("usage-recent").innerHTML = usageRecentTable(u.recent || []) +
+    '<p class="hint">' + t("口径：Tokens＝输入＋输出＋缓存命中之和；费用为调用记录累计的美元（USD）值。") + "</p>";
 }
 
 function analyticsSince(days) {
@@ -20772,6 +20884,9 @@ function sideUsageRenderRuns() {
 
 /* 状态侧栏更新（暖色皮肤专属）：正在运行 / 待处理 / 本月用量 */
 function updateStatusSidebar() {
+  // 批量暂停钮已搬进状态卡（全局可达）：显隐/文案跟随 pause_control，
+  // 原本只在运行列表渲染时刷新，这里每次状态刷新都同步一次
+  renderPauseAllButton();
   // 正在运行
   const runningList = $("status-running-list");
   const runningCount = $("status-running-count");
@@ -20779,6 +20894,7 @@ function updateStatusSidebar() {
     const runs = (S.state && S.state.runs) || [];
     const running = runs.filter((r) => r.status === "running");
     runningCount.textContent = String(running.length);
+    runningCount.classList.toggle("live", running.length > 0);
     if (running.length === 0) {
       runningList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0" data-i18n="暂无运行中的任务">暂无运行中的任务</div>';
     } else {
@@ -20789,10 +20905,12 @@ function updateStatusSidebar() {
         const progress = total ? Math.min(100, Math.max(0, Math.round(Number(r.progress) || 0))) : 0;
         const step = (r.current_step && r.current_step.n) || 0;
         const mins = Math.floor((Date.now() - new Date(r.started_at || Date.now()).getTime()) / 60000);
-        return '<div class="running-item">'
+        const role = r.flow_name || r.agent_label || "";
+        return '<div class="running-item" onclick="homeOpenRun(\'' + esc(r.id) + '\')" style="cursor:pointer">'
           + '<div class="running-item-title">' + esc(r.title || r.id || "") + '</div>'
           + '<div class="running-item-meta">'
           + '<span>' + (total ? t("第 ") + step + t("/") + total + t(" 步") : "") + (mins ? " · " + mins + t(" 分") : "") + '</span>'
+          + (role ? '<span class="running-item-role"><i class="ri-avatar" aria-hidden="true">' + esc(role.slice(0, 1)) + '</i>' + esc(role) + '</span>' : "")
           + '<span class="running-item-progress">' + (total ? progress + "%" : "—") + '</span>'
           + '</div>'
           + '<div class="progress-track"><div class="progress-fill" style="width:' + Math.round(progress) + '%"></div></div>'
@@ -20801,31 +20919,60 @@ function updateStatusSidebar() {
     }
   }
 
-  // 待你处理（简化：显示需要用户确认的任务）
+  // 待你处理：复用活动模型的 needs 判定（待裁决/待审批/失败/超时），点击直开详情
   const pendingList = $("status-pending-list");
   const pendingCount = $("status-pending-count");
   if (pendingList && pendingCount) {
-    // 这里简化处理，实际应根据任务状态判断
-    pendingCount.textContent = "0";
-    pendingList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0" data-i18n="暂无待处理项">暂无待处理项</div>';
+    let needsRows = [];
+    try {
+      if (window.activityModel && window.activityModel.build) {
+        needsRows = window.activityModel.build(S.state || {}, {}, new Date()).rows.filter((r) => r.needs);
+      }
+    } catch (e) { needsRows = []; }
+    pendingCount.textContent = String(needsRows.length);
+    if (needsRows.length === 0) {
+      pendingList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0">' + t("暂无待处理项") + "</div>";
+    } else {
+      pendingList.innerHTML = needsRows.slice(0, 4).map((r) =>
+        '<div class="pending-item" onclick="homeOpenRun(\'' + esc(r.id) + '\')" style="cursor:pointer">'
+        + '<div class="pending-item-title">' + esc(r.title || r.id) + '</div>'
+        + (r.reasons && r.reasons.length ? '<div class="pending-item-desc">' + esc(r.reasons.map((x) => t(x)).join(" · ")) + '</div>' : "")
+        + '<button type="button" class="pending-go" onclick="event.stopPropagation(); homeOpenRun(\'' + esc(r.id) + '\')">'
+        + t("去确认") + '<svg class="ico ico-sm" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>'
+        + "</div>"
+      ).join("");
+    }
   }
 
-  // 本月用量
-  const u = S.sideUsage;
-  const tokensEl = $("status-usage-tokens");
-  const costEl = $("status-usage-cost");
-  const runsEl = $("status-usage-runs");
-  if (tokensEl && costEl && runsEl && u && u.by_day && u.by_day.length) {
-    const now = new Date();
-    const ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-    const monthDays = u.by_day.filter((d) => String(d.day || "").slice(0, 7) === ym);
-    const sum = (k) => monthDays.reduce((s, d) => s + (Number(d[k]) || 0), 0);
-    const calls = sum("calls");
-    const tokens = sum("tokens");
-    const cost = sum("cost_usd");
-    tokensEl.textContent = fmtTok(tokens);
-    costEl.textContent = fmtUsd(cost);
-    runsEl.textContent = fmtTok(calls);
+  // 本月用量（demo 同款）：大数字 + 迷你趋势 + 页脚统计（真实 /api/usage 月度汇总）
+  const usageList = $("status-usage-list");
+  const usageMonth = $("status-usage-month");
+  if (usageList) {
+    const u = S.sideUsage;
+    let html = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0">' + t("本月还没有调用") + "</div>";
+    if (u && u.by_day && u.by_day.length) {
+      const now = new Date();
+      const ym = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+      const monthDays = u.by_day.filter((d) => String(d.day || "").slice(0, 7) === ym);
+      const sum = (k) => monthDays.reduce((s, d) => s + (Number(d[k]) || 0), 0);
+      const calls = sum("calls");
+      if (calls) {
+        const toks = monthDays.map((d) => Number(d.tokens) || 0);
+        const maxT = Math.max(1, ...toks);
+        const pts = toks.map((v, i) => {
+          const x = toks.length > 1 ? Math.round(i * 280 / (toks.length - 1)) : 140;
+          return x + " " + Math.round(38 - (v / maxT) * 32);
+        });
+        const line = "M" + pts.join(" L");
+        html = '<div class="usage-big">' + esc(fmtTok(sum("tokens"))) + "<span>" + esc(t("tokens")) + "</span></div>"
+          + '<svg class="usage-spark" viewBox="0 0 280 40" preserveAspectRatio="none" aria-hidden="true">'
+          + '<path d="' + line + " L280 40 L0 40 Z" + '" fill="currentColor" opacity=".12"></path>'
+          + '<path d="' + line + '" fill="none" stroke="currentColor" stroke-width="1.5"></svg>'
+          + '<div class="usage-meta"><span>' + calls + t(" 次运行") + "</span><span>" + esc(fmtUsd(sum("cost_usd"))) + "</span></div>";
+      }
+    }
+    usageList.innerHTML = html;
+    if (usageMonth) usageMonth.textContent = (new Date().getMonth() + 1) + " " + t("月");
   }
 }
 
@@ -21292,7 +21439,7 @@ function collapseDrawerIfMobile() {
 function switchTab(name, shell) {
   if (name === "__phone") { openPhoneConnect(); return; }  // 手机连接是弹框，不切页
   if (name === "__guide") { welcomeOpen(); return; }       // 帮助中心是弹层，不切页（设置导航「软件」组）
-  if (name === "home") { renderHome(); showHome(); return; }  // 暖色皮肤主页
+  if (name === "home") { showHome(); return; }  // 暖色皮肤主页（showHome 内含 renderHome）
   // 详情开着时切去别的页：详情一并关掉（它是 runs 子页的住户，name==="runs" 除外）。
   // 不关会留两个残留：S.detailRunId 让顶栏标题卡在「运行详情」；对话态详情给 main
   // 挂的 chat-fill（overflow:hidden 锁滚动，见 renderChatNav）留在原地——设置/概览
@@ -21346,15 +21493,12 @@ function switchTab(name, shell) {
   syncInspectorVis();    // 检查器只属于任务上下文：进设置子页自动收起
 }
 
-/* 退出设置/回到新建任务表单：左栏恢复任务树，主栏回到任务页 */
-function exitSettings() {
+/* 退出设置/回到新建任务表单：左栏恢复任务树，主栏回到任务页。
+ * forceForm=true：跳过暖色主页直落真实任务表单（主页输入卡的
+ * 执行/发送按钮用——它们必须落到能真正创建任务的表单，不能空转） */
+function exitSettings(forceForm) {
   if (S.detailRunId || S.detailTaskKey) closeRun();   // 设置运行列表开着详情就回表单：一并关掉，防 chat-fill 锁滚动与标题残留
-  // 暖色皮肤回到主页，其他皮肤回到任务页
-  if (currentSkin() === "warm") {
-    renderHome();
-    showHome();
-    return;
-  }
+  if (!forceForm && currentSkin() === "warm") { showHome(); return; }
   S.tab = "tasks";
   $("sub-tasks").classList.remove("mobile-composing");
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
@@ -21903,6 +22047,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   // 侧栏快捷导航：主栏换成目标页，左栏任务树不动（shell="main"）。
   // 页面清单以 index.html .side-quick 的 data-page 为准，这里逐项绑 id。
+  $("btn-q-home").addEventListener("click", () => switchTab("home", "main"));
   $("btn-q-overview").addEventListener("click", () => switchTab("overview", "main"));
   $("ov-goal-create").addEventListener("click", goalCreate);
   $("ov-goal-title").addEventListener("keydown", (e) => {
@@ -21927,6 +22072,45 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");
   applyAppearance();
   $("btn-create").addEventListener("click", createTask);
+  // 主页输入卡：Enter 发送（跟随执行模式段），Shift+Enter 换行
+  const homeArea = $("rd-input-area");
+  if (homeArea) homeArea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); homeSend(); }
+  });
+  // 快速开始（demo 同款）：把成形指令填进输入框，用户过目再发送，不自动提交
+  const qsBtns = $("rd-qs-buttons");
+  if (qsBtns) qsBtns.addEventListener("click", (e) => {
+    const b = e.target.closest(".rd-qs-btn");
+    const area = $("rd-input-area");
+    if (b && area && b.dataset.suggest) {
+      area.value = b.dataset.suggest;
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+      area.focus();
+    }
+  });
+  // 执行模式分段控：直接执行=真实提交链；专家编排=落真实表单挑流程
+  const homeSeg = $("rd-mode-seg");
+  if (homeSeg) homeSeg.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-mode]");
+    if (!b) return;
+    homeSeg.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x === b));
+  });
+  // 思考档位轮换：与真实表单 #f-thinking 同源，提交时写入
+  const HOME_THINKING = [
+    { v: "standard", face: "标准" }, { v: "auto", face: "自动" },
+    { v: "low", face: "快速" }, { v: "high", face: "深度" },
+  ];
+  const homePick = $("rd-model-pick");
+  if (homePick) homePick.addEventListener("click", () => {
+    const cur = HOME_THINKING.findIndex((x) => x.v === (S.homeThinking || "standard"));
+    const next = HOME_THINKING[(cur + 1) % HOME_THINKING.length];
+    S.homeThinking = next.v;
+    const txt = $("rd-model-pick-text");
+    if (txt) txt.textContent = t("思考 · ") + t(next.face);
+  });
+  // 状态栏「运行队列」→ 运行记录页
+  const queueLink = $("status-queue-link");
+  if (queueLink) queueLink.addEventListener("click", () => switchTab("runs", "main"));
   /* 侧栏「显示已归档」开关（原「最近任务」面板移除后，归档找回的唯一入口）。
    * 只作当次查看，不写 localStorage——持久化会让图标常亮、违背「默认隐藏」的预期 */
   $("btn-side-arch").addEventListener("click", () => {
@@ -22224,11 +22408,8 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSettings();          // 启动即拉设置：新建表单「默认选中默认路径」依赖它
   suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
   maybeWelcome();          // 首次启动弹欢迎引导（orch.welcomed 记账，只弹一次）
-  // 暖色皮肤默认显示主页
-  if (currentSkin() === "warm") {
-    renderHome();
-    showHome();
-  }
+  // 暖色皮肤默认落在主页（showHome 内含 renderHome）
+  if (currentSkin() === "warm") showHome();
 });
 
 /* ===== 命令面板（Ctrl+K / 侧栏搜索行）：任务直达 + 快捷命令 ===== */

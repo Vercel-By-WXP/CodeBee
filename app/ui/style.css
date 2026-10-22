@@ -9313,3 +9313,11 @@ html[data-theme="dark"] .panel {
 }
 .avail-model.down { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
 .avail-model.off { opacity: .5; }
+
+/* 工作台控制台视图：运行事实摘要行 + 折叠原始数据（替代整坨 JSON dump） */
+.wb-console .wb-kv { display: flex; gap: 12px; padding: 3px 0; }
+.wb-console .wb-kv span { flex: none; width: 88px; color: var(--muted); }
+.wb-console .wb-kv b { font-weight: 500; overflow-wrap: anywhere; }
+.wb-console .wb-raw { margin-top: 10px; }
+.wb-console .wb-raw summary { cursor: pointer; color: var(--muted); user-select: none; }
+.wb-console .wb-raw pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }

@@ -194,6 +194,11 @@
            点它们只换主栏内容，左栏任务树原地不动（app.js switchTab 的 main 形态）；
            对应入口已从下面设置导航移除，同一页不再两处重复。 -->
       <div class="side-quick">
+        <!-- 工作台入口：仅暖色皮肤显示（暖皮下 rail 已移除，这里是主页唯一常驻入口） -->
+        <button class="qitem rd-qitem-home" id="btn-q-home" data-page="home" title="工作台" data-i18n-title="工作台">
+          <svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg>
+          <span data-i18n="工作台">工作台</span>
+        </button>
         <button class="qitem" id="btn-q-overview" data-page="overview" title="概览" data-i18n-title="概览">
           <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
           <span data-i18n="概览">概览</span>
@@ -230,6 +235,11 @@
         <div class="activity-toolbar">
           <h2 data-i18n="活动">活动</h2>
           <button id="activity-read-all" type="button" class="activity-tool" title="将活动标为已读" data-i18n-title="将活动标为已读" data-i18n="全部已读">全部已读</button>
+          <!-- 关闭活动视图 = 回项目树。此前唯一开关是品牌行那颗铃（太隐蔽，
+               用户在工具栏里找关闭入口时点到的却是提示音铃铛，点了"没用"） -->
+          <button id="activity-close" type="button" class="activity-tool" title="返回项目树" aria-label="关闭活动视图" data-i18n-title="返回项目树" data-i18n-aria="关闭活动视图">
+            <svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>
+          </button>
           <button id="activity-sound" type="button" class="brand-tool" aria-label="完成/待裁决提示音" data-i18n-aria="完成/待裁决提示音">
             <svg class="ico" aria-hidden="true"><use href="#i-bell"></use></svg>
           </button>
@@ -252,10 +262,6 @@
         </span>
       </button>
       <div class="side-foot">
-        <!-- 急停（kill switch）：有进行中任务才现身；点击取消全部排队/运行中任务 -->
-        <button id="btn-kill-all" class="foot-btn kill hidden" title="急停：取消全部进行中（排队/运行）任务" aria-label="急停" data-i18n-aria="急停" data-i18n-title="急停：取消全部进行中（排队/运行）任务">
-          <svg class="ico ico-lg" aria-hidden="true"><use href="#i-x"></use></svg>
-        </button>
         <button id="btn-settings" class="foot-btn" title="设置" aria-label="设置" data-i18n-aria="设置" data-i18n-title="设置">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-gear"></use></svg>
         </button>
@@ -268,6 +274,8 @@
         <button id="btn-phone-side" class="foot-btn" title="手机连接（扫码用手机打开 CodeBee）" aria-label="手机连接" data-i18n-aria="手机连接" data-i18n-title="手机连接（扫码用手机打开 CodeBee）">
           <svg class="ico ico-lg" aria-hidden="true"><use href="#i-phone"></use></svg>
         </button>
+        <!-- 急停钮已挪到右侧状态栏「正在运行」卡头部：底栏是导航/设置区，
+             危险钮不放这里（用户两次点名换位置） -->
       </div>
     </div>
     <!-- 文件浏览视图：右键文件夹「查看文件」进入，左栏整体换成该目录的文件树 -->
@@ -403,38 +411,48 @@
       <div class="rd-input-card">
         <div class="rd-input-head">
           <svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>
-          <span class="rd-input-project" id="rd-input-project">CodeBee 控制台</span>
-          <span class="rd-input-branch" id="rd-input-branch">main</span>
-          <button class="rd-input-switch" data-i18n="切换">切换</button>
+          <!-- 两段式卡头：左侧 目录+浏览▾（接管原「切换」），右侧 分支胶囊；
+               名称不再单独占位，全路径本身就是身份 -->
+          <span class="rd-input-path" id="rd-input-path">默认工作目录</span>
+          <button class="rd-input-caret" type="button" onclick="homePickWorkspace()" title="浏览本机目录" data-i18n-title="浏览本机目录">
+            <svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+          </button>
+          <!-- 分支胶囊由 renderHome 探测真实 /api/git/info 后填充；探不到保持 hidden，不放假分支名 -->
+          <span class="rd-input-branch" id="rd-input-branch" hidden></span>
         </div>
         <textarea class="rd-input-area" id="rd-input-area" rows="3" data-i18n-ph="描述要完成的目标，或粘贴一段指令…" placeholder="描述要完成的目标，或粘贴一段指令…"></textarea>
         <div class="rd-input-foot">
           <div class="rd-input-actions">
-            <button class="rd-btn primary" data-i18n="直接执行">直接执行</button>
-            <button class="rd-btn" data-i18n="专家编排">专家编排</button>
-            <button class="rd-btn rd-btn-dropdown">
-              <svg class="ico" aria-hidden="true"><use href="#i-book-open"></use></svg>
-              <span data-i18n="内容编辑">内容编辑</span>
-              <svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-            </button>
-            <button class="rd-btn-icon" title="附件" aria-label="附件">
+            <!-- 执行模式分段控（demo 同款）：直接执行=带字走真实提交链；
+                 专家编排=带字落真实表单，挑好流程再开跑。发送/Enter 跟随当前段 -->
+            <div class="rd-mode-seg" id="rd-mode-seg" role="group" aria-label="执行模式" data-i18n-aria="执行模式">
+              <button type="button" class="on" data-mode="direct" data-i18n="直接执行">直接执行</button>
+              <button type="button" data-mode="expert" data-i18n="专家编排">专家编排</button>
+            </div>
+            <button class="rd-btn-icon" title="附件" aria-label="附件" onclick="homeToForm()">
               <svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg>
             </button>
+            <span class="rd-cmp-gap" aria-hidden="true"></span>
+            <!-- 思考档位：与真实表单 #f-thinking 同源（标准/自动/快速/深度），点击轮换，提交时写入表单 -->
+            <button class="rd-model-pick" id="rd-model-pick" type="button" title="思考档位（与任务表单同步）" data-i18n-title="思考档位（与任务表单同步）">
+              <span id="rd-model-pick-text">思考 · 标准</span>
+              <svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+            </button>
           </div>
-          <button class="rd-send-btn" title="发送" aria-label="发送">
+          <button class="rd-send-btn" title="发送" aria-label="发送" onclick="homeSend()">
             <svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg>
           </button>
         </div>
       </div>
 
-      <!-- 快速开始 -->
-      <div class="rd-quick-start">
+      <!-- 快速开始（demo 同款）：模板按钮把成形的指令填进输入框，用户过目再发送，不自动提交 -->
+      <div class="rd-quick-start" id="rd-quick-start">
         <span class="rd-qs-label" data-i18n="快速开始">快速开始</span>
-        <div class="rd-qs-buttons">
-          <button class="rd-qs-btn" data-i18n="继续修订第 11–20 章">继续修订第 11–20 章</button>
-          <button class="rd-qs-btn" data-i18n="修复最近的失败任务">修复最近的失败任务</button>
-          <button class="rd-qs-btn" data-i18n="生成本周周报">生成本周周报</button>
-          <button class="rd-qs-btn" data-i18n="审阅未提交改动">审阅未提交改动</button>
+        <div class="rd-qs-buttons" id="rd-qs-buttons">
+          <button type="button" class="rd-qs-btn" data-suggest="继续修订《头七结账人》第 11–20 章，保持上一轮的叙事节奏。"><span data-i18n="继续修订第 11–20 章">继续修订第 11–20 章</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+          <button type="button" class="rd-qs-btn" data-suggest="修复最近的失败任务，分析根因并生成补丁。"><span data-i18n="修复最近的失败任务">修复最近的失败任务</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+          <button type="button" class="rd-qs-btn" data-suggest="生成本周编排质量与成本周报。"><span data-i18n="生成本周周报">生成本周周报</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+          <button type="button" class="rd-qs-btn" data-suggest="审阅未提交的改动，给出重构建议。"><span data-i18n="审阅未提交改动">审阅未提交改动</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
         </div>
       </div>
 
@@ -752,10 +770,7 @@
       <div class="panel wide">
         <div class="panel-head">
           <h2 data-i18n="运行记录">运行记录</h2>
-          <div class="actions">
-            <button type="button" data-i18n="全部暂停" id="btn-pause-all" class="ghost small hidden" onclick="pauseAllRuns()" title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响" data-i18n-title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响">全部暂停</button>
-            <button data-i18n="全部清除" id="btn-clear-runs" class="danger small" onclick="clearRuns()" title="删除全部已结束的运行记录（运行中的会保留）" data-i18n-title="删除全部已结束的运行记录（运行中的会保留）">全部清除</button>
-          </div>
+          <!-- 全部暂停/全部清除已搬进右侧状态栏「正在运行」卡（全局可达），此页不再重复 -->
         </div>
         <div id="run-list" class="list"></div>
       </div>
@@ -784,7 +799,7 @@
             <button data-i18n="基于此任务新建" id="btn-newfrom" class="ghost hidden">基于此任务新建</button>
             <button data-i18n="归档任务" id="btn-arch" class="ghost hidden" data-i18n-title="归档后任务从侧栏收起，可随时用左下角时钟图标找回并取消归档" title="归档后任务从侧栏收起，可随时用左下角时钟图标找回并取消归档">归档任务</button>
             <button data-i18n="分享页" id="btn-share" class="ghost hidden" data-i18n-title="生成自包含分享页（单文件 HTML），可直接发给他人查看任务成果" title="生成自包含分享页（单文件 HTML），可直接发给他人查看任务成果">分享页</button>
-            <button data-i18n="删除记录" id="btn-delete" class="danger hidden">删除记录</button>
+            <button data-i18n="删除记录" id="btn-delete" class="danger hidden" data-i18n-title="删除任务及其全部运行记录（含日志与报告），不可恢复；工作目录里的文件不会删" title="删除任务及其全部运行记录（含日志与报告），不可恢复；工作目录里的文件不会删">删除记录</button>
             <button data-i18n="✉ 继续对话" id="btn-talk" class="ghost hidden" data-i18n-title="人工检查有问题？告诉主智能体，由它判断怎么引导执行" title="人工检查有问题？告诉主智能体，由它判断怎么引导执行">✉ 继续对话</button>
             <button id="rd-more-toggle" class="rd-more-toggle" type="button" aria-label="更多任务信息" data-i18n-aria="更多任务信息" aria-expanded="false" aria-controls="rd-meta-popover" title="更多任务信息" data-i18n-title="更多任务信息">•••</button>
             <button id="rd-context-toggle" class="rd-context-toggle ghost" type="button" aria-label="任务动态" aria-expanded="false" aria-controls="rd-context" title="任务动态" data-i18n-title="任务动态" data-i18n-aria="任务动态"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg></button>
@@ -1995,8 +2010,22 @@
             <span data-i18n="正在运行">正在运行</span>
           </span>
           <span class="status-card-count" id="status-running-count">0</span>
+          <!-- 急停（kill switch）：有排队/运行中任务才现身。挂在「正在运行」卡头部——
+               危险钮不与导航/设置同区，语义贴着它要停的东西（原在侧栏底栏紧贴设置齿轮，误触风险高） -->
+          <button id="btn-kill-all" class="foot-btn kill hidden" title="急停：取消全部进行中（排队/运行）任务" aria-label="急停" data-i18n-aria="急停" data-i18n-title="急停：取消全部进行中（排队/运行）任务">
+            <svg class="ico ico-lg" aria-hidden="true"><use href="#i-x"></use></svg>
+          </button>
         </div>
         <div id="status-running-list"></div>
+        <!-- 运行记录页的批量操作搬进全局状态卡（用户指定）：暂停/放行跟随
+             pause_control 显隐（renderPauseAllButton 在每次状态刷新时同步），
+             清除=删除全部已结束记录（有危险确认） -->
+        <div class="status-card-actions">
+          <button type="button" data-i18n="全部暂停" id="btn-pause-all" class="status-mini-btn hidden" onclick="pauseAllRuns()" title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响" data-i18n-title="暂停所有编排任务：当前步骤结束后挂起；新建任务不受影响">全部暂停</button>
+          <button type="button" data-i18n="全部清除" id="btn-clear-runs" class="status-mini-btn danger" onclick="clearRuns()" title="删除全部已结束的运行记录（运行中的会保留）" data-i18n-title="删除全部已结束的运行记录（运行中的会保留）">全部清除</button>
+        </div>
+        <p class="status-card-note" data-i18n="删除全部已结束记录（含日志与报告），不可恢复；运行中的保留。">删除全部已结束记录（含日志与报告），不可恢复；运行中的保留。</p>
+        <button type="button" id="status-queue-link" class="status-rail-link"><span data-i18n="运行队列">运行队列</span><svg class="ico ico-sm" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>
       </div>
 
       <!-- 待你处理 -->
@@ -2011,28 +2040,16 @@
         <div id="status-pending-list"></div>
       </div>
 
-      <!-- 本月用量 -->
+      <!-- 本月用量（demo 同款）：大数字 + 迷你趋势 + 页脚统计，数据来自真实 /api/usage 月度汇总 -->
       <div class="status-card">
         <div class="status-card-head">
           <span class="status-card-title">
             <svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg>
             <span data-i18n="本月用量">本月用量</span>
           </span>
+          <span class="status-card-month" id="status-usage-month"></span>
         </div>
-        <div class="usage-stats">
-          <div class="usage-stat">
-            <div class="usage-stat-value" id="status-usage-tokens">—</div>
-            <div class="usage-stat-label" data-i18n="万 tokens">万 tokens</div>
-          </div>
-          <div class="usage-stat">
-            <div class="usage-stat-value" id="status-usage-cost">—</div>
-            <div class="usage-stat-label" data-i18n="元">元</div>
-          </div>
-          <div class="usage-stat">
-            <div class="usage-stat-value" id="status-usage-runs">—</div>
-            <div class="usage-stat-label" data-i18n="次运行">次运行</div>
-          </div>
-        </div>
+        <div id="status-usage-list"></div>
       </div>
     </aside>
   </div>

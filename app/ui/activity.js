@@ -8,6 +8,13 @@
   // Keep only runs that need follow-up in the attention bucket; otherwise a
   // cancelled latest run can keep the activity badge alive indefinitely.
   const failures = new Set(["failed", "timeout"]);
+  // rowHtml 引用的状态文案表：此前 browserStatusLabel 全仓库无定义，
+  // 任何非待裁决行渲染即 ReferenceError 断掉整个活动列表（2026-10-21 自测实抓）。
+  const STATUS_LABELS = {
+    running: "运行中", queued: "排队中", done: "已完成",
+    failed: "失败", timeout: "超时", canceled: "已取消", cancelled: "已取消",
+  };
+  const browserStatusLabel = (s) => t(STATUS_LABELS[s] || s || "");
   const compact = (value) => String(value || "").replace(/\s+/g, " ").trim().slice(0, 240);
   const fingerprint = (run) => [run.id, run.status, run.ended_at || ""].join("|");
 
@@ -73,6 +80,7 @@
 
   const model = { build, fingerprint, dayGroup };
   if (typeof module !== "undefined" && module.exports) module.exports = model;
+  root.activityModel = model;   // 状态侧栏「待你处理」等处复用同一套 needs 判定
   if (typeof document === "undefined") return;
 
   let reads = {};
@@ -174,6 +182,8 @@
   root.CodeBeeActivity = { model, render, paintToggle, markViewed };
   document.addEventListener("DOMContentLoaded", () => {
     $("btn-notify-toggle").addEventListener("click", toggle);
+    const closeBtn = $("activity-close");
+    if (closeBtn) closeBtn.addEventListener("click", () => { if (enabled) toggle(); });
     $("activity-sound").addEventListener("click", toggleNotifySound);
     $("activity-read-all").addEventListener("click", () => {
       build(S.state, reads).rows.filter((row) => !row.read).forEach((row) => {

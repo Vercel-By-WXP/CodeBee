@@ -95,3 +95,14 @@
   就改路线或报告具体阻碍，不无限重试、不靠延长视频掩盖机制问题。
 - 笔杆广告字 ≤16 字符且保持用户原文、默认空；水印默认关。成片写入 AI 生成隐式标识，
   发布时仍须按平台要求声明「AI 生成」。
+
+## 九、CodeBee 本地渲染通路（2026-10-21）
+
+- 成片由本地确定性渲染器产出（Pillow 逐镜白板绘制 + edge-tts 配音 + FFmpeg 混流），
+  执行环境不需要生图模型：按制作包写 `storyboard.json`（title/resolution/fps/voice/
+  scenes，每镜 narration + elements：title/point/box/flow/note），渲染器负责逐字
+  揭示、句级字幕（单层）、配音对齐与工程校验。
+- 分镜预算纪律（第四节）照旧约束 storyboard：每镜 narration ≤100 字且只在句末切；
+  绘制秒数、复杂度档位与视觉预算写在制作包分镜表，storyboard 的 elements 与之一致。
+- 渲染失败如实报失败并列原因（缺解释器/依赖/TTS 网络/输入不合 schema），不降级成
+  纯制作包冒充完成；观感检查（真人试听）渲染器做不了，报告标 not_done 留给人工。

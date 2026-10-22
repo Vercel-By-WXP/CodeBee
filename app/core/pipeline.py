@@ -2782,7 +2782,7 @@ def _run_direct(run, task, agents, ev, stats, mode):
             break           # 本步期间没有新消息：对话告一段落
         first = False
 
-    verdict = {"type": task["type"], "engine": "direct", "pass": True, "mode": mode,
+    verdict = {"type": task["type"], "engine": "direct", "mode": mode,
                "direct": True, "turns": turns,
                "impl": "builtin" if bi is not None else impl["id"], "route": route,
                "partial": partial_turn}
@@ -2875,7 +2875,7 @@ CONTENT_DELIVERY_CONTRACTS = {
         "每镜画面写清主体、可分部位与起笔顺序（先轮廓后上色），并写「一眼认得出」的识别特征；列举/对比/步骤用同一块板逐项累积，不每句换页；每幅图说明它比直接念这句多解释了什么。",
         "叙事事实必须在画面中成立（如「咬伤」要写明可见咬痕与血迹位置），美术克制不得抹掉剧情事实；封面 AI 只出主视觉，准确标题用可编辑文字图层合成。",
         "字幕同一时刻只显示一份（画面烘焙/字幕事件/内嵌轨不得叠加），构建期对旁白校验时序且插画不得压进字幕区；默认不加背景音乐。",
-        "成片制作需要生图、配音与 FFmpeg：环境具备时按制作包逐镜执行并交付成片+封面+字幕+检查记录；不具备时只交付制作包，素材缺口逐项列入制作备注，不假装已有成片，不静默降级成纯文字稿。",
+        "成片由本地渲染器产出（逐镜白板绘制+TTS 配音+FFmpeg 混流），作者不直接执行渲染：除制作包外必须在同一 workdir 交付 `storyboard.json`——结构 {title, resolution:[宽,高] 默认 [720,1280], fps:30, voice 默认 \"zh-CN-XiaoxiaoNeural\", scenes:[{id, narration, elements:[{kind:title|point|box|flow|note, text 或 items}]}]}；每 scene 的 narration 对应口播稿一个语义段（≤100 字），elements 数量与分镜表一致。storyboard 缺失或不合契约时渲染如实失败，不假装已有成片，不静默降级成纯文字稿。",
     ]),
     "doc": ("技术文档编辑", [
         "先明确读者、目的和前置条件，再按可执行步骤组织正文。",
@@ -3520,7 +3520,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 Cancelled/管道异常语义（上抛打断本 run）必须原样保留。"""
                 try:
                     _critique_one_inner(idx, agent)
-                except BaseException as exc:      # noqa: BLE001（含 Cancelled）
+                except BaseException as exc:      # 含 Cancelled
                     results[idx] = {"error": exc}
 
             def _critique_one_inner(idx, agent):
@@ -4619,7 +4619,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             """异常不吞：记进 results 由主线程按原顺序重抛（保留串行语义）。"""
             try:
                 _global_one_inner(idx, agent)
-            except BaseException as exc:      # noqa: BLE001（含 Cancelled）
+            except BaseException as exc:      # 含 Cancelled
                 results[idx] = {"error": exc}
 
         def _global_one_inner(idx, agent):
@@ -5492,14 +5492,27 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 except Exception:
                     pass
             else:
-                res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
-                                crit_prompt, workdir, readonly=True, ev=ev)
-                cj = runner.extract_json(res.get("text") or "")
-                if is_selection and not res.get("ok"):
+                # 评审步自身失败（上游断流/输出无法解析）不等于评了 0 分：
+                # 先重试评审步，重试耗尽才按无评分记账（r-20261021-164007 实案：
+                # critic 流断在 Reconnecting 1/5，六维全 0 被当合法评审轮吞掉）。
+                cj, res = None, {}
+                for _attempt in range(1, 4):
+                    res = _run_step(run_id, role, modelhub.bind_agent(agent, difficulty),
+                                    crit_prompt, workdir, readonly=True, ev=ev)
+                    cj = runner.extract_json(res.get("text") or "")
+                    if is_selection and not res.get("ok"):
+                        cj = None
+                    if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                            and cj["scores"]):
+                        break
                     cj = None
-                if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
+                    if _attempt < 3:
+                        time.sleep(2.0)
+                if not (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                        and cj["scores"]):
                     cj = {"scores": {}, "issues": [],
-                          "summary": "评审输出无法解析：%s" % (res.get("text") or "")[:150]}
+                          "summary": "评审输出无法解析（重试 2 次仍失败）：%s"
+                                     % (res.get("text") or "")[:150]}
             per_agent[agent["id"]] = cj
             model_issues = [_tag_review_issue(
                 issue, issue.get("chapter", "全稿评审"), "selection-review")
@@ -5513,6 +5526,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             vals = [float(cj["scores"].get(d, 0)) for cj in per_agent.values()
                     if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
             means[d] = round(sum(vals) / len(vals), 1) if vals else 0.0
+        round_critic_failed = bool(per_agent) and not any(
+            cj.get("scores") for cj in per_agent.values())
         publishable = bool(means) and all(v >= threshold for v in means.values())
         if is_selection:
             _, package_errors = selection.parse_report(manuscript)
@@ -5526,7 +5541,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 _is_blocking_issue(issue) for issue in issues_all)
         history_rounds.append({"round": r, "means": means,
                                "per_agent": {k: v.get("scores", {}) for k, v in per_agent.items()},
-                               "issues": issues_all, "passed": publishable})
+                               "issues": issues_all, "passed": publishable,
+                               "critic_failed": round_critic_failed})
         if publishable or r == rounds:
             break
 
@@ -5589,6 +5605,35 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     if is_selection:
         verdict.update(selection.finalize(run_id, task, manuscript, publishable, store.run_dir(run_id)))
 
+    # 2.5) 成片渲染（handdraw_video 专属）：评审达标才渲染；渲染失败按失败
+    # 收束，不静默降级成纯制作包（skillpack 不并谎）。mock 执行无渲染意义。
+    render_error = None
+    if (task.get("type") == "handdraw_video" and publishable
+            and impl.get("mode") != "mock"):
+        from . import handdraw_render
+        render_step, render_log = store.add_step(run_id, "render", "local-render",
+                                                 "成片渲染")
+        _t0 = time.time()
+        _ok, video_path, render_note = handdraw_render.render_for_run(task, workdir)
+        _rpt_tail = ""
+        try:
+            _rpt = os.path.join(workdir, "render_report.json")
+            if os.path.exists(_rpt):
+                _rpt_tail = (_read_text_any_enc(_rpt) or "")[:2000]
+        except Exception:
+            pass
+        try:
+            render_log.write_text("[render] %s\n%s" % (render_note, _rpt_tail),
+                                  encoding="utf-8")
+        except Exception:
+            pass
+        store.finish_step(run_id, render_step["n"], "done" if _ok else "failed",
+                          summary=render_note, duration_s=time.time() - _t0)
+        verdict["video"] = video_path
+        verdict["render"] = render_note
+        if not _ok:
+            render_error = render_note
+
     # 3) 报告
     lines = ["# 评审报告：%s" % task["title"], "",
              "- 任务类型：%s" % task["type"],
@@ -5631,11 +5676,37 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     if not majors and not minors:
         lines.append("（无）")
     lines += ["", "## 稿件位置", "", "`%s`" % ms_path, ""]
+    if task.get("type") == "handdraw_video":
+        lines += ["## 成片", ""]
+        if verdict.get("video"):
+            lines += ["`%s`" % verdict["video"],
+                      "- 工程检查：解码校验通过（渲染报告见 workdir/render_report.json）",
+                      "- 观感检查：未做真人试听/连续观看，交付前请人工复核"]
+        elif impl.get("mode") == "mock":
+            lines.append("- mock 执行跳过渲染")
+        else:
+            lines.append("- 未产出成片：%s" % (render_error or "评审未达标，先回炉修订"))
     store.write_report(run_id, "\n".join(lines))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
-    store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
-                     summary="评审任务%s（综合 %.1f）" % ("达标" if publishable else "未达标", overall),
-                     ended_at=_now())
+    # 未达标/评审失败不再是 done：质量门禁没过就是没完成（评审报告、verdict
+    # 与步骤日志照常落盘，重试入口由 runNeedsRetry 的 failed 分支放行）。
+    if publishable:
+        store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
+                         summary="评审任务达标（综合 %.1f）" % overall, ended_at=_now())
+    elif render_error:
+        store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
+                         error="稿件已过评审，但成片渲染失败：%s" % render_error,
+                         summary="成片渲染失败", ended_at=_now())
+    elif history_rounds and history_rounds[-1].get("critic_failed"):
+        store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
+                         error="评审环节失败（评审输出重试后仍无法解析），未获得有效评分——"
+                               "不是稿件质量问题，直接重试即可",
+                         summary="评审失败（综合 %.1f）" % overall, ended_at=_now())
+    else:
+        store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
+                         error="评审未达标：综合 %.1f < 阈值 %.1f，需回炉修订"
+                               % (overall, threshold),
+                         summary="评审任务未达标（综合 %.1f）" % overall, ended_at=_now())
 
 
 # ---------------------------------------------------------------- 入口

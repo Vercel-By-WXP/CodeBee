@@ -189,7 +189,11 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
 
     outline = ttype in deep_types or difficulty == "hard"
     reviewers = 2 if outline else 1
-    review_rounds = min(requested_rounds, 2 if outline else 1)
+    # 成片类型（handdraw_video）不进深度车道（无大纲步）但保留修订轮数：
+    # 制作返工成本高，评审不过必须真实回炉（2026-10-21 实案：被单评审短链
+    # 压成 1 轮后评审断流即终局，修订循环从未生效）。
+    keep_revision = outline or ttype == "handdraw_video"
+    review_rounds = min(requested_rounds, 2 if keep_revision else 1)
     try:
         if "reviewers" in rec:
             reviewers = max(1, min(2, int(rec["reviewers"])))
@@ -211,4 +215,6 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
     return {"outline": outline, "reviewers": reviewers,
             "review_rounds": review_rounds,
             "reason": ("深度内容保留大纲和多轮质量门禁" if outline
+                       else "成片类型保留修订回炉（单评审，至多 %d 轮）" % review_rounds
+                       if ttype == "handdraw_video"
                        else "标准内容使用单评审短链")}
