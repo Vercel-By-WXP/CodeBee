@@ -15,6 +15,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -331,6 +332,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         # 令牌走路径段（子资源继承不了查询串），鉴权复用 remote.request_authed。
         if path == preview.BASE or path.startswith(preview.BASE + "/"):
             return self._api_preview(path)
+        # MCP Harness：外部 AI 客户端的 GET（工具清单，MCP streamable-HTTP 规范）。
+        # 必须放在 /api/ 前缀块之前——/mcp/* 不以 /api/ 开头，缩进进块内永远不可达。
+        if path == "/mcp/orchestration":
+            from core import mcp_harness
+            return self._handle_mcp_harness(mcp_harness)
         if path.startswith("/api/"):
             if not self._authed():
                 return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
@@ -615,10 +621,6 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     return self._json(200, mcp_catalog.state())
                 except (TypeError, ValueError) as exc:
                     return self._json(400, {"error": str(exc)})
-            # MCP Harness: expose platform capabilities to external AI clients
-            if path == "/mcp/orchestration":
-                from core import mcp_harness
-                return self._handle_mcp_harness(mcp_harness)
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
@@ -739,10 +741,6 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if path == "/api/catalog":
                 return self._json(200, {"catalog": manager.catalog_view(),
                                         "checking": manager.updates_checking()})
-            if path == "/api/sessions":
-                from core import sessions
-                return self._json(200, {"sessions": sessions.scan(
-                    force="force=1" in urlparse(self.path).query)})
             if path == "/api/catalog/reload":
                 catalog.load(force=True)
                 manager.detect_all(force=True)
@@ -2763,7 +2761,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             old = settings.default_workdir()
             view, err = settings.save({"default_workdir": body.get("path") or ""})
             if err:
-                return self._json(400, {"error": err, "settings": view})
+                # view 含 SECRET_KEYS 明文，必须走 public_view 脱敏（同 /api/settings）
+                return self._json(400, {"error": err, "settings": settings.public_view(view)})
             new = settings.default_workdir()
             moved = skipped = 0
             if body.get("migrate") and old != new:
@@ -2772,7 +2771,7 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._json(400, {"error": "新默认路径不可创建: %s" % e})
                 moved, skipped = store.migrate_task_workdirs(old, new)
-            return self._json(200, {"ok": True, "settings": view, "moved": moved, "skipped": skipped})
+            return self._json(200, {"ok": True, "settings": settings.public_view(view), "moved": moved, "skipped": skipped})
         if path == "/api/orchestrator":
             from core import modelhub
             body = self._body()
@@ -3845,7 +3844,8 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             tok, signing_secret = "", ""
         given = (self.headers.get("X-CodeBee-Token") or "").strip()
         if tok:
-            if given != tok:
+            # 常数时间比较：与 remote.request_authed 对齐，消除时序侧信道
+            if not secrets.compare_digest(given, tok):
                 return self._json(401, {"error": "令牌不匹配"})
         else:
             host = str(self.client_address[0]) if self.client_address else ""

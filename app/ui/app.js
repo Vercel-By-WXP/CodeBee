@@ -5204,7 +5204,7 @@ async function loadSessions() {
     const list = (r.sessions || {})[agent] || [];
     S.sessionList = list;   // 提交时带上 project（续会话要在该目录下启动 CLI）
     sel.innerHTML = list.length ? list.map((s) => {
-      const who = s.project ? " [" + String(s.project).replace(/[\\/]+$/, "").split(/[\\/]/).pop() + "]" : "";
+      const who = s.project ? " [" + esc(String(s.project).replace(/[\\/]+$/, "").split(/[\\/]/).pop()) + "]" : "";
       return '<option value="' + esc(s.session_id) + '">[' + esc(s.mtime) + "]" + who + " " + esc(s.preview.slice(0, 60)) + "</option>";
     }).join("") : '<option value="">' + t("（未找到该智能体的本地会话）") + '</option>';
   } catch (e) {
@@ -13003,7 +13003,7 @@ function renderChatRunStatus(run, active) {
   if (expand) {
     const expanded = $("run-detail").classList.contains("rd-chat-expanded");
     expand.textContent = expanded ? "⤢" : "⛶";
-    expand.title = t(expanded ? t("收起对话") : t("展开对话"));
+    expand.title = expanded ? t("收起对话") : t("展开对话");
     expand.setAttribute("aria-label", expand.title);
   }
   bar.classList.remove("hidden");
@@ -16530,7 +16530,7 @@ ATLAS._init = function(data) {
         const tail = count > 1
           ? '<span class="a-sbadge dim">×' + count + '</span>'
           : (h ? '<span class="a-sbadge ' + h[0] + '">' + esc2(h[1]) + '</span>' : '');
-        return '<button class="a-srow' + (active ? ' active' : '') + '" data-id="' + it.id + '" style="--c:' + col + '" title="' + esc2(it.title) + '">' +
+        return '<button class="a-srow' + (active ? ' active' : '') + '" data-id="' + esc(it.id) + '" style="--c:' + col + '" title="' + esc2(it.title) + '">' +
           '<span class="a-sdot"></span>' +
           '<span class="a-sbody"><span class="a-stitle">' + esc2(g.key) + '</span><span class="a-ssub">' + esc2(sub) + '</span></span>' +
           tail + '</button>';
@@ -16573,8 +16573,8 @@ ATLAS._init = function(data) {
         '</div>' +
         '<div class="a-nc-acts">' +
           (it.source === 'pack' ? '<button class="a-btn-ghost" disabled>整包注入 · ' + fmt(it.chars) + ' 字</button>' :
-            '<button class="a-btn-gold" data-exclude="' + it.id + '">' + (excluded ? '恢复注入' : '排除预演') + '</button>') +
-          '<button class="a-btn-ghost" data-review="' + it.id + '">已复核</button>' +
+            '<button class="a-btn-gold" data-exclude="' + esc(it.id) + '">' + (excluded ? '恢复注入' : '排除预演') + '</button>') +
+          '<button class="a-btn-ghost" data-review="' + esc(it.id) + '">已复核</button>' +
         '</div>' +
         (h ? '<div class="a-tel-hint" style="margin-top:7px"><i style="background:' + (h[0] === 'bad' ? 'var(--bad)' : h[0] === 'warn' ? 'var(--warn)' : 'var(--accent)') + '"></i>' + esc2(h[1]) + (it.stale && it.asOf ? ' · 截至 ' + esc2(it.asOf) : '') + '</div>' : '');
       card.classList.add('show');
@@ -16657,12 +16657,12 @@ ATLAS._init = function(data) {
           '<span class="a-ir-idx">' + String(start + i + 1).padStart(2, '0') + '</span>' +
           '<span class="a-ir-main"><span class="a-ir-title">' + esc2(c.it.title) + '</span>' +
           '<span class="a-ir-why">' + whyChips(c) + '</span></span>' +
-          '<button class="a-eye" data-ex="' + c.it.id + '" title="排除并补位"><svg><use href="#i-eye"/></svg></button>' +
+          '<button class="a-eye" data-ex="' + esc(c.it.id) + '" title="排除并补位"><svg><use href="#i-eye"/></svg></button>' +
         '</div>').join('');
 
       const packHtml = R.packList.length
         ? '<div class="a-pack-chips">' + R.packList.map(p =>
-            '<button class="a-pack-chip" data-pack="' + p.id + '" title="' + esc2(p.title) + ' · ' + fmt(p.chars) + ' 字">' +
+            '<button class="a-pack-chip" data-pack="' + esc(p.id) + '" title="' + esc2(p.title) + ' · ' + fmt(p.chars) + ' 字">' +
             '<span>' + esc2(p.title) + '</span><b>' + fmt(p.chars) + ' 字</b></button>').join('') + '</div>'
         : '<div class="a-empty-inj">该任务类型无匹配经验包</div>';
 

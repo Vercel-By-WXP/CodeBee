@@ -18,5 +18,11 @@
 **/*.diff
 /output/
 /outputs/
+/scratch/
 /browser-*.png
 /current-browser.png
+# 设计期演示页：无运行时引用（纯静态参考稿），不打进 npm 包省体积
+/demo_apple_style.html
+/demo_artifacts_style.html
+/demo_style_optimize.html
+/demo_workbench.html

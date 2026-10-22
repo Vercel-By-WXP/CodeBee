@@ -1,9 +1,10 @@
 @echo off
-rem Tutti 多智能体编排台启动脚本
+rem Tutti multi-agent orchestration launcher (ASCII-only: cmd mis-parses
+rem UTF-8 CJK lines under GBK codepages -- see start-service.bat header).
 cd /d "%~dp0"
 where python >nul 2>nul
 if errorlevel 1 (
-  echo [错误] 未找到 python，请先安装 Python 3.8+
+  echo [ERROR] python not found. Install Python 3.8+ first.
   pause
   exit /b 1
 )

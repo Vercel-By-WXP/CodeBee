@@ -142,7 +142,8 @@ def validate_package_members(members: Iterable[str]) -> None:
     forbidden_parts = ("/.git/", "/tests/", "/data/", "/.mimosa/",
                        "/.mimocode/", "/.workbuddy/", "/.zcode/",
                        "/__pycache__/", "/.pytest_cache/", "/.playwright-cli/",
-                       "/.ui-shots/", "/.codebee/", "/output/", "/outputs/")
+                       "/.ui-shots/", "/.codebee/", "/output/", "/outputs/",
+                       "/scratch/")
     bad = []
     for name in members:
         normalized = "/" + name.replace("\\", "/").lstrip("/") + "/"

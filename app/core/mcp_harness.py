@@ -19,16 +19,18 @@ import hashlib
 import json
 import logging
 import secrets
+import threading
 import time
 from typing import Any, Callable, Optional
 
-from . import paths, store, registry, flows, jobs, settings
+from . import atomic, paths, store, registry, flows, jobs, settings
 
 log = logging.getLogger(__name__)
 
 # Token storage (BCrypt-like hashing for at-rest security)
 _TOKEN_PREFIX = "orch_"
 _TOKEN_STORE_PATH = paths.DATA_DIR / "mcp_tokens.json"
+_TOKEN_LOCK = threading.RLock()
 
 # Write switch configuration
 _WRITE_SWITCH_KEY = "mcp_harness_allow_mutating"
@@ -49,12 +51,9 @@ def _load_tokens() -> dict:
 
 
 def _save_tokens(tokens: dict) -> None:
-    """Save token store to disk."""
+    """Save token store to disk（复用 atomic.write_json：并发交错/掉电不再写坏）。"""
     _TOKEN_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _TOKEN_STORE_PATH.write_text(
-        json.dumps(tokens, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
+    atomic.write_json(_TOKEN_STORE_PATH, tokens)
 
 
 def _hash_token(token: str) -> str:
@@ -352,14 +351,36 @@ def task_create(params: dict) -> dict:
     """Create and queue a new task."""
     if not _allow_mutating():
         return {"error": "Mutating operations are disabled"}
+    import time
     from . import store, jobs
     try:
         task = store.create_task(params)
-        # Enqueue the task for execution
-        job = jobs.enqueue({"task_id": task.get("id"), "kind": "task"})
-        return {"task": task, "job": job, "created": True}
     except Exception as exc:
         return {"error": str(exc)}
+    # 与 web 端 POST /api/tasks 同一条执行链：enqueue 必须带 run_id 且
+    # kind=orchestration（jobs.enqueue 对缺 run_id 直接 ValueError，且
+    # kind="task" 属未定义任务类型——旧写法恒失败并留下永不运行的孤儿任务）。
+    run = None
+    try:
+        run = store.create_run("orchestration", task["title"], task_id=task["id"])
+        store.update_task_status(task["id"], "queued")
+        job = jobs.enqueue({"kind": "orchestration", "run_id": run["id"],
+                            "task_id": task["id"]})
+    except Exception as exc:
+        # 已落库的 run/task 必须收口，否则 UI 永久显示排队中
+        if run:
+            try:
+                store.update_run(run["id"], status="failed",
+                                 error="MCP 任务入队失败：%s" % exc,
+                                 ended_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+            except Exception:
+                pass
+        try:
+            store.update_task_status(task["id"], "failed")
+        except Exception:
+            pass
+        return {"error": "任务已创建但入队失败：%s" % exc, "task_id": task["id"]}
+    return {"task": task, "run_id": run["id"], "job": job, "created": True}
 
 
 @_mark_mutating

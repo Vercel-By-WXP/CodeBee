@@ -187,7 +187,7 @@ def _do_mgmt(job, ev):
                           summary=("CLI 默认配置连通：%s" % (res.get("text") or "")[:120]) if ok
                           else ("CLI 默认配置异常：%s" %
                                 (res.get("error") or (res.get("text") or "")[:120])),
-                          exit_code=res["raw"].get("exit_code"),
+                          exit_code=(res.get("raw") or {}).get("exit_code"),
                           cost_usd=res.get("cost_usd", 0.0), tokens=res.get("tokens", 0))
     else:
         store.finish_step(run_id, step["n"], "failed", summary="未知操作 %s" % op)

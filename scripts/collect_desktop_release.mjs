@@ -4,9 +4,10 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const ASSET_PATTERN = /^CodeBee-(\d+\.\d+\.\d+)-(win-x64|mac-(?:arm64|x64)|linux-x64)\.(exe|dmg|zip|AppImage|deb|rpm)$/;
+// Linux 构建任务已移出 CI 矩阵（非当前交付目标，见 desktop-preview.yml）；
+// 必需清单只锁定实际交付的三平台五件，linux 产物出现时仍会被收集。
 const REQUIRED_ASSETS = [
   'win-x64:exe', 'mac-arm64:dmg', 'mac-arm64:zip', 'mac-x64:dmg', 'mac-x64:zip',
-  'linux-x64:AppImage', 'linux-x64:deb', 'linux-x64:rpm',
 ];
 
 async function walkFiles(root) {

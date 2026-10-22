@@ -740,9 +740,11 @@ def _candidate_pythons():
 
     def _add(p):
         p = str(p).strip().strip('"')
-        if p and os.path.isfile(p) and p.lower().endswith((".exe",)) is not False:
-            if p not in cands and "python" in os.path.basename(p).lower():
-                cands.append(p)
+        if p and os.path.isfile(p) and "python" in os.path.basename(p).lower():
+            # Windows 上解释器必须带 .exe；POSIX 上通常是裸名 python3
+            if os.name != "nt" or p.lower().endswith(".exe"):
+                if p not in cands:
+                    cands.append(p)
 
     if os.name == "nt":
         home = os.environ.get("USERPROFILE") or ""
@@ -819,9 +821,11 @@ def scan_pythons():
             info["has_replica"] = _has_replica(py)
             found.append(info)
         # 排序：64 位优先 → 已装 replica 优先 → 版本新优先 → 路径短优先
+        # （版本字符串取反使新版本在前；不再做第二次排序——稳定排序下第二次
+        #  会以“32位/未装replica 在前”覆盖第一次的分组，历史回归勿再犯）
         found.sort(key=lambda x: (x["bits"] < 64, not x["has_replica"],
-                                  x["version"], len(x["path"])), reverse=False)
-        found.sort(key=lambda x: (x["bits"] >= 64, x["has_replica"]))
+                                  [-int(v) for v in _version_tuple(x["version"])],
+                                  len(x["path"])), reverse=False)
         _PY_SCAN.update(scanning=False, done=True, results=found)
 
     threading.Thread(target=_run, name="wx-py-scan", daemon=True).start()

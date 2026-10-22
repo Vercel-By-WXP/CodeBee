@@ -221,8 +221,6 @@ def _npm_meta():
     if os.environ.get("TUTTI_SELFUPDATE_OFFLINE") == "1":
         # 测试离线闸：桌面模式查新不再真跑 npm（Sidecar e2e 确定性）。
         return "", "", "selfupdate meta disabled (offline test mode)"
-    if os.environ.get("TUTTI_SELFUPDATE_OFFLINE") == "1":
-        return "", "", "selfupdate meta disabled (offline test mode)"
     ver, notes, _tarball, _integrity, err = _direct_npm_meta()
     return ver, notes, ("" if ver else "内置 registry 查新失败：%s" % (err or "版本号缺失"))
 

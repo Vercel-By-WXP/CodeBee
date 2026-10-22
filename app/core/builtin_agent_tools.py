@@ -278,7 +278,8 @@ def _tool_read_file(workdir, args):
         head = "第 %d–%d 行（共 %d 行；用 offset=%d 续读下一段）" % (
             offset, offset - 1 + len(seg), total, offset + len(seg))
         return head + "\n" + ("\n".join(seg) or "（该范围无内容）")
-    data = p.read_bytes()[:READ_MAX_BYTES + 1]
+    with open(p, "rb") as fh:
+        data = fh.read(READ_MAX_BYTES + 1)
     truncated = len(data) > READ_MAX_BYTES
     if truncated:
         # 头尾保留、中段省略（TokenJuice 借鉴）：头 44k 给结构/开头上下文，

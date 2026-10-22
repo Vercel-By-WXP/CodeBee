@@ -135,26 +135,43 @@ applySkin();
 let connLost = false;
 
 async function api(path) {
-  const r = await fetch(path, { headers: { "X-CodeBee-Token": token() } });
-  if (r.status === 401) { showGate(t("令牌不正确或已变更")); throw new Error("401"); }
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.json();
+  // 超时护栏：/api/board 卡顿时无超时的 fetch 会每 4s 叠一条连接，
+  // 塞满 6 连接池后大屏整页假死（主界面 app.js 同型事故 2026-09-22 的对齐修复）
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(path, { headers: { "X-CodeBee-Token": token() }, signal: ctrl.signal });
+    if (r.status === 401) { showGate(t("令牌不正确或已变更")); throw new Error("401"); }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
+let _pollBusy = false;
+
 async function poll() {
-  let data;
+  // 在飞保护：上一轮未返回时跳过本轮，任何时刻最多占一条轮询连接
+  if (_pollBusy) return;
+  _pollBusy = true;
   try {
-    data = await api("/api/board");
-    if (connLost) { connLost = false; $("#hd-conn").classList.add("hidden"); }
-  } catch (e) {
-    if (e && e.message === "401") return;
-    if (!connLost) { connLost = true; $("#hd-conn").classList.remove("hidden"); }
-    $("#hd-updated").textContent = t("重试连接中");
-    return;
+    let data;
+    try {
+      data = await api("/api/board");
+      if (connLost) { connLost = false; $("#hd-conn").classList.add("hidden"); }
+    } catch (e) {
+      if (e && e.message === "401") return;
+      if (!connLost) { connLost = true; $("#hd-conn").classList.remove("hidden"); }
+      $("#hd-updated").textContent = t("重试连接中");
+      return;
+    }
+    LAST = data;
+    render(data);
+    if (DRAWER.runId) syncDrawer();
+  } finally {
+    _pollBusy = false;
   }
-  LAST = data;
-  render(data);
-  if (DRAWER.runId) syncDrawer();
 }
 let LAST = null;
 
@@ -457,9 +474,12 @@ const STEP_ST = () => ({ done: t("完成"), running: t("运行中"), failed: t("
 
 async function syncDrawer() {
   if (!DRAWER.runId) return;
+  const myId = DRAWER.runId;
   let d;
-  try { d = await api("/api/board/run?run_id=" + encodeURIComponent(DRAWER.runId)); }
+  try { d = await api("/api/board/run?run_id=" + encodeURIComponent(myId)); }
   catch (e) { $("#dw-steps").innerHTML = '<div class="empty">' + t("读取失败") + "</div>"; return; }
+  // await 后复核：快速连点两张卡时，旧 run 的迟到响应不得糊进新抽屉
+  if (DRAWER.runId !== myId) return;
   const steps = Array.isArray(d.steps) ? d.steps : [];
   DRAWER.steps = steps;
   if (!steps.length) { $("#dw-steps").innerHTML = '<div class="empty">' + t("暂无步骤") + "</div>"; return; }

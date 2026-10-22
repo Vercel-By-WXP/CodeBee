@@ -2,7 +2,7 @@
 
 > 当前安装包是 **预览版（pre-release）**。请通过 [GitHub Issues](https://github.com/Vercel-By-WXP/CodeBee/issues) 反馈问题，并在反馈中附上桌面版本、系统、复现步骤和日志位置。
 
-复用现有 Web 界面和 Python 引擎，提供 **Windows x64 兼容安装包**（Windows 7/8.1/10/11，Electron 22）、**macOS 13+ 安装包**（Intel/Apple Silicon）和 **Linux x64 安装包**（AppImage、DEB、RPM）。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
+复用现有 Web 界面和 Python 引擎，提供 **Windows x64 兼容安装包**（Windows 7/8.1/10/11，Electron 22）和 **macOS 13+ 安装包**（Intel/Apple Silicon）；**Linux x64**（AppImage、DEB、RPM）可在本机自建（`npm run dist:linux`），暂不随 CI 分发。安装包携带 Python；运行 CodeBee 本身不要求用户安装 Node.js/Python。使用外部 AI CLI 时，仍需安装相应 CLI 及它的运行环境。
 
 关闭窗口会隐藏到托盘/菜单栏，任务继续执行。托盘菜单可重新打开；macOS 另有应用菜单。明确退出时，有正在执行的任务会询问是否停止。系统休眠、关机或退出应用后不保证持续执行；重新启动沿用引擎已有的任务恢复规则。
 
@@ -48,7 +48,7 @@ npm run dist:linux
 
 生成 `dist/CodeBee-<版本>-win-x64.exe`、`CodeBee-<版本>-mac-{arm64,x64}.dmg/zip` 和 `CodeBee-<版本>-linux-x64.{AppImage,deb,rpm}`。构建脚本检查引擎/桌面版本一致、Python 架构与固定摘要一致；配置排除测试、数据和缓存。源码中的 `app/ui` 改动直接进入新安装包。
 
-GitHub Actions 的 `Desktop preview` 工作流提供 Windows、macOS Intel/Apple Silicon 和 Linux x64 原生构建任务，先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用。标签构建会在三平台全部通过后生成 `SHA512SUMS.txt`、`desktop-builds.json` 和 `build-record.json`，再创建 GitHub Release。Windows 兼容版使用 Electron 22.3.27（最后支持 Win7/8.1 的线）+ Python 3.8.10 embeddable 运行时；macOS 和 Linux 包携带对应的 Python 运行时。Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
+GitHub Actions 的 `Desktop preview` 工作流提供 Windows 和 macOS Intel/Apple Silicon 原生构建任务，先做引擎生命周期测试和桌面 smoke，再生成安装包并测试打包后的应用。标签构建会在平台全部通过后生成 `SHA512SUMS.txt`、`desktop-builds.json` 和 `build-record.json`，再创建 GitHub Release。Windows 兼容版使用 Electron 22.3.27（最后支持 Win7/8.1 的线）+ Python 3.8.10 embeddable 运行时；macOS 包携带对应的 Python 运行时（Linux 同理由本地构建产出）。Electron 22 主进程无全局 fetch，桌面代码统一走 `node:http`。
 
 ## 更新与正式发布
 

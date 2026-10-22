@@ -100,6 +100,21 @@ class Backend extends EventEmitter {
 
   async start() {
     if (!fs.existsSync(this.python)) throw new Error('未找到随应用携带的 Python，请重新安装 CodeBee。');
+    if (!fs.existsSync(this.script)) {
+      // 半更新崩溃自愈：热更在「旧目录已改名、新目录未落位」之间被杀时，
+      // resources/codebee/app 缺失但 app.bak-* 完好——挑最新备份原地回滚，
+      // 否则用户只能看到"引擎文件缺失，请重新安装"。
+      const rootDir = path.dirname(path.dirname(this.script));
+      try {
+        const baks = fs.existsSync(rootDir)
+          ? fs.readdirSync(rootDir).filter(n => n.startsWith('app.bak-')).sort()
+          : [];
+        if (baks.length) {
+          const latest = path.join(rootDir, baks[baks.length - 1]);
+          fs.cpSync(latest, path.dirname(this.script), { recursive: true });
+        }
+      } catch { /* 回滚尽力而为，失败则落入下方原报错 */ }
+    }
     if (!fs.existsSync(this.script)) throw new Error('CodeBee 引擎文件缺失，请重新安装。');
     fs.mkdirSync(this.dataDir, { recursive: true });
     const logs = path.join(this.dataDir, 'desktop-logs');
@@ -259,10 +274,27 @@ class Backend extends EventEmitter {
     const appDir = path.dirname(this.script);
     const rootDir = path.dirname(appDir);
     const backup = path.join(rootDir, 'app.bak-' + Date.now());
+    // 历次成功热更遗留的 app.bak-* 一并清理：不清理则每次更新永久残留
+    // 一份 ~50MB 旧引擎（只有重装/卸载才会清），磁盘慢性泄漏
+    for (const entry of fs.existsSync(rootDir) ? fs.readdirSync(rootDir) : []) {
+      if (entry.startsWith('app.bak-')) {
+        try { fs.rmSync(path.join(rootDir, entry), { recursive: true, force: true }); }
+        catch { /* 清理尽力而为 */ }
+      }
+    }
     fs.rmSync(backup, { recursive: true, force: true });
     fs.renameSync(appDir, backup);
     try {
-      fs.renameSync(path.join(pkg, 'app'), appDir);
+      // 数据目录（staging）与安装目录（resources）可能在不同卷：跨卷 rename
+      // 抛 EXDEV，降级为递归复制 + 删除，否则该类用户热更永远失败
+      const newApp = path.join(pkg, 'app');
+      try {
+        fs.renameSync(newApp, appDir);
+      } catch (renameError) {
+        if (renameError.code !== 'EXDEV') throw renameError;
+        fs.cpSync(newApp, appDir, { recursive: true });
+        fs.rmSync(newApp, { recursive: true, force: true });
+      }
       for (const name of ['package.json', 'CHANGELOG.md']) {
         const from = path.join(pkg, name);
         if (fs.existsSync(from)) fs.copyFileSync(from, path.join(rootDir, name));
@@ -273,6 +305,8 @@ class Backend extends EventEmitter {
       await this.start();
       throw error;
     }
+    // 换装成功：备份使命结束，立即删除（失败路径上方已回滚恢复）
+    fs.rmSync(backup, { recursive: true, force: true });
     fs.rmSync(staging, { recursive: true, force: true });
     note('启动新引擎…');
   }
