@@ -203,8 +203,12 @@ UPLOAD_SHORT_STORY_DRAFT = [
     {"do": "sleep", "s": 2},
     {"do": "expect_text", "any": ["保存成功", "已保存", "草稿保存成功",
                                    "存草稿成功"], "timeout": 15},
-    {"do": "verify", "url": "{short_manage_url}", "any": ["{book_name}"],
-     "settle": 5},
+    # 番茄短故事未发布前只进「草稿箱」，主列表始终为空（2026-10-22 实测：
+    # 主列表验证误报"章节未真正发布"）。verify 落草稿箱页断言标题。
+    {"do": "verify", "url": "{short_manage_url}", "any": ["草稿箱"],
+     "settle": 4},
+    {"do": "click_text", "text": "草稿箱", "contains": False},
+    {"do": "expect_text", "any": ["{book_name}"], "timeout": 15},
 ]
 
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
