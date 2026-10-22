@@ -713,7 +713,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 # 「已发布章重复起草」必然假通过，编辑器保存反馈才是本次动作
                 # 自己的证据。超时即失败：宁可带 fail 截图拦下，不可把「没
                 # 存上」记成成功。标记文案以真机校准为准。
+                # 标记里的 values 占位先解析（与 verify 同口径）；不解析会把
+                # {book_name} 字面量当标记永远等不到（2026-10-22 番茄实案）。
                 marks = [str(m) for m in (st.get("any") or [])]
+                for k, v in (values or {}).items():
+                    marks = [m.replace("{%s}" % k, str(v)) for m in marks]
                 if not marks:
                     continue
                 deadline = time.time() + float(st.get("timeout") or 12)
