@@ -58,7 +58,8 @@ class QimaoShortStoryFlowTests(unittest.TestCase):
         self.assertEqual(vals, {"title": "镜中七秒", "summary": "简介",
                                 "target_reader": "女生",
                                 "category_main": "现代言情",
-                                "category_sub": "总裁豪门"})
+                                "category_sub": "总裁豪门",
+                                "protagonist": "林晚"})
 
     def test_upload_short_story_draft_flow(self):
         steps = qimao.FLOWS.get("upload_short_story_draft")
