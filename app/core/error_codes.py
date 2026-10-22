@@ -128,6 +128,12 @@ _MODEL_UNAVAILABLE = (
     "unknown model id", "unknown model", "invalid model", "model not found",
     "model does not exist", "no such model", "model unavailable",
     "free tier can only be used from within opencode",
+    # 智谱网关 429 套餐权限拒绝（2026-10-22 实案：[1311][当前订阅套餐暂未开放
+    # GLM-5.3-FlashX权限]）：是「该订阅不含此模型」的模型级死错，供应商的其他
+    # 模型照常可用。必须先于 _RATE_LIMIT 的 "request rejected" 判成
+    # MODEL_UNAVAILABLE，走模型级熔断+换下一个模型，而不是把 RATE_LIMIT 连坐
+    # 到整个供应商把 10 个活模型一起熔断。
+    "套餐暂未开放",
 )
 _CONTEXT_OVERFLOW = (
     "input exceeds the maximum length", "maximum context length",
@@ -221,6 +227,26 @@ def classify_error_text(error):
 
 def is_auth_error(error):
     return classify_error_text(error) == ErrorCode.AUTH
+
+
+# 模型级错误文本里点名的模型 id 提取（2026-10-22 两实案）：
+# · grok CLI 本地校验拒绝：Couldn't set model 'glm-5.3': unknown model id
+# · 智谱套餐权限拒绝：[当前订阅套餐暂未开放GLM-5.3-FlashX权限]
+# 调用方（health 模型级熔断）据此把无 model 位上报的错误归到正确模型上。
+_MODEL_IN_ERROR_PATTERNS = (
+    re.compile(r"couldn't set model ['\"]([^'\"]+)['\"]", re.IGNORECASE),
+    re.compile(r"暂未开放\s*([A-Za-z0-9._\-]+)\s*权限"),
+)
+
+
+def model_name_from_error(error) -> str:
+    """模型级错误文本中点名的模型 id；没有则返回空串。"""
+    text = str(error or "")
+    for pattern in _MODEL_IN_ERROR_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(1).strip()
+    return ""
 
 
 def is_forbidden_error(error):

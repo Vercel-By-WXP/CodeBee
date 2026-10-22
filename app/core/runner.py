@@ -27,6 +27,7 @@ from . import upstream
 from .env_scrub import scrub_env
 from .error_codes import (
     ErrorCode, classify_error_text, error_code_value,
+    is_account_dead_error,
     is_auth_error as _shared_auth_error,
     is_forbidden_error as _shared_forbidden_error,
     is_quota_error as _shared_quota_error,
@@ -1479,6 +1480,15 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
     if res.get("cancelled"):
         return ErrorCode.CANCELLED
     if res.get("timed_out"):
+        # 超时只是死法不是死因：输出尾部若带账号级死错（codex 内部 Reconnecting
+        # 一直重试到外部超时，真凶是 403 用户额度不足¥0——2026-10-22 vsllm 实案），
+        # 以死因为准：换将/健康熔断按终态处置，而不是当瞬态超时盲重试死号。
+        detail = "\n".join((str(res.get("stderr") or ""),
+                            str(res.get("stdout") or ""),
+                            str((parsed or {}).get("text") or "")))
+        dead = classify_error_text(detail)
+        if dead is not None and is_account_dead_error(dead):
+            return dead
         return ErrorCode.TIMEOUT
     if res.get("output_truncated"):
         return ErrorCode.PARSE_FAIL
@@ -1514,6 +1524,16 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
     # 退出码非 0（vendor 内部崩溃）
     ec = res.get("exit_code")
     if ec is not None and ec != 0:
+        # Windows NTSTATUS 致命异常（0xC0000005 访问违例、0xC0000409 fail-fast
+        # 等，>=0xC0000000）：CLI 进程本地硬崩溃，一个上游字都没吐——归
+        # LOCAL_STATE 让跨 CLI 换将放行、健康台账按本地崩溃豁免（2026-10-22
+        # opencode 退出码 3221226505 连记 3 次把免费通道打成供应商故障实案）。
+        # VENDOR_ERROR 是 fatal 码，本地崩溃按它收场会整 run 判死不换将。
+        try:
+            if int(ec) >= 0xC0000000:
+                return ErrorCode.LOCAL_STATE
+        except (TypeError, ValueError):
+            pass
         return ErrorCode.VENDOR_ERROR
     return ""
 
@@ -2348,8 +2368,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if banner_only:
                     out["error"] += ("（仅启动横幅、无错误文本：疑似本地启动/"
                                      "配置抖动，可换 CLI 补位）")
+                # 超时只是死法不是死因：尾部带账号级死错（vsllm 403 额度¥0 案）
+                # 时以死因为准，健康台账据此首观测即熔断，不再当瞬态盲重试。
+                timeout_code = ErrorCode.TIMEOUT
+                if res.get("timed_out"):
+                    dead = classify_error_text(out["error"])
+                    if dead is not None and is_account_dead_error(dead):
+                        timeout_code = dead
                 out["error_code"] = (ErrorCode.CANCELLED if res.get("cancelled")
-                                      else ErrorCode.TIMEOUT if res.get("timed_out")
+                                      else timeout_code if res.get("timed_out")
                                       else ErrorCode.PARSE_FAIL
                                       if res.get("output_truncated")
                                       else ErrorCode.FORBIDDEN
@@ -2622,9 +2649,16 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         # · 上游内容拒答（refusal）：是那家模型的过滤决定，不是任务终态，
         #   换异上游候选常常就活；判死则整 run 白烧（同案：gemini 拒答后
         #   链上云知声候选从未被尝试）。
+        # · LOCAL_STATE 本地崩溃（NTSTATUS 硬崩、数据库锁）：责任不在上游也
+        #   不是任务终态，链上其他 CLI 常常就活（与横幅秒退同族，2026-10-22
+        #   opencode 3221226505 实案：文本无信号时闸门原先只认文本特征）。
         raw = out.get("raw") or {}
+        local_state = (error_code_value(out.get("error_code"))
+                       == ErrorCode.LOCAL_STATE.value)
         if (raw.get("cancelled")   # 取消是用户意志，绝不降级（尾段可能带瞬态字样）
-                or not (_transient_error(out.get("error")) or _quota_error(out.get("error"))
+                or not (local_state
+                        or _transient_error(out.get("error"))
+                        or _quota_error(out.get("error"))
                         or _refusal_error(out.get("error"))
                         or _permission_error(out.get("error"))
                         or raw.get("timed_out"))):

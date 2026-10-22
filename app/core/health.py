@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -308,6 +309,34 @@ def _configured_provider(plist, provider_id="", provider=""):
     return None
 
 
+def _resolve_named_model(provider_id, provider, error_text):
+    """把模型级错误文本里点名的模型对账回配置表的规范 id。
+
+    不带 model 位的上报（如链候选裸调 grok CLI）错误文本里仍然点名了模型
+    （grok「Couldn't set model 'glm-5.3'」/智谱「暂未开放X权限」）。按大小写
+    不敏感匹配配置表，保证模型级熔断的 key 与路由层后续查询的一致——
+    对不上就返回空串（宁可走供应商级旧路，不造一个查不回的键）。
+    """
+    try:
+        from .error_codes import model_name_from_error
+        named = model_name_from_error(error_text).casefold()
+        if not named:
+            return ""
+        from . import modelhub
+        configured = _configured_provider(modelhub.providers(),
+                                          provider_id, provider)
+        if not configured:
+            return ""
+        for item in (configured.get("models") or []):
+            if isinstance(item, dict):
+                name = str(item.get("name") or "").strip()
+                if name and name.casefold() == named:
+                    return name
+    except Exception:
+        pass
+    return ""
+
+
 def report_failure(provider: str, error: str = "", *, model: str = "",
                    provider_id: str = "", error_code: str = ""):
     """一次真实失败调用。provider 用展示名（与 usage 台账一致）。
@@ -366,7 +395,12 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         code = "MODEL_UNAVAILABLE"
         if evidence != EVIDENCE_OBSERVED:
             evidence = EVIDENCE_INFERRED   # 文案匹配出的模型错，非结构化观测
-    if "stderr/stdout:" in text[:160]:
+    # 裸「退出码 N」（stderr/stdout 尾段为空时 runner 不拼包装前缀）＝CLI
+    # 本地硬崩溃的另一种形态，全文没有任何供应商侧信号——与带尾段的同族
+    # 崩溃同等豁免（2026-10-22 opencode 退出码 3221226505 连记 3 次把免费
+    # 通道打成供应商故障实案：旧豁免只认包装前缀，裸形态漏网照记台账）。
+    bare_exit_crash = re.fullmatch(r"退出码 -?\d+", text.strip()) is not None
+    if "stderr/stdout:" in text[:160] or bare_exit_crash:
         try:
             from .error_codes import classify_error_text
             # Prefer the structured code already produced by runner. Long CLI
@@ -436,6 +470,14 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         if model and not st.get("model"):
             st["model"] = model
         model = str(model or "").strip()
+        if code in _MODEL_FAILURE_CODES and not model:
+            # 模型级死错但上报没带 model 位（链候选裸调 CLI 的形态）：错误
+            # 文本里点名了模型——对账配置表找回规范名，按模型级熔断记账，
+            # 不让单个模型的死错连坐整个供应商（2026-10-22 GLM包月 的 grok
+            # 不认 glm 模型 id 连续失败 2 次即打穿供应商熔断实案）。
+            named = _resolve_named_model(provider_id, provider, str(error or ""))
+            if named:
+                model = named
         if code in _MODEL_FAILURE_CODES and model:
             circuits = st.setdefault("model_circuits", {})
             previous = circuits.get(model) or {}
