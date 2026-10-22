@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from . import store
+from . import store, strategy_config
 
 # 连败统计窗：只数近窗内的失败步，出窗自然回落——冷却必须随时间自愈，不引入
 # 额外计时状态（2026-10-22 codex 实案：当日 4 连败仍凭高能力基线占先手，每轮
@@ -43,7 +43,7 @@ def agent_stats(limit=200):
             age = now - float(ended_epoch)
         except (TypeError, ValueError):
             return
-        if age < 0 or age > STREAK_WINDOW_S:
+        if age < 0 or age > strategy_config.get("streak_window_s"):
             return
         s = stats.setdefault(aid, {}).setdefault(ttype, {"runs": 0, "wins": 0})
         s["streak"] = s.get("streak", 0) + 1

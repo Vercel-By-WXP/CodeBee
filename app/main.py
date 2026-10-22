@@ -1207,6 +1207,19 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 except Exception:
                     log.exception("cleanup: status 失败")
                     return self._json(500, {"error": "清理状态生成失败"})
+            if path == "/api/strategy/config":
+                # 机制闸：策略权重外置（data/strategy.json 热更）视图
+                from core import strategy_config
+                return self._json(200, strategy_config.doc())
+            if path == "/api/strategy/report":
+                # 机制闸：冠军/挑战者影子对账报告（?days=7）
+                from core import strategy_lab
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    days = float((q.get("days") or ["7"])[0])
+                except ValueError:
+                    days = 7.0
+                return self._json(200, strategy_lab.report(days=days))
             if path == "/api/market/remote":
                 q = parse_qs(urlparse(self.path).query)
                 return self._json(200, market_remote.view(
@@ -1909,6 +1922,43 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if err:
                 return self._json(400, {"error": err})
             return self._json(200, dict(ok=True, **res))
+        # 机制闸（Raven Evolver 借鉴）：策略权重外置 + 冠军/挑战者影子对账。
+        # 写操作走通用控制权闸（不进豁免名单）：改机制权重是有意的运维动作，
+        # 多端场景须由持控制权的设备执行。
+        if path == "/api/strategy/config":
+            from core import strategy_config
+            body = self._body() or {}
+            action = str(body.get("action") or "update")
+            if action == "reset":
+                strategy_config.reset_weights()
+                return self._json(200, {"ok": True, "config": strategy_config.doc()})
+            if action == "set-default-strategy":
+                ok, err = strategy_config.set_default_strategy(
+                    str(body.get("name") or ""))
+                return self._json(400, {"error": err}) if err \
+                    else self._json(200, {"ok": True})
+            ok, err = strategy_config.update_weights(body.get("weights") or {})
+            return self._json(400, {"error": err}) if err \
+                else self._json(200, {"ok": True, "config": strategy_config.doc()})
+        if path == "/api/strategy/challenger":
+            from core import strategy_config
+            body = self._body() or {}
+            action = str(body.get("action") or "")
+            if action == "set":
+                ok, err = strategy_config.set_challenger(
+                    str(body.get("name") or "challenger"),
+                    body.get("weights") or {},
+                    enabled=bool(body.get("enabled", True)))
+                return self._json(400, {"error": err}) if err \
+                    else self._json(200, {"ok": True, "config": strategy_config.doc()})
+            if action == "clear":
+                strategy_config.clear_challenger()
+                return self._json(200, {"ok": True, "config": strategy_config.doc()})
+            if action == "adopt":
+                from core import strategy_lab
+                res = strategy_lab.adopt()
+                return self._json(200 if res.get("ok") else 400, res)
+            return self._json(400, {"error": "action 需要是 set/clear/adopt"})
         if path == "/api/eval-matrix/normalize":
             from core import eval_matrix
             try:

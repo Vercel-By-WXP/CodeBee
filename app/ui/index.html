@@ -332,6 +332,7 @@
       <button class="set-item" data-sub="availability" data-search="通道体检 可用性 健康 厂商 模型 CLI 熔断 告警 availability health status circuit"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="通道体检">通道体检</span></button>
       <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
       <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
+      <button class="set-item" data-sub="strategy" data-search="机制与策略 路由 权重 挑战者 影子 对账 evolver strategy weights challenger shadow routing"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="机制与策略">机制与策略</span></button>
       <div data-i18n="知识与扩展" class="set-group">知识与扩展</div>
       <button class="set-item" data-sub="atlas" data-search="记忆图谱 星图 atlas 可视化 搜索 注入 治理 memory atlas visualization"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="记忆图谱">记忆图谱</span></button>
       <button class="set-item" data-sub="memory" data-search="记忆中心 记忆 全局 项目 memory center global project"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="记忆中心">记忆中心</span></button>
@@ -1770,6 +1771,47 @@
         </div>
       </div>
 
+      <!-- 机制与策略（Raven Evolver 借鉴）：路由权重外置热更 + 冠军/挑战者影子对账 -->
+      <div id="sub-strategy" class="subpage hidden">
+        <div class="panel wide">
+          <div class="panel-head"><h2 data-i18n="机制与策略">机制与策略</h2><span class="spacer"></span><span class="hint" id="st-updated"></span></div>
+          <p class="hint" data-i18n="路由评分权重外置为 data/strategy.json（热更，保存即生效，重启不丢）。启用挑战者后，每次自动选将在生产链路旁路记一笔「挑战者会选谁」，对账报告汇总分歧率与潜在挽回——机制层改动先攒证据、再人工采用（借鉴 Raven Evolver，绝不自动换将）。">路由评分权重外置为 data/strategy.json（热更，保存即生效，重启不丢）。启用挑战者后，每次自动选将在生产链路旁路记一笔「挑战者会选谁」，对账报告汇总分歧率与潜在挽回——机制层改动先攒证据、再人工采用（借鉴 Raven Evolver，绝不自动换将）。</p>
+          <h3 data-i18n="路由权重" class="sec-title">路由权重</h3>
+          <div id="st-weights" class="list"></div>
+          <div class="input-row" style="margin:8px 0">
+            <button class="ghost small" onclick="strategySaveWeights()" data-i18n="保存权重">保存权重</button>
+            <button class="ghost small" onclick="strategyResetWeights()" data-i18n="恢复默认">恢复默认</button>
+            <span id="st-weights-msg" class="hint"></span>
+          </div>
+          <h3 data-i18n="挑战者（影子对账）" class="sec-title">挑战者（影子对账）</h3>
+          <div class="field">
+            <div class="input-row" style="align-items:center;gap:8px;flex-wrap:wrap">
+              <input id="st-ch-name" type="text" style="width:160px" placeholder="挑战者名称" data-i18n-ph="挑战者名称">
+              <label class="toggle"><input id="st-ch-enabled" type="checkbox"> <span data-i18n="启用（选将时旁路记录挑战者的选择，不影响生产行为）">启用（选将时旁路记录挑战者的选择，不影响生产行为）</span></label>
+            </div>
+            <p class="hint" data-i18n="下表预填当前生效权重（或已保存的挑战者权重）；保存时只记与当前生效值不同的键。">下表预填当前生效权重（或已保存的挑战者权重）；保存时只记与当前生效值不同的键。</p>
+            <div id="st-ch-weights" class="list"></div>
+            <div class="input-row" style="margin:8px 0">
+              <button class="ghost small" onclick="strategySaveChallenger()" data-i18n="保存挑战者">保存挑战者</button>
+              <button class="ghost small" onclick="strategyClearChallenger()" data-i18n="停用挑战者">停用挑战者</button>
+              <span id="st-ch-msg" class="hint"></span>
+            </div>
+          </div>
+          <h3 data-i18n="影子对账报告" class="sec-title">影子对账报告</h3>
+          <div class="input-row" style="margin:6px 0;align-items:center;gap:8px">
+            <select id="st-days" onchange="strategyRefreshReport()">
+              <option value="1" data-i18n="近 1 天">近 1 天</option>
+              <option value="7" selected data-i18n="近 7 天">近 7 天</option>
+              <option value="30" data-i18n="近 30 天">近 30 天</option>
+            </select>
+            <button class="ghost small" onclick="strategyRefreshReport()" data-i18n="刷新对账">刷新对账</button>
+            <button class="primary small" onclick="strategyAdopt()" data-i18n="采用挑战者">采用挑战者</button>
+          </div>
+          <div id="st-report" class="hint"></div>
+          <div id="st-adopt-history" class="list" style="margin-top:8px"></div>
+        </div>
+      </div>
+
       <!-- 群摘要（正式设置子页：配置与摘要一体，替代原右下角悬浮蜜蜂坞） -->
       <div id="sub-__wxdigest" class="subpage hidden">
         <div class="panel wide">
@@ -1949,7 +1991,7 @@
           <div id="lang-mode" class="seg" role="group" aria-label="Language">
             <!-- 语言名一律用本语言书写，不翻译 -->
             <button class="seg-btn" data-lang="zh"><span>中文</span></button>
-            <button class="seg-btn" data-lang="en">English</button>
+            <button class="seg-btn" data-lang="en"><span>English</span></button>
           </div>
           <h3 class="sec-title" data-i18n="语音输入">语音输入</h3>
           <div class="field"><label data-i18n="语音纠偏词表（一行一条）">语音纠偏词表（一行一条）</label>

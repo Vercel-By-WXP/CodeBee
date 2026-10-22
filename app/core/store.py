@@ -272,6 +272,12 @@ def create_task(payload):
     # 参数修订号（借鉴 WorkDSH 契约纪律 expectedRevision）：写接口据此做过期
     # 写入检测。老任务无此键按 1 处理；不带 expected_rev 的调用不受影响。
     task["rev"] = 1
+    # 席位（Raven 四席借鉴）：流程级策略位随创建固化（payload 可覆盖），缺省不落键
+    _seats = flows_mod.norm_seats(payload.get("seats")
+                                  if isinstance(payload.get("seats"), dict)
+                                  else flow.get("seats"))
+    if _seats:
+        task["seats"] = _seats
     # Durable task contract: acceptance criteria and approval requirement are
     # persisted outside the task JSON so evidence/audit history survives task
     # parameter edits and can be consumed by API/MCP clients independently.

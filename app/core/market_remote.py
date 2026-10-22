@@ -204,6 +204,16 @@ SOURCES = [
          "https://cdn.jsdelivr.net/gh/alirezarezvani/claude-skills@main/.claude-plugin/marketplace.json",
          "https://raw.githubusercontent.com/alirezarezvani/claude-skills/main/.claude-plugin/marketplace.json",
      ]},
+    # EverMind（Raven/EverOS）官方工具仓：标准 marketplace.json + 仓库相对路径
+    # 条目（repo-relative → 克隆仓库取子目录），与 anthropic-skills 同通道。
+    # 2026-10-22 Raven 借鉴调研定档：其 SkillHub 无公开市场端点（SkillForge 是
+    # 本地引擎），以官方 everos-plugins 仓为生态源。
+    {"id": "everos", "name": "EverOS Tools（Raven 生态）", "kind": "marketplace",
+     "repo": "https://github.com/EverMind-AI/everos-plugins.git",
+     "urls": [
+         "https://cdn.jsdelivr.net/gh/EverMind-AI/everos-plugins@main/.claude-plugin/marketplace.json",
+         "https://raw.githubusercontent.com/EverMind-AI/everos-plugins/main/.claude-plugin/marketplace.json",
+     ]},
     {"id": "clawhub", "name": "ClawHub（OpenClaw 生态）", "kind": "clawhub",
      "urls": ["https://clawhub.ai/api/v1/skills?limit=50",
               "https://clawhub.ai/api/v1/trending"]},

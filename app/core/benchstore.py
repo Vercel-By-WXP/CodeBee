@@ -17,13 +17,15 @@ import threading
 import time
 from pathlib import Path
 
-from . import atomic, paths
+from . import atomic, paths, strategy_config
 
 _LOCK = threading.RLock()
 FRESH_DAYS = 14            # 实测分新鲜度（天）；0 = 永不过期（测试用）
 _BASELINE = 7.0            # 及格线：低于它开始倒扣
 _K = 1.5                   # 斜率：每 1 分 ±1.5
 _MAX_BONUS = 4.5           # 封顶（与在线信号 ±6 同量级，翻不动硬约束）
+# 上述口径经 strategy_config（data/strategy.json）外置热更：模块常量是默认值，
+# 文件覆写优先；strategy_config 取默认值时回 getattr 本模块（monkeypatch 兼容）。
 
 
 def _path():
@@ -61,9 +63,11 @@ def _fresh(row, max_age_days):
     return (time.time() - ts) <= max_age_days * 86400.0
 
 
-def bonus_map(max_age_days=FRESH_DAYS):
+def bonus_map(max_age_days=None):
     """{(provider_id, model): {"overall": x, "ts": s}}——每键取最新一条
-    已得分记录，且必须在新鲜度窗口内。"""
+    已得分记录，且必须在新鲜度窗口内。max_age_days=None 走当前生效配置。"""
+    if max_age_days is None:
+        max_age_days = strategy_config.get("fresh_days")
     latest = {}
     for r in read_results():
         if not r.get("scored") or r.get("overall") is None:
@@ -75,24 +79,27 @@ def bonus_map(max_age_days=FRESH_DAYS):
         if prev is None or str(r.get("ts") or "") > str(prev.get("ts") or ""):
             latest[key] = r
     out = {}
-    for k, v in latest.items():
+    baseline = strategy_config.get("bonus_baseline")
+    k = strategy_config.get("bonus_k")
+    max_bonus = strategy_config.get("bonus_max")
+    for k2, v in latest.items():
         if not _fresh(v, max_age_days):
             continue
         overall = float(v["overall"])
-        out[k] = {"overall": overall, "ts": str(v.get("ts") or ""),
-                  "bonus": round(max(-_MAX_BONUS, min(_MAX_BONUS,
-                                                      (overall - _BASELINE) * _K)), 2)}
+        out[k2] = {"overall": overall, "ts": str(v.get("ts") or ""),
+                   "bonus": round(max(-max_bonus, min(max_bonus,
+                                                      (overall - baseline) * k)), 2)}
     return out
 
 
-def bonus_for(provider_id, model, max_age_days=FRESH_DAYS):
+def bonus_for(provider_id, model, max_age_days=None):
     """单条目的实测软信号。返回 (score, reason)；无数据/过期 → (0.0, "")。"""
     try:
         info = bonus_map(max_age_days).get((str(provider_id or ""), str(model or "")))
         if not info:
             return 0.0, ""
-        score = max(-_MAX_BONUS, min(_MAX_BONUS, (info["overall"] - _BASELINE) * _K))
-        score = round(score, 2)
+        max_bonus = strategy_config.get("bonus_max")
+        score = info["bonus"]
         return score, "实测 %.1f 分（%+.1f，%s）" % (
             info["overall"], score, (info.get("ts") or "")[:10])
     except Exception:

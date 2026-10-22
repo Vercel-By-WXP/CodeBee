@@ -13,6 +13,27 @@ def _pl():
     return pipeline
 
 
+def _fast_path_flag(task, mode, difficulty, user_context_len):
+    """低风险短链判定 + 席位覆写（Raven 四席借鉴）。
+
+    启发式：非 plan_mode 且（fast 档，或 auto 档简单任务、无附件、
+    背景不长）。席位 planning.fast_path：True=强制短链（用户显式
+    plan_mode 仍最高优先）/False=禁用短链走全规划；缺省=启发式现状。"""
+    fp = (not task.get("plan_mode") and (mode == "fast" or
+          (mode == "auto" and difficulty == "easy"
+           and not task.get("attachments")
+           and user_context_len < 600)))
+    try:
+        seat = ((task.get("seats") or {}).get("planning") or {}).get("fast_path")
+    except Exception:
+        seat = None
+    if seat is True:
+        return not task.get("plan_mode")
+    if seat is False:
+        return False
+    return fp
+
+
 def _run_code(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
@@ -78,12 +99,9 @@ def _run_code(run, task, agents, ev, stats, mode):
                 pass
         return sid
 
-    # ---- 规划。低风险短任务直接把目标作为单步计划，省掉一次独立模型调用；
+    # ---- 规划。低风险短任务直接把单步计划作为目标，省掉一次独立模型调用；
     # 附件或较长的用户背景仍先规划，避免快速路径漏读约束。
-    fast_path = (not task.get("plan_mode") and (mode == "fast" or
-                 (mode == "auto" and difficulty == "easy"
-                  and not task.get("attachments")
-                  and user_context_len < 600)))
+    fast_path = _fast_path_flag(task, mode, difficulty, user_context_len)
     planned = False
     if (task.get("plan_mode") or mode in ("auto", "expert")) and not fast_path:
         _pl()._wait_gate(run_id, ev)

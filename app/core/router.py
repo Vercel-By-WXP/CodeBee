@@ -9,7 +9,7 @@ import re
 import threading
 import time
 
-from . import dispatch, history, model_family, modelhub, upstream
+from . import dispatch, history, model_family, modelhub, strategy_config, upstream
 
 # 各类智能体的能力基线（0-100）。真实 CLI 里官方双雄最高。
 CAPABILITY = {
@@ -25,8 +25,16 @@ AUTO_CRITIC_LIMIT = 2  # 自动内容评审只取综合分前两名；手工模�
 # 只在没有任何活号可选时才会被白试选中；探活成功（record_success）即回血。
 LEDGER_DOWN_PENALTY = -200.0
 
+# 下列权重经 strategy_config（data/strategy.json）外置热更：模块常量是默认值，
+# 文件覆写优先（Raven Evolver 借鉴·机制闸）。常量保留在位——测试 monkeypatch
+# 与代码可读性都以它为准，strategy_config 取默认值时回 getattr 本模块。
+BINDING_EMPTY_PENALTY = -25.0   # 绑定链解析为空
+BINDING_MULTI_BONUS = 8.0       # 绑定链 ≥2 条备胎
+HISTORY_LOSS_CAP = 24.0         # 败率扣分封顶
+QUOTA_PENALTY_CAP = 45.0        # 配额软罚封顶（正值）
 
-def _ledger_down_text(agent_id):
+
+def _ledger_down_text(agent_id, overrides=None):
     """持久账号台账判死则返回 (罚分, 理由片段)；未判死/台账不可用返回 (0, "")。
 
     一切口径与 bench.is_globally_benched 一致：仅 AUTH/QUOTA/TOOL_LAUNCH 等
@@ -35,9 +43,9 @@ def _ledger_down_text(agent_id):
     try:
         from . import bench as _bench
         if _bench.is_globally_benched(agent_id):
+            pen = strategy_config.get("ledger_down_penalty", overrides)
             reason = _bench.global_reason(agent_id) or "账号级死错"
-            return LEDGER_DOWN_PENALTY, "，账号台账停用（%s，探针未恢复 %+.0f）" % (
-                reason, LEDGER_DOWN_PENALTY)
+            return pen, "，账号台账停用（%s，探针未恢复 %+.0f）" % (reason, pen)
     except Exception:
         pass
     return 0.0, ""
@@ -75,7 +83,8 @@ def _task_type(ttype):
     return str(ttype or "direct")
 
 
-def _binding_bonus(agent_id, dispatch_mode=False, role="", ttype="direct"):
+def _binding_bonus(agent_id, dispatch_mode=False, role="", ttype="direct",
+                   overrides=None):
     """绑定链可用性加分/减分：解析出的调用链有备胎（≥2 条）+8；单条 = 单点
     无降级空间 +0；解析为空 -25。2026-09-16 实测：静态能力基线让配额烧干的
     codex 永远压过健康备用 CLI，绑定空的 CLI 更是连用户配置的模型都没用上
@@ -92,19 +101,23 @@ def _binding_bonus(agent_id, dispatch_mode=False, role="", ttype="direct"):
             if dead:
                 return -45.0, ("，未绑定且 CLI 默认上游 %s 健康故障（-45.0）"
                                % dead)
-            return (0.0, "") if dispatch_mode else (-25.0, "，绑定链为空：相关步骤将判失败（-25.0）")
+            empty = strategy_config.get("binding_empty_penalty", overrides)
+            return (0.0, "") if dispatch_mode else (
+                empty, "，绑定链为空：相关步骤将判失败（%+.1f）" % empty)
         b = modelhub.resolve_binding(agent_id)
         n = len((b or {}).get("call_chain") or [])
         if n >= 2:
-            return 8.0, "，绑定链可用（+8.0）"
+            multi = strategy_config.get("binding_multi_bonus", overrides)
+            return multi, "，绑定链可用（%+.1f）" % multi
         if n == 1:
             return 0.0, "，绑定单点无备胎（+0）"
-        return -25.0, "，绑定链为空：相关步骤将判失败（-25.0）"
+        empty = strategy_config.get("binding_empty_penalty", overrides)
+        return empty, "，绑定链为空：相关步骤将判失败（%+.1f）" % empty
     except Exception:
         return 0.0, ""
 
 
-def _history_bonus(stats, agent_id, ttype):
+def _history_bonus(stats, agent_id, ttype, overrides=None):
     s = (stats.get(agent_id) or {}).get(ttype) or {}
     if not s.get("runs"):
         return 0.0
@@ -114,7 +127,8 @@ def _history_bonus(stats, agent_id, ttype):
     # 偶发失败把智能体埋了）。扣分项封顶 -24，0/3 全败净 -21（含 +3 经验分）、
     # 0/6 净 -18：常挂的 CLI 必须排到无历史的新面孔之后（2026-09-17 前败率不
     # 扣分，0/3 还拿 +6 经验分，比没跑过还高）。
-    loss_penalty = 24.0 * (1.0 - win_rate) * min(1.0, runs / 3.0)
+    loss_cap = strategy_config.get("history_loss_cap", overrides)
+    loss_penalty = loss_cap * (1.0 - win_rate) * min(1.0, runs / 3.0)
     return round(18.0 * win_rate + min(6.0, runs) - loss_penalty, 1)
 
 
@@ -195,14 +209,15 @@ def _sticky_remember(role, ttype, agent_id):
         return
     now = time.time()
     key = (str(role or ""), _task_type(ttype))
+    ttl = strategy_config.get("sticky_ttl_s")
     with _STICKY["lock"]:
         for k in [k for k, v in _STICKY["by_key"].items()
-                  if now - v[1] > STICKY_TTL_S]:
+                  if now - v[1] > ttl]:
             _STICKY["by_key"].pop(k, None)   # 顺手清过期，防字典慢性增长
         _STICKY["by_key"][key] = (aid, now)
 
 
-def _sticky_bonus(agent, role, ttype):
+def _sticky_bonus(agent, role, ttype, overrides=None):
     if agent.get("mode") != "real":
         return 0.0, ""
     key = (str(role or ""), _task_type(ttype))
@@ -211,44 +226,49 @@ def _sticky_bonus(agent, role, ttype):
     if not hit:
         return 0.0, ""
     aid, ts = hit
-    if not aid or time.time() - ts > STICKY_TTL_S:
+    ttl = strategy_config.get("sticky_ttl_s", overrides)
+    if not aid or time.time() - ts > ttl:
         return 0.0, ""
     if str(agent.get("id") or "") != aid:
         return 0.0, ""
-    return (STICKY_BONUS,
-            "，会话粘性：延续上一轮选择保 prompt cache（%+.1f）" % STICKY_BONUS)
+    bonus = strategy_config.get("sticky_bonus", overrides)
+    return (bonus,
+            "，会话粘性：延续上一轮选择保 prompt cache（%+.1f）" % bonus)
 
 
-def score(agent, role, ttype, stats=None):
+def score(agent, role, ttype, stats=None, overrides=None):
     """返回 (总分, 理由字符串)。配额惩罚：catalog 里配了
     quota_tokens_per_hour 的智能体，本小时用量越接近配额分越低
-    （封顶 -45，足以盖过历史加分），满额后仅在没有其他选择时才会被选中。"""
+    （封顶 -45，足以盖过历史加分），满额后仅在没有其他选择时才会被选中。
+
+    overrides（挑战者权重字典，Raven Evolver 影子对账用）：只覆写
+    strategy_config 外置的那批键，None = 走当前生效配置。"""
     stats = stats or {}
     ttype = _task_type(ttype)
     base = CAPABILITY.get(agent.get("kind"), 60)
     use_dispatch = bool(agent.get("_dispatch_task_type") or
                         agent.get("dispatch_enabled"))
     bb, btxt = _binding_bonus(agent.get("id"), dispatch_mode=use_dispatch,
-                              role=role, ttype=ttype)
-    hb = _history_bonus(stats, agent.get("id"), ttype)
+                              role=role, ttype=ttype, overrides=overrides)
+    hb = _history_bonus(stats, agent.get("id"), ttype, overrides=overrides)
     online, online_txt = _online_bonus(agent, role, ttype)
     # 保持公开 score() 的历史绝对分值；运行级候选由 pipeline 标记画像后
     # 才启用能力亲和度，避免旧插件/测试调用被新权重悄然改变。
     affinity, affinity_txt = (dispatch.agent_affinity(agent.get("kind"), ttype, role)
                               if use_dispatch else (0.0, "兼容模式"))
     tv, tv_txt = _tool_chain_penalty(agent.get("id"))
-    sv, sticky_txt = _sticky_bonus(agent, role, ttype)
+    sv, sticky_txt = _sticky_bonus(agent, role, ttype, overrides=overrides)
     bench, bench_txt = 0.0, ""
     if agent.get("mode") != "mock":
         streak = int(((stats.get(agent.get("id")) or {}).get(ttype) or {})
                      .get("streak") or 0)
-        if streak >= STREAK_BENCH_MIN:
-            bench = STREAK_BENCH_PENALTY
+        if streak >= strategy_config.get("streak_bench_min", overrides):
+            bench = strategy_config.get("streak_bench_penalty", overrides)
             if sv:
                 sv, sticky_txt = 0.0, "，粘性停用（连败冷却）"
             bench_txt = "，近窗 %d 连败冷却（%+.0f）" % (streak, bench)
     total = base + bb + hb + affinity + online + tv + sv + bench
-    ledger, ledger_txt = _ledger_down_text(agent.get("id"))
+    ledger, ledger_txt = _ledger_down_text(agent.get("id"), overrides=overrides)
     total += ledger
     hs = (stats.get(agent.get("id")) or {}).get(ttype)
     htxt = ("，历史 %d/%d 胜（%s）" % (hs["wins"], hs["runs"], "%+.1f" % hb)) if hs else "，无历史记录"
@@ -262,7 +282,7 @@ def score(agent, role, ttype, stats=None):
             used = 0
         if used > 0:
             ratio = min(1.0, used / float(quota))
-            penalty = round(-45.0 * ratio, 1)
+            penalty = round(-strategy_config.get("quota_penalty_cap", overrides) * ratio, 1)
             if penalty:
                 total += penalty
                 quota_txt = "，本小时 %d/%d tokens（%s）" % (used, quota, penalty)
@@ -286,7 +306,58 @@ def _pick_scored(agents, role, ttype, stats=None, exclude=()):
     return best[1], best_reason
 
 
-def pick(agents, role, ttype, stats=None, exclude=()):
+def _shadow_note(agents, role, ttype, stats, exclude, champion, context):
+    """冠军/挑战者影子对账（Raven Evolver 借鉴）：只记一笔，绝不影响选将。
+
+    挑战者未启用/任何异常都静默跳过——影子链路挂了不能连累生产路由。
+    冠军分数用当前生效权重现场重打（与挑战者同一 stats，口径可比）。"""
+    try:
+        from . import strategy_config, strategy_lab
+        overrides = strategy_config.challenger_weights()
+        if not overrides:
+            return
+        pool = [a for a in (agents or [])
+                if isinstance(a, dict) and a.get("id")
+                and a.get("id") not in (exclude or ())]
+        if not pool:
+            return
+        st = stats or {}
+        best = None
+        for a in pool:
+            total, _reason = score(a, role, ttype, st, overrides=overrides)
+            if best is None or total > best[0]:
+                best = (total, a)
+        if best is None:
+            return
+        champ_score, _r = score(champion, role, ttype, st)
+        strategy_lab.append_shadow({
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "run_id": str((context or {}).get("run_id") or ""),
+            "task_id": str((context or {}).get("task_id") or ""),
+            "role": str(role or ""),
+            "ttype": _task_type(ttype),
+            "champion_agent": str(champion.get("id") or ""),
+            "champion_score": round(champ_score, 1),
+            "challenger_agent": str(best[1].get("id") or ""),
+            "challenger_score": round(best[0], 1),
+            "diverged": str(best[1].get("id") or "") != str(champion.get("id") or ""),
+        })
+    except Exception:
+        pass
+
+
+def pick(agents, role, ttype, stats=None, exclude=(), context=None):
+    """选 CLI 主入口：委托 _pick_impl，成功后追加挑战者影子记录。
+
+    context（可选）：{"run_id":..., "task_id":...}——只进影子台账供对账报告
+    关联步骤结局，不参与选择。"""
+    sel, reason = _pick_impl(agents, role, ttype, stats, exclude)
+    if sel is not None:
+        _shadow_note(agents, role, ttype, stats, exclude, sel, context)
+    return sel, reason
+
+
+def _pick_impl(agents, role, ttype, stats=None, exclude=()):
     """Use the registered policy to select a CLI; retain the legacy return shape."""
     from . import routing_strategy
 

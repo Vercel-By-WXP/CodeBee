@@ -304,6 +304,36 @@ def _now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _seat(task, seat, key):
+    """读流程席位（Raven 四席借鉴）：task.seats.<seat>.<key>；缺省 None=现状行为。"""
+    try:
+        block = (task.get("seats") or {}).get(seat)
+        if isinstance(block, dict):
+            return block.get(key)
+    except Exception:
+        pass
+    return None
+
+
+def _aiflavor_inject(task, tpl, text):
+    """确定性检测注入 × 席位 action.aiflavor：
+    None=按文体自动（现状）/True=强制按叙事档（含节奏检测）/False=关。"""
+    seat = _seat(task, "action", "aiflavor")
+    if seat is False:
+        return tpl
+    return aiflavor.inject_into_prompt(tpl, text, "novel" if seat is True else task.get("type"))
+
+
+def _global_directives(task):
+    """GLOBAL.md 用户全局指令 × 席位 memory.global_directives：False=跳过。"""
+    if _seat(task, "memory", "global_directives") is False:
+        return ""
+    try:
+        return skills.global_directives_block()
+    except Exception:
+        return ""
+
+
 def _check_cancel(ev):
     if ev is not None and ev.is_set():
         raise Cancelled()
@@ -2907,12 +2937,9 @@ def _run_direct(run, task, agents, ev, stats, mode):
                 prompt += "\n\n" + capability_block
             # 用户级全局指令（A5，dsh DSH_AGENTS_HOME 借鉴）：data/GLOBAL.md 存在
             # 即对直连对话每轮生效（chat 无会话记忆，逐轮携带才不会丢）。
-            try:
-                _gblk = skills.global_directives_block()
-                if _gblk:
-                    prompt += "\n\n" + _gblk
-            except Exception:
-                pass
+            _gblk = _global_directives(task)
+            if _gblk:
+                prompt += "\n\n" + _gblk
             note = route.get("implementer", "")
             images = _task_images(task, workdir)
         else:
@@ -2932,12 +2959,9 @@ def _run_direct(run, task, agents, ev, stats, mode):
                 prompt += "\n\n" + capability_block
             # 全局指令 + 对话摘要（A4/A5）：摘要是对话记忆的手动压缩档——
             # 追话默认只带上一轮输出尾巴，长对话里早前决策靠这份滚动摘要找回。
-            try:
-                _gblk = skills.global_directives_block()
-                if _gblk:
-                    prompt += "\n\n" + _gblk
-            except Exception:
-                pass
+            _gblk = _global_directives(task)
+            if _gblk:
+                prompt += "\n\n" + _gblk
             _ds = task.get("direct_summary")
             if isinstance(_ds, dict) and str(_ds.get("text") or "").strip():
                 prompt += ("\n\n## 之前对话摘要（人工触发的记忆压缩，更新于 %s）\n%s"
@@ -3309,7 +3333,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             tpl = tpl.replace("## 待评审稿件", "%s\n\n## 待评审稿件" % bible, 1)
         # 确定性检测（AI 味/叙事架构/节奏）此前只挂在单稿件评审上，连载逐章
         # 从未拿到——逐章节奏与钩子恰恰最需要这条参考线（命中才追加，不扣分）
-        tpl = aiflavor.inject_into_prompt(tpl, text, task.get("type"))
+        tpl = _aiflavor_inject(task, tpl, text)
         signal = novel_quality.signal_summary(text, chapter=chapter)
         signal_block = novel_quality.format_signal_summary(signal)
         if signal_block:
@@ -3985,10 +4009,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             sk_lessons, kb_block = cap_block, ""
             # 用户全局指令（A5）放技能块之前：同任务跨章字节级稳定，不打碎
             # 供应商前缀缓存（§07 T1.3 静态头部纪律）；GLOBAL.md 改动才失效。
-            try:
-                _gblk = skills.global_directives_block()
-            except Exception:
-                _gblk = ""
+            _gblk = _global_directives(task)
             sk_block = "\n\n".join(p for p in (_gblk, cap_block, bible) if p)
             scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
                 "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
@@ -5886,7 +5907,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 "## 待评审稿件", "%s\n\n## 待评审稿件" % cap, 1)
         # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
         # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
-        crit_prompt = aiflavor.inject_into_prompt(crit_prompt, manuscript, task.get("type"))
+        crit_prompt = _aiflavor_inject(task, crit_prompt, manuscript)
         if is_selection:
             crit_prompt += _content_contract(task) + "\n" + selection.REVIEW
         for idx, agent in enumerate(critics):

@@ -16080,6 +16080,22 @@ function flowForm(fid) {
     '<div class="field"><label>' + t("起草提示词（可选，占位符 __FILE__ __GOAL__ __CONTEXT__ __SKILLS__）") + '</label><textarea id="fl-draft" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.draft_prompt ? f.draft_prompt : "") + "</textarea></div>" +
     '<div class="field"><label>' + t("评审提示词（可选，占位符 __DIMKEYS__ __MANUSCRIPT__）") + '</label><textarea id="fl-critique" rows="3" placeholder="' + t("留空 = 内置通用模板") + '">' + esc(f && f.critique_prompt ? f.critique_prompt : "") + "</textarea></div>" +
     "</div>" +
+    '<div class="field"><label>' + t("席位（留空 = 自动：跟随引擎/文体默认行为）") + '</label><div class="grid-2">' +
+    '<div class="field"><label>' + t("确定性检测（AI 味/节奏）") + '</label><select id="fl-seat-aiflavor">' +
+      '<option value="">' + t("自动（按文体）") + "</option>" +
+      '<option value="on"' + (f && f.seats && f.seats.action && f.seats.action.aiflavor === true ? " selected" : "") + '>' + t("强制注入（按叙事档）") + "</option>" +
+      '<option value="off"' + (f && f.seats && f.seats.action && f.seats.action.aiflavor === false ? " selected" : "") + '>' + t("关闭检测") + "</option>" +
+    "</select></div>" +
+    '<div class="field"><label>' + t("GLOBAL.md 全局指令注入") + '</label><select id="fl-seat-global">' +
+      '<option value="">' + t("自动（默认注入）") + "</option>" +
+      '<option value="off"' + (f && f.seats && f.seats.memory && f.seats.memory.global_directives === false ? " selected" : "") + '>' + t("关闭注入") + "</option>" +
+    "</select></div>" +
+    '<div class="field"><label>' + t("代码快通道（单步直做）") + '</label><select id="fl-seat-fastpath">' +
+      '<option value="">' + t("自动（按难度启发式）") + "</option>" +
+      '<option value="on"' + (f && f.seats && f.seats.planning && f.seats.planning.fast_path === true ? " selected" : "") + '>' + t("强制短链") + "</option>" +
+      '<option value="off"' + (f && f.seats && f.seats.planning && f.seats.planning.fast_path === false ? " selected" : "") + '>' + t("禁用（总走规划）") + "</option>" +
+    "</select></div>" +
+    "</div></div>" +
     '<div class="field"><label>' + t("一句话说明（显示在流程列表）") + '</label><input id="fl-note" value="' + esc(f ? (f.note || "") : "") + '" placeholder="' + t("例：技术播客单集脚本产出") + '"></div>' +
     "</div></details></div>";
   openModal(f ? (t("编辑流程：") + esc(f.name) + (isBuiltin ? t("（预置）") : "")) : t("新建自定义流程"), body, "");
@@ -16130,6 +16146,15 @@ async function saveFlow() {
     const cp = $("fl-critique").value.trim();
     if (cp) payload.critique_prompt = cp;
   }
+  // 席位（Raven 四席借鉴）：只提交显式选择的位，留空不落键（=现状行为）
+  const seats = {};
+  const af = $("fl-seat-aiflavor") ? $("fl-seat-aiflavor").value : "";
+  if (af) seats.action = { aiflavor: af === "on" };
+  const gd = $("fl-seat-global") ? $("fl-seat-global").value : "";
+  if (gd) seats.memory = { global_directives: gd === "on" };
+  const fp = $("fl-seat-fastpath") ? $("fl-seat-fastpath").value : "";
+  if (fp) seats.planning = { fast_path: fp === "on" };
+  if (Object.keys(seats).length) payload.seats = seats;
   try {
     await api("/api/flows", { method: "POST", body: JSON.stringify(payload) });
   } catch (e) { toast(t("保存失败：") + e.message, true); return; }
@@ -22511,6 +22536,167 @@ window.saveCleanupSettings = saveCleanupSettings;
 /* 手机端（<900px）抽屉收起：点导航/任何侧栏可点项后都应收回，别挡内容 */
 function collapseDrawerIfMobile() {
   if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");
+}
+
+/* ---------------------------------------------------------- 机制与策略（Raven Evolver 借鉴）
+ * 路由权重外置（/api/strategy/config）+ 冠军/挑战者影子对账（/api/strategy/report）。
+ * 采用永远人工确认（uiConfirm），绝无 native dialog。 */
+const _ST_KEY_LABELS = {
+  sticky_ttl_s: "粘性窗口（秒）", sticky_bonus: "粘性加分",
+  streak_bench_min: "连败冷却阈值（次）", streak_bench_penalty: "连败冷却罚分",
+  ledger_down_penalty: "台账死号罚分", binding_empty_penalty: "绑定空链罚分",
+  binding_multi_bonus: "绑定多链加分", history_loss_cap: "历史败率扣分上限",
+  quota_penalty_cap: "配额软罚上限", streak_window_s: "连败统计窗（秒）",
+  fresh_days: "实测分新鲜期（天）", bonus_baseline: "实测分及格线",
+  bonus_k: "实测分斜率", bonus_max: "实测分封顶",
+};
+let _stCfg = null;
+
+function _stWeightRows(prefix, values, ranges) {
+  const rows = [];
+  for (const key of Object.keys(_ST_KEY_LABELS)) {
+    const r = (ranges || {})[key] || {};
+    rows.push('<div class="input-row" style="align-items:center;gap:8px;margin:2px 0">' +
+      '<span style="min-width:150px;flex:none">' + esc(t(_ST_KEY_LABELS[key])) + "</span>" +
+      '<input id="' + prefix + key + '" type="number" step="any" data-key="' + key + '"' +
+      (r.min != null ? ' min="' + r.min + '"' : "") +
+      (r.max != null ? ' max="' + r.max + '"' : "") +
+      ' value="' + (values && values[key] != null ? values[key] : "") + '" style="width:110px;flex:none">' +
+      '<span class="hint">' + (r.min != null ? r.min + " ~ " + r.max : "") + "</span></div>");
+  }
+  return rows.join("");
+}
+
+function _stCollect(prefix) {
+  const out = {};
+  document.querySelectorAll('#sub-strategy input[id^="' + prefix + '"]').forEach((inp) => {
+    const key = inp.dataset.key;
+    if (!key || inp.value === "" || isNaN(parseFloat(inp.value))) return;
+    out[key] = parseFloat(inp.value);
+  });
+  return out;
+}
+
+async function loadStrategyLab() {
+  try {
+    _stCfg = await api("/api/strategy/config");
+    $("st-updated").textContent = _stCfg.updated_at || "";
+    $("st-weights").innerHTML = _stWeightRows("stw-", _stCfg.weights, _stCfg.ranges);
+    const chBase = _stCfg.challenger_effective || _stCfg.weights;
+    $("st-ch-name").value = (_stCfg.challenger && _stCfg.challenger.name) || "challenger";
+    $("st-ch-enabled").checked = !!(_stCfg.challenger && _stCfg.challenger.enabled);
+    $("st-ch-weights").innerHTML = _stWeightRows("stc-", chBase, _stCfg.ranges);
+    renderStrategyAdoptHistory(_stCfg.adopt_history || []);
+    $("st-weights-msg").textContent = "";
+    $("st-ch-msg").textContent = "";
+    await strategyRefreshReport(true);
+  } catch (e) {
+    toast(t("加载机制配置失败：") + (e.message || e), true);
+  }
+}
+window.loadStrategyLab = loadStrategyLab;
+
+async function strategySaveWeights() {
+  const weights = _stCollect("stw-");
+  try {
+    await api("/api/strategy/config", { method: "POST",
+      body: JSON.stringify({ weights }) });
+    $("st-weights-msg").textContent = t("已保存（热更即时生效）");
+    await loadStrategyLab();
+  } catch (e) { $("st-weights-msg").textContent = e.message || String(e); }
+}
+window.strategySaveWeights = strategySaveWeights;
+
+async function strategyResetWeights() {
+  const ok = await uiConfirm(t("确认恢复全部权重为默认值？已保存的覆写会清空。"), { danger: true });
+  if (!ok) return;
+  try {
+    await api("/api/strategy/config", { method: "POST",
+      body: JSON.stringify({ action: "reset" }) });
+    toast(t("已恢复默认权重"));
+    await loadStrategyLab();
+  } catch (e) { toast(e.message || String(e), true); }
+}
+window.strategyResetWeights = strategyResetWeights;
+
+async function strategySaveChallenger() {
+  const edited = _stCollect("stc-");
+  const base = (_stCfg && _stCfg.weights) || {};
+  const patch = {};
+  for (const [key, value] of Object.entries(edited)) {
+    if (base[key] == null || Math.abs(base[key] - value) > 1e-9) patch[key] = value;
+  }
+  if (!Object.keys(patch).length) {
+    $("st-ch-msg").textContent = t("没有与当前生效权重不同的键");
+    return;
+  }
+  try {
+    await api("/api/strategy/challenger", { method: "POST",
+      body: JSON.stringify({ action: "set", name: $("st-ch-name").value.trim() || "challenger",
+                             weights: patch, enabled: $("st-ch-enabled").checked }) });
+    $("st-ch-msg").textContent = t("挑战者已保存");
+    await loadStrategyLab();
+  } catch (e) { $("st-ch-msg").textContent = e.message || String(e); }
+}
+window.strategySaveChallenger = strategySaveChallenger;
+
+async function strategyClearChallenger() {
+  try {
+    await api("/api/strategy/challenger", { method: "POST",
+      body: JSON.stringify({ action: "clear" }) });
+    $("st-ch-msg").textContent = t("挑战者已停用");
+    await loadStrategyLab();
+  } catch (e) { $("st-ch-msg").textContent = e.message || String(e); }
+}
+window.strategyClearChallenger = strategyClearChallenger;
+
+async function strategyAdopt() {
+  const ok = await uiConfirm(
+    t("确认采用挑战者权重？采用后覆写当前权重、挑战者自动停用，采用前的对账快照会留档。"),
+    { danger: true, ok: t("确认采用") });
+  if (!ok) return;
+  try {
+    const r = await api("/api/strategy/challenger", { method: "POST",
+      body: JSON.stringify({ action: "adopt" }) });
+    if (!r.ok) { toast(r.error || t("没有已配置的挑战者"), true); return; }
+    toast(t("已采用挑战者权重"));
+    await loadStrategyLab();
+  } catch (e) { toast(e.message || String(e), true); }
+}
+window.strategyAdopt = strategyAdopt;
+
+async function strategyRefreshReport(silent) {
+  const days = parseInt(($("st-days") || {}).value || "7", 10);
+  try {
+    const rep = await api("/api/strategy/report?days=" + days);
+    const el = $("st-report");
+    if (!rep || !rep.total) {
+      el.textContent = t("窗口内暂无影子记录——启用挑战者并跑几轮任务后回来看。");
+      return;
+    }
+    const rate = Math.round((rep.divergence_rate || 0) * 100);
+    const delta = rep.score_delta || {};
+    el.innerHTML =
+      esc(t("决策")) + " " + rep.total +
+      " · " + esc(t("分歧")) + " " + rep.diverged + "（" + rate + "%）" +
+      " · " + esc(t("潜在挽回（分歧且冠军失败）")) + " " + rep.potential_saves +
+      " · " + esc(t("分歧但冠军成功")) + " " + rep.diverged_champion_ok +
+      " · " + esc(t("未关联结局")) + " " + rep.unresolved +
+      (delta.avg != null ? " · " + esc(t("分数差（挑战者−冠军）平均")) + " " + delta.avg : "") +
+      '<div class="hint">' + esc(t("生成于")) + " " + esc(rep.generated_at || "-") + "</div>";
+  } catch (e) {
+    if (!silent) toast(e.message || String(e), true);
+  }
+}
+window.strategyRefreshReport = strategyRefreshReport;
+
+function renderStrategyAdoptHistory(hist) {
+  const el = $("st-adopt-history");
+  if (!el) return;
+  if (!(hist || []).length) { el.innerHTML = ""; return; }
+  el.innerHTML = "<div class='hint'>" + esc(t("采用记录")) + "</div>" + hist.slice().reverse().map((h) =>
+    "<div class='hint'>· " + esc(h.ts || "-") + " " + esc(h.name || "-") +
+    " · " + esc(t("快照")) + " " + esc(JSON.stringify(h.summary || {})) + "</div>").join("");
 }
 
 /* 切页：主栏换成目标子页。shell 决定左栏形态——"main" 保持任务树、"settings" 换成

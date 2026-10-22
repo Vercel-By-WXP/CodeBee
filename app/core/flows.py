@@ -155,12 +155,39 @@ BUILTIN_FLOWS = [
 ]
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+
+# 席位（Raven 四席借鉴·轻量落位）：把散在 pipeline 里的注入/策略开关变成
+# 流程级数据驱动位。**缺省=现状行为（回归红线）**；只收 bool，未知键/席位丢弃。
+SEATS = {
+    "action": ("aiflavor",),          # 确定性检测注入：null=按文体自动（现状）/True=强制/False=关
+    "memory": ("global_directives",),  # GLOBAL.md 用户全局指令：False=跳过注入
+    "planning": ("fast_path",),        # code 快通道：True=强制短链/False=禁用走全规划
+}
+
+
+def norm_seats(seats):
+    if not isinstance(seats, dict):
+        return None
+    out = {}
+    for seat, keys in SEATS.items():
+        block = seats.get(seat)
+        if not isinstance(block, dict):
+            continue
+        clean = {key: block[key] for key in keys if isinstance(block.get(key), bool)}
+        if clean:
+            out[seat] = clean
+    return out or None
+
+
+_norm_seats = norm_seats   # 内部旧名兼容
+
+
 # 可编辑字段（预置流程的 overrides 与自定义流程共用同一套规范化）。
 # icon 刻意不进来：预置图标跟版本走（老 overrides 里钉的旧 emoji 会被忽略），
 # 自定义流程的 icon 在 upsert_flow 里直接落盘，不走 overrides。
 _EDITABLE = ("name", "goal_hint", "note", "manuscript", "rubric",
              "threshold", "rounds", "serial", "story", "draft_prompt", "critique_prompt",
-             "verify_command", "best_of")
+             "verify_command", "best_of", "seats")
 
 
 def _read():
@@ -282,6 +309,12 @@ def _apply_overrides(base, ov):
             s = str(v or "").strip()[:200]
             if s:
                 f[k] = s
+        elif k == "seats":
+            v = _norm_seats(v)
+            if v:
+                f["seats"] = v
+            else:
+                f.pop("seats", None)
         elif k in ("draft_prompt", "critique_prompt"):
             s = str(v or "").strip()
             if s:
@@ -324,7 +357,7 @@ def get_flow(flow_id):
 # 纯展示位——措辞变化不影响执行语义，不应制造「修订漂移」噪音。
 _DIGEST_FIELDS = ("id", "engine", "manuscript", "rubric", "threshold", "rounds",
                   "best_of", "serial", "draft_prompt", "critique_prompt",
-                  "verify_command")
+                  "verify_command", "seats")
 
 
 def flow_content_sha256(flow):
@@ -433,6 +466,10 @@ def upsert_flow(payload, source="manual"):
                 flow[key] = v[:4000]
     elif engine == "code":
         flow["verify_command"] = str(payload.get("verify_command") or "")[:200]
+    # 席位对所有引擎开放（direct 也可能有 memory 注入诉求）
+    seats = _norm_seats(payload.get("seats"))
+    if seats:
+        flow["seats"] = seats
     # direct：无流程参数（目标+附件即全部输入）
     _push_history(fid, flow, source)
     with _LOCK:

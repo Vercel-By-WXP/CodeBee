@@ -132,6 +132,10 @@ def get(name=None) -> RoutingStrategy:
     named by user data.
     """
     configured = os.environ.get("CODEBEE_ROUTING_STRATEGY", "").strip()
+    if not name and not configured:
+        # 持久默认策略（strategy.json，采用挑战者后落位）；env 仍最高优先。
+        from . import strategy_config
+        configured = strategy_config.default_strategy()
     key = str(name or configured or _DEFAULT_NAME).strip().lower()
     with _LOCK:
         factory = _FACTORIES.get(key) or _FACTORIES["builtin"]
