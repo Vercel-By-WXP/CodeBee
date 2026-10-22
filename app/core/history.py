@@ -49,7 +49,12 @@ def agent_stats(limit=200):
         s["streak"] = s.get("streak", 0) + 1
 
     # 列表里移除的记录仍是执行史：路由胜率不能因用户清列表而失忆
-    for run in store.list_runs(limit, include_hidden=True):
+    # 按 created_at_ns 严格定序：run id 尾段是随机数（_new_id），同一秒内
+    # 创建的 run 字典序随机——连败「从最新往回数」在秒内会掷硬币（2026-10-22
+    # 发版闸门 flaky 实案）。纳秒创建时间必有且严格递增。
+    runs = sorted(store.list_runs(limit, include_hidden=True),
+                  key=lambda r: r.get("created_at_ns") or 0, reverse=True)
+    for run in runs:
         if run.get("kind") != "orchestration":
             continue
         # 失败运行也要进历史（记为全负）：以前只数 done——常挂的 CLI 永远
