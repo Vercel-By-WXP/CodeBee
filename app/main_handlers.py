@@ -356,6 +356,48 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
             return self._json(400, {"error": err or "登记失败"})
         return self._json(200, {"ok": True})
 
+    def _api_publish_short_story_draft(self, task_id):
+        """短故事正文整篇存草稿（POST /api/publish/task/<id>/short-story-draft，
+        body: {platform, account?}）。短篇没有章节语义：稿件取任务工作目录的
+        成品文件（manuscript，默认 story.md），走 upload_chapter_async 的
+        short_story 分支——只到平台草稿箱，发布由作者人工提交。"""
+        from pathlib import Path as _P
+        from core.publish import manager as pub
+        task = _main().store.get_task(task_id)
+        if not task:
+            return self._json(404, {"error": "任务不存在"})
+        body = self._body() or {}
+        platform = (body.get("platform") or "").strip()
+        if platform not in ("fanqie", "qimao"):
+            return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        wd = _P(str(task.get("workdir") or ""))
+        fp = wd / str(task.get("manuscript") or "story.md")
+        if not fp.is_file():
+            return self._json(400, {"error": "短故事稿件缺失：%s" % fp.name})
+        ok, err = pub.upload_chapter_async(
+            task_id, platform, str(fp),
+            as_draft=True, short_story=True)
+        return self._json((200 if ok else 409), {"ok": ok, "error": err or ""})
+
+    def _api_book_meta_set(self, task_id):
+        """手工设置作品信息（POST /api/tasks/<id>/book-meta/set，
+        body: {platform, data}）。一键生成是模型路径，通道限流/失败时作者
+        需要能直接落自己认可的字段（书名/简介/分类/标签）——2026-10-22
+        短故事端到端实案：免费通道 429，模板兜底把任务目标当书名。"""
+        body = self._body() or {}
+        platform = (body.get("platform") or "").strip()
+        data = body.get("data")
+        if platform not in ("fanqie", "qimao"):
+            return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+        if not isinstance(data, dict) or not str(data.get("book_name") or "").strip():
+            return self._json(400, {"error": "data.book_name 必填"})
+        payload = {"status": "done", "data": data,
+                   "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                   "source": "手工设置"}
+        if not _main().store.set_book_meta(task_id, platform, payload):
+            return self._json(404, {"error": "任务不存在"})
+        return self._json(200, {"ok": True})
+
     def _api_publish_unbind_book(self, task_id):
         """解除本地作品绑定（POST /api/publish/task/<id>/unbind-book，
         body: {platform}）。只删 books.json 登记，不碰平台线上作品；

@@ -263,6 +263,20 @@ def _collect_material(task):
                 head = chaptersafe.strip_internal_blocks(
                     runner.read_text_any_enc(p))[:_FIRST_CH_HEAD]
                 break
+        # 短篇故事（short_story 单稿）：成稿就是 story.md（流程默认稿件名），
+        # 没有章节文件——把成稿标题与开头当"第一章开头"素材，否则一键生成被
+        # 「没有正文」闸误拒（2026-10-22 端到端实案）；标题单独给锚点，
+        # 否则模型把任务目标当书名（同日实案：book_name="写一篇七猫短故事：…"）。
+        if not head and str(task.get("type") or "") == "short_story":
+            ms = str(task.get("manuscript") or "story.md")
+            p = Path(task.get("workdir") or "") / ms
+            if p.is_file():
+                text = runner.read_text_any_enc(p)
+                head = text[:_FIRST_CH_HEAD]
+                m = re.match(r"^#\s*(.+)$", text.strip(), re.M)
+                if m:
+                    parts.append("## 成稿标题（书名必须沿用它，不得另起）\n"
+                                 + m.group(1).strip())
     except OSError:
         pass
     if head:

@@ -214,8 +214,9 @@ FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 
-def short_story_editor_url(book):
-    """短故事编辑器直达（publish-short/<id>；一键建后的作品页）。"""
+def short_editor_url(book):
+    """短故事编辑器直达（publish-short/<id>；一键建后的作品页）。
+    命名对齐 manager._url_values 的扫描键（short_editor_url）。"""
     bid = str((book or {}).get("book_id") or "")
     if bid:
         return CONFIG["home"] + "publish-short/" + bid

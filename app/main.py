@@ -2132,6 +2132,9 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = re.match(r"^/api/tasks/([^/]+)/book-meta/rename$", path)
         if m:
             return self._api_book_meta_rename(m.group(1))
+        m = re.match(r"^/api/tasks/([^/]+)/book-meta/set$", path)
+        if m:
+            return self._api_book_meta_set(m.group(1))
         m = re.match(r"^/api/tasks/([^/]+)/cover$", path)
         if m:
             from core import covergen
@@ -2236,6 +2239,9 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/register-book$", path)
         if m:
             return self._api_publish_register_book(m.group(1))
+        m = re.match(r"^/api/publish/task/([^/]+)/short-story-draft$", path)
+        if m:
+            return self._api_publish_short_story_draft(m.group(1))
         m = re.match(r"^/api/publish/task/([^/]+)/unbind-book$", path)
         if m:
             return self._api_publish_unbind_book(m.group(1))

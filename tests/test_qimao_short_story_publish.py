@@ -120,7 +120,7 @@ class FanqieShortStoryTests(unittest.TestCase):
         self.assertEqual(next(g for g in m.groups() if g),
                          "7699400853773353534")
         self.assertEqual(
-            fanqie.short_story_editor_url({"book_id": "123"}),
+            fanqie.short_editor_url({"book_id": "123"}),
             "https://fanqienovel.com/main/writer/publish-short/123")
         # 番茄无专用取值器 → publish_create 回落 values_create_book
         self.assertFalse(hasattr(fanqie, "values_create_short_story"))
