@@ -411,6 +411,31 @@ def task_cancel(params: dict) -> dict:
 # Execution tools
 # ============================================================================
 
+@_tool("report_status")
+def report_status(params: dict) -> dict:
+    """Agent reverse channel: report a blocker needing human decision
+    (kind=blocker; the user is notified and can reply in chat), a progress
+    note (progress), or that a previous blocker is resolved (resolve)."""
+    from . import store, store_reports
+    kind = str(params.get("kind") or "").strip().lower()
+    text = str(params.get("text") or "").strip()
+    run_id = str(params.get("run_id") or "").strip()
+    run = store.get_run(run_id) if run_id else None
+    if not run:
+        task = store.get_task(str(params.get("task_id") or "").strip())
+        if not task:
+            return {"error": "task_id/run_id 至少给一个有效值"}
+        run = store.latest_run_by_task().get(task["id"]) or {}
+        run_id = run.get("id") or ""
+    if not run_id:
+        return {"error": "该任务还没有运行可挂汇报"}
+    rec = store_reports.add_report(run_id, kind, text, source="mcp-web")
+    if not rec:
+        return {"error": "kind 必须是 blocker/progress/resolve，且 blocker/progress 需带 text"}
+    return {"reported": True, "kind": kind, "run_id": run_id,
+            "notified": kind == "blocker"}
+
+
 @_tool("execution_list")
 def execution_list(params: dict) -> dict:
     """List task executions (runs)."""

@@ -218,6 +218,10 @@
           <span data-i18n="运行记录">运行记录</span>
           <span class="nav-badge hidden" id="nav-badge-runs"></span>
         </button>
+        <button class="qitem" id="btn-q-kanban" data-page="kanban" title="看板" data-i18n-title="看板">
+          <svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>
+          <span data-i18n="看板">看板</span>
+        </button>
         <button class="qitem" id="btn-q-automation" data-page="automation" title="自动化" data-i18n-title="自动化">
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
           <span data-i18n="自动化">自动化</span>
@@ -494,6 +498,16 @@
     <section id="page-settings" class="page">
       <!-- 概览首页：日期 → 一句话概览 → KPI 卡 → 趋势 + 快捷入口 → 最近运行。
            全页数据来自真实台账（/api/usage）与运行记录（/api/state），无占位假数。 -->
+      <!-- 看板（2026-10-22 multica 视角落地）：issue 式任务组织——按生命周期
+           分列（待办/排队/进行中/待裁决/已完结），卡片即任务，点卡直开详情。
+           列内容与侧栏任务树同源（/api/state），阻塞/待裁决在这里集中盯。 -->
+      <div id="sub-kanban" class="subpage hidden">
+        <div class="kb-head">
+          <h1 class="kb-title" data-i18n="看板">看板</h1>
+          <p class="kb-sub" data-i18n="按生命周期组织的任务；待裁决列集中看阻塞汇报与分支裁决">按生命周期组织的任务；待裁决列集中看阻塞汇报与分支裁决</p>
+        </div>
+        <div id="kanban-board" class="kanban-board"></div>
+      </div>
       <div id="sub-overview" class="subpage hidden">
         <div class="ov-head">
           <div class="ov-head-text">

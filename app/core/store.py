@@ -32,6 +32,10 @@ from .store_messages import (  # noqa: F401 - 旧调用面再导出
     pause_control, pause_observability, peek_messages, pending_message, pop_run_inject,
     retract_message, set_paused, set_paused_all,
 )
+from .store_reports import (  # noqa: F401 - 旧调用面再导出
+    add_report, ingest_markers, list_reports, open_blockers,
+    resolve_open_blockers, strip_markers,
+)
 
 
 LOCK = threading.RLock()

@@ -867,6 +867,15 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 if not run:
                     return self._json(404, {"error": "not found"})
                 return self._json(200, {"messages": run.get("messages") or []})
+            # 反向通道（2026-10-22 multica）：agent 汇报的读取面（写入走 POST）
+            m = re.match(r"^/api/runs/([^/]+)/agent-reports$", path)
+            if m:
+                from core import store_reports
+                run = store.get_run(m.group(1))
+                if not run:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, {"reports": store_reports.list_reports(m.group(1)),
+                                        "open_blockers": len(store_reports.open_blockers(run))})
             m = re.match(r"^/api/runs/([^/]+)/report$", path)
             if m:
                 run = store.get_run(m.group(1))
@@ -2341,6 +2350,24 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = re.match(r"^/api/runs/([^/]+)/messages$", path)
         if m:
             return self._api_add_message(m.group(1))
+        # 反向通道写入面：CLI/脚本/外部集成 POST 汇报（blocker 顺手推通知）
+        m = re.match(r"^/api/runs/([^/]+)/agent-reports$", path)
+        if m:
+            from core import store_reports
+            if not store.get_run(m.group(1)):
+                return self._json(404, {"error": "not found"})
+            body = self._body() or {}
+            try:
+                step = int(body.get("step"))
+            except (TypeError, ValueError):
+                step = None
+            rec = store_reports.add_report(m.group(1), body.get("kind"), body.get("text"),
+                                           source=str(body.get("source") or "api")[:24],
+                                           step=step)
+            if not rec:
+                return self._json(400, {"error": "kind 必须是 blocker/progress/resolve，"
+                                                 "且 blocker/progress 需带 text"})
+            return self._json(200, {"ok": True, "report": rec})
         m = re.match(r"^/api/runs/([^/]+)/chat$", path)
         if m:
             return self._api_direct_chat(m.group(1))
@@ -3272,6 +3299,9 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             digest = runner.verdict_digest(body)
             if digest:
                 body = digest
+            # 汇报标记行已各自成卡（agent_reports），气泡正文不再残影；原文在步骤日志
+            from core import store_reports as _sr
+            body = _sr.strip_markers(body)
             running = (s.get("status") or "") == "running"
             items.append({
                 "kind": "agent",
@@ -3304,6 +3334,21 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 "live": s.get("live") or 0,
             })
 
+        def _emit_report(rep, run_id_of):
+            # 反向通道（2026-10-22 multica）：agent 主动汇报自成气泡——阻塞/
+            # 进展/解除三种，用户在对话区直接看到并可回信（回信即解除阻塞）。
+            items.append({
+                "kind": "report",
+                "report_kind": rep.get("kind") or "",
+                "at": rep.get("at") or "",
+                "who": "智能体汇报",
+                "text": rep.get("text") or "",
+                "resolved": bool(rep.get("resolved")),
+                "resolved_count": rep.get("resolved_count"),
+                "step": rep.get("step"),
+                "run": run_id_of,
+            })
+
         for r in runs:
             msgs = r.get("messages") or []
             steps = r.get("steps") or []
@@ -3323,6 +3368,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             for s in steps:
                 if (s.get("status") or "") == "done":
                     _emit_step(s, r.get("id") or run_id)
+            # 汇报卡跟在该 run 的已完成步骤之后（边界事件的语义位置）
+            for rep in (r.get("agent_reports") or []):
+                if isinstance(rep, dict):
+                    _emit_report(rep, r.get("id") or run_id)
             live_steps = [s for s in steps if (s.get("status") or "") != "done"]
             if not live_steps:
                 for m in pending:

@@ -22,15 +22,27 @@ def run_activity(run):
 
 
 def task_attention(tasks, latest):
-    """Approval state is authoritative; never infer approval from a read marker."""
+    """Tasks needing the human eye: approval pending and unresolved agent
+    blockers (reverse channel, 2026-10-22). Approval state is authoritative;
+    never infer approval from a read marker."""
+    from . import store_reports
     result = {}
     for task in tasks:
         run = latest.get(task["id"]) or {}
+        attn = {}
         contract = contracts.get(task["id"]) or {}
         requires_approval = bool(task.get("approval_required") or
                                  contract.get("approval_required"))
-        if not requires_approval or run.get("status") != "done":
-            continue
-        if (contract.get("approval") or {}).get("status") != "approved":
-            result[task["id"]] = {"approval_pending": True}
+        if (requires_approval and run.get("status") == "done"
+                and (contract.get("approval") or {}).get("status") != "approved"):
+            attn["approval_pending"] = True
+        blockers = store_reports.open_blockers(run)
+        if blockers:
+            last = blockers[-1]
+            attn["blocker"] = {"count": len(blockers),
+                               "text": str(last.get("text") or "")[:120],
+                               "at": last.get("at") or "",
+                               "run_id": run.get("id") or ""}
+        if attn:
+            result[task["id"]] = attn
     return result

@@ -776,6 +776,19 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
         return {"ok": False, "error": "任务预算已达上限：%s" % quota_error,
                 "budget": quota.snapshot()}
     prompt = _compile_dispatch_prompt(run_id, role, prompt, readonly=readonly)
+    # 反向通道告知（2026-10-22 multica 落地）：非创作类流程给 CLI 一行汇报
+    # 通道说明，让其知道可主动上报阻塞/进展。连载/单本小说提示词高度调校，
+    # 不加脚注防风格漂移；标记解析本身对所有流程生效（写了就收）。
+    try:
+        _row = store.get_run(run_id) or {}
+        _task = store.get_task(_row.get("task_id")) if _row.get("task_id") else {}
+        if (_task.get("type") or "") not in ("serial_novel", "novel"):
+            prompt = (prompt.rstrip() +
+                      "\n\n【汇报通道】遇到需要用户拍板或补关键信息的情况，单独起一行输出"
+                      " [[CODEBEE:BLOCKER]] 加一句说明（用户会收到提醒并可立即回复）；"
+                      "主动同步重要进展用 [[CODEBEE:PROGRESS]]，阻塞解除用 [[CODEBEE:RESOLVE]]。")
+    except Exception:
+        pass
     admission = _ensure_runtime_session(run_id, workdir, role, prompt, agent)
     deadline = _ensure_budget(run_id)
     timeout, deadline = _step_timeout(run_id, timeout, deadline)
@@ -1372,6 +1385,13 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
                       thinking=res.get("reasoning") or None,
                       partial=bool(res.get("partial")),
                       acp_events=(raw.get("acp_events") or []))
+    # 反向通道（2026-10-22 multica）：CLI 最终输出里的 [[CODEBEE:*]] 标记行
+    # 解析成阻塞/进展汇报卡；解析失败绝不影响步骤收尾。
+    try:
+        from . import store_reports
+        store_reports.ingest_markers(run_id, res.get("text") or "", step=step["n"])
+    except Exception:
+        pass
     try:
         quota = _task_budget(run_id)
         quota.tokens += max(0, int(res.get("tokens") or 0))

@@ -51,6 +51,13 @@ TOOLS = [
     {"name": "search_knowledge", "description": "在本地检索索引中搜索带来源和命中词解释的上下文。",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
+    {"name": "report_status", "description": "向用户主动汇报任务状况（agent 反向通道）：需要人工拍板/补关键信息的阻塞（blocker，用户会收到提醒并可立即回复）、重要进展同步（progress）、此前阻塞已解除（resolve）。",
+     "inputSchema": {"type": "object", "properties": {
+         "kind": {"type": "string", "enum": ["blocker", "progress", "resolve"]},
+         "text": {"type": "string", "description": "汇报内容（resolve 可留空）"},
+         "task_id": {"type": "string", "description": "任务 ID（与 run_id 二选一，都给优先 run_id）"},
+         "run_id": {"type": "string", "description": "运行 ID"}},
+         "required": ["kind"]}},
 ]
 
 
@@ -189,10 +196,34 @@ def _tool_search(args):
     return {"content": json.dumps(rows, ensure_ascii=False, indent=1)}
 
 
+def _tool_report_status(args):
+    """反向通道（2026-10-22 multica）：外部 agent 经 MCP 上报阻塞/进展。"""
+    from core import store, store_reports
+    kind = str(args.get("kind") or "").strip().lower()
+    text = str(args.get("text") or "").strip()
+    run_id = str(args.get("run_id") or "").strip()
+    run = store.get_run(run_id) if run_id else None
+    if not run:
+        task = store.get_task(str(args.get("task_id") or "").strip())
+        if not task:
+            return {"isError": True, "content": "task_id/run_id 至少给一个有效值"}
+        run = store.latest_run_by_task().get(task["id"]) or {}
+        run_id = run.get("id") or ""
+    if not run_id:
+        return {"isError": True, "content": "该任务还没有运行可挂汇报"}
+    rec = store_reports.add_report(run_id, kind, text, source="mcp")
+    if not rec:
+        return {"isError": True,
+                "content": "kind 必须是 blocker/progress/resolve，且 blocker/progress 需带 text"}
+    return {"content": "已汇报（%s）：用户会在对话区看到%s" % (
+        kind, "并可立即回复" if kind == "blocker" else "")}
+
+
 _TOOL_IMPL = {"create_task": _tool_create_task, "get_status": _tool_get_status,
               "list_recent": _tool_list_recent, "usage_summary": _tool_usage_summary,
               "bench_leaderboard": _tool_bench, "get_contract": _tool_contract,
-              "record_evidence": _tool_evidence, "search_knowledge": _tool_search}
+              "record_evidence": _tool_evidence, "search_knowledge": _tool_search,
+              "report_status": _tool_report_status}
 
 
 def handle_request(msg):

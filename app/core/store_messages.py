@@ -82,6 +82,16 @@ def add_message(run_id, text, sender="本机", attachments=None):
             "consumed": False,
         }
         msgs.append(msg)
+        # 反向通道闭环（2026-10-22 multica）：用户回信=对未解除阻塞的应答，
+        # 顺手解除该 run 的 blocker——否则阻塞卡永远红着，回信了也不消。
+        # 同锁内直接改同一 run dict，不再绕道 store_reports 的加锁助手。
+        reps = run.get("agent_reports")
+        if isinstance(reps, list):
+            for r in reps:
+                if (isinstance(r, dict) and r.get("kind") == "blocker"
+                        and not r.get("resolved")):
+                    r["resolved"] = True
+                    r["resolved_by"] = "user:" + msg["id"]
         _store()._save_json(_store().paths.RUNS_DIR / run_id / "run.json", run)
         return msg
 

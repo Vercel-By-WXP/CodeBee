@@ -802,11 +802,35 @@ def _tool_read_task_output(workdir, args, sandbox=None):
     return "\n".join(out)[:20000]
 
 
+def _tool_report_status(args, checkpoint_run_id=""):
+    """反向通道（2026-10-22 multica）：内置智能体主动上报阻塞/进展。
+
+    优先挂当前运行（checkpoint_run_id，调用链自带绑定）；跨任务上报用
+    task_id 落到该任务最近一次运行。"""
+    from . import store, store_reports
+    kind = str((args or {}).get("kind") or "").strip().lower()
+    text = str((args or {}).get("text") or "").strip()
+    run_id = str(checkpoint_run_id or "").strip()
+    if not run_id:
+        task_id = str((args or {}).get("task_id") or "").strip()
+        run = store.latest_run_by_task().get(task_id) if task_id else None
+        run_id = (run or {}).get("id") or ""
+    if not run_id:
+        return "（report_status 失败：找不到当前运行，可用 task_id 指定任务）"
+    rec = store_reports.add_report(run_id, kind, text, source="builtin")
+    if not rec:
+        return "（report_status 失败：kind 须为 blocker/progress/resolve，blocker/progress 须带 text）"
+    return "已汇报（%s）：%s用户会在对话区看到%s" % (
+        kind, text[:80] + ("；" if len(text) > 80 else ""),
+        "并可立即回复" if kind == "blocker" else "")
+
+
 TOOLS_SPEC = [
     {"name": "list_skills", "description": "列出当前已启用的技能及其 ID，不加载技能正文", "args": {}},
     {"name": "use_skill", "description": "按名称或 ID 加载已启用的技能指令；长文可用 offset 继续读取", "args": {"name": "技能名称或 ID", "?offset": "下一段起始位置"}},
     {"name": "web_search", "description": "搜索公开网页，返回标题、网址和摘要；仅用于需要外部最新信息的任务", "args": {"query": "搜索关键词"}},
     {"name": "read_task_output", "description": "读取当前工作目录内另一项 CodeBee 任务的最近运行状态和步骤输出", "args": {"task_id": "任务 ID"}},
+    {"name": "report_status", "description": "向用户主动汇报：需要人工拍板/补关键信息的阻塞（kind=blocker，用户会收到提醒并可立即回复）、重要进展同步（progress）、此前阻塞已解除（resolve）。长任务卡住等决策时优先用它而不是干等", "args": {"kind": "blocker | progress | resolve", "text": "汇报内容（resolve 可留空）", "?task_id": "跨任务上报时指定任务 ID"}},
     {"name": "code_map",
      "description": "工作目录的代码认知图谱（.codebee/code-map.txt）：每个文件一行 F 职责/R 关联文件/A 对外接口/S 关键约束。大仓库先 status 看漂移，再 read 按关键词取相关条目，读完地图再决定展开哪些文件；改完代码用 build 刷新",
      "args": {"action": "status | read | build",
@@ -1184,6 +1208,8 @@ def _exec_tool_impl(workdir, name, args, cancel_event=None, deadline=None, task_
                                    sandbox=sandbox)
     if name == "save_skill_draft":
         return _tool_save_skill_draft(args or {})
+    if name == "report_status":
+        return _tool_report_status(args or {}, checkpoint_run_id=checkpoint_run_id)
     if name == "read_tool_output":
         from . import tool_outputs
         result = tool_outputs.read(tool_output_run_id, (args or {}).get("ref"),

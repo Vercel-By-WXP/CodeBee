@@ -16,7 +16,7 @@ class ActionSpec:
 _READ = (
     "list_skills", "use_skill", "web_search", "read_task_output",
     "list_files", "read_file", "search_content", "find_files",
-    "read_tool_output",
+    "read_tool_output", "report_status",
 )
 _WRITE = ("write_file", "edit_file", "append_file", "fs_manage",
           "create_task", "schedule_task", "run_command", "code_map",

@@ -2311,6 +2311,7 @@ function applyState(d) {
   memoryCenterMaybeRefresh();
   updateStatusSidebar(); // 暖色皮肤状态侧栏
   if (S.tab === "home") renderHome();   // 停在主页时：最近任务列表跟着刷新
+  if (S.tab === "kanban") renderKanban();   // 停在看板页时：列/卡随状态帧刷新（阻塞出现即挪待裁决列）
   if (S.tab === "browser") {
     browserRenderTaskContext();
     browserLoadPublishState(browserCurrentTask());
@@ -6328,20 +6329,23 @@ function beepAttention() {
   } catch (e) { /* 音频不可用则忽略 */ }
 }
 
-/* 注意力状态快照：每任务 [git_state, 最近 run 状态]；新进入 待裁决/失败 才响 */
+/* 注意力状态快照：每任务 [git_state, 最近 run 状态, 未解除阻塞数]；
+ * 新进入 待裁决/失败/出现阻塞 才响 */
 function scanAttention(groups) {
   const cur = {};
   groups.forEach((g) => {
     if (!g.taskId) return;
-    cur[g.taskId] = (g.verdict ? "isolated" : "") + "|" + (g.status || "");
+    cur[g.taskId] = (g.verdict ? "isolated" : "") + "|" + (g.status || "") + "|" + (g.blockers || 0);
   });
   const prev = S._attention || {};
   S._attention = cur;
   const fired = Object.keys(cur).some((id) => {
     const was = prev[id];
     if (was === undefined || was === cur[id]) return false;   // 新任务/无变化不响
-    const [vNow, sNow] = cur[id].split("|");
-    return vNow === "isolated" || sNow === "failed";
+    const parts = cur[id].split("|");
+    const wasBlockers = Number((was.split("|")[2] || "0"));
+    return parts[0] === "isolated" || parts[1] === "failed" ||
+           Number(parts[2] || 0) > wasBlockers;   // 反向通道：新阻塞浮现
   });
   if (fired) beepAttention();
 }
@@ -6422,6 +6426,89 @@ function mobileNewTask(dir) {
   document.querySelector("main").scrollTop = 0;
 }
 
+/* 看板（2026-10-22 multica 视角落地）：issue 式任务组织——按生命周期分列，
+ * 卡片即任务，点卡复用侧栏行激活链直开详情。列序：待办 → 排队 → 进行中 →
+ * 待裁决 → 已完结；待裁决列聚合三源：agent 阻塞汇报（反向通道）、分支待裁决
+ * （git_state=isolated）、审批待批（approval_pending）。数据与侧栏同源
+ * （/api/state），无独立请求。 */
+const KB_TERMINAL = { done: 1, failed: 1, cancelled: 1, timeout: 1 };
+function renderKanban() {
+  const box = $("kanban-board");
+  if (!box) return;
+  bindKanbanOnce();
+  const st = S.state || {};
+  const tasks = st.tasks || [];
+  const latest = st.task_latest || {};
+  const attn = st.task_attention || {};
+  const cols = [
+    { key: "todo", label: t("待办") },
+    { key: "queued", label: t("排队中") },
+    { key: "running", label: t("进行中") },
+    { key: "review", label: t("待裁决") },
+    { key: "done", label: t("已完结") },
+  ];
+  const buckets = {};
+  cols.forEach((c) => { buckets[c.key] = []; });
+  tasks.forEach((tk) => {
+    const lr = latest[tk.id] || {};
+    const runSt = lr.status || "";
+    const a = attn[tk.id] || {};
+    let col;
+    if ((a.blocker && a.blocker.count) || a.approval_pending || tk.git_state === "isolated") col = "review";
+    else if (runSt === "running" || tk.status === "running") col = "running";
+    else if (runSt === "queued" || tk.status === "queued") col = "queued";
+    else if (KB_TERMINAL[runSt]) col = "done";
+    else col = "todo";
+    buckets[col].push({
+      id: tk.id, title: tk.title || tk.id, type: tk.type || "",
+      runId: lr.id || "", status: runSt || tk.status || "",
+      time: lr.started_at || lr.created_at || tk.created_at || "",
+      blockers: (a.blocker && a.blocker.count) || 0,
+      blockerText: (a.blocker && a.blocker.text) || "",
+      verdict: tk.git_state === "isolated", approval: !!a.approval_pending,
+    });
+  });
+  Object.keys(buckets).forEach((k) =>
+    buckets[k].sort((a, b) => String(b.time || "").localeCompare(String(a.time || ""))));
+  box.innerHTML = cols.map((c) => {
+    const cards = buckets[c.key];
+    return '<div class="kb-col" data-col="' + c.key + '">' +
+      '<div class="kb-col-head"><span>' + esc(c.label) + '</span><b>' + cards.length + "</b></div>" +
+      (cards.length ? cards.map((cd) =>
+        '<button type="button" class="kb-card' + (cd.status === "running" ? " running" : "") +
+        (c.key === "review" ? " attention" : "") + '"' +
+        ' data-task="' + esc(cd.id) + '" data-run="' + esc(cd.runId) + '"' +
+        ' data-status="' + esc(cd.status) + '" title="' + esc(cd.title) + '">' +
+        '<span class="kb-card-title">' + esc(cd.title) + "</span>" +
+        '<span class="kb-card-meta">' +
+        (cd.type ? '<i class="kb-type">' + esc(cd.type) + "</i>" : "") +
+        statusChip(cd.status || t("未运行")) +
+        (cd.time ? "<small>" + esc(relTime(cd.time)) + "</small>" : "") +
+        "</span>" +
+        ((cd.blockers || cd.verdict || cd.approval)
+          ? '<span class="kb-card-flags">' +
+            (cd.blockers ? '<i class="kb-flag blocker">' + esc(t("阻塞")) + " " + cd.blockers + "</i>" : "") +
+            (cd.verdict ? '<i class="kb-flag">' + esc(t("分支待裁决")) + "</i>" : "") +
+            (cd.approval ? '<i class="kb-flag">' + esc(t("待审批")) + "</i>" : "") +
+            "</span>" : "") +
+        (cd.blockerText ? '<span class="kb-blocker-text">' + esc(cd.blockerText) + "</span>" : "") +
+        "</button>").join("")
+        : '<div class="kb-empty">' + esc(t("暂无任务")) + "</div>") +
+      "</div>";
+  }).join("");
+}
+
+/* 看板卡片点击：一次绑定长期生效（innerHTML 整块重建也不丢监听） */
+function bindKanbanOnce() {
+  const box = $("kanban-board");
+  if (!box || box.dataset.bound) return;
+  box.dataset.bound = "1";
+  box.addEventListener("click", (e) => {
+    const card = e.target.closest(".kb-card");
+    if (card) sideRowActivate(card);
+  });
+}
+
 function renderSideTasks() {
   const box = $("side-tasks");
   if (!box) return;
@@ -6435,10 +6522,12 @@ function renderSideTasks() {
   tasks.forEach((t) => { tasksById[t.id] = t; });
   // 标题、工作目录参与签名：重命名/换目录后侧栏要跟着重排，缺了会顶着旧分组
   // （内嵌步骤层已移除，run 步骤数不再上侧栏，不参与签名）
+  const attn = (S.state && S.state.task_attention) || {};
   const sig = JSON.stringify([
     runs.map((r) => [r.id, r.status, r.title]),
     tasks.map((t) => [t.id, t.title, t.workdir, t.git_state || ""]),
     Object.keys(latest).map((k) => [k, latest[k].id, latest[k].status]),
+    Object.keys(attn).map((k) => [k, (attn[k].blocker || {}).count || 0, !!attn[k].approval_pending]),
     S.detailRunId, S.detailTaskKey, archivedIds.size, S.showArchived, S.sideQ || "",
   ]);
   if (sig === S.sideSig && box.children.length) return;
@@ -6460,6 +6549,7 @@ function renderSideTasks() {
     const g = push(t.id, t.id, t.title || t.id, lr ? lr.status : "",
       lr ? (lr.started_at || lr.created_at) : t.created_at, t.workdir || ORPHAN);
     g.verdict = t.git_state === "isolated";   // 闸门等待：任务分支待裁决
+    g.blockers = ((attn[t.id] || {}).blocker || {}).count || 0;   // 反向通道：agent 阻塞汇报未解除数
     g.archived = isArch;
     if (lr) {
       g.runIds.push(lr.id);
@@ -6519,6 +6609,7 @@ function renderSideTasks() {
       '<span class="t">' + esc(g.title) + "</span>" +
       (g.archived ? '<span class="sbadge archb">' + t("已归档") + "</span>" : "") +
       (g.verdict ? '<span class="sbadge">' + t("待裁决") + "</span>" : "") +
+      (g.blockers ? '<span class="sbadge kbb" title="' + esc(t("智能体上报的阻塞待处理，回信即解除")) + '">⚠ ' + g.blockers + "</span>" : "") +
       '<span class="tm">' + esc(relTime(g.time)) + "</span>" +
       '<button class="stask-more" type="button" aria-haspopup="menu" aria-label="' + esc(t("任务操作")) + '" title="' + esc(t("任务操作")) +
       '" onclick="event.stopPropagation();openTaskActions(this.closest(\'.stask\'), event)">⋯</button></div>';
@@ -13076,6 +13167,25 @@ function drawChatFlow(run, data, active) {
   }
   renderChatQueue(items, run);
   let html = items.map((it, idx) => {
+    // 反向通道（2026-10-22 multica）：agent 主动汇报自成气泡——阻塞（警示
+    // 描边+可回信解除）/进展（弱化）/解除（记账行）。回信走既有对话条，即
+    // add_message 链，用户回复自动解除对应阻塞。
+    if (it.kind === "report") {
+      const isBlocker = it.report_kind === "blocker";
+      const label = it.report_kind === "resolve" ? t("阻塞已解除")
+        : isBlocker ? t("⚠ 阻塞汇报") : t("进展汇报");
+      const meta = [it.step != null ? "#" + it.step : "",
+        it.resolved ? t("已回复解除") : ""].filter(Boolean).join(" · ");
+      return '<div class="chat-row"><div class="chat-bubble report' +
+        (isBlocker ? " blocker" : "") + (it.resolved ? " resolved" : "") + '">' +
+        '<div class="chat-step-meta">' + esc(label) + (meta ? " · " + esc(meta) : "") + "</div>" +
+        (it.text ? esc(it.text) : "") +
+        '<div class="chat-meta">' + esc(t("智能体汇报")) + " " + esc(chatTime(it.at)) +
+        (isBlocker && !it.resolved
+          ? ' · <button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button>"
+          : "") +
+        "</div></div></div>";
+    }
     if (it.kind === "user") {
       if (!it.consumed && it.id && it.run) return "";
       // 用户消息：右侧浅灰圆角块，元信息与动作落在块外下方。
@@ -20675,7 +20785,7 @@ async function suStartupCheck() {
 }
 
 /* ---------------------------------------------------------- 页签 & 初始化 */
-const TAB_TITLES = { overview: t("概览"), tasks: t("任务"), runs: t("运行记录"), automation: t("自动化"), browser: t("浏览器"), zentao: t("禅道 Bug 自动修复"), __wxdigest: t("群摘要"), usage: t("用量统计"), agents: t("本机智能体"), models: t("模型接入"), bindings: t("模型调度（可选）"), memory: t("记忆中心"), skills: t("经验库"), knowledge: t("知识库"), market: t("插件市场"), orch: t("编排设置"), evalbench: t("模型评测"), data: t("数据与备份"), appearance: t("皮肤"), about: t("关于与更新") };
+const TAB_TITLES = { overview: t("概览"), tasks: t("任务"), runs: t("运行记录"), kanban: t("看板"), automation: t("自动化"), browser: t("浏览器"), zentao: t("禅道 Bug 自动修复"), __wxdigest: t("群摘要"), usage: t("用量统计"), agents: t("本机智能体"), models: t("模型接入"), bindings: t("模型调度（可选）"), memory: t("记忆中心"), skills: t("经验库"), knowledge: t("知识库"), market: t("插件市场"), orch: t("编排设置"), evalbench: t("模型评测"), data: t("数据与备份"), appearance: t("皮肤"), about: t("关于与更新") };
 
 function tabTitle(name) {
   return t(TAB_TITLES[name]) || t("设置");
@@ -22439,6 +22549,7 @@ function switchTab(name, shell) {
   if (name === "agents") { autoCheckUpdates(); loadReviewQueue(); loadReviewPolicy(); loadInterventions(); loadCliDiscovery(false); }
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
+  if (name === "strategy") loadStrategyLab();  // 进机制与策略页：权重 + 影子对账
   if (name === "availability") loadAvailability({ silent: true });   // 进通道体检页：纯重读快显，真探测只归「重新体检」按钮
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
@@ -22455,6 +22566,7 @@ function switchTab(name, shell) {
   if (name === "usage") { syncUsageRange(); loadUsage(); loadAnalytics(UI_FEATURES.analyticsDays); }   // 进用量页：对齐范围选中态并拉取
   if (name === "overview") { ovDays(); loadOverview(); }   // 进概览页：对齐趋势范围并拉两期台账
   if (name === "overview") goalLoad();
+  if (name === "kanban") renderKanban();   // 进看板页：issue 视角按生命周期分列（S.state 同源即绘）
   if (name === "browser") wbDraw();
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
