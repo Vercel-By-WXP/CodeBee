@@ -1766,6 +1766,7 @@
     "账号可用": "Account OK",
     "降级链 {0} 级": "Fallback chain: {0} level(s)",
     "数据更新于 {0}": "Updated {0}",
+    "已重探 {0}/{1} 条异常通道": "Re-probed {0}/{1} unhealthy channels",
     "已启用 {0}/{1} 个厂商 · {2} 个模型{3} · {4} 个 CLI": "{0}/{1} providers enabled · {2} models{3} · {4} CLIs",
     "{0} 个熔断": "{0} tripped",
     "还没有接入厂商": "No providers yet",

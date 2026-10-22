@@ -1206,6 +1206,14 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             self._body()
         except RequestBodyError as e:
             return self._json(e.status, {"error": str(e)})
+        if path == "/api/availability/refresh":
+            # 手动「重新体检」：并行重探异常通道（有界等待）后连同台账一并返回。
+            # 单条探针最久 20s，后端 join 25s 盖满；前端按钮超时须 ≥30s。
+            from core import availability, health
+            targets, done = health.force_probe()
+            data = availability.payload()
+            data["probe_round"] = {"targets": targets, "done": done}
+            return self._json(200, data)
         if path == "/api/control":
             return self._api_control()
         if path == "/api/sharing/import":

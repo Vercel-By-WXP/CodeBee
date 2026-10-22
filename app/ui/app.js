@@ -2513,6 +2513,23 @@ async function loadAvailability(opts) {
   const btn = $("avail-refresh");
   if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
   try {
+    /* 「重新体检」是真体检：先让后端并行重探全部异常通道再渲染（探针单条
+     * 最久 20s，后端有界等待 25s，前端超时给 30s）。按钮原先只重读台账，
+     * 状态永远不动＝点了没有用（2026-10-22 实案）。静默刷新（主页摘要/
+     * 进页预热）维持纯重读，不白烧探测；旧后端没有重探端点时退化纯重读。 */
+    if (!silent) {
+      try {
+        const probed = await api("/api/availability/refresh",
+          { method: "POST", body: "{}", timeout: 30000, busy: false });
+        if (probed) {
+          AVAIL.data = probed;
+          AVAIL.at = Date.now();
+          renderAvailability(probed);
+          renderHomeHealth();
+          return;
+        }
+      } catch (e) { /* 旧版后端没有重探端点：落到下面的纯重读 */ }
+    }
     const data = await api("/api/availability", { timeout: 15000 });
     if (!data) return;
     AVAIL.data = data;
@@ -2723,7 +2740,16 @@ function renderAvailability(data) {
   const verdictEl = $("avail-verdict");
   if (verdictEl) verdictEl.textContent = verdict.text;
   const stamp = $("avail-stamp");
-  if (stamp) stamp.textContent = d.generated_at ? t("数据更新于 {0}", d.generated_at) : "";
+  if (stamp) {
+    // 手动重探过的数据带 probe_round：让「体检确实跑过」可见，即使状态没翻新
+    let stampText = d.generated_at ? t("数据更新于 {0}", d.generated_at) : "";
+    const round = d.probe_round;
+    if (round && round.targets) {
+      stampText += (stampText ? " · " : "")
+        + t("已重探 {0}/{1} 条异常通道", round.done, round.targets);
+    }
+    stamp.textContent = stampText;
+  }
   const sub = $("avail-hero-sub");
   if (sub) {
     const enabled = allProvs.filter((p) => p.enabled !== false);
@@ -21779,7 +21805,7 @@ function switchTab(name, shell) {
   if (name === "agents") { autoCheckUpdates(); loadReviewQueue(); loadReviewPolicy(); loadInterventions(); loadCliDiscovery(false); }
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
-  if (name === "availability") loadAvailability();   // 进通道体检页：拉可用性聚合
+  if (name === "availability") loadAvailability({ silent: true });   // 进通道体检页：纯重读快显，真探测只归「重新体检」按钮
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
   if (name === "atlas") loadAtlas();          // 记忆图谱：星图可视化 + 全域搜索 + 注入预演 + 治理台
