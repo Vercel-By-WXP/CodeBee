@@ -1,0 +1,649 @@
+diff --git a/app/core/modelhub.py b/app/core/modelhub.py
+index 5f3b0c6..9a9aa59 100644
+--- a/app/core/modelhub.py
++++ b/app/core/modelhub.py
+@@ -2371,6 +2371,107 @@ def binding_dead_msg(cli_id):
+     return msg
+ 
+ 
++def _resolve_chain_entries(chain, provs, target, allowed, down_set,
++                           admit_transient):
++    """按显式链收集可注入条目，返回 (entries, dead_reasons)。
++
++    admit_transient=False（第一遍）：健康 down / 模型级熔断 / 评测结论作废
++    三道瞬态闸照旧拦——链上还有健康候选时绝不白试熔断中的。
++    admit_transient=True（独苗兜底）：三道闸只记死因不再拦。「只有一个 CLI、
++    只有一个模型」的用户不该被一段 5 分钟熔断窗判成绑定链全部失效、全场任务
++    不可用（2026-10-22 实案）；真死透的上游让 runner 拿真实上游错误说话，
++    误分类的健康事件则被这次真实调用当场自愈。删除/停用/无密钥/协议不符是
++    确定性死因，两遍都拦，不拿配置错误白烧上游。"""
++    entries = []
++    dead_reasons = []   # 逐条死因速记：解析为空时喂给 binding_dead_msg（0930 假死链案）
++    for item in chain:
++        model = (item.get("model") or "").strip()
++        pid = (item.get("provider_id") or "").strip()
++        if not pid:
++            if target in _LOCAL_CRED_ONLY_TARGETS:
++                continue
++            if model:
++                # 纯模型条目：零凭据注入，只传 -m 走 CLI 本机登录态。
++                # no_cred 标记供 runner 审计行/登录指引点名（Mac claude 案：
++                # 零注入死在登录闸门，起跑前无人知、死后只能靠 init JSON 反推）
++                entries.append({"model": model, "env": {}, "provider": None,
++                                "no_cred": True})
++            continue
++        prov = provs.get(pid)
++        label = (prov or {}).get("name") or pid
++        if not prov:
++            _dead(dead_reasons, "%s：供应商已删除" % label)
++            continue
++        if not prov.get("enabled", True):
++            _dead(dead_reasons, "%s：供应商已停用" % label)
++            continue
++        native_cli = _native_cli_provider(prov, target)
++        if not prov.get("api_key") and not native_cli:
++            _dead(dead_reasons, "%s：无可用密钥" % label)
++            continue
++        ep = None if native_cli else _entry_endpoint(prov, allowed)
++        if native_cli:
++            ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
++        if not ep:
++            proto = prov.get("protocol") or "auto"
++            _dead(dead_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
++                  % (label, proto if proto != "auto" else "auto 未探出可用 wire",
++                     "、".join(allowed)))
++            continue
++        effective_model = model or _usable_default_model(prov, prov.get("model"))
++        if prov.get("name") in down_set:
++            if not admit_transient:
++                _dead(dead_reasons, "%s：健康监测判定 down" % label)
++                continue  # 健康监测判定 down：跳过，省掉无效等待
++            _dead(dead_reasons, "%s：健康监测判定 down（独苗兜底放行）" % label)
++        try:
++            from . import health as _health
++            if _health.is_model_down(label, effective_model):
++                if not admit_transient:
++                    _dead(dead_reasons, "%s/%s：模型级健康熔断"
++                          % (label, effective_model))
++                    continue
++                _dead(dead_reasons, "%s/%s：模型级健康熔断（独苗兜底放行）"
++                      % (label, effective_model))
++        except Exception:
++            pass
++        if not native_cli and not _evaluation_is_usable(pid, effective_model):
++            if not admit_transient:
++                _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
++                      % label)
++                continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
++            _dead(dead_reasons, "%s：评测结论不可用（独苗兜底放行）" % label)
++        if _is_codex_target(target) and (ep[2] == "chat" or codex_wire_blocked(prov)):
++            _dead(dead_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）"
++                  % label)
++            continue  # codex 0.154+ 只讲 responses：chat-only 供应商在起跑前
++                      # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
++                      # 尝试——2026-09-17 续4 连载 c35 实测）
++        if model and not _model_bindable(prov, model):
++            _dead(dead_reasons, "%s：模型 %s 已停用/删除" % (label, model))
++            continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
++        if native_cli:
++            if not model:
++                model = _usable_default_model(prov, prov.get("model"))
++            if model and _model_bindable(prov, model):
++                entries.append({"model": model, "env": {}, "provider": prov,
++                                "provider_id": pid, "key_id": "", "no_cred": True,
++                                "native_cli": True})
++            continue
++        # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
++        # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
++        for kk in _chain_keys(prov):
++            if len(entries) >= MAX_CHAIN_ATTEMPTS:
++                break
++            entries.append(_chain_entry_env(
++                prov, model or _usable_default_model(prov, prov.get("model")),
++                target=target, endpoint=ep, key=kk["key"],
++                key_id=kk.get("id") or "", provider_id=pid))
++        if len(entries) >= MAX_CHAIN_ATTEMPTS:
++            break
++    return entries, dead_reasons
++
++
+ def resolve_binding(agent_kind_or_id, difficulty="default"):
+     """返回 {env:{}, model:..., model_fallbacks:[...], codex_provider:..., call_chain:[...]} 或 None。
+ 
+@@ -2400,7 +2501,6 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+     allowed = bindable_protocols(agent_kind_or_id)
+ 
+     if chain:
+-        entries = []
+         # 告警模块联动：已被健康监测判定 down 的供应商直接跳过——
+         # 链降级的语义就是「别把时间浪费在已知挂掉的网关上」
+         # （2026-09-15 实测：qwencode 对宕机网关内部重试 40 分钟才轮到补位）。
+@@ -2409,84 +2509,21 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+             down_set = health.down_names()
+         except Exception:
+             down_set = set()
+-        dead_reasons = []   # 逐条死因速记：解析为空时喂给 binding_dead_msg（0930 假死链案）
+-        for item in chain:
+-            model = (item.get("model") or "").strip()
+-            pid = (item.get("provider_id") or "").strip()
+-            if not pid:
+-                if agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS:
+-                    continue
+-                if model:
+-                    # 纯模型条目：零凭据注入，只传 -m 走 CLI 本机登录态。
+-                    # no_cred 标记供 runner 审计行/登录指引点名（Mac claude 案：
+-                    # 零注入死在登录闸门，起跑前无人知、死后只能靠 init JSON 反推）
+-                    entries.append({"model": model, "env": {}, "provider": None,
+-                                    "no_cred": True})
+-                continue
+-            prov = provs.get(pid)
+-            label = (prov or {}).get("name") or pid
+-            if not prov:
+-                _dead(dead_reasons, "%s：供应商已删除" % label)
+-                continue
+-            if not prov.get("enabled", True):
+-                _dead(dead_reasons, "%s：供应商已停用" % label)
+-                continue
+-            native_cli = _native_cli_provider(prov, agent_kind_or_id)
+-            if not prov.get("api_key") and not native_cli:
+-                _dead(dead_reasons, "%s：无可用密钥" % label)
+-                continue
+-            ep = None if native_cli else _entry_endpoint(prov, allowed)
+-            if native_cli:
+-                ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
+-            if not ep:
+-                proto = prov.get("protocol") or "auto"
+-                _dead(dead_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
+-                      % (label, proto if proto != "auto" else "auto 未探出可用 wire",
+-                         "、".join(allowed)))
+-                continue
+-            effective_model = model or _usable_default_model(prov, prov.get("model"))
+-            if prov.get("name") in down_set:
+-                _dead(dead_reasons, "%s：健康监测判定 down" % label)
+-                continue  # 健康监测判定 down：跳过，省掉无效等待
+-            try:
+-                from . import health as _health
+-                if _health.is_model_down(label, effective_model):
+-                    _dead(dead_reasons, "%s/%s：模型级健康熔断" % (label, effective_model))
+-                    continue
+-            except Exception:
+-                pass
+-            if not native_cli and not _evaluation_is_usable(pid, effective_model):
+-                _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
+-                      % label)
+-                continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
+-            if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+-                _dead(dead_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）"
+-                      % label)
+-                continue  # codex 0.154+ 只讲 responses wire：chat-only 供应商在起跑前
+-                          # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
+-                          # 尝试——2026-09-17 续4 连载 c35 实测）
+-            if model and not _model_bindable(prov, model):
+-                _dead(dead_reasons, "%s：模型 %s 已停用/删除" % (label, model))
+-                continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
+-            if native_cli:
+-                if not model:
+-                    model = _usable_default_model(prov, prov.get("model"))
+-                if model and _model_bindable(prov, model):
+-                    entries.append({"model": model, "env": {}, "provider": prov,
+-                                    "provider_id": pid, "key_id": "", "no_cred": True,
+-                                    "native_cli": True})
+-                continue
+-            # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
+-            # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
+-            for kk in _chain_keys(prov):
+-                if len(entries) >= MAX_CHAIN_ATTEMPTS:
+-                    break
+-                entries.append(_chain_entry_env(
+-                    prov, model or _usable_default_model(prov, prov.get("model")),
+-                    target=agent_kind_or_id, endpoint=ep, key=kk["key"],
+-                    key_id=kk.get("id") or "", provider_id=pid))
+-            if len(entries) >= MAX_CHAIN_ATTEMPTS:
+-                break
++        entries, dead_reasons = _resolve_chain_entries(
++            chain, provs, agent_kind_or_id, allowed, down_set,
++            admit_transient=False)
++        last_resort = False
++        if not entries:
++            # 独苗兜底：全场只剩瞬态死因（熔断/评测作废）时按原链先试，
++            # 不让健康态单方面判死「只有一个 CLI、一个模型」的配置形态。
++            entries, transient_reasons = _resolve_chain_entries(
++                chain, provs, agent_kind_or_id, allowed, down_set,
++                admit_transient=True)
++            if entries:
++                last_resort = True
++                for e in entries:
++                    e["last_resort"] = True
++                dead_reasons = transient_reasons
+         if not entries:
+             _note_dead_reasons(agent_kind_or_id, dead_reasons)
+             return None
+@@ -2511,6 +2548,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+                "call_chain": [dict(e) for e in entries]}
+         if head.get("codex_provider"):
+             out["codex_provider"] = head["codex_provider"]
++        if last_resort:
++            out["last_resort"] = True
+         return out
+ 
+     # 无显式链：难度映射 / 供应商默认 / 启用模型优先级（原语义）
+@@ -2522,6 +2561,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+         return None
+     prov = provs.get(pid)
+     single_reasons = []
++    last_resort = False   # 独苗兜底标记：瞬态闸（熔断/评测作废）放行时置位
+     label = (prov or {}).get("name") or pid
+     if not prov:
+         _dead(single_reasons, "%s：供应商已删除" % label)
+@@ -2547,9 +2587,11 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+         _note_dead_reasons(agent_kind_or_id, single_reasons)
+         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
+     if not native_cli and not _evaluation_is_usable(pid):
+-        _dead(single_reasons, "%s：评测结论不可用（健康事件作废或探针失败）" % label)
+-        _note_dead_reasons(agent_kind_or_id, single_reasons)
+-        return None
++        # 独苗兜底（2026-10-22）：这是用户显式指定的唯一供应商——评测结论
++        # 被健康事件作废时判死整个绑定，等于一次误分类就全场不可用。降级为
++        # 记死因照跑：成败由这次真实调用自己说话，成功即翻绿自愈。
++        _dead(single_reasons, "%s：评测结论不可用（独苗兜底放行）" % label)
++        last_resort = True
+     if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+         _dead(single_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）" % label)
+         _note_dead_reasons(agent_kind_or_id, single_reasons)
+@@ -2566,19 +2608,30 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+     try:
+         from . import health as _health
+         if _health.is_model_down(label, model):
+-            _dead(single_reasons, "%s/%s：模型级健康熔断" % (label, model))
+-            _note_dead_reasons(agent_kind_or_id, single_reasons)
+-            return None
++            # 独苗兜底：首选模型熔断中时先换同供应商的健康模型顶上；启用
++            # 名单全在熔断里才拿熔断中的首选硬试——比判死整条绑定好。
++            alt = next((n for n in names
++                        if n != model and not _health.is_model_down(label, n)),
++                       None)
++            if alt:
++                _dead(single_reasons, "%s/%s：模型级健康熔断，换 %s 顶上"
++                      % (label, model, alt))
++                model = alt
++            else:
++                _dead(single_reasons, "%s/%s：模型级健康熔断（独苗兜底放行）"
++                      % (label, model))
++                last_resort = True
+     except Exception:
+         pass
+     if not native_cli and not _evaluation_is_usable(pid, model):
+         # 2026-10-16 起草全灭案：这里是 legacy 分支最后一个静默 None——供应商
+         # 本体全绿、只挂在这颗模型的评测结论（健康事件作废/探针失败）上时，
+-        # 文案只剩泛泛的「绑定链全部失效」而没有死因段，用户无从对账
+-        _dead(single_reasons, "%s：模型 %s 评测结论不可用（健康事件作废或探针失败）"
++        # 文案只剩泛泛的「绑定链全部失效」而没有死因段，用户无从对账。
++        # 独苗兜底（2026-10-22）：显式绑定的唯一供应商不因评测作废判死，记
++        # 死因照跑，成败由真实调用说话。
++        _dead(single_reasons, "%s：模型 %s 评测结论不可用（独苗兜底放行）"
+               % (label, model or "默认"))
+-        _note_dead_reasons(agent_kind_or_id, single_reasons)
+-        return None
++        last_resort = True
+     if native_cli:
+         model = _usable_default_model(prov, model or prov.get("model"))
+         if not model or not _model_bindable(prov, model):
+@@ -2586,8 +2639,12 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+         entry = {"model": model, "env": {}, "provider": prov,
+                  "provider_id": pid, "key_id": "", "no_cred": True,
+                  "native_cli": True}
+-        return {"model": model, "env": {}, "provider": prov,
+-                "model_fallbacks": [], "call_chain": [entry]}
++        out = {"model": model, "env": {}, "provider": prov,
++               "model_fallbacks": [], "call_chain": [entry]}
++        if last_resort:
++            entry["last_resort"] = True
++            out["last_resort"] = True
++        return out
+     # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
+     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
+     # 多 KEY：主模型先按 KEY 逐把试（欠费自动切备用），再降级到别的模型
+@@ -2610,6 +2667,10 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
+            "call_chain": [dict(e) for e in entries]}
+     if head.get("codex_provider"):
+         out["codex_provider"] = head["codex_provider"]
++    if last_resort:
++        for e in out["call_chain"]:
++            e["last_resort"] = True
++        out["last_resort"] = True
+     return out
+ 
+ 
+diff --git a/app/core/pipeline.py b/app/core/pipeline.py
+index 5b45e03..f71aa72 100644
+--- a/app/core/pipeline.py
++++ b/app/core/pipeline.py
+@@ -3094,12 +3094,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
+         if tracking_state is None:
+             story_tracking.init(workdir, task.get("id"), task.get("title"),
+                                 premise=task.get("goal") or "")
+-        tracking_check = story_tracking.check(workdir)
++        # verify = check + 正文漂移自愈：章稿在验收后被 CLI/归一器改写而状态
++        # 摘要停在旧稿时按磁盘稿回登记（磁盘是真源），不再连环拒跑整个工作
++        # 目录（2026-10-22 神瞳 0049 实案：点名修订改稿不回登记，两任务全灭）。
++        tracking_check = story_tracking.verify(workdir)
+     except Exception as exc:
+         store.update_run(run_id, expected_status="running", status="failed",
+                          error="故事追踪状态不可用，请先修复：%s" % str(exc)[:500],
+                          ended_at=_now())
+         return
++    if tracking_check.get("healed"):
++        try:
++            store.update_run(run_id, story_tracking_warning=(
++                "开场漂移自愈：第 %s 章正文摘要按磁盘稿回登记"
++                % "、".join("%04d" % n for n in tracking_check["healed"][:20])))
++        except Exception:
++            pass
+     if not tracking_check.get("ok"):
+         store.update_run(run_id, expected_status="running", status="failed",
+                          error="故事追踪状态存在漂移，请先修复：%s" %
+diff --git a/app/core/story_tracking.py b/app/core/story_tracking.py
+index 00bed22..165fb17 100644
+--- a/app/core/story_tracking.py
++++ b/app/core/story_tracking.py
+@@ -283,6 +283,67 @@ def _prose_matches(path, digest):
+     return digest in candidates
+ 
+ 
++def reconcile_prose(workdir):
++    """开场漂移自愈：正文摘要按磁盘稿回登记，返回本次回登记的章号列表。
++
++    章稿在验收提交后被实现端 CLI / 体例归一器直接改写 .codebee 章稿副本时，
++    状态摘要停在旧稿，同一工作目录下一轮 run 的开场漂移闸连环拒跑（2026-10-16
++    神瞳 0020 打磨案、2026-10-22 神瞳 0049 点名修订连环拒跑案）。磁盘稿是
++    事实真源：只重登记正文摘要与字数，不动细纲/事实/伏笔等取材沉淀（与
++    refresh_prose 同口径）。幂等：无漂移返回 []。空稿/缺稿不回登记，交给
++    check 的缺文件闸如实拦截。
++    """
++    root = _root(workdir)
++    state = _load(root)
++    if state is None:
++        return []
++    healed = []
++    for chapter in state.get("chapters") or []:
++        try:
++            number = int(chapter.get("chapter") or 0)
++        except (TypeError, ValueError):
++            continue
++        prose = root / _CHAPTERS / ("%04d" % number) / "prose.md"
++        if not number or not prose.is_file():
++            continue
++        if _prose_matches(prose, chapter.get("prose_digest")):
++            continue
++        try:
++            text = _norm_lf(prose.read_text(encoding="utf-8")).strip()
++        except (OSError, UnicodeDecodeError):
++            continue
++        if not text:
++            continue
++        chapter["prose_digest"] = _digest(text)
++        chapter["word_count"] = len(text)
++        chapter["committed_at"] = _now()
++        healed.append(number)
++    if healed:
++        state["state_revision"] = int(state.get("state_revision") or 0) + 1
++        state["updated_at"] = _now()
++        _save(root, state)
++    return healed
++
++
++def verify(workdir):
++    """开场校验 + 正文漂移自愈：check 不通过且含「章节正文不一致」时按磁盘稿
++    回登记后复查。返回 {ok, errors, healed}；细纲漂移/缺文件/派生文件手改等
++    其他漂移类不自愈，照实拦给调用方判失败。"""
++    result = check(workdir)
++    healed = []
++    errors = result.get("errors") or []
++    if not result.get("ok") and any(
++            str(e).startswith("章节正文不一致") for e in errors):
++        try:
++            healed = reconcile_prose(workdir)
++        except Exception:
++            healed = []
++        if healed:
++            result = check(workdir)
++    result["healed"] = healed
++    return result
++
++
+ def check(workdir):
+     root = _root(workdir)
+     state = _load(root)
+diff --git a/tests/test_last_resort_binding.py b/tests/test_last_resort_binding.py
+new file mode 100644
+index 0000000..67ebf82
+--- /dev/null
++++ b/tests/test_last_resort_binding.py
+@@ -0,0 +1,152 @@
++# -*- coding: utf-8 -*-
++"""独苗兜底回归（2026-10-22 任务全灭实案）。
++
++「只有一个 CLI、只有一个模型」的用户不该被瞬态健康态判成绑定链全部失效：
++健康 down / 模型级熔断 / 评测结论作废三道闸只在链上还有健康候选时生效，
++全场皆死时按原链兜底先试（条目带 last_resort 标记），让 runner 拿真实
++上游错误说话、误分类健康事件当场自愈。确定性死因（删除/停用/无密钥/
++协议不符）仍照旧判死，不拿配置错误白烧上游。
++"""
++import json
++import tempfile
++import unittest
++from pathlib import Path
++from unittest import mock
++
++from app.core import modelhub
++
++PROV_A = {"id": "prov-a", "name": "甲供应商", "enabled": True,
++          "api_key": "sk-a", "protocol": "openai",
++          "base_url": "https://a.example/v1", "model": "m1",
++          "models": [{"name": "m1", "enabled": True},
++                     {"name": "m2", "enabled": True}]}
++PROV_B = {"id": "prov-b", "name": "乙供应商", "enabled": True,
++          "api_key": "sk-b", "protocol": "openai",
++          "base_url": "https://b.example/v1", "model": "mb",
++          "models": [{"name": "mb", "enabled": True}]}
++TARGET = "test-cli"   # 泛型目标：anthropic/openai 双协议都收
++
++
++class _Base(unittest.TestCase):
++    def setUp(self):
++        self._tmp = tempfile.TemporaryDirectory()
++        root = Path(self._tmp.name).resolve()
++        self.path = root / "models.json"
++        self._write({"providers": [PROV_A], "bindings": {}})
++
++    def tearDown(self):
++        self._tmp.cleanup()
++
++    def _write(self, data):
++        self.path.write_text(json.dumps(data, ensure_ascii=False),
++                             encoding="utf-8")
++
++    def _resolve(self, providers=None, bindings=None, fused=(), down=(),
++                 eval_ok=True):
++        self._write({"providers": providers if providers is not None else [PROV_A],
++                     "bindings": bindings or {}})
++        fused_pairs = set(fused)
++
++        def _is_model_down(provider, model):
++            return (provider, model) in fused_pairs
++
++        patchers = [
++            mock.patch.object(modelhub, "_FILE", self.path),
++            mock.patch("app.core.health.down_names", return_value=set(down)),
++            mock.patch("app.core.health.is_model_down", side_effect=_is_model_down),
++            mock.patch.object(modelhub, "_evaluation_is_usable",
++                              return_value=eval_ok),
++        ]
++        for p in patchers:
++            p.start()
++            self.addCleanup(p.stop)
++        return modelhub.resolve_binding(TARGET)
++
++
++class ChainLastResortTests(_Base):
++    def test_single_model_fused_still_resolves(self):
++        out = self._resolve(bindings={TARGET: {"chain": [
++            {"provider_id": "prov-a", "model": "m1"}]}},
++            fused={("甲供应商", "m1")})
++        self.assertIsNotNone(out)
++        self.assertTrue(out.get("last_resort"))
++        self.assertEqual(out["model"], "m1")
++        self.assertTrue(all(e.get("last_resort") for e in out["call_chain"]))
++
++    def test_healthy_sibling_keeps_fused_skipped(self):
++        out = self._resolve(bindings={TARGET: {"chain": [
++            {"provider_id": "prov-a", "model": "m1"},
++            {"provider_id": "prov-a", "model": "m2"}]}},
++            fused={("甲供应商", "m1")})
++        self.assertIsNotNone(out)
++        self.assertFalse(out.get("last_resort"))
++        self.assertEqual([e["model"] for e in out["call_chain"]], ["m2"])
++
++    def test_provider_down_last_resort(self):
++        out = self._resolve(bindings={TARGET: {"chain": [
++            {"provider_id": "prov-a", "model": "m1"}]}},
++            down={"甲供应商"})
++        self.assertIsNotNone(out)
++        self.assertTrue(out.get("last_resort"))
++
++    def test_evaluation_invalidated_last_resort(self):
++        out = self._resolve(bindings={TARGET: {"chain": [
++            {"provider_id": "prov-a", "model": "m1"}]}},
++            eval_ok=False)
++        self.assertIsNotNone(out)
++        self.assertTrue(out.get("last_resort"))
++
++    def test_deterministic_dead_still_fails(self):
++        out = self._resolve(
++            providers=[dict(PROV_A, enabled=False)],
++            bindings={TARGET: {"chain": [{"provider_id": "prov-a",
++                                          "model": "m1"}]}})
++        self.assertIsNone(out)
++        self.assertIn("供应商已停用", "；".join(modelhub.last_dead_reasons(TARGET)))
++
++    def test_deleted_provider_still_fails(self):
++        out = self._resolve(
++            providers=[PROV_B],
++            bindings={TARGET: {"chain": [{"provider_id": "prov-a",
++                                          "model": "m1"}]}})
++        self.assertIsNone(out)
++
++    def test_healthy_chain_has_no_last_resort_flag(self):
++        out = self._resolve(bindings={TARGET: {"chain": [
++            {"provider_id": "prov-a", "model": "m1"}]}})
++        self.assertIsNotNone(out)
++        self.assertFalse(out.get("last_resort"))
++        self.assertFalse(any(e.get("last_resort") for e in out["call_chain"]))
++
++
++class SingleProviderLastResortTests(_Base):
++    def test_head_fused_swaps_to_healthy_sibling(self):
++        out = self._resolve(bindings={TARGET: {"provider_id": "prov-a"}},
++                            fused={("甲供应商", "m1")})
++        self.assertIsNotNone(out)
++        self.assertEqual(out["model"], "m2")
++        self.assertFalse(out.get("last_resort"))
++
++    def test_all_models_fused_last_resort(self):
++        out = self._resolve(bindings={TARGET: {"provider_id": "prov-a"}},
++                            fused={("甲供应商", "m1"), ("甲供应商", "m2")})
++        self.assertIsNotNone(out)
++        self.assertTrue(out.get("last_resort"))
++        self.assertEqual(out["model"], "m1")
++        self.assertTrue(all(e.get("last_resort") for e in out["call_chain"]))
++
++    def test_provider_eval_invalidated_last_resort(self):
++        out = self._resolve(bindings={TARGET: {"provider_id": "prov-a"}},
++                            eval_ok=False)
++        self.assertIsNotNone(out)
++        self.assertTrue(out.get("last_resort"))
++
++    def test_disabled_provider_still_fails(self):
++        out = self._resolve(
++            providers=[dict(PROV_A, enabled=False)],
++            bindings={TARGET: {"provider_id": "prov-a"}})
++        self.assertIsNone(out)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_story_tracking_reconcile.py b/tests/test_story_tracking_reconcile.py
+new file mode 100644
+index 0000000..e87a02f
+--- /dev/null
++++ b/tests/test_story_tracking_reconcile.py
+@@ -0,0 +1,69 @@
++# -*- coding: utf-8 -*-
++"""开场漂移自愈回归（2026-10-22 神瞳 0049 连环拒跑实案）。
++
++章稿在验收提交后被实现端 CLI / 体例归一器直接改写 .codebee 副本时，状态
++摘要停在旧稿，开场闸此前直接判死整个工作目录（连修订任务自己都起不来）。
++verify = check + 按磁盘稿回登记（磁盘是真源）；细纲漂移/缺文件/派生文件
++手改等其他漂移类不自愈照拦。
++"""
++import tempfile
++import unittest
++from pathlib import Path
++
++from app.core import story_tracking
++
++
++class ReconcileProseTests(unittest.TestCase):
++    def setUp(self):
++        self._tmp = tempfile.TemporaryDirectory()
++        self.workdir = Path(self._tmp.name).resolve()
++        story_tracking.init(self.workdir, "task-1", "测试故事")
++        story_tracking.commit_chapter(self.workdir, 1, "第一章大纲",
++                                      "第一章正文甲\n第一章正文乙")
++        story_tracking.commit_chapter(self.workdir, 2, "第二章大纲",
++                                      "第二章正文甲\n第二章正文乙")
++
++    def tearDown(self):
++        self._tmp.cleanup()
++
++    def _prose_path(self, n):
++        return (self.workdir / ".codebee" / "chapters"
++                / ("%04d" % n) / "prose.md")
++
++    def test_out_of_band_rewrite_is_healed(self):
++        self._prose_path(1).write_text("第一章正文甲\n改写后的正文\n", encoding="utf-8")
++        self.assertFalse(story_tracking.check(self.workdir).get("ok"))
++        result = story_tracking.verify(self.workdir)
++        self.assertTrue(result.get("ok"))
++        self.assertEqual(result.get("healed"), [1])
++        # 复查幂等：无漂移时不再登记
++        self.assertEqual(story_tracking.reconcile_prose(self.workdir), [])
++
++    def test_outline_mismatch_is_not_healed(self):
++        ch1 = self.workdir / ".codebee" / "chapters" / "0001" / "outline.md"
++        ch1.write_text("被换掉的细纲", encoding="utf-8")
++        result = story_tracking.verify(self.workdir)
++        self.assertFalse(result.get("ok"))
++        self.assertEqual(result.get("healed"), [])
++        self.assertTrue(any("细纲" in e for e in result.get("errors") or []))
++
++    def test_missing_chapter_file_is_not_healed(self):
++        self._prose_path(2).unlink()
++        result = story_tracking.verify(self.workdir)
++        self.assertFalse(result.get("ok"))
++        self.assertTrue(any("缺失" in e for e in result.get("errors") or []))
++
++    def test_empty_rewrite_not_healed(self):
++        self._prose_path(1).write_text("   \n", encoding="utf-8")
++        result = story_tracking.verify(self.workdir)
++        self.assertFalse(result.get("ok"))
++        self.assertEqual(result.get("healed"), [])
++
++    def test_clean_state_passes_without_healing(self):
++        result = story_tracking.verify(self.workdir)
++        self.assertTrue(result.get("ok"))
++        self.assertEqual(result.get("healed"), [])
++
++
++if __name__ == "__main__":
++    unittest.main()
