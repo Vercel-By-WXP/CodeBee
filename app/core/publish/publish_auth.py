@@ -588,9 +588,23 @@ def resume_saved_sessions():
     This removes the manual reconnect step after a service restart.  A fresh
     login, QR scan, or platform challenge still follows the normal waiting
     login state and cannot be bypassed by this recovery path.
+
+    A slot verified recently (shared ``launch_probe_at`` stamp) is skipped:
+    a cookie cannot change while no browser runs, so re-launching every
+    profile on every restart only made the login/writer windows pop back up
+    each boot (2026-10-21/22 实案). The next real publish preflight still
+    connects on demand, so correctness moves to first-use, not boot time.
     """
-    slots = _mgr().saved_session_slots()
-    for slot in slots:
+    now = time.time()
+    started = 0
+    for slot in _mgr().saved_session_slots():
+        state = _mgr()._st(slot)
+        try:
+            last_probe = float(state.get("launch_probe_at") or 0)
+        except (TypeError, ValueError):
+            last_probe = 0.0
+        if now - last_probe < _mgr().LOGIN_REPROBE_MIN_S:
+            continue
         plat, sep, account = slot.partition("@")
         thread = threading.Thread(
             target=_mgr().connect, kwargs={"plat": plat,
@@ -598,7 +612,8 @@ def resume_saved_sessions():
                                     "unattended": True},
             daemon=True, name="pub-resume-%s" % slot)
         thread.start()
-    return len(slots)
+        started += 1
+    return started
 
 
 def _auth_watch_once():

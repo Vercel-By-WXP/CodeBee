@@ -751,6 +751,31 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         self.assertIn("平台等待登录", error)
         opened.assert_not_called()
 
+    def test_startup_session_resume_skips_recently_verified_slots(self):
+        from core.publish import manager
+
+        started = []
+
+        class FakeThread:
+            def __init__(self, target=None, kwargs=None, daemon=None, name=None):
+                started.append(dict(kwargs or {}))
+
+            def start(self):
+                pass
+
+        with mock.patch.object(manager, "_state", {
+                "platforms": {
+                    "fanqie": {"status": "connected", "last_login": "10-22",
+                               "launch_probe_at": manager.time.time()},
+                    "qimao": {"status": "waiting_login", "last_login": "10-21",
+                              "launch_probe_at": 1.0}}}), \
+                mock.patch.object(manager.ledger, "load_books",
+                                  return_value={}), \
+                mock.patch.object(manager.threading, "Thread", FakeThread):
+            n = manager.resume_saved_sessions()
+        self.assertEqual(n, 1)
+        self.assertEqual([kw["plat"] for kw in started], ["qimao"])
+
     def test_unattended_connect_still_verifies_once_before_throttling(self):
         from core.publish import manager
 
