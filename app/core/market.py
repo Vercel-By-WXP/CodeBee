@@ -227,11 +227,16 @@ def view():
         files = p.get("files") or {}
         inst = p["id"] in installed
         en, pid = _lookup(p["id"], False) if inst else (False, p["id"])
+        rec = reg.get(p["id"]) or {}
         items.append({"id": p["id"], "name": p["name"], "desc": p["desc"],
                       "category": p["category"], "scopes": list(p["scopes"]),
                       "builtin": False, "installed": inst,
                       "installable": True,
                       "enabled": en, "pack_id": pid,
+                      # 变更待复核只在「确实被停用」时展示；重新启用即视为复核完成
+                      "pending_review": bool(rec.get("pending_review"))
+                      and inst and not en,
+                      "scan_stale": _scan_stale(rec.get("scan_generation")),
                       "files": sorted(files),
                       "chars": sum(len(v) for v in files.values())})
     cats = list(skills.LESSON_CATEGORIES)     # 闭集全枚举先给全（UI 下拉不缺项）
@@ -272,6 +277,7 @@ def install_files(pack_id, name, files, extra=None):
         return None, "包内容为空: %s" % pack_id
     # 装前扫描：全文件合并扫一遍（纯内存静态规则）
     scan_note = ""
+    scan_generation = ""
     trust_source = "market" if (extra or {}).get("trust") == "unverified" else "local"
     scan_trust = "unverified" if trust_source == "market" else "local"
     try:
@@ -279,6 +285,7 @@ def install_files(pack_id, name, files, extra=None):
         scan_note = skill_scan.scan_summary("\n".join(str(v) for v in files.values()))
         scan_trust = skill_scan.trust_tier(
             "\n".join(str(v) for v in files.values()), source=trust_source)["tier"]
+        scan_generation = skill_scan.rules_generation()
     except Exception:
         scan_note = ""
     with _LOCK:
@@ -320,6 +327,14 @@ def install_files(pack_id, name, files, extra=None):
                       "digest": digest, "name": str(name or "")[:60]}
             if scan_note:
                 record["scan"] = scan_note   # 危险模式扫描结果随包记账
+            if scan_generation:
+                # 安检证据绑定扫描器代数（MatrixHub 借鉴）：规则库换代后，
+                # 旧代数出的安检结论标记待重扫，不冒充现行规则的结论。
+                record["scan_generation"] = scan_generation
+            if changed_vs_seen:
+                # 变更升待定：新内容已落盘且与上次见过的不同 → 禁用待复核，
+                # 用户核对 diff 后手动重新启用（跨卸载投毒对账的处置半环）。
+                record["pending_review"] = True
             if extra:
                 record.update(extra)
             record["trust"] = scan_trust     # 扫描升级后的分级优先于来源默认
@@ -329,7 +344,22 @@ def install_files(pack_id, name, files, extra=None):
         seen[pack_id] = digest        # seen 永远跟最新一次见到对齐
         _save_registry(reg)
     warnings = []
-    if changed_vs_seen:
+    pending_review = bool(changed_vs_seen and not already)
+    if changed_vs_seen and not already:
+        warnings.append("⚠ 内容较上次安装发生变化（内容指纹 %s → %s），"
+                        "已停用待复核；请核对 diff 确认无误后重新启用"
+                        % (prev_digest, digest))
+        try:
+            up = next((q for q in skills.user_packs()
+                       if str(q.get("file") or "").replace("\\", "/")
+                       .endswith("/" + target)), None)
+            if up:
+                skills.pack_op(up["id"], "disable")
+        except Exception:
+            pass
+    elif changed_vs_seen:
+        # already 路径：磁盘上生效的内容没变（只是目录内容源更新且未应用），
+        # 保持既有警示语义，不误停用。
         warnings.append("⚠ 内容较上次安装发生变化（内容指纹 %s → %s），"
                         "建议核对diff后再启用" % (prev_digest, digest))
     for near_name, ratio in near:
@@ -363,9 +393,21 @@ def install_files(pack_id, name, files, extra=None):
             _save_registry(reg)
     return {"ok": True, "id": pack_id, "name": name, "file": target,
             "already": already, "scan": scan_note, "smoke": smoke,
-            "trust": scan_trust,
+            "trust": scan_trust, "pending_review": pending_review,
             "digest": digest, "changed": changed_vs_seen,
             "warnings": warnings}, None
+
+
+def _scan_stale(rec_generation):
+    """装包时记账的扫描器代数是否已落后于现行规则（旧安检结论待重扫）。"""
+    rec_generation = str(rec_generation or "")
+    if not rec_generation:
+        return False     # 老台账没记代数：无从比对，不诬指
+    try:
+        from . import skill_scan
+        return rec_generation != skill_scan.rules_generation()
+    except Exception:
+        return False
 
 
 def skill_card(pack_id):
@@ -393,6 +435,7 @@ def skill_card(pack_id):
         except Exception:
             body_head = ""
     remote = rec.get("remote") or {}
+    rec_gen = str(rec.get("scan_generation") or "")
     return {
         "id": pack_id,
         "name": rec.get("name") or pack_id,
@@ -403,6 +446,9 @@ def skill_card(pack_id):
         "trust": rec.get("trust") or "",             # trusted/local/unverified/high-risk
         "smoke": rec.get("smoke") or "",
         "installed_at": rec.get("installed_at") or "",
+        "pending_review": bool(rec.get("pending_review")),
+        "scan_generation": rec_gen,
+        "scan_stale": _scan_stale(rec_gen),
         "source": {"market": "内置市场" if not remote else str(remote.get("name") or ""),
                    "version": str(remote.get("version") or ""),
                    "homepage": str(remote.get("homepage") or "")},

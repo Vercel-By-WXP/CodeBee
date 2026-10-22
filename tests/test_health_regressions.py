@@ -253,7 +253,7 @@ class ProviderHealthRegressionTests(unittest.TestCase):
             "id": "builtin-free", "name": "Our Free Model", "enabled": False,
             "api_key": "test-key",
         }]), mock.patch("app.core.modelhub.chat") as chat:
-            self.assertEqual(health._probe_one(state), (False, True))
+            self.assertEqual(health._probe_one(state), (False, True, False))
 
         chat.assert_not_called()
 

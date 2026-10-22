@@ -44,6 +44,14 @@ _PERMANENT_FAILURE_CODES = frozenset({
     "QUOTA", "AUTH", "MISSING_CREDENTIAL", "FORBIDDEN", "MODEL_UNAVAILABLE",
 })
 _MODEL_FAILURE_CODES = frozenset({"FORBIDDEN", "MODEL_UNAVAILABLE"})
+# 证据分级（LayerTrace 借鉴，2026-10-22）：健康处置必须区分「观测到的事实」与
+# 「从文本推断的嫌疑」——健康误报复发家族（误记雪崩/快照闸假告警/剪行掩盖成功）
+# 的共性真凶都是推断被当成观测进了处置。推断级只告警送检（探针），观测级才够格
+# 动手（熔断/短路）；未知级（探不了/异常中断）不刷时间戳。
+EVIDENCE_OBSERVED = "observed"   # 观测：runner 从真实上游响应解析的结构化码 / 探针实返回
+EVIDENCE_INFERRED = "inferred"   # 推断：从错误文本分类出的供应商信号（CLI 信封/文案匹配）
+EVIDENCE_UNKNOWN = "unknown"     # 未知：无可分类信号（本地异常、探不了的通道）
+_EVIDENCE_LABELS = {"observed": "观测", "inferred": "推断", "unknown": "未知"}
 
 _LOCK = threading.RLock()
 _PROVIDERS = {}              # name -> 状态 dict
@@ -231,6 +239,7 @@ def report_success(provider: str, *, model: str = ""):
             st["silence_until"] = 0
             st["half_open"] = False
             st["circuit_open_until"] = 0
+            st["evidence"] = EVIDENCE_OBSERVED   # 真实成功调用＝一手观测
             st.pop("permanent_error_code", None)
             log.info("[health] %s 已恢复（告警自动解除）", provider)
         else:
@@ -333,20 +342,30 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         return
     # Deterministic account/model failures should open a short circuit on the
     # first observation.  Waiting for the generic three-failure threshold makes
-    # every chapter or reviewer retry a request that cannot succeed.
+    # every chapter or reviewer retry a request that cannot succeed.  But the
+    # evidence level is recorded alongside: only runner-parsed structured codes
+    # (real wire responses) count as observed; text-only classifications are
+    # inferences and do not unlock the first-observation short circuit.
+    evidence = EVIDENCE_UNKNOWN
     try:
         from .error_codes import classify_error_text, error_code_value
         supplied_code = error_code_value(error_code)
         detected_code = error_code_value(classify_error_text(text))
-        code = (detected_code
-                if supplied_code in ("", "VENDOR_ERROR") and detected_code
-                else supplied_code or detected_code)
+        if supplied_code not in ("", "VENDOR_ERROR"):
+            code, evidence = supplied_code, EVIDENCE_OBSERVED
+        elif detected_code:
+            code, evidence = detected_code, EVIDENCE_INFERRED
+        else:
+            code = supplied_code
     except Exception:
         code = getattr(error_code, "value", str(error_code or ""))
+        evidence = EVIDENCE_OBSERVED if code else EVIDENCE_UNKNOWN
     lower_text = text.lower()
     if ("unknown model" in lower_text or "invalid model" in lower_text
             or "model not found" in lower_text or "unknown model id" in lower_text):
         code = "MODEL_UNAVAILABLE"
+        if evidence != EVIDENCE_OBSERVED:
+            evidence = EVIDENCE_INFERRED   # 文案匹配出的模型错，非结构化观测
     if "stderr/stdout:" in text[:160]:
         try:
             from .error_codes import classify_error_text
@@ -409,6 +428,7 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             "alerted": False, "silenced": False, "silence_until": 0,
             "probe_next_at": 0, "probe_backoff_idx": 0,
             "recovered_at": 0, "model_circuits": {},
+            "evidence": EVIDENCE_UNKNOWN,
         })
         st["name"] = provider
         if provider_id and not st.get("provider_id"):
@@ -419,16 +439,22 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         if code in _MODEL_FAILURE_CODES and model:
             circuits = st.setdefault("model_circuits", {})
             previous = circuits.get(model) or {}
-            circuits[model] = {
-                "open_until": _now() + CLI_COOLDOWN_SECONDS,
+            row = {
                 "error_code": code,
                 "failures": int(previous.get("failures") or 0) + 1,
                 "last_error": str(error or "")[:300],
                 "updated_at": _now(),
             }
+            # 处置闸：只有观测级证据（或探针探不了的通道——文本证据是它唯一的
+            # 证据形态，沿用 1017 死锁案的有界冷却设计）才开模型熔断；推断级
+            # 记计数与最近错误但不落 open_until，等探针/真实调用的观测证据定谳。
+            if evidence == EVIDENCE_OBSERVED or st.get("unprobeable"):
+                row["open_until"] = _now() + CLI_COOLDOWN_SECONDS
+            circuits[model] = row
             # Model-specific errors must not contaminate provider-level
             # failure counters or timestamps used by the provider circuit.
             st["last_error_code"] = code
+            st["evidence"] = evidence
             _persist()
             return
         n = int(st.get("consecutive_failures") or 0) + 1
@@ -436,12 +462,18 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         st["last_fail_at"] = _now()
         st["last_error"] = str(error or "")[:300]
         st["last_error_code"] = code
+        st["evidence"] = evidence
         if st.get("status") in ("ok", "recovered", ""):
             st["status"] = "failing"
             st["first_fail_at"] = _now()
             st["probe_next_at"] = _now() + PROBE_BACKOFF[0]
             st["probe_backoff_idx"] = 0
-        if code in _PERMANENT_FAILURE_CODES:
+        # 处置闸：永久码的「首次观测即短路」只认观测级证据（或探不了的通道）。
+        # 推断级的永久码（CLI 信封里文本分类出的 quota/auth 等）降级走连续
+        # 次数阈值——告警照发，但先送探针拿一手观测，不再让一次文本命中直接
+        # 把供应商踢出候选链（健康误报复发家族的处置半环）。
+        if code in _PERMANENT_FAILURE_CODES and (
+                evidence == EVIDENCE_OBSERVED or st.get("unprobeable")):
             st["status"] = "down"
             st["circuit_open_until"] = _now() + CLI_COOLDOWN_SECONDS
             st["permanent_error_code"] = code
@@ -456,8 +488,12 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         if st["status"] == "down" and not st.get("silenced"):
             if not st.get("alerted"):
                 st["alerted"] = True
-                log.warning("[health] ⚠️ 供应商告警：%s 不可用（连续 %d 次失败，%s）",
-                            provider, n, st["last_error"][:120])
+                log.warning("[health] ⚠️ 供应商告警：%s 不可用（连续 %d 次失败，"
+                            "证据=%s，%s）",
+                            provider, n,
+                            _EVIDENCE_LABELS.get(st.get("evidence") or "",
+                                                 st.get("evidence") or "未知"),
+                            st["last_error"][:120])
         _persist()
 
 
@@ -522,6 +558,8 @@ def snapshot():
                 "last_ok_at": _fmt_ts(st.get("last_ok_at")),
                 "recovered_at": _fmt_ts(st.get("recovered_at")),
                 "last_error": st.get("last_error") or "",
+                "evidence": st.get("evidence") or "",
+                "evidence_label": _EVIDENCE_LABELS.get(st.get("evidence") or "", ""),
                 "alerting": alerting,
                 "silenced": silenced,
                 "static": bool(st.get("static")),
@@ -644,8 +682,9 @@ def down_names() -> set:
 # ---------------------------------------------------------------- 探针
 
 def _probe_one(st):
-    """对单个故障 provider 发轻量探活。返回 (ok, gone)：
-    ok=是否恢复；gone=供应商已从配置里删除（健康记录应随之清掉）。"""
+    """对单个故障 provider 发轻量探活。返回 (ok, gone, wire)：
+    ok=是否恢复；gone=供应商已从配置里删除（健康记录应随之清掉）；
+    wire=是否拿到线上一手结果（真实响应，区分于本地异常探不了）。"""
     try:
         from . import modelhub
         pid = st.get("provider_id") or ""
@@ -653,17 +692,17 @@ def _probe_one(st):
         plist = modelhub.providers()
         prov = _configured_provider(plist, pid, st.get("name"))
         if not prov or prov.get("enabled", True) is False:
-            return False, True   # 已删除/停用：不再探测，也不保留旧故障
+            return False, True, False   # 已删除/停用：不再探测，也不保留旧故障
         if model:
             model_row = next((item for item in (prov.get("models") or [])
                               if isinstance(item, dict)
                               and str(item.get("name") or "").strip() == model), None)
             if model_row and (model_row.get("enabled", True) is False
                               or model_row.get("hidden")):
-                return False, True
+                return False, True, False
         if not prov.get("api_key"):
             st["unprobeable"] = True   # CLI 原生免费通道没有密钥，HTTP 探不了
-            return False, False  # 供应商在但没密钥：无法探测，保持状态
+            return False, False, False  # 供应商在但没密钥：无法探测，保持状态
         if not model:
             try:
                 names = modelhub._enabled_models(prov)
@@ -672,13 +711,13 @@ def _probe_one(st):
                 model = ""
         if not model:
             st["unprobeable"] = True
-            return False, False
+            return False, False, False
         st["unprobeable"] = False
         res = modelhub.chat(prov["id"], model, "1", max_tokens=8, timeout=20)
-        return bool(res.get("ok")), False
+        return bool(res.get("ok")), False, isinstance(res, dict)
     except Exception as e:
         log.debug("probe %s error: %s", st.get("name"), e)
-        return False, False
+        return False, False, False
 
 
 def _prune_missing():
@@ -759,7 +798,7 @@ def _prune_inactive_configured():
                      ", ".join(stale))
 
 
-def _record_probe_result(name, st, ok, gone):
+def _record_probe_result(name, st, ok, gone, wire=False):
     """只应用仍属于当前状态表的探针结果，忽略跨 init/测试的过期结果。"""
     with _LOCK:
         if _PROVIDERS.get(name) is not st:
@@ -771,6 +810,15 @@ def _record_probe_result(name, st, ok, gone):
         elif ok:
             report_success(name)
             log.info("[health] 探针确认 %s 已恢复", name)
+        elif wire:
+            # 探针拿到线上一手失败＝观测级证据：升级本行证据等级；已 down 的
+            # 行此时才落熔断冷却——推断级告警只送检，探针证实即动手（处置闸
+            # 的观测半环）。failing 行不动手（还没 down，继续按退避探测）。
+            st["evidence"] = EVIDENCE_OBSERVED
+            if (st.get("status") == "down"
+                    and not float(st.get("circuit_open_until") or 0)):
+                st["circuit_open_until"] = _now() + CLI_COOLDOWN_SECONDS
+            _persist()
         else:
             # 探不了（无密钥 CLI 通道）≠ 探挂了：不刷新 last_fail_at，否则
             # 「最后失败」永远显示成刚刚，告警看着像持续复发（2026-10-17
@@ -796,8 +844,51 @@ def _probe_loop():
                     st["probe_next_at"] = _now() + backoff
                     st["probe_backoff_idx"] = idx + 1
             for name, st in targets:
-                ok, gone = _probe_one(st)
-                _record_probe_result(name, st, ok, gone)
+                ok, gone, wire = _probe_one(st)
+                _record_probe_result(name, st, ok, gone, wire=wire)
         except Exception:
             log.exception("health probe loop error")
         time.sleep(15)  # 探针调度心跳
+
+
+def force_probe(join_timeout: float = 25.0):
+    """手动「重新体检」：立即并行重探全部异常通道，返回（目标数，完成数）。
+
+    通道体检页的「重新体检」原先只重读台账（availability.payload 是只读
+    聚合），真实探测只属于后台循环——60/120/300s 退避、熔断未过冷却的行
+    根本不进探测名单，按钮点了状态永远不动（2026-10-22 用户实案）。这里
+    把异常行的探测退避清零并立即并行重探一轮，结果走 _record_probe_result
+    原链路（_LOCK + 身份校验，与后台探针并发无害）。join_timeout 盖住
+    _probe_one 的 20s 探测上限；到点没探完的行 probe_next_at 已清零，
+    后台循环下个心跳（15s）会接着探。
+    """
+    with _LOCK:
+        targets = [(name, st) for name, st in _PROVIDERS.items()
+                   if not st.get("static")   # 静态死链无端点可探，同探针循环
+                   and st.get("status") in ("failing", "down")]
+        for _name, st in targets:
+            st["probe_next_at"] = 0
+            st["probe_backoff_idx"] = 0
+    if not targets:
+        return 0, 0
+
+    def _run(name, st):
+        try:
+            ok, gone, wire = _probe_one(st)
+            _record_probe_result(name, st, ok, gone, wire=wire)
+        except Exception:
+            log.exception("[health] 手动探测 %s 失败", name)
+
+    threads = []
+    for name, st in targets:
+        t = threading.Thread(target=_run, args=(name, st),
+                             name="health-probe-manual", daemon=True)
+        t.start()
+        threads.append(t)
+    deadline = time.time() + float(join_timeout)
+    for t in threads:
+        t.join(max(0.0, deadline - time.time()))
+        if time.time() >= deadline:
+            break
+    done = sum(1 for t in threads if not t.is_alive())
+    return len(targets), done
