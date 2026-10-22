@@ -305,11 +305,13 @@ body.settings-mode #mainwrap > main > #page-settings:has(> #sub-models:not(.hidd
   border-radius: var(--cb-radius-md);
   background: var(--cb-bg-1);
 }
+/* 失败行红条降饱和：整页连排失败时 3px 实色红条会连成一片红墙，
+ * 半透明款保留扫读线索但不刺眼（2026-10-22 用户反馈配色累眼） */
 #run-list .item:has(.chip.failed),
 #run-list .item:has(.chip.timeout) {
-  border-inline-start: 3px solid var(--cb-danger);
+  border-inline-start: 3px solid color-mix(in srgb, var(--cb-danger) 45%, transparent);
 }
-#run-list .item:has(.chip.running) { border-inline-start: 3px solid var(--cb-info); }
+#run-list .item:has(.chip.running) { border-inline-start: 3px solid color-mix(in srgb, var(--cb-info) 45%, transparent); }
 #run-list .item .chip { flex: none; }
 #run-list .item .time { font-family: var(--cb-font-mono); font-variant-numeric: tabular-nums; }
 #run-detail #rd-log pre,

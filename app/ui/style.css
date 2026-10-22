@@ -998,11 +998,16 @@ button.ghost {
   border-radius: 9px; padding: 6px 13px; cursor: pointer; font-size: 12.5px;
 }
 button.ghost:hover { background: var(--panel2); }
+/* 删除类按钮：常态描边降饱和（整列每行都挂红框时过闹），悬停恢复实红 */
 button.danger {
-  background: none; color: var(--bad); border: 1px solid var(--bad);
+  background: none; color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 36%, transparent);
   border-radius: 9px; padding: 6px 13px; cursor: pointer; font-size: 12.5px;
 }
-button.danger:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+button.danger:hover {
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  border-color: var(--bad);
+}
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.small { padding: 4px 10px; font-size: 12px; }
 
@@ -1036,7 +1041,8 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .chip.pause-requested { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 .chip.pause-paused { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .chip.done { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
-.chip.failed { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+/* 失败徽章底色降到 9%：失败连排时 14% 粉底满屏累眼，字色保持 --bad 仍一眼可辨 */
+.chip.failed { background: color-mix(in srgb, var(--bad) 9%, transparent); color: var(--bad); }
 .chip.cancelled { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
