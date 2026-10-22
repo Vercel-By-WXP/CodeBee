@@ -292,26 +292,26 @@ html[data-layout="workbench"] .usage-row b {
 }
 
 /* ================= 任务表单页：fixed 空态居中公式重算 =================
- * 桌面工作台层把 #sub-tasks .form 写成 fixed + 手算居中（硬编码旧布局
+ * 桌面工作台层把 :is(#sub-tasks, #rd-input-slot) .form 写成 fixed + 手算居中（硬编码旧布局
  * rail 52px + 侧栏 288px）。workbench rail 已移除、主区右侧多了 280px 状态栏，
  * 旧公式整体偏右且溢出到状态栏底下。标题/提示也在 .form 内，一并修正。 */
 @media (min-width: 769px) {
-  html[data-layout="workbench"] #sub-tasks .form {
+  html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .form {
     left: calc(var(--side-w, 216px) + (100vw - var(--side-w, 216px) - var(--status-rail-w, 280px)) / 2);
     width: min(900px, calc(100vw - var(--side-w, 216px) - var(--status-rail-w, 280px) - 48px));
   }
 
-  html[data-layout="workbench"] body.side-collapsed #sub-tasks .form {
+  html[data-layout="workbench"] body.side-collapsed :is(#sub-tasks, #rd-input-slot) .form {
     left: calc((100vw - var(--status-rail-w, 280px)) / 2);
     width: min(900px, calc(100vw - var(--status-rail-w, 280px) - 48px));
   }
 
-  html[data-layout="workbench"] body.inspector-open #sub-tasks .form {
+  html[data-layout="workbench"] body.inspector-open :is(#sub-tasks, #rd-input-slot) .form {
     left: calc(var(--side-w, 216px) + (100vw - var(--side-w, 216px) - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px)) / 2);
     width: min(900px, calc(100vw - var(--side-w, 216px) - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px) - 48px));
   }
 
-  html[data-layout="workbench"] body.side-collapsed.inspector-open #sub-tasks .form {
+  html[data-layout="workbench"] body.side-collapsed.inspector-open :is(#sub-tasks, #rd-input-slot) .form {
     left: calc((100vw - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px)) / 2);
     width: min(900px, calc(100vw - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px) - 48px));
   }
@@ -319,7 +319,7 @@ html[data-layout="workbench"] .usage-row b {
 
 /* 移动端单列：直接视口居中 */
 @media (max-width: 768px) {
-  html[data-layout="workbench"] #sub-tasks .form {
+  html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .form {
     left: 50%;
     width: min(900px, calc(100vw - 48px));
   }
@@ -1105,7 +1105,7 @@ html[data-layout="workbench"] body.settings-mode #page-settings textarea {
   background: color-mix(in srgb, var(--accent) 4%, var(--panel));
 }
 
-html[data-layout="workbench"] #sub-tasks #btn-create {
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create {
   background: linear-gradient(110deg, var(--accent), color-mix(in srgb, var(--accent2) 82%, var(--accent)));
   color: #fff;
 }
@@ -1155,14 +1155,43 @@ html[data-layout="workbench"] .rd-input-branch {
   margin-left: auto;
 }
 
-/* 主页直载真表单 composer：容器样式由 .rd-input-card 承担，composer 自身
- * 在主页去卡片化融入；底条分隔线保留 */
-html[data-layout="workbench"] #page-home #rd-input-slot .cmp-box {
-  width: 100%;
-  background: transparent;
-  border: none;
-  box-shadow: none;
+/* 主页直载真表单 composer：.cmp-box 搬出 #sub-tasks 后仍靠 :is(...) 作用域拿到
+ * 内部排版；卡片外形也交给它自己（与任务页同款），外层 slot 只留位，避免双卡。
+ * 圆角/内边距必须与 reference-composer.css 的 .form > .cmp-box 一致，否则
+ * pills 的 -12px 出血对不上卡边。 */
+html[data-layout="workbench"] #page-home .rd-input-card {
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-layout="workbench"] #page-home #rd-input-slot .cmp-box {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin: 0;
+  padding: 0 12px 6px;
+  border: 1px solid var(--cb-card-border, var(--border));
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgba(24, 32, 42, .035), 0 12px 36px rgba(24, 32, 42, .04);
+}
+
+/* 任务页 composer 贴底，选择器/添加菜单按「向上弹」设计；主页输入卡贴页头，
+ * 照搬会把菜单顶出视口。主页改为向下展开。 */
+@media (min-width: 901px) {
+  html[data-layout="workbench"] #page-home #rd-input-slot #type-menu {
+    top: calc(100% + 8px);
+    bottom: auto;
+    max-height: min(360px, calc(100dvh - 40px));
+  }
+  html[data-layout="workbench"] #page-home #rd-input-slot .cmp-add-menu {
+    top: calc(100% + 10px);
+    bottom: auto;
+    max-height: min(470px, calc(100dvh - 40px));
+  }
 }
 
 /* 用量展示只留右侧状态栏一份（大数字+趋势）：workbench 下侧栏底部迷你卡不再重复渲染 */

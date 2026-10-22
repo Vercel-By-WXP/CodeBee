@@ -1,6 +1,6 @@
 /* Keep the workspace context and task input in one continuous composer card. */
 @media (min-width: 901px) {
-  #sub-tasks .cmp-box > .cmp-pills {
+  :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills {
     position: relative;
     width: auto;
     min-height: 38px;
@@ -12,12 +12,12 @@
     background: color-mix(in srgb, var(--panel2) 72%, var(--panel));
   }
 
-  #sub-tasks .cmp-box > .cmp-pills .cmp-wd {
+  :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills .cmp-wd {
     padding-inline: 0;
     background: transparent;
   }
 
-  #sub-tasks .form > .cmp-box {
+  :is(#sub-tasks, #rd-input-slot) .form > .cmp-box {
     position: relative;
     z-index: 1;
     margin: 0;
@@ -28,56 +28,56 @@
     box-shadow: 0 2px 8px rgba(24, 32, 42, .035), 0 12px 36px rgba(24, 32, 42, .04);
   }
 
-  #sub-tasks .cmp-box textarea {
+  :is(#sub-tasks, #rd-input-slot) .cmp-box textarea {
     min-height: 64px;
     height: 64px;
     padding: 12px 0 8px;
     border-radius: 0;
   }
 
-  #sub-tasks .cmp-bar { min-height: 38px; padding: 2px 0 0; }
-  #sub-tasks #btn-create.round { width: 30px; height: 30px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar { min-height: 38px; padding: 2px 0 0; }
+  :is(#sub-tasks, #rd-input-slot) #btn-create.round { width: 30px; height: 30px; }
 
-  #sub-tasks .att-strip { position: relative; }
-  #sub-tasks .cmp-add-wrap { position: relative; }
-  #sub-tasks .cmp-add-btn {
+  :is(#sub-tasks, #rd-input-slot) .att-strip { position: relative; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap { position: relative; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-btn {
     width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
     justify-content: center; background: var(--panel2); color: var(--text);
   }
-  #sub-tasks .cmp-add-btn .ico { width: 17px; height: 17px; }
-  #sub-tasks .cmp-add-btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-  #sub-tasks .cmp-add-menu {
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-btn .ico { width: 17px; height: 17px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-menu {
     position: absolute; z-index: 20; left: 0; bottom: calc(100% + 10px);
     width: min(340px, calc(100vw - 32px)); max-height: min(470px, calc(100dvh - 150px));
     overflow: auto; padding: 8px; border: 1px solid var(--border);
     border-radius: 14px; background: var(--panel); color: var(--text);
     box-shadow: 0 12px 36px rgba(24,32,42,.17);
   }
-  #sub-tasks .cmp-add-kicker { padding: 5px 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
-  #sub-tasks .cmp-add-item {
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-kicker { padding: 5px 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item {
     display: flex; width: 100%; min-height: 38px; align-items: center; gap: 9px;
     padding: 6px 8px; border: 0; border-radius: 9px; background: transparent;
     color: inherit; text-align: left; cursor: pointer;
   }
-  #sub-tasks .cmp-add-item:hover, #sub-tasks .cmp-add-item:focus-visible { background: var(--panel2); outline: none; }
-  #sub-tasks .cmp-add-item > .ico { width: 16px; height: 16px; flex: none; color: var(--muted); }
-  #sub-tasks .cmp-add-item > span:not(.cmp-plugin-mark) { display: grid; min-width: 0; gap: 2px; }
-  #sub-tasks .cmp-add-item b { font-size: 12px; font-weight: 500; }
-  #sub-tasks .cmp-add-item small { color: var(--muted); font-size: 10px; line-height: 1.35; }
-  #sub-tasks .cmp-add-divider { height: 1px; margin: 5px 4px; background: var(--border); }
-  #sub-tasks .cmp-add-check { width: 16px; margin-left: auto; color: #16845b; font-size: 15px; }
-  #sub-tasks .cmp-add-item.is-on .cmp-add-check::before { content: "✓"; }
-  #sub-tasks .cmp-plugin-mark {
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item:hover, :is(#sub-tasks, #rd-input-slot) .cmp-add-item:focus-visible { background: var(--panel2); outline: none; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item > .ico { width: 16px; height: 16px; flex: none; color: var(--muted); }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item > span:not(.cmp-plugin-mark) { display: grid; min-width: 0; gap: 2px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item b { font-size: 12px; font-weight: 500; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-divider { height: 1px; margin: 5px 4px; background: var(--border); }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-check { width: 16px; margin-left: auto; color: #16845b; font-size: 15px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item.is-on .cmp-add-check::before { content: "✓"; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-plugin-mark {
     display: grid; width: 17px; height: 17px; flex: none; place-items: center;
     border-radius: 5px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700;
   }
-  #sub-tasks .cmp-capability-searchbar { position: sticky; top: -8px; z-index: 1; padding: 8px 0; background: var(--panel); }
-  #sub-tasks .cmp-capability-searchbar input { width: 100%; box-sizing: border-box; font-size: 12px; }
-  #sub-tasks .cmp-capability-filters {
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-searchbar { position: sticky; top: -8px; z-index: 1; padding: 8px 0; background: var(--panel); }
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-searchbar input { width: 100%; box-sizing: border-box; font-size: 12px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-filters {
     display: flex; flex-wrap: wrap; gap: 2px; margin-top: 8px; padding: 3px;
     border-radius: 10px; background: var(--panel2);
   }
-  #sub-tasks .cmp-capability-filters button {
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-filters button {
     appearance: none; display: inline-flex; flex: 1 0 auto; align-items: center; justify-content: center;
     min-width: 0; min-height: 28px; margin: 0; padding: 4px 8px;
     border: 1px solid transparent; border-radius: 7px; background: transparent; box-shadow: none;
@@ -85,56 +85,56 @@
     white-space: nowrap; cursor: pointer;
     transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
   }
-  #sub-tasks .cmp-capability-filters button:hover {
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-filters button:hover {
     background: color-mix(in srgb, var(--panel) 65%, transparent); color: var(--text);
   }
-  #sub-tasks .cmp-capability-filters button.is-on {
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-filters button.is-on {
     border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
     background: var(--panel); color: var(--accent);
     box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 8%, transparent);
   }
-  #sub-tasks .cmp-capability-filters button:focus-visible {
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-filters button:focus-visible {
     box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--text) 45%, transparent);
   }
   @media (prefers-reduced-motion: reduce) {
-    #sub-tasks .cmp-capability-filters button { transition: none; }
+    :is(#sub-tasks, #rd-input-slot) .cmp-capability-filters button { transition: none; }
   }
-  #sub-tasks .cmp-capability-empty { padding: 6px 8px; color: var(--muted); font-size: 11px; }
-  #sub-tasks .cmp-capability-state { margin-left: auto; flex: none; color: var(--muted); font-size: 10px; font-style: normal; }
-  #sub-tasks .cmp-add-item small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-  #sub-tasks .cmp-plugin-mark.docs { background: #4385ed; }
-  #sub-tasks .cmp-plugin-mark.pdf { background: #db5260; }
-  #sub-tasks .cmp-plugin-mark.sheets { background: #4a9a68; }
-  #sub-tasks .cmp-plugin-mark.slides { background: #d98245; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-empty { padding: 6px 8px; color: var(--muted); font-size: 11px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-capability-state { margin-left: auto; flex: none; color: var(--muted); font-size: 10px; font-style: normal; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-item small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-plugin-mark.docs { background: #4385ed; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-plugin-mark.pdf { background: #db5260; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-plugin-mark.sheets { background: #4a9a68; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-plugin-mark.slides { background: #d98245; }
 
   /* These controls live at the bottom of the viewport. Open into the
    * available reading area so every option stays reachable. */
-  #sub-tasks #type-menu {
+  :is(#sub-tasks, #rd-input-slot) #type-menu {
     top: auto;
     bottom: calc(100% + 8px);
     max-height: min(360px, calc(100dvh - 180px));
     border-radius: 12px;
     box-shadow: 0 8px 28px rgba(24, 32, 42, .12);
   }
-  #sub-tasks .type-item { min-height: 44px; }
-  #sub-tasks .type-item.on { background: var(--panel2); }
+  :is(#sub-tasks, #rd-input-slot) .type-item { min-height: 44px; }
+  :is(#sub-tasks, #rd-input-slot) .type-item.on { background: var(--panel2); }
 
   /* Recent folders must paint above the input and its enclosing card. */
-  #sub-tasks .cmp-box > .cmp-pills:has(.wd-menu:not(.hidden)) { z-index: 3; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills:has(.wd-menu:not(.hidden)) { z-index: 3; }
 
-  #sub-tasks details#f-advanced summary {
+  :is(#sub-tasks, #rd-input-slot) details#f-advanced summary {
     color: var(--muted);
     font-size: 12px;
     padding: 4px 8px;
   }
 
   @media (max-height: 700px) {
-    #sub-tasks .cmp-box textarea { min-height: 54px; height: 54px; }
+    :is(#sub-tasks, #rd-input-slot) .cmp-box textarea { min-height: 54px; height: 54px; }
   }
 }
 
 @media (max-width: 900px) {
-  #sub-tasks .cmp-box > .cmp-pills {
+  :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills {
     width: auto;
     margin: 0 -12px;
     padding: 8px 12px;
@@ -142,9 +142,9 @@
     border-radius: 15px 15px 0 0;
     background: color-mix(in srgb, var(--panel2) 72%, var(--panel));
   }
-  #sub-tasks .cmp-box > .cmp-pills .cmp-wd {
+  :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills .cmp-wd {
     padding-inline: 0;
     background: transparent;
   }
-  #sub-tasks .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
 }

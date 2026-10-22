@@ -4590,29 +4590,29 @@ main .panel.wide {
 
 /* New task: three controls on one baseline, with management as an inline
    action instead of a stray button box. */
-#sub-tasks .composer {
+:is(#sub-tasks, #rd-input-slot) .composer {
   padding: clamp(20px, 3vw, 38px) 0 26px;
   overflow: visible;
 }
-#sub-tasks .hero-row { align-items: center; }
-#sub-tasks .hero {
+:is(#sub-tasks, #rd-input-slot) .hero-row { align-items: center; }
+:is(#sub-tasks, #rd-input-slot) .hero {
   font-size: clamp(24px, 3vw, 34px);
   font-weight: 400;
   letter-spacing: -.035em;
 }
-#sub-tasks .hero-sub { margin-bottom: 24px; }
-#sub-tasks .cmp-pills {
+:is(#sub-tasks, #rd-input-slot) .hero-sub { margin-bottom: 24px; }
+:is(#sub-tasks, #rd-input-slot) .cmp-pills {
   display: grid;
   grid-template-columns: max-content max-content minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   margin-bottom: 6px;
 }
-#sub-tasks .cmp-pills .type-pick,
-#sub-tasks .cmp-pills .cmp-wd {
+:is(#sub-tasks, #rd-input-slot) .cmp-pills .type-pick,
+:is(#sub-tasks, #rd-input-slot) .cmp-pills .cmp-wd {
   min-height: 40px;
 }
-#sub-tasks #btn-flows-mgr {
+:is(#sub-tasks, #rd-input-slot) #btn-flows-mgr {
   align-self: center;
   min-height: 40px;
   padding: 0 8px;
@@ -4621,19 +4621,19 @@ main .panel.wide {
   background: transparent;
   color: var(--muted);
 }
-#sub-tasks #btn-flows-mgr:hover {
+:is(#sub-tasks, #rd-input-slot) #btn-flows-mgr:hover {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--accent);
 }
-#sub-tasks .cmp-wd {
+:is(#sub-tasks, #rd-input-slot) .cmp-wd {
   border: 0;
   border-bottom: 1px solid var(--border-strong);
   border-radius: 0;
   background: transparent;
   padding-inline: 2px;
 }
-#sub-tasks .cmp-wd input { background: transparent; }
-#sub-tasks .cmp-box {
+:is(#sub-tasks, #rd-input-slot) .cmp-wd input { background: transparent; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box {
   margin-top: 18px;
   padding: 0;
   border: 0;
@@ -4643,38 +4643,38 @@ main .panel.wide {
   background: transparent;
   box-shadow: none;
 }
-#sub-tasks .cmp-box textarea {
+:is(#sub-tasks, #rd-input-slot) .cmp-box textarea {
   min-height: 112px;
   padding: 16px 2px 8px;
   background: transparent;
   font-size: 15px;
 }
-#sub-tasks .cmp-bar {
+:is(#sub-tasks, #rd-input-slot) .cmp-bar {
   min-height: 44px;
   padding: 0;
   border-top: 1px solid var(--border);
 }
-#sub-tasks .cmp-quick {
+:is(#sub-tasks, #rd-input-slot) .cmp-quick {
   margin: 12px 0 2px;
   gap: 12px;
 }
-#sub-tasks .cmp-chip {
+:is(#sub-tasks, #rd-input-slot) .cmp-chip {
   min-height: 30px;
   padding-inline: 11px;
   background: transparent;
 }
-#sub-tasks details#f-advanced {
+:is(#sub-tasks, #rd-input-slot) details#f-advanced {
   margin-top: 16px;
   padding-top: 12px;
 }
-#sub-tasks details#f-advanced summary {
+:is(#sub-tasks, #rd-input-slot) details#f-advanced summary {
   font-size: 12.5px;
   color: var(--muted);
 }
 @media (max-width: 680px) {
-  #sub-tasks .cmp-pills { grid-template-columns: max-content max-content; }
-  #sub-tasks .cmp-pills .cmp-wd { grid-column: 1 / -1; }
-  #sub-tasks .hero-row { align-items: flex-start; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-pills { grid-template-columns: max-content max-content; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-pills .cmp-wd { grid-column: 1 / -1; }
+  :is(#sub-tasks, #rd-input-slot) .hero-row { align-items: flex-start; }
 }
 
 /* Shared detail grid: title, metadata, tabs and every pane use the same edge. */
@@ -4997,30 +4997,30 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   align-items: center;
   justify-content: center;
 }
-#sub-tasks .composer {
+:is(#sub-tasks, #rd-input-slot) .composer {
   width: min(100%, 680px);
   max-width: 680px;
   margin: clamp(12px, 7vh, 72px) auto 0;
   padding: 0 0 36px;
   overflow: visible;
 }
-#sub-tasks .composer::after { display: none; }
-#sub-tasks .hero-row {
+:is(#sub-tasks, #rd-input-slot) .composer::after { display: none; }
+:is(#sub-tasks, #rd-input-slot) .hero-row {
   justify-content: center;
   text-align: center;
   position: relative;
   margin-bottom: 16px;
 }
 /* 问候语克制：一行轻量招呼即可，不抢输入框的第一视线 */
-#sub-tasks .hero {
+:is(#sub-tasks, #rd-input-slot) .hero {
   font-size: 20px;
   font-weight: 550;
   letter-spacing: -.01em;
 }
-#sub-tasks .form { gap: 10px; }
+:is(#sub-tasks, #rd-input-slot) .form { gap: 10px; }
 /* 工作目录=框内首行上下文（.cmp-pills 已移入 .cmp-box）；
    git 仓库场景下分支选择以小胶囊挂同一条上下文条（#row-git 移入） */
-#sub-tasks .cmp-pills {
+:is(#sub-tasks, #rd-input-slot) .cmp-pills {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -5031,7 +5031,7 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
 }
-#sub-tasks .cmp-pills .cmp-wd {
+:is(#sub-tasks, #rd-input-slot) .cmp-pills .cmp-wd {
   flex: 1 1 200px;
   display: flex;
   align-items: center;
@@ -5044,9 +5044,9 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   border-radius: 0;
   background: transparent;
 }
-#sub-tasks .cmp-wd > .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
-#sub-tasks .cmp-wd .input-row { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
-#sub-tasks .cmp-wd input {
+:is(#sub-tasks, #rd-input-slot) .cmp-wd > .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
+:is(#sub-tasks, #rd-input-slot) .cmp-wd .input-row { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+:is(#sub-tasks, #rd-input-slot) .cmp-wd input {
   flex: 1;
   min-width: 0;
   min-height: 28px;
@@ -5058,8 +5058,8 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   font-size: 12px;
   text-overflow: ellipsis;
 }
-#sub-tasks .cmp-wd input::placeholder { color: var(--muted); }
-#sub-tasks .cmp-wd .ghost.small {
+:is(#sub-tasks, #rd-input-slot) .cmp-wd input::placeholder { color: var(--muted); }
+:is(#sub-tasks, #rd-input-slot) .cmp-wd .ghost.small {
   flex: none;
   min-height: 24px;
   padding: 2px 7px;
@@ -5068,9 +5068,9 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   color: var(--muted);
   font-size: 11px;
 }
-#sub-tasks .cmp-wd .ghost.small:hover { color: var(--accent); background: var(--panel2); }
+:is(#sub-tasks, #rd-input-slot) .cmp-wd .ghost.small:hover { color: var(--accent); background: var(--panel2); }
 /* 分支胶囊：替换原整块「代码版本」表单；详情（当前分支/脏区/检出说明）走悬停 title */
-#sub-tasks #row-git {
+:is(#sub-tasks, #rd-input-slot) #row-git {
   display: flex;
   align-items: center;
   flex: none;
@@ -5081,9 +5081,9 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   border: 0;
   background: transparent;
 }
-#sub-tasks #row-git label { display: none; }
-#sub-tasks #row-git .hint { display: none; }
-#sub-tasks #f-git-rev {
+:is(#sub-tasks, #rd-input-slot) #row-git label { display: none; }
+:is(#sub-tasks, #rd-input-slot) #row-git .hint { display: none; }
+:is(#sub-tasks, #rd-input-slot) #f-git-rev {
   width: auto;
   max-width: 230px;
   min-height: 26px;
@@ -5095,8 +5095,8 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   font-size: 11.5px;
   text-overflow: ellipsis;
 }
-#sub-tasks .cmp-hint { margin: 5px 4px 0; font-size: 11px; text-align: left; }
-#sub-tasks .cmp-box {
+:is(#sub-tasks, #rd-input-slot) .cmp-hint { margin: 5px 4px 0; font-size: 11px; text-align: left; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box {
   width: 100%;
   margin-top: 0;
   padding: 0 12px 9px;
@@ -5107,15 +5107,15 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 }
 /* 极简收敛：这行说明与顶部 hero 副标重复（同一句「自动拆解并执行」），
    元素保留在 DOM（i18n/锚点兼容），仅不再占一行视觉噪音。 */
-#sub-tasks .cmp-context-note { display: none; }
-#sub-tasks .cmp-box textarea {
+:is(#sub-tasks, #rd-input-slot) .cmp-context-note { display: none; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box textarea {
   min-height: 112px;
   padding: 14px 4px 12px;
   font-size: 15px;
   line-height: 1.65;
   background: transparent;
 }
-#sub-tasks .cmp-bar {
+:is(#sub-tasks, #rd-input-slot) .cmp-bar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5123,8 +5123,8 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   padding: 5px 0 0;
   border-top: 1px solid var(--border);
 }
-#sub-tasks .cmp-mode { display: inline-flex; align-items: center; gap: 3px; }
-#sub-tasks .cmp-mode .type-pick {
+:is(#sub-tasks, #rd-input-slot) .cmp-mode { display: inline-flex; align-items: center; gap: 3px; }
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick {
   min-height: 29px;
   min-width: 0;
   padding: 4px 8px;
@@ -5133,31 +5133,31 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   background: var(--panel2);
   font-size: 11.5px;
 }
-#sub-tasks .cmp-mode .type-pick:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
-#sub-tasks .cmp-bar .att-strip { min-width: 0; flex: 1; margin: 0; }
-#sub-tasks .cmp-bar .att-strip > .ghost.small {
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
+:is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip { min-width: 0; flex: 1; margin: 0; }
+:is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip > .ghost.small {
   min-height: 28px;
   padding: 4px 8px;
   border: 0;
   background: transparent;
   color: var(--muted);
 }
-#sub-tasks .cmp-bar .att-strip > .ghost.small:hover { color: var(--text); background: var(--panel2); }
-#sub-tasks .cmp-send { gap: 8px; }
-#sub-tasks #btn-create.round {
+:is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip > .ghost.small:hover { color: var(--text); background: var(--panel2); }
+:is(#sub-tasks, #rd-input-slot) .cmp-send { gap: 8px; }
+:is(#sub-tasks, #rd-input-slot) #btn-create.round {
   width: 31px;
   height: 31px;
   box-shadow: none;
 }
 /* 类型快捷 chips（2026-09-29 按 ZCode 首页构图恢复展示）：卡下一排居中
    ghost pills，点选即定类型；与底部工具栏入口并存，不算重复入口 */
-#sub-tasks .cmp-quick {
+:is(#sub-tasks, #rd-input-slot) .cmp-quick {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
   margin: 16px 0 2px;
 }
-#sub-tasks .cmp-chip {
+:is(#sub-tasks, #rd-input-slot) .cmp-chip {
   min-height: 28px;
   padding: 4px 10px;
   border-color: transparent;
@@ -5165,40 +5165,40 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   color: var(--muted);
   font-size: 11.5px;
 }
-#sub-tasks .cmp-chip:hover,
-#sub-tasks .cmp-chip.on { border-color: var(--border); background: var(--panel); color: var(--text); }
-#sub-tasks .cmp-chip.on { color: var(--accent); }
-#sub-tasks .cmp-estimate { text-align: center; margin: 6px 0 0; font-size: 11px; }
-#sub-tasks details#f-advanced {
+:is(#sub-tasks, #rd-input-slot) .cmp-chip:hover,
+:is(#sub-tasks, #rd-input-slot) .cmp-chip.on { border-color: var(--border); background: var(--panel); color: var(--text); }
+:is(#sub-tasks, #rd-input-slot) .cmp-chip.on { color: var(--accent); }
+:is(#sub-tasks, #rd-input-slot) .cmp-estimate { text-align: center; margin: 6px 0 0; font-size: 11px; }
+:is(#sub-tasks, #rd-input-slot) details#f-advanced {
   width: min(100%, 760px);
   margin: 15px auto 0;
   padding-top: 10px;
   border-top: 0;
 }
-#sub-tasks details#f-advanced summary { justify-content: center; font-size: 11.5px; }
+:is(#sub-tasks, #rd-input-slot) details#f-advanced summary { justify-content: center; font-size: 11.5px; }
 
 /* Keep the task toolbar as one continuous row on desktop. The expert select
    used to consume enough width to push the right-side controls onto a second
    row, splitting the separator and making the composer look broken. */
 @media (min-width: 681px) {
-  #sub-tasks .cmp-bar { flex-wrap: nowrap; gap: 6px; }
-  #sub-tasks .cmp-mode { flex: none; gap: 2px; }
-  #sub-tasks .cmp-mode .type-wrap { flex: none; }
-  #sub-tasks .cmp-mode .type-pick { min-width: 0; }
-  #sub-tasks .cmp-mode .expert-pick {
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar { flex-wrap: nowrap; gap: 6px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode { flex: none; gap: 2px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode .type-wrap { flex: none; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick { min-width: 0; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode .expert-pick {
     width: 148px;
     min-width: 0;
     padding-right: 23px;
     text-overflow: ellipsis;
   }
-  #sub-tasks .cmp-bar .att-strip { flex: none; }
-  #sub-tasks .cmp-send { flex: 0 1 auto; min-width: 0; gap: 5px; }
-  #sub-tasks .cmp-send .cmp-sel { flex: none; padding-inline: 7px; font-size: 11px; }
-  #sub-tasks #create-msg { min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip { flex: none; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-send { flex: 0 1 auto; min-width: 0; gap: 5px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-send .cmp-sel { flex: none; padding-inline: 7px; font-size: 11px; }
+  :is(#sub-tasks, #rd-input-slot) #create-msg { min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* The native expert selector must follow the composer pills on every skin. */
-#sub-tasks .cmp-mode .expert-pick {
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .expert-pick {
   max-width: 148px;
   min-height: 29px;
   padding-top: 4px;
@@ -5206,7 +5206,7 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   font-size: 11.5px;
 }
 
-#sub-tasks details#f-advanced .adv-body {
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .adv-body {
   margin-top: 13px;
   padding: 15px;
   border: 1px solid var(--border);
@@ -5298,15 +5298,15 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
    类仍由 JS 维护，留作状态标记）。 */
 
 @media (max-width: 760px) {
-  /* 高度交给 main→#page-settings→#sub-tasks 的 flex 链（见上方说明），不再自算 100vh */
+  /* 高度交给 main→#page-settings→:is(#sub-tasks, #rd-input-slot) 的 flex 链（见上方说明），不再自算 100vh */
   #sub-tasks { align-items: flex-start; }
-  #sub-tasks .composer { margin-top: 6vh; padding-inline: 8px; }
-  #sub-tasks .hero-row { align-items: center; }
-  #sub-tasks .cmp-context-note { font-size: 10.5px; }
-  #sub-tasks .cmp-bar { flex-wrap: wrap; }
-  #sub-tasks .cmp-mode { order: 2; }
-  #sub-tasks .cmp-bar .att-strip { order: 1; flex-basis: calc(100% - 8px); }
-  #sub-tasks .cmp-send { order: 3; margin-left: auto; }
+  :is(#sub-tasks, #rd-input-slot) .composer { margin-top: 6vh; padding-inline: 8px; }
+  :is(#sub-tasks, #rd-input-slot) .hero-row { align-items: center; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-context-note { font-size: 10.5px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar { flex-wrap: wrap; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode { order: 2; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip { order: 1; flex-basis: calc(100% - 8px); }
+  :is(#sub-tasks, #rd-input-slot) .cmp-send { order: 3; margin-left: auto; }
   #run-detail .rd-overview { grid-template-columns: minmax(0, 1fr) auto; padding-inline: 12px; }
   .rd-overview-title, .rd-overview-goal { white-space: normal; }
   .rd-early-progress { grid-template-columns: 1fr auto; }
@@ -5378,42 +5378,42 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 #run-detail .rd-meta-popover #rd-overview .rd-overview-actions button { padding: 4px 8px; font-size: 11px; }
 
 /* 新建任务附件：图片有稳定的预览尺寸，普通文件继续使用轻量胶囊。 */
-#sub-tasks #att-chips {
+:is(#sub-tasks, #rd-input-slot) #att-chips {
   display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px;
   min-height: 0; margin: 3px 4px 0;
 }
-#sub-tasks #att-chips:empty { display: none; }
-#sub-tasks .att-chip.att-image {
+:is(#sub-tasks, #rd-input-slot) #att-chips:empty { display: none; }
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image {
   position: relative; width: 56px; height: 56px; max-width: none; padding: 0;
   overflow: visible; border-radius: 10px; background: var(--panel2);
   border-color: var(--border); box-shadow: 0 2px 10px color-mix(in srgb, #000 10%, transparent);
 }
-#sub-tasks .att-chip.att-image img {
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image img {
   display: block; width: 100%; height: 100%; object-fit: cover;
   border-radius: inherit; background: var(--panel2);
 }
-#sub-tasks .att-chip.att-image .att-image-name {
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image .att-image-name {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-#sub-tasks .att-chip.att-image .ax {
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image .ax {
   position: absolute; z-index: 2; top: -5px; right: -5px;
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; padding: 0; border: 1px solid var(--panel);
   border-radius: 50%; background: var(--text); color: var(--panel);
   box-shadow: 0 2px 6px color-mix(in srgb, #000 18%, transparent);
 }
-#sub-tasks .att-chip.att-image .ax .ico { width: 10px; height: 10px; }
-#sub-tasks .att-chip.att-image .ax:hover,
-#sub-tasks .att-chip.att-image .ax:hover { background: var(--bad); color: #fff; outline: none; }
-#sub-tasks .cmp-box > .att-chips + textarea { padding-top: 8px; }
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image .ax .ico { width: 10px; height: 10px; }
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image .ax:hover,
+:is(#sub-tasks, #rd-input-slot) .att-chip.att-image .ax:hover { background: var(--bad); color: #fff; outline: none; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box > .att-chips + textarea { padding-top: 8px; }
 
 @media (max-width: 700px) {
   #run-detail .rd-meta-popover {
     left: 8px; right: 8px; width: auto; top: calc(100% + 2px);
   }
   #run-detail .rd-meta-popover #rd-overview { grid-template-columns: minmax(0, 1fr) auto; }
-  #sub-tasks .att-chip.att-image { width: 56px; height: 56px; }
+  :is(#sub-tasks, #rd-input-slot) .att-chip.att-image { width: 56px; height: 56px; }
 }
 
 /* ================= 详情页侧边栏重构 =================
@@ -6028,23 +6028,23 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
 .chat-fup-btn:hover { border-color: var(--accent, #888); color: var(--accent, inherit); opacity: 1; }
 
 /* ============ 工作目录「最近文件夹」下拉（参考工作区选择器：默认选中 + ▾ 菜单） ============ */
-#sub-tasks .cmp-pills { position: relative; }
-#sub-tasks .wd-menu-btn {
+:is(#sub-tasks, #rd-input-slot) .cmp-pills { position: relative; }
+:is(#sub-tasks, #rd-input-slot) .wd-menu-btn {
   display: inline-flex; align-items: center; justify-content: center;
   flex: none; width: 22px; min-height: 24px; padding: 0; border: 0; border-radius: 6px;
   background: transparent; color: var(--muted);
 }
-#sub-tasks .wd-menu-btn:hover,
-#sub-tasks .wd-menu-btn:hover { color: var(--text); background: var(--panel2); outline: none; }
-#sub-tasks .wd-menu-btn .ico { width: 12px; height: 12px; }
-#sub-tasks .wd-menu {
+:is(#sub-tasks, #rd-input-slot) .wd-menu-btn:hover,
+:is(#sub-tasks, #rd-input-slot) .wd-menu-btn:hover { color: var(--text); background: var(--panel2); outline: none; }
+:is(#sub-tasks, #rd-input-slot) .wd-menu-btn .ico { width: 12px; height: 12px; }
+:is(#sub-tasks, #rd-input-slot) .wd-menu {
   position: absolute; z-index: 40; top: calc(100% + 6px); left: 8px;
   width: min(300px, calc(100vw - 48px)); box-sizing: border-box;
   padding: 5px; border: 1px solid var(--border-strong); border-radius: 12px;
   background: var(--panel);
   box-shadow: 0 14px 38px color-mix(in srgb, #000 22%, transparent);
 }
-#sub-tasks .wd-menu.hidden { display: none !important; }
+:is(#sub-tasks, #rd-input-slot) .wd-menu.hidden { display: none !important; }
 .wd-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
   min-height: 32px; padding: 5px 9px; border: 0; border-radius: 8px;
@@ -6062,8 +6062,8 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
 .wd-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 
 /* ============ 分支胶囊：右停靠 + 「分支名 ▾」（点开原生下拉可换分支/标签/提交） ============ */
-#sub-tasks #row-git { margin-left: auto; }
-#sub-tasks #f-git-rev {
+:is(#sub-tasks, #rd-input-slot) #row-git { margin-left: auto; }
+:is(#sub-tasks, #rd-input-slot) #f-git-rev {
   appearance: none; -webkit-appearance: none;
   cursor: pointer; padding-right: 26px;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888a8f' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
@@ -6073,30 +6073,30 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
 
 /* ============ 上下文条精修：首屏只读「路径 ←→ 分支」，操作键悬停/聚焦现身 ============ */
 /* 路径区作为一整块芯片：悬停或聚焦时给软底，操作键随之浮现 */
-#sub-tasks .cmp-pills .cmp-wd {
+:is(#sub-tasks, #rd-input-slot) .cmp-pills .cmp-wd {
   min-height: 30px;
   padding: 0 4px 0 6px;
   border-radius: 10px;
   transition: background-color .15s;
 }
-#sub-tasks .cmp-pills .cmp-wd:hover {
+:is(#sub-tasks, #rd-input-slot) .cmp-pills .cmp-wd:hover {
   background: color-mix(in srgb, var(--panel2) 62%, transparent);
 }
 /* 「选择…」默认隐去（功能在 ▾ 菜单和点击输入框里都有）；触屏设备与键盘聚焦不隐藏 */
-#sub-tasks .cmp-wd .wd-pick-btn {
+:is(#sub-tasks, #rd-input-slot) .cmp-wd .wd-pick-btn {
   opacity: 0;
   pointer-events: none;
   transition: opacity .15s;
 }
-#sub-tasks .cmp-wd:hover .wd-pick-btn {
+:is(#sub-tasks, #rd-input-slot) .cmp-wd:hover .wd-pick-btn {
   opacity: 1;
   pointer-events: auto;
 }
 @media (hover: none) {
-  #sub-tasks .cmp-wd .wd-pick-btn { opacity: 1; pointer-events: auto; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-wd .wd-pick-btn { opacity: 1; pointer-events: auto; }
 }
 /* 分支胶囊收紧：小一号、弱底色、悬停亮边 */
-#sub-tasks #f-git-rev {
+:is(#sub-tasks, #rd-input-slot) #f-git-rev {
   min-height: 24px;
   padding: 1px 24px 1px 10px;
   font-size: 11px;
@@ -6105,7 +6105,7 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
   background-color: color-mix(in srgb, var(--panel2) 58%, transparent);
   transition: border-color .15s, background-color .15s;
 }
-#sub-tasks #f-git-rev:hover {
+:is(#sub-tasks, #rd-input-slot) #f-git-rev:hover {
   border-color: color-mix(in srgb, var(--border-strong) 80%, transparent);
   background-color: var(--panel2);
 }
@@ -6117,7 +6117,7 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
 .pm-add button { flex: none; }
 
 /* ============ 「更多选项」面板精修：轻卡片 + 紧凑字段，向 composer 的克制看齐 ============ */
-#sub-tasks details#f-advanced .adv-body {
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .adv-body {
   gap: 10px;
   margin-top: 10px;
   padding: 12px 14px 14px;
@@ -6125,16 +6125,16 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
   border-radius: 12px;
   background: color-mix(in srgb, var(--panel) 72%, transparent);
 }
-#sub-tasks details#f-advanced .field > label {
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .field > label {
   min-height: 0;
   gap: 5px;
   font-size: 11px;
   font-weight: 550;
   color: var(--muted);
 }
-#sub-tasks details#f-advanced .field input,
-#sub-tasks details#f-advanced .field select,
-#sub-tasks details#f-advanced .field textarea {
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .field input,
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .field select,
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .field textarea {
   min-height: 0;
   padding: 6px 10px;
   font-size: 12.5px;
@@ -6142,9 +6142,9 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
   border-radius: 9px;
   background: color-mix(in srgb, var(--panel2) 45%, var(--panel));
 }
-#sub-tasks details#f-advanced .field textarea { min-height: 56px; }
-#sub-tasks details#f-advanced .grid-2,
-#sub-tasks details#f-advanced .grid-3 { gap: 10px 12px; }
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .field textarea { min-height: 56px; }
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .grid-2,
+:is(#sub-tasks, #rd-input-slot) details#f-advanced .grid-3 { gap: 10px 12px; }
 
 /* 手工添加行并入 pm-tools 单行：过滤靠左、计数随后、添加靠右（同排等高）。
  * 不换行：面板窄时输入框收缩（min-width 兜底），换行会重现两行错排。
@@ -6855,7 +6855,7 @@ button.request-busy > * { opacity: .18; }
 #mk-grid.mk-grouped .sec-title { margin: 16px 0 8px; }
 
 /* 首页 composer 图片附件缩略图：与任务页同款 56×56 紧凑缩略卡（此前样式只写在
- * #sub-tasks 作用域，首页 img 按原始尺寸渲染直接压住输入文字——2026-09-21
+ * :is(#sub-tasks, #rd-input-slot) 作用域，首页 img 按原始尺寸渲染直接压住输入文字——2026-09-21
  * 用户实测「有遮挡」；2026-09-29 88×88 仍嫌太大挡视野，收紧到 56）。
  * 删除钮右上角悬浮。 */
 .att-chip.att-image { position: relative; width: 56px; height: 56px; max-width: none;
@@ -8754,17 +8754,17 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
 #run-list .item .rt .name { font-size: 13.5px; font-weight: 600; }
 #run-list .item .rt .desc { font-size: 12px; line-height: 1.5; }
 #run-list .item .time { font-size: 11.5px; font-variant-numeric: tabular-nums; }
-#sub-tasks .hero {
+:is(#sub-tasks, #rd-input-slot) .hero {
   max-width: 760px;
   font-size: clamp(25px, 2.6vw, 31px);
   line-height: 1.3;
   letter-spacing: -.035em;
   text-wrap: balance;
 }
-#sub-tasks .hero-sub { max-width: 620px; margin: 0 auto 20px; line-height: 1.6; }
-#sub-tasks .cmp-box textarea { font-size: 14px; line-height: 1.7; }
-#sub-tasks .cmp-box textarea::placeholder { line-height: 1.6; }
-#sub-tasks .cmp-hint, #sub-tasks .cmp-estimate { font-size: 11.5px; line-height: 1.55; }
+:is(#sub-tasks, #rd-input-slot) .hero-sub { max-width: 620px; margin: 0 auto 20px; line-height: 1.6; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box textarea { font-size: 14px; line-height: 1.7; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box textarea::placeholder { line-height: 1.6; }
+:is(#sub-tasks, #rd-input-slot) .cmp-hint, :is(#sub-tasks, #rd-input-slot) .cmp-estimate { font-size: 11.5px; line-height: 1.55; }
 .side-label { font-size: 11px; font-weight: 600; letter-spacing: .035em; }
 .sdir summary, .stask { font-size: 12.5px; line-height: 1.5; }
 .side-usage { font-size: 11.5px; line-height: 1.5; }
@@ -8779,12 +8779,12 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   main { padding: 16px 12px 58px; }
   .panel-head { margin-bottom: 11px; }
   .panel-head h2 { font-size: 15px; }
-  #sub-tasks .hero { font-size: 23px; }
+  :is(#sub-tasks, #rd-input-slot) .hero { font-size: 23px; }
 }
 
 /* Mobile remote workbench: one content column, navigation in a drawer. Keep
    these rules after the desktop skin/density layers so they cannot leak back. */
-.mobile-workspaces, #sub-tasks .mobile-workspaces-back { display: none; }
+.mobile-workspaces, :is(#sub-tasks, #rd-input-slot) .mobile-workspaces-back { display: none; }
 @media (max-width: 900px) {
   #app, body.side-collapsed #app,
   body.inspector-open #app, body.side-collapsed.inspector-open #app {
@@ -8828,35 +8828,35 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   }
   main:has(> #page-settings > #sub-tasks:not(.hidden)) { display: block; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
   #sub-tasks { min-height: 0; display: block; }
-  #sub-tasks .composer { margin: 0 auto; padding: 0; max-width: 680px; }
-  #sub-tasks .hero-row { margin-bottom: 16px; text-align: left; justify-content: flex-start; align-items: flex-start; }
-  #sub-tasks .hero { font-size: 20px; line-height: 1.5; text-align: left; text-wrap: balance; }
-  #sub-tasks .cmp-box { padding: 0 12px 12px; border-radius: 16px; }
-  #sub-tasks .cmp-pills { padding: 8px 0; gap: 8px; }
-  #sub-tasks .cmp-pills .cmp-wd { flex-basis: 100%; }
-  #sub-tasks .cmp-wd input { min-height: 44px; font-size: 16px; }
-  #sub-tasks .cmp-wd .ghost.small { min-height: 44px; padding-inline: 8px; font-size: 13px; }
-  #sub-tasks #row-git { max-width: 100%; }
-  #sub-tasks #f-git-rev { font-size: 16px; min-height: 44px; max-width: 100%; }
-  #sub-tasks .cmp-box textarea { min-height: 132px; font-size: 16px; line-height: 1.65; padding: 12px 0; }
-  #sub-tasks .cmp-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; gap: 8px; padding-top: 8px; }
-  #sub-tasks .cmp-mode, #sub-tasks .type-wrap { min-width: 0; max-width: 100%; }
-  #sub-tasks .cmp-mode { grid-column: 1; grid-row: 1; }
-  #sub-tasks .cmp-mode .type-pick { min-height: 44px; max-width: 100%; padding-inline: 10px; font-size: 13px; }
-  #sub-tasks .tp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #sub-tasks .cmp-bar .att-strip { grid-column: 2; grid-row: 1; margin: 0; }
-  #sub-tasks .cmp-bar .att-strip > .ghost.small { min-width: 44px; min-height: 44px; padding: 8px; }
-  #sub-tasks .att-strip .ghost span { display: none; }
-  #sub-tasks .cmp-send { display: contents; }
-  #sub-tasks .cmp-send .cmp-sel { display: none; }
-  #sub-tasks #btn-create.round { grid-column: 3; grid-row: 1; width: 44px; height: 44px; }
+  :is(#sub-tasks, #rd-input-slot) .composer { margin: 0 auto; padding: 0; max-width: 680px; }
+  :is(#sub-tasks, #rd-input-slot) .hero-row { margin-bottom: 16px; text-align: left; justify-content: flex-start; align-items: flex-start; }
+  :is(#sub-tasks, #rd-input-slot) .hero { font-size: 20px; line-height: 1.5; text-align: left; text-wrap: balance; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-box { padding: 0 12px 12px; border-radius: 16px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-pills { padding: 8px 0; gap: 8px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-pills .cmp-wd { flex-basis: 100%; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-wd input { min-height: 44px; font-size: 16px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-wd .ghost.small { min-height: 44px; padding-inline: 8px; font-size: 13px; }
+  :is(#sub-tasks, #rd-input-slot) #row-git { max-width: 100%; }
+  :is(#sub-tasks, #rd-input-slot) #f-git-rev { font-size: 16px; min-height: 44px; max-width: 100%; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-box textarea { min-height: 132px; font-size: 16px; line-height: 1.65; padding: 12px 0; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; gap: 8px; padding-top: 8px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode, :is(#sub-tasks, #rd-input-slot) .type-wrap { min-width: 0; max-width: 100%; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode { grid-column: 1; grid-row: 1; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick { min-height: 44px; max-width: 100%; padding-inline: 10px; font-size: 13px; }
+  :is(#sub-tasks, #rd-input-slot) .tp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip { grid-column: 2; grid-row: 1; margin: 0; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip > .ghost.small { min-width: 44px; min-height: 44px; padding: 8px; }
+  :is(#sub-tasks, #rd-input-slot) .att-strip .ghost span { display: none; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-send { display: contents; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-send .cmp-sel { display: none; }
+  :is(#sub-tasks, #rd-input-slot) #btn-create.round { grid-column: 3; grid-row: 1; width: 44px; height: 44px; }
   #create-msg { grid-column: 1 / -1; grid-row: 2; overflow-wrap: anywhere; }
   #create-msg:empty { display: none; }
-  #sub-tasks .cmp-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
-  #sub-tasks .cmp-quick > button { min-height: 44px; padding: 8px; justify-content: flex-start; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; background: var(--panel); }
-  #sub-tasks #f-advanced { margin-top: 16px; }
-  #sub-tasks #f-advanced > summary { min-height: 44px; display: flex; align-items: center; justify-content: center; }
-  #sub-tasks .adv-body input, #sub-tasks .adv-body select, #sub-tasks .adv-body textarea { font-size: 16px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-quick > button { min-height: 44px; padding: 8px; justify-content: flex-start; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; background: var(--panel); }
+  :is(#sub-tasks, #rd-input-slot) #f-advanced { margin-top: 16px; }
+  :is(#sub-tasks, #rd-input-slot) #f-advanced > summary { min-height: 44px; display: flex; align-items: center; justify-content: center; }
+  :is(#sub-tasks, #rd-input-slot) .adv-body input, :is(#sub-tasks, #rd-input-slot) .adv-body select, :is(#sub-tasks, #rd-input-slot) .adv-body textarea { font-size: 16px; }
   #sub-tasks.mobile-has-workspaces:not(.mobile-composing) > .composer { display: none; }
   #sub-tasks.mobile-has-workspaces:not(.mobile-composing) > .mobile-workspaces { display: block; }
   #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 0 0 12px; padding: 8px 0; border: 0; }
@@ -9064,7 +9064,7 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   outline: none;
   box-shadow: none;
 }
-#sub-tasks .cmp-box .cmp-wd input:focus { border-color: transparent; }
+:is(#sub-tasks, #rd-input-slot) .cmp-box .cmp-wd input:focus { border-color: transparent; }
 
 /* Keep keyboard focus functional without adding the app-wide blue selection frame. */
 :focus-visible { outline: none !important; }
@@ -9253,7 +9253,7 @@ html[data-theme="dark"] .panel {
     padding-top: max(6px, env(safe-area-inset-top));
     padding-bottom: 6px;
   }
-  #sub-tasks .cmp-box textarea { min-height: 116px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-box textarea { min-height: 116px; }
 
   /* 工作区/任务列表：紧凑行（摘要 92→64、任务行 72→58），字号向 14.5/11.5 收一档 */
   .mobile-workspaces-head { margin-bottom: 14px; }
@@ -9306,14 +9306,14 @@ html[data-theme="dark"] .panel {
         类型名（只剩「直…」），钳宽+省略号+44px 触达对齐；
      3) 成本预估两行居中像贴错位置的告示，改左对齐贴正文；
      4) 快捷类型从两列网格改自然 pill 流式，单枚不再横占半屏。 */
-  #sub-tasks .hero-sub { max-width: 640px; margin: 0 0 18px; text-align: left; }
-  #sub-tasks .cmp-mode { gap: 6px; }
-  #sub-tasks .cmp-mode .type-pick { flex: 0 1 auto; }
-  #sub-tasks .cmp-mode .expert-pick {
+  :is(#sub-tasks, #rd-input-slot) .hero-sub { max-width: 640px; margin: 0 0 18px; text-align: left; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode { gap: 6px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick { flex: 0 1 auto; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-mode .expert-pick {
     flex: 0 1 auto; width: auto; min-width: 96px; max-width: 112px;
     min-height: 44px; padding-right: 24px; font-size: 13px; text-overflow: ellipsis;
   }
-  #sub-tasks .cmp-estimate { text-align: left; margin: 8px 2px 0; font-size: 12px; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-estimate { text-align: left; margin: 8px 2px 0; font-size: 12px; }
 }
 
 /* Desktop composer width: the main canvas has enough room for a readable
@@ -9321,11 +9321,11 @@ html[data-theme="dark"] .panel {
    wide screens. Keep the width fluid beside the side rail and cap it at a
    comfortable reading width; the mobile rules above still own narrow views. */
 @media (min-width: 901px) {
-  #sub-tasks .composer {
+  :is(#sub-tasks, #rd-input-slot) .composer {
     width: min(900px, 100%);
     max-width: 900px;
   }
-  #sub-tasks .hero-sub { max-width: 760px; }
+  :is(#sub-tasks, #rd-input-slot) .hero-sub { max-width: 760px; }
 }
 
 /* ---------------------------------------------------------- 通道体检 */
