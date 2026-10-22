@@ -283,6 +283,67 @@ def _prose_matches(path, digest):
     return digest in candidates
 
 
+def reconcile_prose(workdir):
+    """开场漂移自愈：正文摘要按磁盘稿回登记，返回本次回登记的章号列表。
+
+    章稿在验收提交后被实现端 CLI / 体例归一器直接改写 .codebee 章稿副本时，
+    状态摘要停在旧稿，同一工作目录下一轮 run 的开场漂移闸连环拒跑（2026-10-16
+    神瞳 0020 打磨案、2026-10-22 神瞳 0049 点名修订连环拒跑案）。磁盘稿是
+    事实真源：只重登记正文摘要与字数，不动细纲/事实/伏笔等取材沉淀（与
+    refresh_prose 同口径）。幂等：无漂移返回 []。空稿/缺稿不回登记，交给
+    check 的缺文件闸如实拦截。
+    """
+    root = _root(workdir)
+    state = _load(root)
+    if state is None:
+        return []
+    healed = []
+    for chapter in state.get("chapters") or []:
+        try:
+            number = int(chapter.get("chapter") or 0)
+        except (TypeError, ValueError):
+            continue
+        prose = root / _CHAPTERS / ("%04d" % number) / "prose.md"
+        if not number or not prose.is_file():
+            continue
+        if _prose_matches(prose, chapter.get("prose_digest")):
+            continue
+        try:
+            text = _norm_lf(prose.read_text(encoding="utf-8")).strip()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not text:
+            continue
+        chapter["prose_digest"] = _digest(text)
+        chapter["word_count"] = len(text)
+        chapter["committed_at"] = _now()
+        healed.append(number)
+    if healed:
+        state["state_revision"] = int(state.get("state_revision") or 0) + 1
+        state["updated_at"] = _now()
+        _save(root, state)
+    return healed
+
+
+def verify(workdir):
+    """开场校验 + 正文漂移自愈：check 不通过且含「章节正文不一致」时按磁盘稿
+    回登记后复查。返回 {ok, errors, healed}；细纲漂移/缺文件/派生文件手改等
+    其他漂移类不自愈，照实拦给调用方判失败。"""
+    result = check(workdir)
+    healed = []
+    errors = result.get("errors") or []
+    if not result.get("ok") and any(
+            str(e).startswith("章节正文不一致") for e in errors):
+        try:
+            healed = reconcile_prose(workdir)
+        except Exception:
+            healed = []
+        if healed:
+            result = check(workdir)
+    result["healed"] = healed
+    return result
+
+
 def check(workdir):
     root = _root(workdir)
     state = _load(root)

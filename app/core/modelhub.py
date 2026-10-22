@@ -2371,6 +2371,107 @@ def binding_dead_msg(cli_id):
     return msg
 
 
+def _resolve_chain_entries(chain, provs, target, allowed, down_set,
+                           admit_transient):
+    """按显式链收集可注入条目，返回 (entries, dead_reasons)。
+
+    admit_transient=False（第一遍）：健康 down / 模型级熔断 / 评测结论作废
+    三道瞬态闸照旧拦——链上还有健康候选时绝不白试熔断中的。
+    admit_transient=True（独苗兜底）：三道闸只记死因不再拦。「只有一个 CLI、
+    只有一个模型」的用户不该被一段 5 分钟熔断窗判成绑定链全部失效、全场任务
+    不可用（2026-10-22 实案）；真死透的上游让 runner 拿真实上游错误说话，
+    误分类的健康事件则被这次真实调用当场自愈。删除/停用/无密钥/协议不符是
+    确定性死因，两遍都拦，不拿配置错误白烧上游。"""
+    entries = []
+    dead_reasons = []   # 逐条死因速记：解析为空时喂给 binding_dead_msg（0930 假死链案）
+    for item in chain:
+        model = (item.get("model") or "").strip()
+        pid = (item.get("provider_id") or "").strip()
+        if not pid:
+            if target in _LOCAL_CRED_ONLY_TARGETS:
+                continue
+            if model:
+                # 纯模型条目：零凭据注入，只传 -m 走 CLI 本机登录态。
+                # no_cred 标记供 runner 审计行/登录指引点名（Mac claude 案：
+                # 零注入死在登录闸门，起跑前无人知、死后只能靠 init JSON 反推）
+                entries.append({"model": model, "env": {}, "provider": None,
+                                "no_cred": True})
+            continue
+        prov = provs.get(pid)
+        label = (prov or {}).get("name") or pid
+        if not prov:
+            _dead(dead_reasons, "%s：供应商已删除" % label)
+            continue
+        if not prov.get("enabled", True):
+            _dead(dead_reasons, "%s：供应商已停用" % label)
+            continue
+        native_cli = _native_cli_provider(prov, target)
+        if not prov.get("api_key") and not native_cli:
+            _dead(dead_reasons, "%s：无可用密钥" % label)
+            continue
+        ep = None if native_cli else _entry_endpoint(prov, allowed)
+        if native_cli:
+            ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
+        if not ep:
+            proto = prov.get("protocol") or "auto"
+            _dead(dead_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
+                  % (label, proto if proto != "auto" else "auto 未探出可用 wire",
+                     "、".join(allowed)))
+            continue
+        effective_model = model or _usable_default_model(prov, prov.get("model"))
+        if prov.get("name") in down_set:
+            if not admit_transient:
+                _dead(dead_reasons, "%s：健康监测判定 down" % label)
+                continue  # 健康监测判定 down：跳过，省掉无效等待
+            _dead(dead_reasons, "%s：健康监测判定 down（独苗兜底放行）" % label)
+        try:
+            from . import health as _health
+            if _health.is_model_down(label, effective_model):
+                if not admit_transient:
+                    _dead(dead_reasons, "%s/%s：模型级健康熔断"
+                          % (label, effective_model))
+                    continue
+                _dead(dead_reasons, "%s/%s：模型级健康熔断（独苗兜底放行）"
+                      % (label, effective_model))
+        except Exception:
+            pass
+        if not native_cli and not _evaluation_is_usable(pid, effective_model):
+            if not admit_transient:
+                _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
+                      % label)
+                continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
+            _dead(dead_reasons, "%s：评测结论不可用（独苗兜底放行）" % label)
+        if _is_codex_target(target) and (ep[2] == "chat" or codex_wire_blocked(prov)):
+            _dead(dead_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）"
+                  % label)
+            continue  # codex 0.154+ 只讲 responses：chat-only 供应商在起跑前
+                      # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
+                      # 尝试——2026-09-17 续4 连载 c35 实测）
+        if model and not _model_bindable(prov, model):
+            _dead(dead_reasons, "%s：模型 %s 已停用/删除" % (label, model))
+            continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
+        if native_cli:
+            if not model:
+                model = _usable_default_model(prov, prov.get("model"))
+            if model and _model_bindable(prov, model):
+                entries.append({"model": model, "env": {}, "provider": prov,
+                                "provider_id": pid, "key_id": "", "no_cred": True,
+                                "native_cli": True})
+            continue
+        # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
+        # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
+        for kk in _chain_keys(prov):
+            if len(entries) >= MAX_CHAIN_ATTEMPTS:
+                break
+            entries.append(_chain_entry_env(
+                prov, model or _usable_default_model(prov, prov.get("model")),
+                target=target, endpoint=ep, key=kk["key"],
+                key_id=kk.get("id") or "", provider_id=pid))
+        if len(entries) >= MAX_CHAIN_ATTEMPTS:
+            break
+    return entries, dead_reasons
+
+
 def resolve_binding(agent_kind_or_id, difficulty="default"):
     """返回 {env:{}, model:..., model_fallbacks:[...], codex_provider:..., call_chain:[...]} 或 None。
 
@@ -2400,7 +2501,6 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     allowed = bindable_protocols(agent_kind_or_id)
 
     if chain:
-        entries = []
         # 告警模块联动：已被健康监测判定 down 的供应商直接跳过——
         # 链降级的语义就是「别把时间浪费在已知挂掉的网关上」
         # （2026-09-15 实测：qwencode 对宕机网关内部重试 40 分钟才轮到补位）。
@@ -2409,84 +2509,21 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             down_set = health.down_names()
         except Exception:
             down_set = set()
-        dead_reasons = []   # 逐条死因速记：解析为空时喂给 binding_dead_msg（0930 假死链案）
-        for item in chain:
-            model = (item.get("model") or "").strip()
-            pid = (item.get("provider_id") or "").strip()
-            if not pid:
-                if agent_kind_or_id in _LOCAL_CRED_ONLY_TARGETS:
-                    continue
-                if model:
-                    # 纯模型条目：零凭据注入，只传 -m 走 CLI 本机登录态。
-                    # no_cred 标记供 runner 审计行/登录指引点名（Mac claude 案：
-                    # 零注入死在登录闸门，起跑前无人知、死后只能靠 init JSON 反推）
-                    entries.append({"model": model, "env": {}, "provider": None,
-                                    "no_cred": True})
-                continue
-            prov = provs.get(pid)
-            label = (prov or {}).get("name") or pid
-            if not prov:
-                _dead(dead_reasons, "%s：供应商已删除" % label)
-                continue
-            if not prov.get("enabled", True):
-                _dead(dead_reasons, "%s：供应商已停用" % label)
-                continue
-            native_cli = _native_cli_provider(prov, agent_kind_or_id)
-            if not prov.get("api_key") and not native_cli:
-                _dead(dead_reasons, "%s：无可用密钥" % label)
-                continue
-            ep = None if native_cli else _entry_endpoint(prov, allowed)
-            if native_cli:
-                ep = ("openai", prov.get("base_url") or "https://opencode.ai", "responses")
-            if not ep:
-                proto = prov.get("protocol") or "auto"
-                _dead(dead_reasons, "%s：协议不匹配（%s，该 CLI 仅接受 %s）"
-                      % (label, proto if proto != "auto" else "auto 未探出可用 wire",
-                         "、".join(allowed)))
-                continue
-            effective_model = model or _usable_default_model(prov, prov.get("model"))
-            if prov.get("name") in down_set:
-                _dead(dead_reasons, "%s：健康监测判定 down" % label)
-                continue  # 健康监测判定 down：跳过，省掉无效等待
-            try:
-                from . import health as _health
-                if _health.is_model_down(label, effective_model):
-                    _dead(dead_reasons, "%s/%s：模型级健康熔断" % (label, effective_model))
-                    continue
-            except Exception:
-                pass
-            if not native_cli and not _evaluation_is_usable(pid, effective_model):
-                _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
-                      % label)
-                continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
-            if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
-                _dead(dead_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）"
-                      % label)
-                continue  # codex 0.154+ 只讲 responses wire：chat-only 供应商在起跑前
-                          # 就剔除（此前撞了才冷却 30 分钟，每轮白烧一次注定失败的
-                          # 尝试——2026-09-17 续4 连载 c35 实测）
-            if model and not _model_bindable(prov, model):
-                _dead(dead_reasons, "%s：模型 %s 已停用/删除" % (label, model))
-                continue  # 模型被停用/删除：该条跳过（2026-09-15 告警弹框「禁用该模型」）
-            if native_cli:
-                if not model:
-                    model = _usable_default_model(prov, prov.get("model"))
-                if model and _model_bindable(prov, model):
-                    entries.append({"model": model, "env": {}, "provider": prov,
-                                    "provider_id": pid, "key_id": "", "no_cred": True,
-                                    "native_cli": True})
-                continue
-            # 多 KEY：同一厂商按 KEY 展开成多条，顺序即调用顺序。欠费的 KEY 被
-            # 冷却跳过（切备用），全冷却时仍留一条顶上——降级复用既有尝试循环。
-            for kk in _chain_keys(prov):
-                if len(entries) >= MAX_CHAIN_ATTEMPTS:
-                    break
-                entries.append(_chain_entry_env(
-                    prov, model or _usable_default_model(prov, prov.get("model")),
-                    target=agent_kind_or_id, endpoint=ep, key=kk["key"],
-                    key_id=kk.get("id") or "", provider_id=pid))
-            if len(entries) >= MAX_CHAIN_ATTEMPTS:
-                break
+        entries, dead_reasons = _resolve_chain_entries(
+            chain, provs, agent_kind_or_id, allowed, down_set,
+            admit_transient=False)
+        last_resort = False
+        if not entries:
+            # 独苗兜底：全场只剩瞬态死因（熔断/评测作废）时按原链先试，
+            # 不让健康态单方面判死「只有一个 CLI、一个模型」的配置形态。
+            entries, transient_reasons = _resolve_chain_entries(
+                chain, provs, agent_kind_or_id, allowed, down_set,
+                admit_transient=True)
+            if entries:
+                last_resort = True
+                for e in entries:
+                    e["last_resort"] = True
+                dead_reasons = transient_reasons
         if not entries:
             _note_dead_reasons(agent_kind_or_id, dead_reasons)
             return None
@@ -2511,6 +2548,8 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                "call_chain": [dict(e) for e in entries]}
         if head.get("codex_provider"):
             out["codex_provider"] = head["codex_provider"]
+        if last_resort:
+            out["last_resort"] = True
         return out
 
     # 无显式链：难度映射 / 供应商默认 / 启用模型优先级（原语义）
@@ -2522,6 +2561,7 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         return None
     prov = provs.get(pid)
     single_reasons = []
+    last_resort = False   # 独苗兜底标记：瞬态闸（熔断/评测作废）放行时置位
     label = (prov or {}).get("name") or pid
     if not prov:
         _dead(single_reasons, "%s：供应商已删除" % label)
@@ -2547,9 +2587,11 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         _note_dead_reasons(agent_kind_or_id, single_reasons)
         return None  # google 只登记；dsh 只接受 OpenAI 兼容端点；未适配的不硬塞
     if not native_cli and not _evaluation_is_usable(pid):
-        _dead(single_reasons, "%s：评测结论不可用（健康事件作废或探针失败）" % label)
-        _note_dead_reasons(agent_kind_or_id, single_reasons)
-        return None
+        # 独苗兜底（2026-10-22）：这是用户显式指定的唯一供应商——评测结论
+        # 被健康事件作废时判死整个绑定，等于一次误分类就全场不可用。降级为
+        # 记死因照跑：成败由这次真实调用自己说话，成功即翻绿自愈。
+        _dead(single_reasons, "%s：评测结论不可用（独苗兜底放行）" % label)
+        last_resort = True
     if _is_codex_target(agent_kind_or_id) and (ep[2] == "chat" or codex_wire_blocked(prov)):
         _dead(single_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）" % label)
         _note_dead_reasons(agent_kind_or_id, single_reasons)
@@ -2566,19 +2608,30 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     try:
         from . import health as _health
         if _health.is_model_down(label, model):
-            _dead(single_reasons, "%s/%s：模型级健康熔断" % (label, model))
-            _note_dead_reasons(agent_kind_or_id, single_reasons)
-            return None
+            # 独苗兜底：首选模型熔断中时先换同供应商的健康模型顶上；启用
+            # 名单全在熔断里才拿熔断中的首选硬试——比判死整条绑定好。
+            alt = next((n for n in names
+                        if n != model and not _health.is_model_down(label, n)),
+                       None)
+            if alt:
+                _dead(single_reasons, "%s/%s：模型级健康熔断，换 %s 顶上"
+                      % (label, model, alt))
+                model = alt
+            else:
+                _dead(single_reasons, "%s/%s：模型级健康熔断（独苗兜底放行）"
+                      % (label, model))
+                last_resort = True
     except Exception:
         pass
     if not native_cli and not _evaluation_is_usable(pid, model):
         # 2026-10-16 起草全灭案：这里是 legacy 分支最后一个静默 None——供应商
         # 本体全绿、只挂在这颗模型的评测结论（健康事件作废/探针失败）上时，
-        # 文案只剩泛泛的「绑定链全部失效」而没有死因段，用户无从对账
-        _dead(single_reasons, "%s：模型 %s 评测结论不可用（健康事件作废或探针失败）"
+        # 文案只剩泛泛的「绑定链全部失效」而没有死因段，用户无从对账。
+        # 独苗兜底（2026-10-22）：显式绑定的唯一供应商不因评测作废判死，记
+        # 死因照跑，成败由真实调用说话。
+        _dead(single_reasons, "%s：模型 %s 评测结论不可用（独苗兜底放行）"
               % (label, model or "默认"))
-        _note_dead_reasons(agent_kind_or_id, single_reasons)
-        return None
+        last_resort = True
     if native_cli:
         model = _usable_default_model(prov, model or prov.get("model"))
         if not model or not _model_bindable(prov, model):
@@ -2586,8 +2639,12 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
         entry = {"model": model, "env": {}, "provider": prov,
                  "provider_id": pid, "key_id": "", "no_cred": True,
                  "native_cli": True}
-        return {"model": model, "env": {}, "provider": prov,
-                "model_fallbacks": [], "call_chain": [entry]}
+        out = {"model": model, "env": {}, "provider": prov,
+               "model_fallbacks": [], "call_chain": [entry]}
+        if last_resort:
+            entry["last_resort"] = True
+            out["last_resort"] = True
+        return out
     # model 可为空：仅注入供应商凭据，不指定模型（用网关默认）
     fallbacks = [n for n in names if n != model][:MAX_BIND_MODELS - 1]
     # 多 KEY：主模型先按 KEY 逐把试（欠费自动切备用），再降级到别的模型
@@ -2610,6 +2667,10 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
            "call_chain": [dict(e) for e in entries]}
     if head.get("codex_provider"):
         out["codex_provider"] = head["codex_provider"]
+    if last_resort:
+        for e in out["call_chain"]:
+            e["last_resort"] = True
+        out["last_resort"] = True
     return out
 
 

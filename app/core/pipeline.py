@@ -3094,12 +3094,22 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         if tracking_state is None:
             story_tracking.init(workdir, task.get("id"), task.get("title"),
                                 premise=task.get("goal") or "")
-        tracking_check = story_tracking.check(workdir)
+        # verify = check + 正文漂移自愈：章稿在验收后被 CLI/归一器改写而状态
+        # 摘要停在旧稿时按磁盘稿回登记（磁盘是真源），不再连环拒跑整个工作
+        # 目录（2026-10-22 神瞳 0049 实案：点名修订改稿不回登记，两任务全灭）。
+        tracking_check = story_tracking.verify(workdir)
     except Exception as exc:
         store.update_run(run_id, expected_status="running", status="failed",
                          error="故事追踪状态不可用，请先修复：%s" % str(exc)[:500],
                          ended_at=_now())
         return
+    if tracking_check.get("healed"):
+        try:
+            store.update_run(run_id, story_tracking_warning=(
+                "开场漂移自愈：第 %s 章正文摘要按磁盘稿回登记"
+                % "、".join("%04d" % n for n in tracking_check["healed"][:20])))
+        except Exception:
+            pass
     if not tracking_check.get("ok"):
         store.update_run(run_id, expected_status="running", status="failed",
                          error="故事追踪状态存在漂移，请先修复：%s" %
