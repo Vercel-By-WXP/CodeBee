@@ -416,7 +416,9 @@ def _agent_request(message, *, connection, session_id, workdir, configured_root,
                     checkpoint_run_id=command_context.get("run_id", ""))
                 terminal["done"].set()
 
-            threading.Thread(target=_run_terminal, name="acp-terminal", daemon=True).start()
+            terminal["thread"] = threading.Thread(
+                target=_run_terminal, name="acp-terminal", daemon=True)
+            terminal["thread"].start()
             result = {"terminalId": terminal_id}
         elif method == "terminal/output":
             terminal = terminals.get(str(params.get("terminalId") or ""))
@@ -476,6 +478,24 @@ def _agent_request(message, *, connection, session_id, workdir, configured_root,
                 "error": {"code": -32000, "message": str(exc)[:500]}}
 
 
+def _stop_pending_terminals(terminals, budget=2.0):
+    """收取 run_agent 结束时仍在运行的终端命令。
+
+    先统一置 cancel（`_exec_tool` 会在下一个检查点收手并自行 kill 子进程树），
+    再用同一个 2 秒预算 join——逐条各等到期会把收尾拖成「命令数 × 2 秒」。
+    返回仍未结束的终端 id：调用方据此知道哪些命令只能等它自己的 deadline。
+    """
+    pending = [(tid, t) for tid, t in terminals.items() if not t["done"].is_set()]
+    for _, terminal in pending:
+        terminal["cancel"].set()
+    stop_by = time.monotonic() + budget
+    for _, terminal in pending:
+        thread = terminal.get("thread")
+        if thread is not None:
+            thread.join(max(0.0, stop_by - time.monotonic()))
+    return [tid for tid, terminal in pending if not terminal["done"].is_set()]
+
+
 def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
               cancel_event=None, deadline=None, command_context=None,
               checkpoint_run_id="", resume=None):
@@ -484,6 +504,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
     process = None
     connection = None
     acp_events = []
+    # 终端命令登记表：run_agent 收尾时必须连它一起收（见 finally）。放在 try 之前，
+    # 保证即使在建连阶段就抛错，finally 也能安全遍历。
+    terminals = {}
     command_context = dict(command_context or {})
     try:
         profile = _profile_runtime(agent)
@@ -507,7 +530,6 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
         if absolute_deadline is None:
             absolute_deadline = started + max(1.0, float(timeout or 1200))
         text_parts = []
-        terminals = {}
         session_id = str(resume or "")
 
         def on_message(message):
@@ -601,6 +623,11 @@ def run_agent(agent, prompt, workdir=None, readonly=True, timeout=1200,
                         "acp_events": _coalesce_compaction_events(acp_events)},
                 "kind": "acp", "model": None, "attempts": []}
     finally:
+        # 终端命令必须随会话一起收：ACP agent 完全可以在 `terminal/create` 之后
+        # 先结束会话，run 被标记完成、用户开始下一个任务，而那条长命令仍在同一个
+        # 工作目录里写文件，把新任务的改动踩掉。release/kill 只覆盖 agent 主动
+        # 调用的情况，收尾路径此前只关连接。
+        _stop_pending_terminals(terminals)
         if connection is not None:
             connection.close()
         elif process is not None:
