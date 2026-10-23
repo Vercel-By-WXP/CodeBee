@@ -8335,7 +8335,8 @@ function bmStatusChip(st) {
  * 投稿的任务，2026-10-21 实案）同样展示，否则任务详情里找不到作品信息页签。 */
 function bmNeedsPanel(task) {
   const t = task || {};
-  return !!(t.serial || t.type === "serial_novel");
+  // short_story（2026-10-23）：短篇发布/存草稿入口也挂在这块面板
+  return !!(t.serial || t.type === "serial_novel" || t.type === "short_story");
 }
 
 /* 连载链根任务：沿 serial.continues 上溯（环/断链停在当前）。状态里找不到
