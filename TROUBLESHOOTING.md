@@ -56,6 +56,24 @@ TUTTI_PYTHON=python3 codebee
 2. 刚装完 CLI 要重启服务或在探测页点重新检测 —— 进程启动时读的是当时的 PATH。
 3. 确认 CLI 自己能跑：`<cli> --version` 有输出，再谈 CodeBee 能不能编排它。
 
+### 面板里只出现几个 CLI，其余十几个根本不显示
+
+已知缺口，不是你没装。界面探测走 `/api/cli-discovery` 且请求体是空对象，服务端此时用的是
+`DEFAULT_CLIS`（5 条旧条目：`codex`、`claude`、`qwen`、`aider`、`opencode`），并非 catalog 的
+19 条。所以面板**最多显示 5 条**，其余 14 条既不显示「可用」也不显示「未检测到」——是没被探测。
+
+这 5 条的名字也跟 catalog ID 不同（`codex` 对 `codex-cli`），不要拿面板里的名字去对文档表格。
+
+要看到全集，用验收脚本显式按目录探测：
+
+```bash
+python scripts/cli_compat_record.py --cli codex-cli --self-check
+```
+
+它会把 catalog 全集的探测结果打印出来（本机实测 15 个可用）。为什么不直接改默认集：串行探测
+5 条要 `8.8s`，19 条要 `48.4s`，而前端该请求超时 `20s` —— 直接换会让面板转圈到超时，得先
+并行化。详见 `CLI_COMPATIBILITY.md`。
+
 ## 3. 检测到了，但显示「探测异常」
 
 **含义**：可执行文件在 PATH 里，但版本命令本身失败了。

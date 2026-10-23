@@ -41,7 +41,17 @@ README 中的 CLI 接入表反映 `app/core/catalog.py` 声明的调用入口。
 Windows 11 `10.0.26200` AMD64、Python `3.13.14`、Node `22.22.2`。
 
 **探测方式**：进程内调用 `cli_discovery.discover(specs=...)`，spec 由 `catalog.DEFAULT_CATALOG`
-的 19 条生成，与 `/api/cli-discovery` 使用同一代码路径与同一份探测函数；**未通过 UI 操作**。
+的 19 条生成；**未通过 UI 操作**。
+
+与 `/api/cli-discovery` 的关系需要说准：**探测函数是同一个**（`cli_discovery.probe`），但
+**默认探测集不是同一份**。接口在请求体不带 `specs` 时用 `DEFAULT_CLIS`（5 条旧条目：
+`codex`/`claude`/`qwen`/`aider`/`opencode`），与 catalog ID（`codex-cli` 等）不同名；UI 面板
+发的正是空对象 `{}`（`app/ui/app.js:2047`）。所以**界面最多只能显示 19 条里的 5 条**，其余 14
+条既不显示「未安装」也不显示「可用」——是没被探测。本表上 19 行结果是显式传目录得到的。
+
+同一次测量：默认 5 条串行探测 `8.8s`，目录 19 条串行 `48.4s`，前端该请求超时 `20s`。因此
+「把默认集直接换成目录全集」会让面板超时，不能作为一行修复；先要并行化探测或分批返回。
+**这是已确认的呈现缺口，未修**。
 
 **覆盖范围**：仅「安装与版本识别」。真实任务调用、超时/失败退出、会话恢复三项本次**全部未测**，
 不得据本表推断通过。本表也不是发布验收记录 —— 发布验收须按上节模板另记。
@@ -75,6 +85,49 @@ Windows 11 `10.0.26200` AMD64、Python `3.13.14`、Node `22.22.2`。
 `version=""` + `error="版本识别失败：CLI 启动即报错（<末行原因>）"`，`available` 仍保留，
 用于区分「没装」与「装了但跑不起来」。回归见 `tests/test_cli_probe_version_sanitize.py`。
 
-下一步按上节模板补「任务调用 / 超时退出 / 会话恢复」三层：优先 codex-cli、claude-code、
-opencode 三个入口各跑 1 个真实任务。
+### 2026-10-23 · CodeBee 进程层：超时与失败退出（**不是** CLI 兼容性证据）
+
+「超时/失败退出」一列此前在整个仓库里没有一条真实证据：所有 `timed_out=True` 的断言都来自
+假结果，没有任何测试证明超时之后进程真的没了。2026-10-13 的 18 个 `opencode --version`
+僵尸堆积正是这种盲区的产物（单测全绿，机器上进程在涨）。
+
+`tests/test_runner_timeout_kill.py` 用**真实子进程**（不打桩 CodeBee）验证了 5 项：
+
+| 验证点 | 结果 | 依据 |
+| --- | --- | --- |
+| 超时标记 `timed_out`、不误记 `cancelled`、被杀进程不报退出码 0 | 通过 | 桩进程睡 120s，`timeout=2.0` |
+| 超时后**根进程与孙进程都真死** | 通过 | 桩进程再生一个睡 120s 的孙进程，按 pid 轮询 5s 确认消失，且无 `quiescence_unknown` |
+| 超时前已产生的输出被保留 | 通过 | `stdout` 含桩进程启动时打印的 `SELF=<pid>` |
+| 停滞看门狗先于基础超时触发 | 通过 | `timeout=300` + `stall_timeout=1.5` → `stalled=True`，实际秒级返回 |
+| 正常退出不被误判超时 / 缺可执行文件归启动失败 | 通过 | 反向用例，防止重试策略被误触 |
+
+**边界**：以上只证明 CodeBee 的进程层能杀树、能区分超时与启动失败。它**不能**替代任何真实
+CLI 的超时退出验收——真实 CLI 在超时时是否留下子进程、是否吐出可诊断的最后一行，仍属未测。
+
+### 验收工具：`scripts/cli_compat_record.py`
+
+补「任务调用」这一层需要一个可复现、不碰生产服务的入口，因此新增该脚本：
+
+```bash
+python scripts/cli_compat_record.py --cli codex-cli --self-check   # 只验链路，不建任务、不耗额度
+python scripts/cli_compat_record.py --cli codex-cli                # 跑 1 个真实任务并产出记录
+```
+
+脚本内置的约束（`tests/test_cli_compat_record.py` 13 项锁住）：
+
+- 临时 `TUTTI_DATA` + 空闲端口，**不碰 8765**；工作目录与数据跑完即删。
+- 显式按 `catalog.DEFAULT_CATALOG` 传 `specs`，不依赖服务端默认集（否则 14 条 CLI 探不到）。
+- 命中判定看 `run.steps[].agent`：目标 CLI 没真的被执行，就记「未命中目标 CLI / 任务调用未测」，
+  不允许把「跑过一次任务」写成「该 CLI 通过」。
+- 输出前统一脱敏（用户目录、`sk-*`/`gh*_`/Bearer/`api_key=`），`model_auth` 无证据就写「未记录」。
+- 超时未到终态时记「未测」并请求取消，不推断为失败或通过。
+
+**自检实测**（`--self-check`，本机，2026-10-23）：隔离实例正常启动、按目录探到 15 个可用 CLI、
+编排开关全部设置成功（`pin_failed` 为空），未建任务。**任务调用、超时退出、会话恢复仍未测**。
+
+### 尚未覆盖
+
+按上节模板补「任务调用 / 超时退出 / 会话恢复」三层：优先 codex-cli、claude-code、opencode
+三个入口各跑 1 个真实任务，且**必须**产出 `run.steps[].agent` 含目标 CLI 的证据。这一步会消耗
+订阅额度并依赖本机登录态，需操作者确认后执行。
 
