@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shlex
 import subprocess
 import tempfile
 import threading
@@ -401,23 +402,16 @@ def _agent_request(message, *, connection, session_id, workdir, configured_root,
             if os.path.realpath(cwd) != os.path.realpath(workdir or "."):
                 raise ValueError("ACP 终端目前仅允许在任务工作目录执行")
             from .builtin_agent import _exec_tool
-            import shlex
             terminal_id = "term-" + uuid.uuid4().hex[:16]
             terminal = {"output": "", "done": threading.Event(),
                         "cancel": threading.Event(), "released": False}
             terminals[terminal_id] = terminal
 
-            def _run_terminal():
-                rendered = shlex.join([command] + args)
-                terminal["output"] = _exec_tool(
-                    workdir, "run_command", {"command": rendered},
-                    cancel_event=terminal["cancel"], deadline=deadline,
-                    disabled_tools=sandbox.get("disabled_tools"), sandbox=sandbox,
-                    checkpoint_run_id=command_context.get("run_id", ""))
-                terminal["done"].set()
-
             terminal["thread"] = threading.Thread(
-                target=_run_terminal, name="acp-terminal", daemon=True)
+                target=_run_terminal_command,
+                args=(terminal, workdir, command, args, deadline, sandbox, command_context),
+                kwargs={"exec_tool": _exec_tool},
+                name="acp-terminal", daemon=True)
             terminal["thread"].start()
             result = {"terminalId": terminal_id}
         elif method == "terminal/output":
@@ -476,6 +470,31 @@ def _agent_request(message, *, connection, session_id, workdir, configured_root,
     except Exception as exc:
         return {"jsonrpc": "2.0", "id": request_id,
                 "error": {"code": -32000, "message": str(exc)[:500]}}
+
+
+def _run_terminal_command(terminal, workdir, command, args, deadline, sandbox,
+                          command_context, exec_tool=None):
+    """跑一条 ACP 终端命令，结果写回 ``terminal``。
+
+    ``terminal["done"]`` 必须无条件置位：``terminal/wait_for_exit`` 以它为唯一
+    出口（另一条路只有 cancel/deadline），漏一次就让 agent 空转到任务 deadline，
+    期间 ``_stop_pending_terminals`` 也一直把它算作未收手的命令。所以异常也要
+    捕、也要置位——异常文本写进 output，agent 至少能看到「命令炸了」而不是
+    「命令一直没输出」。
+    """
+    rendered = shlex.join([command] + list(args))
+    try:
+        if exec_tool is None:
+            from .builtin_agent import _exec_tool as exec_tool
+        terminal["output"] = exec_tool(
+            workdir, "run_command", {"command": rendered},
+            cancel_event=terminal["cancel"], deadline=deadline,
+            disabled_tools=sandbox.get("disabled_tools"), sandbox=sandbox,
+            checkpoint_run_id=command_context.get("run_id", ""))
+    except Exception as exc:  # noqa: BLE001 — 终端线程不许静默死掉
+        terminal["output"] = "（终端命令执行异常：%s）" % str(exc)[:300]
+    finally:
+        terminal["done"].set()
 
 
 def _stop_pending_terminals(terminals, budget=2.0):

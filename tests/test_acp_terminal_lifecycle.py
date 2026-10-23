@@ -13,7 +13,7 @@ import time
 import unittest
 from pathlib import Path
 
-from app.core.acp_client import _stop_pending_terminals
+from app.core.acp_client import _run_terminal_command, _stop_pending_terminals
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,6 +73,43 @@ class StopPendingTerminalsTest(unittest.TestCase):
         source = (ROOT / "app" / "core" / "acp_client.py").read_text(encoding="utf-8")
         finally_block = source[source.rindex("    finally:"):]
         self.assertIn("_stop_pending_terminals(terminals)", finally_block)
+
+
+class RunTerminalCommandTest(unittest.TestCase):
+    """done 是 wait_for_exit 的唯一正常出口，任何路径都必须置位。"""
+
+    def setUp(self):
+        self.terminal = {"output": "", "done": threading.Event(),
+                         "cancel": threading.Event(), "released": False}
+
+    def _run(self, exec_tool):
+        _run_terminal_command(self.terminal, "/tmp", "echo", ["hi"], None,
+                              {"disabled_tools": []}, {}, exec_tool=exec_tool)
+        return self.terminal
+
+    def test_success_writes_output_and_sets_done(self):
+        seen = {}
+
+        def fake(workdir, name, args, **kwargs):
+            seen.update({"workdir": workdir, "name": name, "args": args,
+                         "cancel": kwargs.get("cancel_event")})
+            return "hi\n退出码: 0"
+
+        terminal = self._run(fake)
+        self.assertEqual(terminal["output"], "hi\n退出码: 0")
+        self.assertTrue(terminal["done"].is_set())
+        self.assertEqual(seen["name"], "run_command")
+        self.assertEqual(seen["args"], {"command": "echo hi"})
+        self.assertIs(seen["cancel"], terminal["cancel"], "取消事件必须透传给执行层")
+
+    def test_exception_still_sets_done_and_reports(self):
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("沙箱拒绝：命令超出允许范围")
+
+        terminal = self._run(boom)
+        self.assertTrue(terminal["done"].is_set(),
+                        "执行抛异常也必须置 done，否则 wait_for_exit 空转到 deadline")
+        self.assertIn("沙箱拒绝", terminal["output"])
 
 
 if __name__ == "__main__":
