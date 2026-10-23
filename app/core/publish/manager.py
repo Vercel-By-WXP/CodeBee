@@ -449,21 +449,20 @@ def _story_body_with_sections(body):
     lines = body.splitlines()
     total = sum(len(ln) for ln in lines)
     n = max(2, min(len(nums), -(-total // 1500)))
-    nonempty = [i for i, ln in enumerate(lines) if ln.strip()]
-    if len(nonempty) < n * 2:
+    if len(lines) < n:
         lines.append(nums[1])
         return nums[0] + "\n" + "\n".join(lines)
-    per = len(nonempty) / float(n)
+    # 按累计字数在段首插标记。旧实现只在空行处下标记——短篇正文段落之间
+    # 没有空行时（写作链实际产出），二三四全被追加到文末，等于只有第一章。
     out = [nums[0]]
     placed = 1
-    for idx, ln in enumerate(lines):
-        if (not ln.strip()) and placed < n:
-            # 空行处插下一段标记（贴着非空段更自然）
-            if len([i for i in nonempty if i <= idx]) >= per * placed:
-                out.append(nums[placed])
-                placed += 1
-                continue
+    acc = 0
+    for ln in lines:
+        if placed < n and acc >= total * placed / float(n):
+            out.append(nums[placed])
+            placed += 1
         out.append(ln)
+        acc += len(ln)
     while placed < n:
         out.append(nums[placed])
         placed += 1

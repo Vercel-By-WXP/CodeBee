@@ -133,6 +133,38 @@ class FanqieShortStoryTests(unittest.TestCase):
         self.assertEqual(fanqie.CONFIG["short_story_body_max_chars"], 50000)
 
 
+class ShortStorySectionMarkerTests(unittest.TestCase):
+    """分节标记必须落在段落边界：写作链产出的短篇正文段落间没有空行。"""
+
+    def test_markers_split_at_char_budget_without_blank_lines(self):
+        from app.core.publish import manager
+        paras = ["第%d段正文，这是一句用来凑字数的话。" % i * 3 for i in range(1, 86)]
+        body = "\n".join(paras)
+        total = sum(len(p) for p in paras)
+        out = manager._story_body_with_sections(body).splitlines()
+        self.assertEqual(out[0], "一")
+        marks = [i for i, ln in enumerate(out) if ln in "一二三四五六七八九十"]
+        self.assertEqual([out[i] for i in marks], ["一", "二", "三", "四"])
+        # 标记后紧跟段落、前后都是正文行（不是全堆在文末）
+        for i in marks:
+            self.assertTrue(i + 1 < len(out) and out[i + 1].startswith("第"))
+        # 每节字数落在七猫 500~1500 的硬校验区间
+        bounds = marks + [len(out)]
+        for a, b in zip(bounds, bounds[1:]):
+            chars = sum(len(ln) for ln in out[a + 1:b])
+            self.assertGreaterEqual(chars, 500)
+            self.assertLessEqual(chars, 1500)
+        self.assertLessEqual(len(body) + 4, len("\n".join(out)))
+
+    def test_markers_still_use_blank_lines_when_present(self):
+        from app.core.publish import manager
+        a = "甲" * 700
+        b = "乙" * 700
+        out = manager._story_body_with_sections(a + "\n\n" + b).splitlines()
+        self.assertEqual([ln for ln in out if ln and ln in "一二三"], ["一", "二"])
+        self.assertIn("", out)  # 原有空行保留
+
+
 class ShortStoryPublishGuardsTests(unittest.TestCase):
     """端到端实案回归：fresh 短篇任务曾被质量闸/番茄预检反向卡死建书。"""
 
