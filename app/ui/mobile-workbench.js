@@ -168,5 +168,6 @@
     });
     refresh();
   };
-  window.setTimeout(setup, 500);
+  if (window.__orchStateReady) setup();
+  else window.addEventListener("orch:state-ready", setup, { once: true });
 })();

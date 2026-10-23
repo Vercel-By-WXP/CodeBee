@@ -907,20 +907,23 @@ function renderTypeMenu() {
     '<span class="ti-ico" aria-hidden="true"><svg class="ico"><use href="#i-gear"></use></svg></span>' +
     '<span class="ti-body"><span class="ti-name">' + esc(t("管理任务类型…")) + "</span></span></button></div>";
   syncTypeBtn();
-  fetchFlowEstimates();   // 异步回填预估行（就地更新，不重建菜单）
 }
 
 /* 类型菜单的成本/次数预估（借鉴 omnigent，数据源 /api/usage/estimate）：
  * 拉到手后就地更新菜单项——菜单开着也不重建 DOM，不打断滚动/悬停 */
 async function fetchFlowEstimates() {
-  if (!S.flows) return;
+  if (!S.flows || S._flowEstimatesLoading || S._flowEstimatesLoaded) return;
+  S._flowEstimatesLoading = true;
   const targets = S.flows;
-  const results = await Promise.all(targets.map(async (f) => {
+  const results = [];
+  for (const f of targets) {
     try {
       const d = await api("/api/usage/estimate?type=" + encodeURIComponent(f.id) + "&days=90");
-      return [f.id, (d && d.samples > 0) ? d : null];
-    } catch (e) { return [f.id, null]; }
-  }));
+      results.push([f.id, (d && d.samples > 0) ? d : null]);
+    } catch (e) { results.push([f.id, null]); }
+  }
+  S._flowEstimatesLoading = false;
+  S._flowEstimatesLoaded = true;
   S.flowEstimates = Object.fromEntries(results.filter(([, d]) => d));
   const menu = $("type-menu");
   if (!menu) return;
@@ -954,6 +957,7 @@ function toggleTypeMenu(force) {
   if (!menu) return;
   const show = force != null ? !!force : menu.classList.contains("hidden");
   menu.classList.toggle("hidden", !show);
+  if (show) fetchFlowEstimates();
 }
 
 function pickType(id) {
@@ -2341,6 +2345,10 @@ function applyState(d) {
       incomingVersion < currentVersion) return;
   const prevState = S.state;
   S.state = d;
+  if (!window.__orchStateReady) {
+    window.__orchStateReady = true;
+    window.dispatchEvent(new Event("orch:state-ready"));
+  }
   runSettleWatch(prevState, d);
   if (d.control) setControl(d.control);
   if (d.health) renderHealthBanner(d.health);
@@ -2357,6 +2365,7 @@ function applyState(d) {
     browserRenderTaskContext();
     browserLoadPublishState(browserCurrentTask());
   }
+  scheduleStartupEnhancements();
 }
 
 /* ---------------------------------------------------------- 供应商健康告警横幅 */
@@ -3227,6 +3236,44 @@ async function refreshPollLookups(force) {
 let _pollBusy = false;
 let _sseEpoch = 0;
 let _sseRetryTimer = null;
+let _startupEnhancementsStarted = false;
+let _startupEnhancementTasks = null;
+let _startupEnhancementTimer = null;
+let _startupEnhancementRunning = false;
+
+// Wait for the first usable state snapshot before consuming the browser's
+// small per-origin connection pool with secondary startup data. Loading these
+// one at a time is especially important for phone relays and HTTP/1.1 clients.
+function scheduleStartupEnhancements() {
+  if (!S.state || document.hidden || _startupEnhancementTimer || _startupEnhancementRunning) return;
+  if (!_startupEnhancementTasks) {
+    _startupEnhancementTasks = [
+      loadFlows,                 // task type selector
+      loadExperts,               // expert templates
+      refreshSessionAgents,      // resume-session selector
+      loadOrchestrator,          // sidebar provider indicator
+      loadSettings,              // new-task defaults
+      loadTaskTemplates,         // task templates
+      suStartupCheck,            // optional version notice
+    ];
+  }
+  if (!_startupEnhancementTasks.length) {
+    _startupEnhancementsStarted = true;
+    return;
+  }
+  const runNext = async () => {
+    _startupEnhancementTimer = null;
+    if (document.hidden) return;
+    const task = _startupEnhancementTasks.shift();
+    if (!task) return;
+    _startupEnhancementRunning = true;
+    try { await task(); } catch (e) { /* optional startup data must not block the UI */ }
+    finally { _startupEnhancementRunning = false; }
+    if (_startupEnhancementTasks.length) _startupEnhancementTimer = setTimeout(runNext, 250);
+    else _startupEnhancementsStarted = true;
+  };
+  _startupEnhancementTimer = setTimeout(runNext, _startupEnhancementsStarted ? 0 : 500);
+}
 
 function scheduleSSEReconnect() {
   if (_sseRetryTimer || document.hidden || S.es) return;
@@ -3244,24 +3291,26 @@ async function poll() {
   if (_pollBusy) return;
   _pollBusy = true;
   try {
-    // 状态先独立拉取并渲染；目录/模型是低频数据，后台刷新不能挡住任务树和点击。
-    if (!document.hidden) refreshPollLookups(false);
+    // State is the only startup-critical request. Catalog/model lookups are
+    // scheduled separately after the first paint so they cannot compete with
+    // the phone relay's initial state request for its limited connections.
     // EventSource.onopen only confirms that the stream headers arrived. On a
     // phone relay the first SSE data frame can still be delayed or lost while
     // the connection stays open; keep the ordinary state request alive until
     // at least one state payload has actually been applied, otherwise the UI
     // remains stuck on "Connecting…" forever.
     if (!S.sseLive || !S.state) await refreshState();
-    else if (S._lastSseAt && Date.now() - S._lastSseAt > 60000 && !document.hidden) {
+    else if (S._lastStateSseAt && Date.now() - S._lastStateSseAt > 30000 && !document.hidden) {
       // SSE 静默看门狗：连接半死时 EventSource 不报错、sseLive 恒真、上面
       // 的拉取被跳过——侧栏会冻在几分钟前的快照，而详情卡自拉自新，两头
       // 对不上（2026-09-22 详情「完成」侧栏「在跑」实案）。60s 没有任何
-      // 推送就主动拉一次全量兜底；拉完把基准推后，别每 8s 都拉。后台页签
-      // 没人看，不烧这份流量。
-      S._lastSseAt = Date.now();
+      // 状态推送就主动拉一次全量兜底；不要把 usage 事件或连接 open 当状态
+      // 活跃。后台页签没人看，不烧这份流量。
+      S._lastStateSseAt = Date.now();
       await refreshState();
     }
     render();
+    scheduleStartupEnhancements();
   } catch (e) {
     if (!S.sseLive || !S.es) {
       $("conn").textContent = t("连接失败");
@@ -3290,8 +3339,9 @@ function startSSE() {
     const current = () => epoch === _sseEpoch && S.es === es;
     es.onopen = () => {
       if (!current()) { try { es.close(); } catch (e) {} return; }
-      S.sseLive = true;
-      S._lastSseAt = Date.now();
+      // Headers alone do not prove that the relay can deliver event frames.
+      // Keep short polling until the first actual state payload arrives.
+      S.sseLive = false;
       schedulePolling();
       poll();
     };
@@ -3304,8 +3354,14 @@ function startSSE() {
     });
     es.onmessage = (ev) => {
       if (!current()) return;
-      S._lastSseAt = Date.now();
-      try { applyState(JSON.parse(ev.data)); render(); } catch (e) { /* ignore */ }
+      try {
+        const data = JSON.parse(ev.data);
+        S.sseLive = true;
+        S._lastStateSseAt = Date.now();
+        schedulePolling();
+        applyState(data);
+        render();
+      } catch (e) { /* ignore */ }
     };
     es.onerror = () => {
       if (!current()) { try { es.close(); } catch (e) {} return; }
@@ -3343,6 +3399,7 @@ document.addEventListener("visibilitychange", () => {
     poll();
     sideUsageLoad(true);  // 隐藏期落下的记账立刻补上（SSE 断开期间收不到 usage 事件）
   }
+  if (!document.hidden) scheduleStartupEnhancements();
 });
 
 /* ---------------------------------------------------------- 多端控制权 */
@@ -23475,7 +23532,6 @@ document.addEventListener("DOMContentLoaded", () => {
   $("set-browser-notify") && $("set-browser-notify").addEventListener("change", saveBrowserNotifyPreference);
   $("set-notify-sound") && $("set-notify-sound").addEventListener("change", saveBrowserNotifyPreference);
   paintBrowserNotify();
-  loadTaskTemplates();
   $("btn-usage-refresh").addEventListener("click", loadUsage);
   const ubtn = $("btn-usage-export");
   if (ubtn) ubtn.addEventListener("click", () => {
@@ -24143,12 +24199,6 @@ document.addEventListener("DOMContentLoaded", () => {
   schedulePolling();
   startSSE();
   startCtrlHeartbeat();
-  loadFlows();   // 任务类型下拉（内置 + 自定义流程）
-  loadExperts(); // 专家模板（绑定现有流程，不改变执行链）
-  refreshSessionAgents();  // 继续会话下拉的工具集合（服务端 60s 缓存，开销小）
-  loadOrchestrator();      // 侧栏左下角的编排者供应商指示（进入编排设置页时会再拉一次）
-  loadSettings();          // 启动即拉设置：新建表单「默认选中默认路径」依赖它
-  suStartupCheck();        // 静默查一次新版本（有新版 toast 提醒，同版本只提一次）
   maybeWelcome();          // 首次启动弹欢迎引导（orch.welcomed 记账，只弹一次）
   // 工作台布局默认落在主页（showHome 内含 renderHome）
   if (currentLayout() === "workbench") showHome();
