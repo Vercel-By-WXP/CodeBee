@@ -5,6 +5,7 @@ import unittest
 
 APP_JS = Path(__file__).resolve().parents[1] / "app" / "ui" / "app.js"
 MOBILE_JS = Path(__file__).resolve().parents[1] / "app" / "ui" / "mobile-workbench.js"
+PHONE_UI = Path(__file__).resolve().parents[1] / "cloud" / "phone-relay" / "public" / "ui"
 
 
 class StartupConnectivityTests(unittest.TestCase):
@@ -23,7 +24,7 @@ class StartupConnectivityTests(unittest.TestCase):
                            "loadOrchestrator();", "loadSettings();", "suStartupCheck();"):
             self.assertNotIn(eager_call, startup_tail)
         self.assertIn("scheduleStartupEnhancements();", source)
-        self.assertIn("if (!S.state || document.hidden || _startupEnhancementTimer || _startupEnhancementRunning) return;", source)
+        self.assertIn("if (!S.state || document.hidden || _startupEnhancementTimer || _startupEnhancementActive >= 2) return;", source)
         self.assertNotIn("loadTaskTemplates();", startup_tail)
 
     def test_hidden_tab_does_not_drop_pending_startup_enhancements(self):
@@ -32,11 +33,21 @@ class StartupConnectivityTests(unittest.TestCase):
         end = source.index("function scheduleSSEReconnect()", start)
         scheduler = source[start:end]
         self.assertIn("_startupEnhancementTasks", scheduler)
-        self.assertIn("_startupEnhancementRunning", scheduler)
+        self.assertIn("_startupEnhancementActive", scheduler)
         self.assertIn("if (document.hidden) return;", scheduler)
         visibility = source[source.index('document.addEventListener("visibilitychange"'):
                             source.index("/* ---------------------------------------------------------- 多端控制权")]
         self.assertIn("scheduleStartupEnhancements();", visibility)
+
+    def test_startup_enhancements_use_bounded_parallelism_after_first_state(self):
+        source = self.source
+        start = source.index("function scheduleStartupEnhancements()")
+        end = source.index("function scheduleSSEReconnect()", start)
+        scheduler = source[start:end]
+        self.assertIn("_startupEnhancementActive >= 2", scheduler)
+        self.assertIn("Promise.resolve().then(task)", scheduler)
+        self.assertIn("if (!S.state || document.hidden", scheduler)
+        self.assertNotIn("setTimeout(runNext, 250)", scheduler)
 
     def test_type_estimates_are_loaded_on_demand_not_during_first_render(self):
         source = self.source
@@ -72,6 +83,48 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertIn("if (!S.sseLive || !S.state) await refreshState();", poll)
         self.assertIn("_lastStateSseAt", poll)
         self.assertIn("await refreshState();", poll)
+
+    def test_state_poll_shows_relay_error_details_and_allows_slow_mobile_links(self):
+        source = self.source
+        refresh = source[source.index("async function refreshState()"):
+                        source.index("let _lookupRefresh", source.index("async function refreshState()"))]
+        self.assertIn('timeout: 30000', refresh)
+        start = source.index("async function poll()")
+        end = source.index("function schedulePolling()", start)
+        poll = source[start:end]
+        self.assertIn('if (!S.state || !S.sseLive || !S.es)', poll)
+        self.assertIn('t("连接失败：") + String((e && e.message) || e).slice(0, 100)', poll)
+
+    def test_sse_degradation_does_not_hide_a_successful_state_snapshot(self):
+        source = self.source
+        start = source.index("function startSSE()")
+        end = source.index("/* 页签可见性", start)
+        sse = source[start:end]
+        error = sse[sse.index("es.onerror") :]
+        self.assertIn('if (S.state)', error)
+        self.assertIn('conn.textContent = t("已连接")', error)
+        self.assertIn('conn.className = "conn ok"', error)
+        self.assertIn('conn.title = t("实时连接受限，已用轮询兜底")', error)
+        self.assertIn('conn.textContent = t("连接失败")', error)
+
+    def test_only_explicit_desktop_token_401_opens_token_gate(self):
+        source = self.source
+        start = source.index("async function api(path, opts)")
+        end = source.index("/* 质量门禁", start)
+        api = source[start:end]
+        self.assertLess(api.index("const rawText = await res.text();"), api.index("if (res.status === 401)"))
+        self.assertIn('if (res.status === 401)', api)
+        self.assertIn('const authError = (data && data.error)', api)
+        self.assertIn('const isDesktopTokenError = /需要访问令牌|令牌(?:不正确|不匹配)|invalid or revoked token/i.test(authError)', api)
+        self.assertIn('if (isDesktopTokenError)', api)
+        self.assertNotIn('const isRelayAuthError', api)
+        self.assertIn('showTokenGate(t("令牌不正确或已更换，请重新输入"))', api)
+        self.assertIn('const failure = new Error(authError)', api)
+
+    def test_phone_edge_assets_match_the_current_mobile_workbench_sources(self):
+        for name in ("app.js", "mobile-workbench.js", "index.html"):
+            with self.subTest(asset=name):
+                self.assertEqual((APP_JS.parent / name).read_bytes(), (PHONE_UI / name).read_bytes())
 
 
 if __name__ == "__main__":

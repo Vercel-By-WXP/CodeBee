@@ -1489,7 +1489,6 @@ async function api(path, opts) {
       if (ctrl && e.name === "AbortError") throw new Error(t("请求超时，请重试或检查网络"));
       throw e;
     }
-    if (res.status === 401) { showTokenGate(t("令牌不正确或已更换，请重新输入")); throw new Error(t("需要访问令牌")); }
     // D2（三轮审查）：不再静默吞解析失败。先取原文，非 JSON 声明或空体保底 null，
     // 声明 JSON 却解析失败则在 2xx 时显式抛错，让调用方不再对 null 解构被静默吞掉。
     let data = null;
@@ -1509,6 +1508,22 @@ async function api(path, opts) {
           // 非 2xx 且体非 JSON（隧道/反代 502 HTML 页等）：保留 null，下方用状态码兜底
         }
       }
+    }
+    if (res.status === 401) {
+      const authError = (data && data.error) || (res.statusText ? (res.status + " " + res.statusText) : "HTTP 401");
+      // The phone relay also uses 401 for an expired/unpaired phone session.
+      // Only explicit local access-token failures should open the desktop token
+      // gate. Do not infer that every unknown 401 means the desktop token is bad:
+      // relay wording can vary by pairing, expiry, or future edge responses.
+      const isDesktopTokenError = /需要访问令牌|令牌(?:不正确|不匹配)|invalid or revoked token/i.test(authError);
+      if (isDesktopTokenError) {
+        showTokenGate(t("令牌不正确或已更换，请重新输入"));
+        throw new Error(t("需要访问令牌"));
+      }
+      const failure = new Error(authError);
+      failure.status = res.status;
+      failure.data = data;
+      throw failure;
     }
     if (res.status === 423 && data && data.control) {
       setControl(data.control);
@@ -2352,8 +2367,14 @@ function applyState(d) {
   runSettleWatch(prevState, d);
   if (d.control) setControl(d.control);
   if (d.health) renderHealthBanner(d.health);
-  $("conn").textContent = t("已连接");
-  $("conn").className = "conn ok";
+  const conn = $("conn");
+  if (conn) {
+    // A successful state snapshot proves that the API/relay path works even
+    // when the optional SSE stream later degrades on a mobile network.
+    conn.textContent = t("已连接");
+    conn.className = "conn ok";
+    conn.removeAttribute("title");
+  }
   restoreInspector();   // 刷新后恢复上次打开的检查器（只在已开时为空操作）
   restoreLastTask();    // 刷新/重开后回到最近打开的任务对话（只在首帧尝试一次）
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
@@ -3187,7 +3208,10 @@ function homeHealthRefresh() {
 }
 
 async function refreshState() {
-  applyState(await api("/api/state", { timeout: 15000, busy: false, operation: false }));
+  // The phone relay adds a second network hop and can transfer the initial
+  // snapshot over a slow mobile link. Give this critical request enough time
+  // to complete instead of cycling through false timeout failures.
+  applyState(await api("/api/state", { timeout: 30000, busy: false, operation: false }));
 }
 
 let _lookupRefresh = null;
@@ -3239,13 +3263,13 @@ let _sseRetryTimer = null;
 let _startupEnhancementsStarted = false;
 let _startupEnhancementTasks = null;
 let _startupEnhancementTimer = null;
-let _startupEnhancementRunning = false;
+let _startupEnhancementActive = 0;
 
 // Wait for the first usable state snapshot before consuming the browser's
-// small per-origin connection pool with secondary startup data. Loading these
-// one at a time is especially important for phone relays and HTTP/1.1 clients.
+// small per-origin connection pool with secondary startup data. A two-request
+// cap keeps the phone relay responsive without leaving the UI idle on latency.
 function scheduleStartupEnhancements() {
-  if (!S.state || document.hidden || _startupEnhancementTimer || _startupEnhancementRunning) return;
+  if (!S.state || document.hidden || _startupEnhancementTimer || _startupEnhancementActive >= 2) return;
   if (!_startupEnhancementTasks) {
     _startupEnhancementTasks = [
       loadFlows,                 // task type selector
@@ -3258,19 +3282,30 @@ function scheduleStartupEnhancements() {
     ];
   }
   if (!_startupEnhancementTasks.length) {
+    if (_startupEnhancementActive) return;
     _startupEnhancementsStarted = true;
     return;
   }
-  const runNext = async () => {
+  const runNext = () => {
     _startupEnhancementTimer = null;
     if (document.hidden) return;
     const task = _startupEnhancementTasks.shift();
     if (!task) return;
-    _startupEnhancementRunning = true;
-    try { await task(); } catch (e) { /* optional startup data must not block the UI */ }
-    finally { _startupEnhancementRunning = false; }
-    if (_startupEnhancementTasks.length) _startupEnhancementTimer = setTimeout(runNext, 250);
-    else _startupEnhancementsStarted = true;
+    _startupEnhancementsStarted = true;
+    _startupEnhancementActive++;
+    Promise.resolve().then(task).catch(() => {
+      /* optional startup data must not block the UI */
+    }).finally(() => {
+      _startupEnhancementActive = Math.max(0, _startupEnhancementActive - 1);
+      if (!_startupEnhancementTasks.length && !_startupEnhancementActive) {
+        _startupEnhancementsStarted = true;
+      } else {
+        scheduleStartupEnhancements();
+      }
+    });
+    // Fill the second slot immediately; waiting until this task finishes
+    // would make the nominal two-request cap behave sequentially.
+    scheduleStartupEnhancements();
   };
   _startupEnhancementTimer = setTimeout(runNext, _startupEnhancementsStarted ? 0 : 500);
 }
@@ -3312,8 +3347,10 @@ async function poll() {
     render();
     scheduleStartupEnhancements();
   } catch (e) {
-    if (!S.sseLive || !S.es) {
-      $("conn").textContent = t("连接失败");
+    if (!S.state || !S.sseLive || !S.es) {
+      // Keep the relay/API's HTTP status or message visible; the generic
+      // badge made mobile failures impossible to distinguish from offline.
+      $("conn").textContent = t("连接失败：") + String((e && e.message) || e).slice(0, 100);
       $("conn").className = "conn bad";
     }
   } finally {
@@ -3379,7 +3416,20 @@ function startSSE() {
       // D3（三轮审查）：SSE 已不可用（被限/断线）时诚实告知，并提示已用轮询兜底——
       // 之前只显示「重连中…」，用户无从判断是瞬时抖动还是被限流持续失败。
       const conn = $("conn");
-      if (conn) { conn.textContent = t("实时连接受限，已用轮询兜底"); conn.className = "conn bad"; }
+      if (conn) {
+        if (S.state) {
+          // SSE is an enhancement, not the data connection. Keep the badge
+          // green after a state snapshot and expose the degraded stream as a
+          // tooltip; the 2s polling fallback remains fully usable.
+          conn.textContent = t("已连接");
+          conn.className = "conn ok";
+          conn.title = t("实时连接受限，已用轮询兜底");
+        } else {
+          conn.textContent = t("连接失败");
+          conn.className = "conn bad";
+          conn.removeAttribute("title");
+        }
+      }
     };
   } catch (e) { /* EventSource 不可用：保持轮询 */ }
 }
