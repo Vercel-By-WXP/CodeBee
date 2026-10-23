@@ -396,10 +396,13 @@ class ManagerShortPublishRoutingTests(unittest.TestCase):
                 "task-1", plat, "C:/tmp/task-1/story.md",
                 as_draft=kwargs.get("as_draft", False), short_story=True)
 
-    def test_qimao_publish_is_refused_without_flow(self):
+    def test_qimao_publish_passes_flow_gate_too(self):
+        # 七猫 publish_short_story 流程表就位后同样放行（边界收口）；
+        # 1200 字正文低于七猫 4000 字硬下限，确认流程表放行后由长度闸拦截。
         ok, error = self._upload("qimao")
         self.assertFalse(ok)
-        self.assertIn("未配置短故事发布流程", error)
+        self.assertNotIn("未配置短故事发布流程", error)
+        self.assertIn("未达平台下限（4000 字）", error)
 
     def test_fanqie_publish_passes_flow_gate(self):
         # 过了流程表存在性检查后才读到正文；用假正文错误当路标，

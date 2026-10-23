@@ -431,6 +431,14 @@ def _flow_contract_ok(plat, action, steps):
         # row is the mandatory receipt.
         return (has("click_real", "立即发布")
                 and has("verify_chapter_status"))
+    if action == "publish_short_story":
+        # 短篇发布必须真点「立即发布」并以短故事管理页的审核状态为凭据；
+        # 只填表+存草稿不算发布（草稿流 stop 在「存为草稿」）。
+        return (has("click_real", "立即发布") and has("qimao_short_publish")
+                and any(
+                    isinstance(s, dict) and s.get("do") == "verify"
+                    and "short_book_manage" in str(s.get("url") or "")
+                    and s.get("any_of") for s in steps))
     return True
 
 

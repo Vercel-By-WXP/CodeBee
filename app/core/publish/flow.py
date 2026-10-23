@@ -20,7 +20,10 @@
                                   跳过时补一张 ready-*.png，用户在浏览器窗口里自查提交
   volume   {key, open_sel, modal_sel, item_sel, add_sel, input_sel,
             confirm_sel, settle}  发章带卷：选平台已有卷，缺则新建（自动分卷）
-  verify   {url, any, settle}     上线验证：导航后断言标记在场
+  verify   {url, any, any_of, settle}
+                                  上线验证：导航后断言 any 标记全部在场、
+                                  any_of 标记至少一个在场（状态字样会随
+                                  平台措辞变的凭据用 any_of）
   url_any  {any: [..]}            断言当前 URL 含任一标记（登录跳转检测）
   set_file {sel, key}             给隐藏的 file input 挂本地文件（封面上传）
   select_item {open_sel, item_sel, any|any_key, settle}
@@ -30,6 +33,7 @@
   dismiss_stale                   关掉番茄「有刚刚更新的草稿」恢复提示
   fanqie_short_trial              短故事试读比例：去设置→30%（未设会拦下一步）
   fanqie_short_publish            短故事发布确认链：继续发布→确定→发布成功
+  qimao_short_publish             七猫短故事确认链：声明→确认发布（真实鼠标）
 
 所有步骤都支持 if_key：values[if_key] 为空时整步跳过（可缺省的封面等）。
 """
@@ -43,6 +47,7 @@ from .browser import BrowserError
 
 from .flow_fanqie import (run_fanqie_publish, run_fanqie_short_publish,
                           run_fanqie_short_trial)
+from .flow_qimao import run_qimao_short_publish
 from .flow_helpers import (  # noqa: F401 - 旧调用面再导出
     DUP_HINT_WORDS, FlowError, TitleDupError, _checked_js, _click_match_js,
     _click_text_js, _dup_probe_js, _fail_shot, _fanqie_active_dialog,
@@ -896,6 +901,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 run_fanqie_short_trial(page, st, i, note, values)
             elif act == "fanqie_short_publish":
                 run_fanqie_short_publish(page, st, i, note, values)
+            elif act == "qimao_short_publish":
+                run_qimao_short_publish(page, st, i, note, values)
             elif act == "js_click":
                 # JS el.click()：headless/后台页签下 CDP 真实鼠标事件不触发
                 # 平台处理器（番茄编辑器实测：real mouse 点「下一步」无响应，
@@ -956,7 +963,14 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 settle = float(st.get("settle") or 4)
                 new_tab = bool(st.get("new_tab"))
                 marks = [str(m) for m in (st.get("any") or [])]
+                any_of = [str(m) for m in (st.get("any_of") or [])]
                 last_missing = ""
+
+                def _resolve(mark):
+                    for k, v in (values or {}).items():
+                        mark = mark.replace("{%s}" % k, str(v))
+                    return mark
+
                 for verify_try in range(int(st.get("tries") or 3)):
                     if new_tab:
                         vpage = page.open_new_tab(url)
@@ -968,13 +982,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     try:
                         body_txt = str(vpage.call(
                             "()=>(document.body.innerText||'')", timeout=15) or "")
-                        missing = []
-                        for m in marks:
-                            mk = m
-                            for k, v in (values or {}).items():
-                                mk = mk.replace("{%s}" % k, str(v))
-                            if mk not in body_txt:
-                                missing.append(mk)
+                        missing = [mk for mk in map(_resolve, marks)
+                                   if mk not in body_txt]
+                        if any_of and not any(mk in body_txt
+                                              for mk in map(_resolve, any_of)):
+                            missing.append("（任一）"
+                                           + "／".join(map(_resolve, any_of)))
                         if not missing:
                             note(i, "验证通过")
                             break
@@ -1019,6 +1032,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         break
                     time.sleep(0.9)
                 if not (r or {}).get("ok"):
+                    # optional：标记段落不存在（短篇分节数少于表格列出的
+                    # 标记数）时跳过——流程表按上限列标记，正文按字数实切
+                    if st.get("optional") and (r or {}).get("err") == "no-para":
+                        note(i, "无「%s」段落，跳过标题块" % text)
+                        continue
                     raise FlowError("章节标题块「%s」设置失败：%s"
                                     % (text[:30], (r or {}).get("err")
                                        if r else "无响应"))

@@ -184,6 +184,7 @@
       "publish.flow",
       "publish.flow_fanqie",
       "publish.flow_helpers",
+      "publish.flow_qimao",
       "publish.manager",
       "publish.publish_auth",
       "publish.publish_browser",

@@ -737,7 +737,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         values["short_manage_url"] = str(mod.CONFIG.get("short_manage") or "")
         if not as_draft:
             # 发布需要设置区取值：封面来自封面生成结果，分类按作品信息
-            # 语义映射到短故事主分类，AI 声明按作者口径默认「是」。
+            # 语义映射到短故事主分类，AI 声明按作者口径默认「是」；
+            # 七猫确认框的内容声明发布后不可改，默认按 AI 生成如实申报。
             meta = (store.inherited_book_meta(task, plat) or {}).get("data") or {}
             mapper = getattr(mod, "short_story_categories", None)
             values["_categories"] = (list(mapper(meta) or [])
@@ -746,6 +747,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
             values["ai_use"] = str(meta.get("ai_use") or "是")
             values["short_category"] = str(meta.get("short_category")
                                            or meta.get("category") or "")
+            values["content_declaration"] = str(
+                meta.get("content_declaration") or "含AI生成内容")
     logs = []
     pending_key = ""
     # 短故事不落 pending_uploads：恢复队列按章号对账、重启后还会按连载

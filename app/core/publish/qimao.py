@@ -215,10 +215,51 @@ CREATE_SHORT_STORY = [
     {"do": "expect_text", "any": ["创建成功", "保存成功", "发布成功"], "timeout": 15},
 ]
 
+# 短故事发布（2026-10-23 边界收口）：与小说发章同一编辑器组件，顶栏
+# 「立即发布」→ 确认弹层链由 qimao_short_publish 步推进（「确认发布」
+# 合成点击会被吞、必须真实鼠标；内容声明发布后不可改，选不上即中止；
+# 合规框/序号提示自动过）。硬凭据 = 短故事管理页书名行带审核状态
+# （verify any_of）。编辑器与选择器沿用草稿链实抓口径；确认链首跑如有
+# 出入以 fail-shot 为准校准。
+PUBLISH_SHORT_STORY = [
+    {"do": "navigate", "url": "{editor_url}"},
+    {"do": "url_any", "any": ["qimao.com"]},
+    {"do": "wait", "sel": ".q-contenteditable.book", "timeout": 20},
+    {"do": "fill", "sel": ".q-contenteditable.book.font-size-16.edit-mask",
+     "key": "chapter_body"},
+    # 「一/二…」标记行 → h3 章节标题块（发布硬校验 ≥2 章、每章 500~1500 字；
+    # 分节数由 manager 按字数实切，标记按上限列、缺段落跳过）
+    {"do": "sleep", "s": 1},
+    {"do": "format_block", "text": "一", "block": "h3"},
+    {"do": "format_block", "text": "二", "block": "h3"},
+    {"do": "format_block", "text": "三", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "四", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "五", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "六", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "七", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "八", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "九", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "十", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "十一", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "十二", "block": "h3", "optional": True},
+    {"do": "shot", "name": "short-story-publish-filled"},
+    {"do": "expect_text", "any": ["已保存到云端", "保存成功", "已保存"],
+     "timeout": 15},
+    {"do": "submit", "gate": True},
+    {"do": "click_real", "text": "立即发布",
+     "scope": "a,button,[role=button],span", "tries": 25},
+    {"do": "qimao_short_publish", "timeout": 120},
+    {"do": "shot", "name": "short-story-published"},
+    {"do": "verify", "url": "{short_book_manage}", "any": ["{book_name}"],
+     "any_of": ["待审核", "审核中", "已发布"],
+     "settle": 6, "new_tab": True, "tries": 3},
+]
+
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
          "create_short_story": CREATE_SHORT_STORY,
          "upload_short_story_draft": UPLOAD_SHORT_STORY_DRAFT,
+         "publish_short_story": PUBLISH_SHORT_STORY,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 
