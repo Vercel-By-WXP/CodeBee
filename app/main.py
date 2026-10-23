@@ -184,7 +184,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             hdrs.setdefault("Vary", "Accept-Encoding")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
+        # A 304 has no message body; Content-Length: 0 would incorrectly claim
+        # the selected representation is empty (RFC 9110 permits it only when
+        # it equals the corresponding 200 representation length).
+        if code != 304:
+            self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", cache_control or "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
@@ -376,10 +380,21 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if not self._authed():
                 return self._json(401, {"error": "需要访问令牌（启动 CodeBee 时控制台会显示）"})
             if path == "/api/state":
-                # _state_payload_json 返回的是已序列化 JSON 串，直接 _send，
-                # 不能走 _json 再 dumps 一遍（会变成双重编码的字符串）
-                return self._send(200, _state_payload_json(self._client_id()),
-                                  "application/json; charset=utf-8")
+                # Fast path before assembling the (potentially large) snapshot:
+                # on an unchanged poll, version + this client's control view
+                # uniquely identify the representation without serializing or
+                # hashing the full JSON body again.
+                client_id = self._client_id()
+                ver = store.state_version()
+                control = remote.control_view(client_id)
+                etag = _state_payload_etag(ver, control)
+                if self.headers.get("If-None-Match") == etag:
+                    return self._send(304, b"", headers={"ETag": etag})
+                # _state_payload_json returns an already-serialized JSON
+                # string; passing it to _json would double-encode it.
+                body = _state_payload_json(client_id, ver, control)
+                return self._send(200, body, "application/json; charset=utf-8",
+                                  headers={"ETag": etag})
             if path == "/api/goals":
                 from core import goal_service
                 return self._json(200, {"current": goal_service.current(),
@@ -4277,7 +4292,7 @@ _STATE_JSON_LOCK = threading.Lock()
 _STATE_JSON_CACHE = {"ver": None, "body": None}
 
 
-def _state_payload_json(client_id, ver=None):
+def _state_payload_json(client_id, ver=None, control=None):
     if ver is None:
         ver = store.state_version()
     with _STATE_JSON_LOCK:
@@ -4288,8 +4303,16 @@ def _state_payload_json(client_id, ver=None):
             _STATE_JSON_CACHE["body"] = json.dumps(d, ensure_ascii=False)
         body = _STATE_JSON_CACHE["body"]
     # 拼回按端不同的 control 视图（小对象），整体形状与旧 _state_payload 一致
-    ctrl = json.dumps(remote.control_view(client_id), ensure_ascii=False)
+    if control is None:
+        control = remote.control_view(client_id)
+    ctrl = json.dumps(control, ensure_ascii=False)
     return body[:-1] + ',"control":' + ctrl + "}"
+
+
+def _state_payload_etag(ver, control):
+    """用小型状态标识生成 ETag，避免每次轮询都哈希整个状态 JSON。"""
+    marker = str(ver) + ":" + json.dumps(control, ensure_ascii=False, sort_keys=True)
+    return 'W/"state-%s"' % hashlib.sha256(marker.encode("utf-8")).hexdigest()
 
 
 def _state_task_summary(task):

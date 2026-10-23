@@ -1465,6 +1465,7 @@ function requestBusyEnd(token) {
 
 async function api(path, opts) {
   opts = opts || {};
+  const onResponse = typeof opts.onResponse === "function" ? opts.onResponse : null;
   // 可选超时：长请求（如外部插件下载）传 opts.timeout，网络卡死时也能
   // 按时给出错误反馈，而不是无限静默
   let ctrl = null;
@@ -1480,6 +1481,7 @@ async function api(path, opts) {
   delete fetchOpts.busyElement;
   delete fetchOpts.operation;
   delete fetchOpts._ctrlRetry;
+  delete fetchOpts.onResponse;
   try {
     let res;
     try {
@@ -1488,6 +1490,10 @@ async function api(path, opts) {
     } catch (e) {
       if (ctrl && e.name === "AbortError") throw new Error(t("请求超时，请重试或检查网络"));
       throw e;
+    }
+    if (res.status === 304) {
+      operationFinish(operationToken, "done");
+      return null;
     }
     // D2（三轮审查）：不再静默吞解析失败。先取原文，非 JSON 声明或空体保底 null，
     // 声明 JSON 却解析失败则在 2xx 时显式抛错，让调用方不再对 null 解构被静默吞掉。
@@ -1509,6 +1515,9 @@ async function api(path, opts) {
         }
       }
     }
+    // Only let callers cache response metadata after a successful body read/parse.
+    // A truncated mobile response must not pin the client to an unusable ETag.
+    if (onResponse && res.ok) onResponse(res);
     if (res.status === 401) {
       const authError = (data && data.error) || (res.statusText ? (res.status + " " + res.statusText) : "HTTP 401");
       // The phone relay also uses 401 for an expired/unpaired phone session.
@@ -3211,7 +3220,15 @@ async function refreshState() {
   // The phone relay adds a second network hop and can transfer the initial
   // snapshot over a slow mobile link. Give this critical request enough time
   // to complete instead of cycling through false timeout failures.
-  applyState(await api("/api/state", { timeout: 30000, busy: false, operation: false }));
+  const headers = S._stateEtag ? { "If-None-Match": S._stateEtag } : {};
+  const state = await api("/api/state", {
+    timeout: 30000, busy: false, operation: false,
+    headers: authHeaders(headers),
+    onResponse: (response) => {
+      if (response.status === 200) S._stateEtag = response.headers.get("ETag") || "";
+    },
+  });
+  if (state) applyState(state);
 }
 
 let _lookupRefresh = null;
@@ -3346,6 +3363,12 @@ async function poll() {
     }
     render();
     scheduleStartupEnhancements();
+    // Do not let the long-lived SSE request compete with the very first
+    // state snapshot on the phone relay.  The initial snapshot is the
+    // connectivity proof; only open the stream after it has arrived.  This
+    // avoids a relay connection-pool race where EventSource occupies the
+    // only available slot and /api/state is reported as "连接失败".
+    if (S.state && !S.es && !document.hidden) startSSE();
   } catch (e) {
     if (!S.state || !S.sseLive || !S.es) {
       // Keep the relay/API's HTTP status or message visible; the generic
@@ -3424,11 +3447,11 @@ function startSSE() {
           conn.textContent = t("已连接");
           conn.className = "conn ok";
           conn.title = t("实时连接受限，已用轮询兜底");
-        } else {
-          conn.textContent = t("连接失败");
-          conn.className = "conn bad";
-          conn.removeAttribute("title");
         }
+        // Before the first state snapshot, leave the badge to poll()'s
+        // /api/state result. It carries the actionable relay/API error (401,
+        // 503, timeout, etc.); a generic EventSource failure would race with
+        // and hide that diagnosis on mobile.
       }
     };
   } catch (e) { /* EventSource 不可用：保持轮询 */ }
@@ -11123,7 +11146,7 @@ function bindInspector() {
 }
 
 /* 成品文件：run 开始后工作目录里新产生/修改过的文件，点击直接查看内容 */
-function fmtSize(n) {
+function fmtArtifactSize(n) {
   n = Number(n) || 0;
   if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + " MB";
   if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
@@ -11163,9 +11186,9 @@ function artifactsChips(runId, files, prevRun, hasPlan) {
     return '<span class="fc-row">' +
       '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
       encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" ' +
-      'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
+      'title="' + esc(f.name + " · " + fmtArtifactSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
       '<i class="fx">' + esc(_crFileBadge(f.name)) + "</i>" +
-      '<span class="p">' + esc(f.name) + '</span><i>' + fmtSize(f.size) + "</i></a>" +
+      '<span class="p">' + esc(f.name) + '</span><i>' + fmtArtifactSize(f.size) + "</i></a>" +
       (acts ? '<span class="fc-acts' + (diffable ? '' : ' solo') + '">' + acts + "</span>" : "") +
       "</span>";
   }).join("");
@@ -24245,9 +24268,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!await uiConfirm(t("恢复内置默认 catalog？你对该文件的修改将丢失。"), { ok: t("恢复"), danger: true })) return;
     await api("/api/catalog/reset", { method: "POST" }); poll();
   });
-  poll();
   schedulePolling();
-  startSSE();
+  // Bootstrap with the finite state request first.  startSSE() is opened by
+  // poll() after the first successful snapshot, so mobile relay startup does
+  // not spend its limited connection budget on a stream before the UI has
+  // any data to render.
+  poll();
   startCtrlHeartbeat();
   maybeWelcome();          // 首次启动弹欢迎引导（orch.welcomed 记账，只弹一次）
   // 工作台布局默认落在主页（showHome 内含 renderHome）

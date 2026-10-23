@@ -95,6 +95,18 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertIn('if (!S.state || !S.sseLive || !S.es)', poll)
         self.assertIn('t("连接失败：") + String((e && e.message) || e).slice(0, 100)', poll)
 
+    def test_mobile_state_poll_uses_conditional_requests_and_keeps_cached_snapshot(self):
+        source = self.source
+        refresh = source[source.index("async function refreshState()"):
+                        source.index("let _lookupRefresh", source.index("async function refreshState()"))]
+        api = source[source.index("async function api(path, opts)"):
+                    source.index("/* 质量门禁", source.index("async function api(path, opts)"))]
+        self.assertIn('"If-None-Match"', refresh)
+        self.assertIn("_stateEtag", refresh)
+        self.assertIn("onResponse", refresh)
+        self.assertIn("res.status === 304", api)
+        self.assertIn("if (state) applyState(state)", refresh)
+
     def test_sse_degradation_does_not_hide_a_successful_state_snapshot(self):
         source = self.source
         start = source.index("function startSSE()")
@@ -105,7 +117,10 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertIn('conn.textContent = t("已连接")', error)
         self.assertIn('conn.className = "conn ok"', error)
         self.assertIn('conn.title = t("实时连接受限，已用轮询兜底")', error)
-        self.assertIn('conn.textContent = t("连接失败")', error)
+        # Before the first state snapshot, only /api/state knows whether the
+        # phone relay is unauthorized/offline. SSE errors must not overwrite
+        # the more useful polling error with a generic badge.
+        self.assertNotIn('conn.textContent = t("连接失败")', error)
 
     def test_only_explicit_desktop_token_401_opens_token_gate(self):
         source = self.source
