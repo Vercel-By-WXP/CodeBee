@@ -43,24 +43,69 @@ Windows 11 `10.0.26200` AMD64、Python `3.13.14`、Node `22.22.2`。
 **探测方式**：进程内调用 `cli_discovery.discover(specs=...)`，spec 由 `catalog.DEFAULT_CATALOG`
 的 19 条生成；**未通过 UI 操作**。
 
-与 `/api/cli-discovery` 的关系需要说准：**探测函数是同一个**（`cli_discovery.probe`），但
-**默认探测集不是同一份**。接口在请求体不带 `specs` 时用 `DEFAULT_CLIS`（5 条旧条目：
-`codex`/`claude`/`qwen`/`aider`/`opencode`），与 catalog ID（`codex-cli` 等）不同名；UI 面板
-发的正是空对象 `{}`（`app/ui/app.js:2047`）。所以**界面最多只能显示 19 条里的 5 条**，其余 14
-条既不显示「未安装」也不显示「可用」——是没被探测。本表上 19 行结果是显式传目录得到的。
+与 `/api/cli-discovery` 的关系需要说准：**探测函数是同一个**（`cli_discovery.probe`），但当天
+早些时候**默认探测集不是同一份**。接口在请求体不带 `specs` 时用的是 `DEFAULT_CLIS`（5 条旧条目：
+`codex`/`claude`/`qwen`/`aider`/`opencode`），与 catalog ID（`codex-cli` 等）不同名；UI 面板发的
+正是空对象 `{}`，所以**界面最多只能显示 19 条里的 5 条**，其余 14 条既不显示「未安装」也不显示
+「可用」——是没被探测。本表上 19 行结果是显式传目录得到的。
 
-同一次测量：默认 5 条串行探测 `8.8s`，目录 19 条串行 `48.4s`，前端该请求超时 `20s`。因此
-「把默认集直接换成目录全集」会让面板超时，不能作为一行修复；先要并行化探测或分批返回。
-**这是已确认的呈现缺口，未修**。
+该缺口当日已修（`app/core/cli_discovery.py`）：默认集改由 `default_specs()` 按目录生成，旧 5 条
+只在目录不可用时兜底。修复卡住的不是「条目多」，而是**超时根本不是墙钟上限**：
+
+```
+subprocess.run(timeout=3) 实测   mimo-code 22.8s / pi 19.6s / gemini 17.3s / cline 14.0s
+```
+
+`.CMD` 包装器是 cmd.exe → node.exe，`run()` 超时只杀 cmd.exe，而继承管道的 node.exe 仍握着
+stdout/stderr 句柄，`communicate()` 会一直等它自己退出。改为 Popen + runner 已验证的 `_kill_tree`
+（连孙进程一起杀）后：
+
+| 场景 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 19 条串行探测 | 48.4s | — |
+| 19 条并行探测（6 并发，`timeout=3`） | — | 7.5s（但 4 条冷启动慢的被误标） |
+| 19 条并行探测（`timeout=8`，接口新默认） | — | **9.9s，16 可用，0 误判** |
+
+「慢 ≠ 坏」单独区分：没在预算内返回版本的标 `slow`，界面显示「响应慢」而不是「探测异常」。
 
 **覆盖范围**：仅「安装与版本识别」。真实任务调用、超时/失败退出、会话恢复三项本次**全部未测**，
 不得据本表推断通过。本表也不是发布验收记录 —— 发布验收须按上节模板另记。
 
+### 2026-10-23 · 真实任务调用（首轮，3 个入口）
+
+**方式**：`python scripts/cli_compat_record.py --cli <id>`。隔离实例（临时 `TUTTI_DATA` + 空闲端口，
+不碰 8765）、只启用目标 CLI、最小用例「创建 hello.py 并运行确认输出 hello」、`verify_command`
+检查文件落地。**命中判定看 `run.steps[].agent`** —— 若执行者不是目标 CLI，整条记「未命中 / 未测」。
+
+| CLI | 命中 | 结果 | 耗时 | 失败原因（脱敏后原文） |
+| --- | --- | --- | --- | --- |
+| codex-cli | 是 | **失败** | 66.4s | `Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error, url: https://api.iamhc.cn/v1/responses)` |
+| claude-code | 是 | **失败** | 9.0s | `There's an issue with the selected model (glm-5.3). It may not exist or you may not have access to it.` |
+| opencode | 是 | **失败** | 229.2s | `Error: This model is not available in your country` |
+
+三条结论要分开说：
+
+1. **CodeBee 侧没坏**：三个 CLI 都真的被启动并进入了实现步骤（`steps` 里就是它们），错误原文
+   被完整带回到运行记录里，失败按「无其他真实 CLI 可换将」收口，没有静默卡住；没有出现
+   「跑完了但什么都没做还标通过」。
+2. **CLI 侧不可用**：codex 指向的自建网关不支持 `/v1/responses`（404）；claude 配的模型
+   `glm-5.3` 不存在或无权限；opencode 选定模型在当前地区不可用。三条都是本机 CLI/账号配置，
+   **不是 CodeBee 的兼容性结论**，所以「任务调用」记 **失败（环境原因）**，不记通过也不记
+   「CodeBee 不支持」。
+3. **这轮拿不到「通过」样本**：本机三个代表性入口没有一个是可用配置。要产出真正的通过记录，
+   需要一个能跑通任务的 CLI + 模型；命令已就绪，换台机器或换掉模型配置即可复跑。
+
+另一处观察（未定性）：codex 那条终态文案写「超时」，同一条 stderr 里却是 404。CLI 侧
+`Reconnecting... 2/5` 重连耗尽后才到墙钟上限，两者都真，但**读者只会看到「超时」**，容易把
+供应商 4xx 误读成 CodeBee 慢。是否在超时文案里附「最后一条供应商错误」，属产品决策，未改。
+
+超时退出与会话恢复两列仍为「未测」：三个入口都在实现步骤就失败，没走到这两层。
+
 | catalog CLI | CLI 版本 | 安装与版本识别 | 任务调用 | 超时/失败退出 | 会话恢复 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| codex-cli | codex-cli 0.160.0 | 通过 | 未测 | 未测 | 未测 | npm 全局 .CMD |
-| claude-code | 2.1.288 (Claude Code) | 通过 | 未测 | 未测 | 未测 | npm 全局 .CMD |
-| opencode | 1.18.34 | 通过 | 未测 | 未测 | 未测 | npm 全局 .CMD |
+| codex-cli | codex-cli 0.160.0 | 通过 | 失败（环境：网关 404） | 未测 | 未测 | npm 全局 .CMD |
+| claude-code | 2.1.288 (Claude Code) | 通过 | 失败（环境：模型无权限） | 未测 | 未测 | npm 全局 .CMD |
+| opencode | 1.18.34 | 通过 | 失败（环境：地区限制） | 未测 | 未测 | npm 全局 .CMD |
 | qwencode | 0.24.7 | 通过 | 未测 | 未测 | 未测 | npm 全局 .CMD |
 | aider | aider.EXE 0.86.2 | 通过 | 未测 | 未测 | 未测 | 版本串含可执行名 |
 | openclaw | — | 未安装 | 未测 | 未测 | 未测 | 不在 PATH |

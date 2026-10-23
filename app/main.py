@@ -1642,9 +1642,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             from core import cli_discovery
             body = self._body() or {}
             try:
-                timeout = max(1, min(15, int(body.get("timeout", 3))))
+                # 默认 8s：冷启动的 node 版 CLI 要 7–22s 才吐版本，3s 会把健康
+                # 的 CLI 判成「无输出」。并行探测下 19 条整体仍约 10s。
+                timeout = max(1, min(15, int(body.get("timeout", 8))))
             except (TypeError, ValueError):
-                timeout = 3
+                timeout = 8
             try:
                 rows = cli_discovery.refresh(
                     cli_discovery.cache_path(paths.DATA_DIR),

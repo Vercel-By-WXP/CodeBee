@@ -105,10 +105,9 @@ def executable_of(entry):
 def catalog_specs():
     """按 catalog 生成探测规格。
 
-    必须显式传：`/api/cli-discovery` 不传 ``specs`` 时用的是 ``DEFAULT_CLIS``，
-    那是 5 条旧条目（codex/claude/qwen/aider/opencode），名字与 catalog ID
-    （codex-cli/...）不同名，19 条里 14 条永远探不到。这里是验收脚本，探的
-    必须是 catalog 声明支持的全集，否则「未安装」和被遗漏分不开。
+    服务端默认集现在也按目录生成（``cli_discovery.default_specs``），这里仍显式
+    传：验收记录要的是「这一刻 catalog 声明的全集」，不该随服务端默认值漂移。
+    用 catalog ID 当 name，记录里的 CLI 名才能和 README/兼容表对齐。
     """
     from app.core import catalog
     specs = []

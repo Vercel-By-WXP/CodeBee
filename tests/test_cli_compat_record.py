@@ -129,16 +129,17 @@ class CatalogSpecTest(unittest.TestCase):
         for spec in specs:
             self.assertTrue(spec["executable"], "catalog 条目缺可执行入口：%s" % spec)
 
-    def test_default_probe_set_still_smaller_than_catalog(self):
-        """记录当前事实：服务端默认探测集小于目录。
+    def test_default_probe_set_now_comes_from_catalog(self):
+        """默认探测集按目录生成；旧 5 条只是目录损坏时的兜底。
 
-        这里不是要求它一直小，而是要求「脚本显式传 specs」这一决定有据可查：
-        若哪天默认集被扩到目录全集，本用例自动跳过。
+        这里钉住的是「服务端不传 specs 也覆盖全集」——脚本显式传 specs 仍是
+        有意的冗余，不依赖这条。
         """
         from app.core import catalog, cli_discovery
-        if len(cli_discovery.DEFAULT_CLIS) >= len(catalog.DEFAULT_CATALOG):
-            self.skipTest("默认探测集已覆盖目录，脚本显式传 specs 属冗余但无害")
-        self.assertLess(len(cli_discovery.DEFAULT_CLIS), len(catalog.DEFAULT_CATALOG))
+        ids = [entry.get("id") for entry in catalog.DEFAULT_CATALOG]
+        self.assertEqual([s["name"] for s in cli_discovery.default_specs()], ids)
+        self.assertLess(len(cli_discovery.DEFAULT_CLIS), len(ids),
+                        "旧手写集合应当只是兜底，条目数少于目录")
 
 
 if __name__ == "__main__":

@@ -11,10 +11,14 @@ from unittest import mock
 from app.core import cli_discovery
 
 
-def _proc(stdout="", stderr="", rc=0):
-    proc = mock.Mock()
-    proc.stdout, proc.stderr, proc.returncode = stdout, stderr, rc
-    return proc
+def _proc(stdout="", stderr="", rc=0, timed_out=False):
+    """对齐 probe 内部真正执行的 `_run_capture` 返回形状。
+
+    2026-10-23 起 probe 不再用 subprocess.run：它在 Windows 上对 .CMD 包装器
+    不构成墙钟上限（只杀 cmd.exe，继承管道的 node.exe 会拖住 communicate）。
+    所以打桩点从 subprocess.run 换成 _run_capture。
+    """
+    return (rc, stdout, stderr, timed_out)
 
 
 class ProbeVersionTextTests(unittest.TestCase):
@@ -44,7 +48,7 @@ class ProbeResultTests(unittest.TestCase):
     def _probe(self, payload):
         with mock.patch.object(cli_discovery.shutil, "which",
                                return_value="C:/fake/cli.exe"), \
-             mock.patch.object(cli_discovery.subprocess, "run", return_value=payload):
+             mock.patch.object(cli_discovery, "_run_capture", return_value=payload):
             return cli_discovery.probe({"name": "demo", "executable": "cli"})
 
     def test_crashing_cli_reports_error_and_no_version(self):

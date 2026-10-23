@@ -1048,6 +1048,8 @@ button.small { padding: 4px 10px; font-size: 12px; }
 /* 失败徽章底色降到 9%：失败连排时 14% 粉底满屏累眼，字色保持 --bad 仍一眼可辨 */
 .chip.failed { background: color-mix(in srgb, var(--bad) 9%, transparent); color: var(--bad); }
 .chip.cancelled { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+/* 慢 ≠ 坏：CLI 能力探测没在预算内返回版本时用 warn，不用 failed */
+.chip.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips label {

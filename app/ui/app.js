@@ -2032,11 +2032,18 @@ function renderCliDiscovery() {
   const box = $("cli-discovery-list");
   if (!box) return;
   const rows = UI_FEATURES.cliDiscovery || [];
-  box.innerHTML = rows.length ? rows.map((row) =>
-    '<div class="cli-discovery-row"><strong>' + esc(row.name || row.executable || "CLI") + '</strong><span class="chip ' + (row.error ? "failed" : (row.available ? "done" : "failed")) + '">' + esc(row.error ? t("探测异常") : (row.available ? t("可用") : t("未检测到"))) + '</span>' +
-    '<span class="mono">' + esc(row.version || row.path || "") + '</span><span class="hint">' + esc((row.supports_stdin ? "stdin · " : "") + (row.output_format || "text")) + '</span>' +
-    (row.error ? '<small class="hint bad">' + esc(row.error) + '</small>' : '') +
-    (!row.available && row.install_hint ? '<small class="hint">' + esc(row.install_hint) + '</small>' : '') + '</div>').join("") : '<p class="hint">' + esc(t("尚无能力探测结果")) + '</p>';
+  box.innerHTML = rows.length ? rows.map((row) => {
+    // 慢 ≠ 坏：版本命令没在预算内回来时后端标 slow，界面用「响应慢」而不是
+    // 「探测异常」——冷启动的 CLI 只是慢，派发照样能用。
+    const state = row.slow ? "slow" : (row.error ? "bad" : (row.available ? "ok" : "off"));
+    const chipCls = state === "ok" ? "done" : (state === "slow" ? "warn" : "failed");
+    const label = state === "ok" ? t("可用") : state === "slow" ? t("响应慢")
+      : state === "bad" ? t("探测异常") : t("未检测到");
+    return '<div class="cli-discovery-row"><strong>' + esc(row.name || row.executable || "CLI") + '</strong><span class="chip ' + chipCls + '">' + esc(label) + '</span>' +
+      '<span class="mono">' + esc(row.version || row.path || "") + '</span><span class="hint">' + esc((row.supports_stdin ? "stdin · " : "") + (row.output_format || "text")) + '</span>' +
+      (row.error ? '<small class="hint' + (row.slow ? "" : " bad") + '">' + esc(row.error) + '</small>' : '') +
+      (!row.available && row.install_hint ? '<small class="hint">' + esc(row.install_hint) + '</small>' : '') + '</div>';
+  }).join("") : '<p class="hint">' + esc(t("尚无能力探测结果")) + '</p>';
 }
 
 async function loadCliDiscovery(force) {
@@ -2044,7 +2051,7 @@ async function loadCliDiscovery(force) {
   if (box && force) box.innerHTML = '<p class="hint">' + esc(t("正在探测…")) + '</p>';
   try {
     const result = force
-      ? await api("/api/cli-discovery", { method: "POST", timeout: 20000, body: JSON.stringify({}) })
+      ? await api("/api/cli-discovery", { method: "POST", timeout: 45000, body: JSON.stringify({}) })
       : await api("/api/cli-discovery", { timeout: 15000 });
     UI_FEATURES.cliDiscovery = result.clis || [];
     renderCliDiscovery();
