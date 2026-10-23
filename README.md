@@ -213,7 +213,17 @@ OpenCode / Continue / Cursor / Trae 十种工具的配置，一次带入全部�
 
 ## 快速开始
 
-请按 [QUICKSTART.md](QUICKSTART.md) 操作。
+本机已有 Python 3.8+ 时，无需克隆仓库：
+
+~~~bash
+npx codebee@latest
+~~~
+
+启动后浏览器访问 <http://127.0.0.1:8765>。长期使用可先 `npm i -g codebee`，之后直接运行
+`codebee`；换端口用 `codebee --port 18765`。用户数据存放在用户目录，`npm update -g` 不会覆盖。
+
+也可以走源码模式（`git clone` 后 `python app/main.py --port 8765`），以及在安装前先确认前置条件、
+CLI 检测和第一个任务的完整步骤：见 [QUICKSTART.md](QUICKSTART.md)。
 
 ## CLI 接入范围
 

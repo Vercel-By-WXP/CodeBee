@@ -2,27 +2,58 @@
 
 ### 1. 前置要求
 
-- Python 3.8 或更高版本。
+- Python 3.8 或更高版本。npm 安装方式同样只分发启动垫片，运行时仍需本机 Python。
+- Node.js 14 或更高版本。仅 npm / npx 安装方式需要；源码模式不需要 Node。
 - 本机至少安装一个受支持的 AI 编码 CLI，并按其官方文档完成登录。
 - Windows 可运行 python --version；macOS/Linux 可运行 python3 --version。
 - 运行 where codex（Windows）或 command -v codex（macOS/Linux）确认 CLI 在 PATH。
 
-### 2. 获取 CodeBee
+### 2. 安装 CodeBee
+
+两种方式任选其一，功能一致。
+
+**方式 A：npm / npx**
+
+试用或临时运行，不落全局命令：
+
+~~~bash
+npx codebee@latest
+~~~
+
+长期使用则安装到全局，之后直接敲 codebee：
+
+~~~bash
+npm i -g codebee
+codebee
+~~~
+
+npm 包不含 Python 解释器，启动时会探测本机 python（Python 3.8+）；探测失败会打印安装指引
+并退出，不会写入任何用户配置。用户数据存放在用户目录（Windows `%APPDATA%\CodeBee`，
+macOS/Linux `~/.codebee`），不在包目录内，所以 `npm update -g codebee` 升级不会覆盖任务记录与配置。
+
+**方式 B：源码模式**
 
 ~~~bash
 git clone https://github.com/Vercel-By-WXP/CodeBee.git
 cd CodeBee
-~~~
-
-### 3. 启动
-
-源码模式直接运行：
-
-~~~bash
 python app/main.py --port 8765
 ~~~
 
+源码模式下若仓库内 `data/` 已有内容，CodeBee 沿用它而不迁到用户目录。
+
 Windows 也可运行 start.bat；脚本会启动同一服务。
+
+### 3. 启动参数
+
+默认监听 127.0.0.1:8765 并自动打开浏览器。常用开关：
+
+| 参数 | 作用 |
+| --- | --- |
+| `--port 18765` | 换端口（8765 被占用时） |
+| `--no-browser` | 不自动开浏览器，适合后台/远程运行 |
+| `--host 0.0.0.0` | 局域网访问；须同时配置访问令牌与网络访问控制 |
+
+npm 安装方式把这些参数写在 codebee 之后，例如 `codebee --port 18765 --no-browser`。
 
 ### 4. 打开 Web UI
 
