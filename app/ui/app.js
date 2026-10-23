@@ -6618,6 +6618,7 @@ function renderKanban() {
     const cards = buckets[c.key];
     return '<div class="kb-col" data-col="' + c.key + '">' +
       '<div class="kb-col-head"><span>' + esc(c.label) + '</span><b>' + cards.length + "</b></div>" +
+      '<div class="kb-col-body">' +
       (cards.length ? cards.map((cd) =>
         '<button type="button" class="kb-card' + (cd.status === "running" ? " running" : "") +
         (c.key === "review" ? " attention" : "") + '"' +
@@ -6638,6 +6639,7 @@ function renderKanban() {
         (cd.blockerText ? '<span class="kb-blocker-text">' + esc(cd.blockerText) + "</span>" : "") +
         "</button>").join("")
         : '<div class="kb-empty">' + esc(t("暂无任务")) + "</div>") +
+      "</div>" +
       "</div>";
   }).join("");
 }

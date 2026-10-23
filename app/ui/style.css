@@ -9786,24 +9786,37 @@ button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, tra
 .wb-console .wb-raw summary { cursor: pointer; color: var(--muted); user-select: none; }
 .wb-console .wb-raw pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
 
-/* ---------- 看板（2026-10-22 multica 视角）：issue 式任务分列 ---------- */
+/* ---------- 看板（2026-10-22 multica 视角）：issue 式任务分列 ----------
+   板面定高为一屏、列内各自滚动：已完结会积累几十张卡，任其撑高会让整页
+   滚动失控（实测 40 张卡把 main 顶到 4184px），其他列还是空箱子。 */
 .kb-head { margin: 2px 0 14px; }
 .kb-title { font-size: 20px; font-weight: 600; margin: 0; }
 .kb-sub { color: var(--muted); margin: 4px 0 0; font-size: 12.5px; }
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(200px, 1fr));
+  grid-template-columns: repeat(5, minmax(180px, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  height: calc(100vh - 200px);
+  min-height: 340px;
   overflow-x: auto;
-  padding-bottom: 16px;
+  overflow-y: hidden;
+  padding-bottom: 4px;
 }
-.kb-col { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px; min-width: 200px; }
-.kb-col-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; font-size: 13px; font-weight: 600; }
+.kb-col {
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 10px 10px 8px; min-width: 180px; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.kb-col-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; font-size: 13px; font-weight: 600; }
 .kb-col-head b { font-weight: 500; color: var(--muted); font-size: 12px; }
 .kb-col[data-col="review"] .kb-col-head { color: var(--warn); }
+.kb-col-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable;
+  display: flex; flex-direction: column;
+}
 .kb-card {
-  display: block; width: 100%; text-align: left; cursor: pointer;
+  display: block; width: 100%; text-align: left; cursor: pointer; flex: none;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-sm);
   padding: 9px 10px; margin-bottom: 8px; font: inherit; color: var(--text);
   transition: border-color .12s ease, transform .12s ease;
@@ -9811,8 +9824,10 @@ button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, tra
 .kb-card:hover { border-color: var(--accent); transform: translateY(-1px); }
 .kb-card.running { border-left: 3px solid var(--accent); }
 .kb-card.attention { border-left: 3px solid var(--warn); }
-.kb-card-title { display: block; font-size: 13px; font-weight: 550; line-height: 1.45;
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Edge 147 起 -webkit-box 被弃用（计算值落 flow-root），-webkit-line-clamp 失效；
+ * 标准 line-clamp:2 尚未支持，先用 max-height 兜两行硬截断（title 属性有全文） */
+.kb-card-title { display: block; font-size: 13px; font-weight: 550; line-height: 1.45; overflow-wrap: anywhere; white-space: normal;
+  max-height: 2.9em; overflow: hidden; }
 .kb-card-meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .kb-card-meta small { color: var(--muted); font-size: 11px; }
 .kb-type { font-style: normal; font-size: 10.5px; color: var(--muted);
@@ -9825,9 +9840,10 @@ button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, tra
 .kb-blocker-text { display: block; margin-top: 5px; font-size: 11.5px; color: var(--muted);
   border-top: 1px dashed var(--border); padding-top: 5px; line-height: 1.5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kb-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 0; }
+.kb-empty { flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 12px; text-align: center; padding: 18px 0; }
 @media (max-width: 1100px) {
-  .kanban-board { grid-template-columns: repeat(5, 240px); }
+  .kanban-board { grid-template-columns: repeat(5, 200px); }
 }
 
 /* ---------- 反向通道：agent 汇报气泡 + 侧栏阻塞徽章 ---------- */
