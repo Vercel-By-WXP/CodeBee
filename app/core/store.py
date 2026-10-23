@@ -551,8 +551,10 @@ def create_task(payload):
     return task
 
 
-def _save_json(path, data):
-    atomic.write_json(path, data)
+def _save_json(path, data, durable=True):
+    # durable=False 仍走 atomic.write_json（临时文件 + os.replace），读者永远
+    # 看不到半个文件；省掉的只是 fsync——只适用于「崩了就崩了」的瞬时预览态。
+    atomic.write_json(path, data, durable=durable)
     bump_state()
 
 
@@ -2661,15 +2663,24 @@ def add_step(run_id, role, agent_id, agent_label, note="", model="", provider=""
         return step, log_abs
 
 
-def stream_step(run_id, n, thinking=None, text=None, activity=None, min_secs=0.6):
+def stream_step(run_id, n, thinking=None, text=None, activity=None, min_secs=1.2):
     """步骤运行中实时落一段「思考过程/正文/活动」——对话时间线边跑边打印。
 
     直连对话此前整轮只有三点打字动画（32 秒黑箱，用户 2026-09-22 反馈）；
-    模型的思维链与正文在流式回调里到达，这里节流落盘（默认 0.6s 一次），
+    模型的思维链与正文在流式回调里到达，这里节流落盘（默认 1.2s 一次），
     前端 2s 轮询一次读到的就是「它正在想什么」。
 
     节流按步骤记忆上次落盘时刻；收尾时 finish_step 会写入最终值并清掉
     live 标记。返回是否真的落盘（调用方可据此决定要不要做下一步）。
+
+    2026-10-23 量化（NVMe SSD，见 AUDIT-CODEBEE-2026-10-23.md C4）：
+    run.json 0.28MB → 4.7ms、1.55MB → 11.9ms、4.65MB → 32.3ms（峰值 51ms），
+    全部发生在全局 ``LOCK`` 内。长跑（120 步、每步 20KB 思考+正文）就在
+    4MB 量级：0.6s 一次意味着这把全局锁有 ~5% 的时间被流式预览占着，
+    并行任务的 update_run/add_step 全排在它后面；每次落盘还 ``bump_state``
+    触发一轮 ~0.5MB 状态推送。前端 2s 才消费一次，0.6s 的 cadence 有一半
+    是白写，故放宽到 1.2s；同时把预览态改成非 durable——它崩了也就是少
+    半秒打字动画，最终值仍由 finish_step 全量 fsync 落盘。
     """
     key = (run_id, int(n))
     now = time.time()
@@ -2695,7 +2706,7 @@ def stream_step(run_id, n, thinking=None, text=None, activity=None, min_secs=0.6
                     acts.append(str(activity)[:200])
                 s["activity"] = acts[-8:]
             s["live"] = int(s.get("live") or 0) + 1   # 前端重绘签名（内容变即刷新）
-            _save_json(paths.RUNS_DIR / run_id / "run.json", run)
+            _save_json(paths.RUNS_DIR / run_id / "run.json", run, durable=False)
             return True
     return False
 
