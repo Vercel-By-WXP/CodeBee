@@ -244,7 +244,7 @@ class StickyRoutingTests(unittest.TestCase):
         router._sticky_remember("implement", "direct", "a")
         bonus_a, txt_a = router._sticky_bonus(self._agent("a"), "implement", "direct")
         bonus_b, _ = router._sticky_bonus(self._agent("b"), "implement", "direct")
-        self.assertEqual(bonus_a, router.STICKY_BONUS)
+        self.assertEqual(bonus_a, router.strategy_config.get("sticky_bonus"))
         self.assertIn("会话粘性", txt_a)
         self.assertEqual((bonus_b, ""), (0.0, ""))
 
@@ -284,15 +284,24 @@ class StickyRoutingTests(unittest.TestCase):
             self.assertEqual(router._STICKY["by_key"][key][0], "solo")
 
     def test_sticky_flips_near_tie(self):
-        # 粘性 +4 足以在能力基线同分的候选间翻转次序；reset 后原序恢复
-        router._sticky_remember("implement", "direct", "zz-a")
-        sel, _ = router._pick_scored([self._agent("zz-b"), self._agent("zz-a")],
-                                     "implement", "direct", stats={})
-        self.assertEqual(sel["id"], "zz-a")
-        router.sticky_reset()
-        sel, _ = router._pick_scored([self._agent("zz-b"), self._agent("zz-a")],
-                                     "implement", "direct", stats={})
-        self.assertEqual(sel["id"], "zz-b")
+        # Use the effective strategy weight, which may be hot-configured in
+        # data/strategy.json. Keep a small capability gap that the sticky
+        # weight should overcome, without editing user data.
+        bonus = router.strategy_config.get("sticky_bonus")
+        self.assertGreater(bonus, 0)
+        candidates = [self._agent("zz-b"), self._agent("zz-a")]
+        gap = min(abs(float(bonus)) / 2.0, 1.5)
+        with mock.patch.dict(router.CAPABILITY,
+                             {"generic": 60, "sticky-test": 60 + gap}):
+            candidates[0]["kind"] = "sticky-test"
+            router._sticky_remember("implement", "direct", "zz-a")
+            sel, _ = router._pick_scored(candidates, "implement", "direct",
+                                         stats={})
+            self.assertEqual(sel["id"], "zz-a")
+            router.sticky_reset()
+            sel, _ = router._pick_scored(candidates, "implement", "direct",
+                                         stats={})
+            self.assertEqual(sel["id"], "zz-b")
 
     def test_sticky_never_beats_tool_penalty(self):
         # 仅对话降级 -10 必须压过粘性 +4：上一轮首选被判「仅对话」后，
