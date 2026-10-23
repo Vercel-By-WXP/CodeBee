@@ -25,6 +25,9 @@ class RoutingStrategyTests(unittest.TestCase):
         # 走查在 runner 已先耗尽，走到这里的 AUTH 是整链凭据死）。
         self.assertTrue(strategy.should_fallback({"error_code": "AUTH"}))
         self.assertTrue(strategy.should_fallback({"error_code": "MISSING_CREDENTIAL"}))
+        # Exit code 1 with only an unstructured CLI banner is ambiguous but
+        # must still get one bounded chance on another configured CLI.
+        self.assertTrue(strategy.should_fallback({"error_code": "VENDOR_ERROR"}))
         self.assertTrue(strategy.should_fallback(
             "error: Unauthorized: Please make sure you're using the latest "
             "version of Cline and re-authenticate your Cline account."))

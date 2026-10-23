@@ -182,6 +182,51 @@ class TrustedFailureEvidenceTests(unittest.TestCase):
                     "text": "API Error: 502 bad gateway"}, kind="claude")
         self.assertEqual(result, runner.ErrorCode.UPSTREAM_SERVER)
 
+    def test_qwen_api_quota_error_inside_startup_warning_is_classified(self):
+        result = runner._classify_failure({
+            "ok": False, "exit_code": 1, "stderr": "",
+            "stdout": ("Warning: MCP server(s) failed to start: git, sqlite. "
+                       "Continuing with built-in tools. "
+                       "[API Error: 403 用户额度不足, 剩余额度: ¥0.000000]")
+        })
+        self.assertEqual(result, runner.ErrorCode.QUOTA)
+
+    def test_codex_completed_error_item_is_extracted(self):
+        event = {
+            "type": "item.completed",
+            "item": {"type": "error", "message":
+                     "API Error: 403 用户额度不足, 剩余额度: ¥0.000000"},
+        }
+        result = runner._codex_fail_msg(json.dumps(event, ensure_ascii=False))
+        self.assertIn("用户额度不足", result)
+
+    def test_codex_error_event_with_nested_message_is_extracted(self):
+        event = {"type": "error", "error": {"message": "API Error: 502 bad gateway"}}
+        self.assertIn("502", runner._codex_fail_msg(json.dumps(event)))
+
+    def test_codex_completed_error_item_classifies_full_run_failure(self):
+        stdout = json.dumps({
+            "type": "item.completed",
+            "item": {"type": "error", "message":
+                     "API Error: 403 用户额度不足, 剩余额度: ¥0.000000"},
+        }, ensure_ascii=False)
+        with mock.patch.object(runner, "_build_call",
+                               return_value=(["codex"], "p", "p", [])), \
+             mock.patch.object(runner, "run_process", return_value={
+                 "ok": False, "exit_code": 1, "stdout": stdout,
+                 "stderr": "Reading prompt from stdin...", "duration": 1.0,
+                 "cancelled": False, "timed_out": False, "stalled": False,
+                 "deadline_exceeded": False, "output_truncated": False,
+                 "abort_marker": None,
+             }):
+            result = runner.run_agent(
+                {"id": "codex", "kind": "codex", "mode": "real",
+                 "command": "codex", "model": "m1"}, "prompt", timeout=2,
+                command_context={"run_id": "r-codex-quota", "role": "draft"})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "QUOTA")
+
+
     def test_gbk_windows_command_error_is_local_tool_launch(self):
         message = "'powershell.exe' 不是内部或外部命令，也不是可运行的程序或批处理文件。"
         self.assertEqual(runner._classify_failure({
@@ -191,6 +236,24 @@ class TrustedFailureEvidenceTests(unittest.TestCase):
 
 
 class SingleCliReviewFallbackTests(unittest.TestCase):
+    def test_unknown_vendor_exit_tries_one_configured_cli(self):
+        primary = {"id": "primary", "mode": "real"}
+        backup = {"id": "backup", "mode": "real"}
+        failed = {"ok": False, "error": "退出码 1", "error_code": "VENDOR_ERROR",
+                  "raw": {"exit_code": 1}}
+        success = {"ok": True, "text": "draft", "raw": {"exit_code": 0}}
+        with mock.patch.object(pipeline, "_run_step", return_value=success) as run_step, \
+             mock.patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, _d: a), \
+             mock.patch.object(pipeline.router, "agent_upstreams", return_value=set()), \
+             mock.patch.object(pipeline.router, "pick_switch_candidate",
+                               return_value=(backup, "fallback")):
+            result, actual, _note = pipeline._retry_content_draft_with_cli(
+                "run", {"type": "doc"}, [primary, backup], primary, "default",
+                "auto", {}, "prompt", "workdir", "step", None, None, "", failed)
+        self.assertTrue(result["ok"])
+        self.assertIs(actual, backup)
+        self.assertEqual(run_step.call_count, 1)
+
     def test_upstream_502_gets_conservative_local_review(self):
         agent = {"id": "claude", "mode": "real", "kind": "claude"}
         failed = {

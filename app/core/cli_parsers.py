@@ -102,9 +102,9 @@ def _codex_silent_no_answer(stdout):
 def _codex_fail_msg(stdout):
     """从 JSONL 事件流提取终态失败消息；无失败返回 ""。
 
-    2026-09-16 实测：配额/限流只出现在 error 与 turn.failed 事件里，旧解析器
-    两者都丢——进程退出码非 0 时错误串里只剩 "Reading prompt from stdin..."，
-    _quota_error/_transient_error 判不出可降级，健康后继模型从未被尝试。
+    配额/限流可能出现在 error、turn.failed 或 item.completed(type=error)
+    事件中；若遗漏，非零退出时错误串可能只剩
+    "Reading prompt from stdin..."，导致分类与后备 CLI 都失效。
     Reconnecting... 是 CLI 内部重试噪音（可能自愈），不取作终态错误；重复
     重连由进程看门狗提前中断。turn.failed 优先于裸 error（后者取最后一条兜底）。
     """
@@ -120,9 +120,23 @@ def _codex_fail_msg(stdout):
         t = ev.get("type")
         if t == "turn.failed":
             e = ev.get("error")
-            terminal = e.get("message") if isinstance(e, dict) else str(e or "")
+            detail = (e.get("message") or e.get("data") or ""
+                      if isinstance(e, dict) else e)
+            if detail:
+                terminal = str(detail)
+        elif t in ("item.completed", "item.failed"):
+            item = ev.get("item") or {}
+            if isinstance(item, dict) and item.get("type") == "error":
+                detail = item.get("message") or item.get("error") or item.get("text")
+                if isinstance(detail, dict):
+                    detail = detail.get("message") or detail.get("data") or detail
+                if detail:
+                    terminal = str(detail)
         elif t == "error":
-            m = str(ev.get("message") or "")
+            detail = ev.get("message") or ev.get("error") or ""
+            if isinstance(detail, dict):
+                detail = detail.get("message") or detail.get("data") or detail
+            m = str(detail)
             if m and "reconnecting" not in m.lower():
                 last_err = m
     return terminal or last_err

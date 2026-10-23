@@ -55,6 +55,10 @@ class BuiltinStrategy(RoutingStrategy):
             # ×2 轮全撞 401。绑定链内的 Key 走查在 runner 已先耗尽，走到
             # 这里的 AUTH 是整链凭据死，换 CLI 是唯一活路）。
             ErrorCode.AUTH.value, ErrorCode.MISSING_CREDENTIAL.value,
+            # Unknown non-zero CLI exits are ambiguous, not proof that every
+            # configured CLI will fail. Let orchestration try the next bounded
+            # candidate; a single-CLI run still follows normal degraded gates.
+            ErrorCode.VENDOR_ERROR.value,
         }
         if isinstance(error, dict):
             raw = error.get("raw") or {}

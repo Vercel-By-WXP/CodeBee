@@ -1288,6 +1288,10 @@ _LOG_ERR_HINT = re.compile(
     r"rate[_ ]?limit|insufficient balance|insufficient quota|"
     r"quota exhausted|欠费|余额不足|额度不足|不是内部或外部命令)",
     re.I)
+_EMBEDDED_API_ERROR = re.compile(
+    r"\[\s*api[_ ]error\s*:\s*(?:(?:http(?:/\d(?:\.\d)?)?\s*)?)"
+    r"(?:401|402|403|408|429|5\d\d)\b",
+    re.I)
 
 # 「路径:行号(:列号):内容」形态（grep -n / 编译器诊断 / ripgrep 命中行）。
 # 前缀允许 ./ ../ 绝对盘符与 ~；结尾必须有真实扩展名，避免误吞普通报错。
@@ -1388,6 +1392,13 @@ def _cli_error_lines(text):
                 # 彩色「Error: 」+ 缩进 JSON 体多行信封，见 _absorb_error_envelope
                 line, i = _absorb_error_envelope(lines, i, line)
             hits.append(line)
+        else:
+            # Some CLIs print non-fatal startup warnings and append the actual
+            # gateway failure on that same line. Extract only a bracketed,
+            # status-coded API Error envelope; do not classify arbitrary prose.
+            match = _EMBEDDED_API_ERROR.search(line)
+            if match:
+                hits.append(line[match.start():])
     return hits
 
 
