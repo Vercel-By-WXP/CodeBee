@@ -148,15 +148,28 @@ UPLOAD_SHORT_STORY_DRAFT = [
     {"do": "wait", "sel": ".q-contenteditable.book", "timeout": 20},
     {"do": "fill", "sel": ".q-contenteditable.book.font-size-16.edit-mask",
      "key": "chapter_body"},
-    # 「一/二」标记行 → h3 章节标题块（发布硬校验 ≥2 个章节标题）
+    # 「一/二…」标记行 → h3 章节标题块（发布硬校验 ≥2 章、每章 500~1500 字；
+    # 分节数由 manager 按字数实切，标记按上限列、缺段落跳过——与发布表同款）
     {"do": "sleep", "s": 1},
     {"do": "format_block", "text": "一", "block": "h3"},
     {"do": "format_block", "text": "二", "block": "h3"},
+    {"do": "format_block", "text": "三", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "四", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "五", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "六", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "七", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "八", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "九", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "十", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "十一", "block": "h3", "optional": True},
+    {"do": "format_block", "text": "十二", "block": "h3", "optional": True},
     {"do": "shot", "name": "short-story-body-filled"},
-    {"do": "click_real", "text": "存为草稿", "tries": 25},
+    # 已有草稿的编辑器按钮是「更新草稿」（真机 2026-10-23 实案）
+    {"do": "click_real", "text": "存为草稿", "alt": ["更新草稿"], "tries": 25},
     {"do": "sleep", "s": 2},
     {"do": "expect_text", "any": ["已保存到云端", "保存成功", "存草稿成功",
-                                   "草稿保存成功", "已保存"], "timeout": 15},
+                                   "草稿保存成功", "更新成功", "已保存"],
+     "timeout": 15},
     {"do": "verify", "url": "{short_book_manage}", "any": ["{book_name}"],
      "settle": 5},
 ]

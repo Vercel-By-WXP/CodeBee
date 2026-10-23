@@ -211,8 +211,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 tries = int(st.get("tries") or 25)
                 # 七猫改版把“存草稿”按钮文案改成“存为草稿”；保留流程
                 # 表旧文案作为主键，同时在真实页面上兼容这个等价文案。
-                click_texts = ([text, "存为草稿"] if text == "存草稿"
-                               else [text])
+                # alt：状态相关的等价按钮（已有草稿时「存为草稿」变
+                # 「更新草稿」，真机 2026-10-23 实案）。
+                alts = [str(a) for a in (st.get("alt") or [])]
+                if text == "存草稿":
+                    alts = ["存为草稿"] + alts
+                click_texts = [text] + alts
                 for _try in range(tries):
                     for click_text in click_texts:
                         r = page.real_click_text(click_text, st.get("scope") or
@@ -1017,7 +1021,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         "const body=document.querySelector('.q-contenteditable');"
                         "if(!body)return{ok:false,err:'no-editor'};"
                         "const norm=x=>String(x||'').replace(/\\s+/g,'');"
-                        "const p=[...body.querySelectorAll('p,div')]"
+                        "const p=[...body.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6')]"
                         ".find(e=>norm(e.innerText)===norm(j.text));"
                         "if(!p)return{ok:false,err:'no-para'};"
                         "const sel=window.getSelection();"
