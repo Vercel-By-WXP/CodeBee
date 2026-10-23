@@ -87,6 +87,10 @@ def _attempt_ledger(run_id=""):
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 DEFAULT_TIMEOUT = 1200  # 单步 20 分钟
 DEFAULT_STREAM_ACTIVITY_TIMEOUT_S = 180  # 流式 CLI 的活动延长窗口
+# C-P4（三轮审查）：deadline 缺省（直接调 API / 测试）时，run_process 主循环仅靠
+# 单模型 timeout + 活动延长窗口收敛——持续滴输出会让活动窗口无限滑动，进程可永久
+# 存活。此常量作为「无任务级 deadline 时的绝对寿命帽」，进程到时按超时收口。
+PROCESS_ABSOLUTE_CAP_SECS = 3600.0  # 1 小时
 DEFAULT_PROCESS_CAPTURE_BYTES = 16 * 1024 * 1024  # stdout/stderr 各限 16 MiB
 DEFAULT_PROCESS_LOG_BYTES = 32 * 1024 * 1024  # 每个步骤日志文件最多 32 MiB
 MAX_AGENT_CAPTURE_BYTES = 8 * 1024 * 1024  # stdout/stderr 各限 8 MiB，日志仍流式落盘
@@ -881,6 +885,10 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             threading.Thread(target=_feed, daemon=True).start()
         start = time.time()
         start_mono = time.monotonic()
+        # 绝对寿命帽：有 deadline 时以 deadline 为准；deadline 为 None（直接调 API /
+        # 测试）时合成一个硬上限，避免「持续滴输出 → 活动窗口无限滑动」把进程挂死。
+        hard_cap = deadline if deadline is not None else (
+            start_mono + max(0.0, float(timeout)) + PROCESS_ABSOLUTE_CAP_SECS)
         cancelled = timed_out = stalled = repeat_aborted = False
         deadline_exceeded = False
         abort_marker = None
@@ -896,8 +904,10 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
                 tree_quiet = _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=10)
                 break
-            if deadline is not None and time.monotonic() >= deadline:
-                deadline_exceeded = True
+            if hard_cap is not None and time.monotonic() >= hard_cap:
+                # 有 deadline 时归为 deadline_exceeded（让调用方按任务总时限收口）；
+                # 无 deadline（合成硬帽）时是进程级寿命封顶，同样按超时归类换将/重试。
+                deadline_exceeded = (deadline is not None)
                 timed_out = True
                 tree_quiet = _kill_tree(proc.pid)
                 _drain_streams(proc, t_out, t_err, timeout=5)

@@ -141,7 +141,7 @@
           actionButton.type = "button"; actionButton.className = "ghost small"; actionButton.textContent = action;
           actionButton.addEventListener("click", async () => {
             actionButton.disabled = true;
-            try { await api("/api/mobile/runs/" + encodeURIComponent(run.id) + "/decision", { method: "POST", body: { action, note: action === "reject" ? "手机端裁决" : "" } }); await refresh(); }
+            try { await api("/api/mobile/runs/" + encodeURIComponent(run.id) + "/decision", { method: "POST", body: JSON.stringify({ action, note: action === "reject" ? "手机端裁决" : "" }) }); await refresh(); }
             catch (error) { status.textContent = error && error.message ? error.message : label("裁决失败", "Decision failed"); actionButton.disabled = false; }
           });
           row.append(actionButton);
@@ -160,7 +160,7 @@
       button.disabled = true;
       try {
         await api("/api/mobile/experts/" + encodeURIComponent(select.value) + "/launch", {
-          method: "POST", body: { goal: goal.trim(), title: goal.trim().slice(0, 80) }, timeout: 15000
+          method: "POST", body: JSON.stringify({ goal: goal.trim(), title: goal.trim().slice(0, 80) }), timeout: 15000
         });
         await refresh();
       } catch (error) { status.textContent = error && error.message ? error.message : label("启动失败", "Launch failed"); }

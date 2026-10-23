@@ -8,6 +8,13 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 - **步骤日志回给 UI/导出前默认脱敏（P1 安全，纵深防御）**：同一条上游 CLI 输出，进模型前会被 `redact.mask_secrets` 遮罩（`builtin_agent_tools`），但经 `read_step_log` 进日志面板/蜂巢卡片/大屏实时窗/导出时是原文——脱敏策略只保护了一个消费方，某家 CLI 一旦把请求细节（`Authorization` 头、含 `key=` 的 URL）打进 stderr，就会原样出现在界面和导出包里。现在 `read_step_log` 默认过一次 `mask_secrets`（与模型侧同一口径，占位符不含引号/反斜杠，codex JSONL 翻译与工具活动解析不受影响），`/api/runs/<id>/log` 新增 `raw=1` 显式出口给「下载完整日志」排查上游报错用（接口本身已要访问令牌）。新增 `tests/test_step_log_redaction.py`（5 项，含 live 兜底路径与目录穿越不变量；变异验证：去掉遮罩 3 处用例转红）。
 
+- **第三轮审查修复（前端失败路径 + 进程寿命帽）**：
+  - **D1（功能 bug 修复）**：手机端 `mobile-workbench.js` 的裁决（approve/reject/blocked）与「启动专家」两处 POST 把 `body` 传成对象而非 `JSON.stringify`，导致 `fetch` 发送 `"[object Object]"`、后端 `json.loads` 失败返回 400——四个按钮此前 100% 必败。已统一 `JSON.stringify`，与全站其它 POST 一致。
+  - **D2（健壮性）**：`api()` 不再静默吞 JSON 解析失败——非空体且声明 `application/json` 时严格解析，2xx 空体维持 `null`（既有约定），声明 JSON 却解析失败在 2xx 时显式抛错（带状态码，不再让调用方对 `null` 解构被静默吞掉）；非 JSON 错误体（反代 502 HTML 页）带 `statusText` 提示。
+  - **D3/D4/D5（UX 提示）**：SSE 被限/断线时连接指示改为「实时连接受限，已用轮询兜底」（之前只显示「重连中…」）；取消运行失败显示 `error.message`（与「立即续跑」一致，不再一律「网络异常」）；成果分区/检查器成品 TAB 拉取失败弹 toast（之前纯静默）。
+  - **A（防御性）**：4 处内联处理器裸插值（`op.id`/`l.id`/`c.id`/`actionCall`，外加 help 翻页 `prev.id`/`next.id`）改为 `jsq()`，`data-*` 属性上下文改 `esc()`——虽已核实来源均不可控，仍补齐纵深防御。
+  - **C-P4（进程寿命帽）**：`run_process` 在 `deadline is None`（直接调 API / 测试）时原先仅靠单模型 timeout + 活动延长窗口收敛，子进程持续滴输出会让活动窗口无限滑动、进程永久存活。新增 `PROCESS_ABSOLUTE_CAP_SECS`（默认 3600s）作为无 deadline 时的绝对寿命帽，到期按超时收口；传了真实 deadline 时语义不变（`deadline_exceeded=True`）。新增 `tests/test_run_process_hardcap.py`（2 项：硬帽收口 + deadline 语义不被改写），runner 套件 28 项全过。
+
 - **「修复后重验」闭环首次有回归保护（P0 质量）**：全仓此前没有任何测试驱动过 `_run_code`，「实现 → 验证 → 修复 → 重验」只被真实跑过。新增 `tests/test_code_repair_reverify.py`（4 项）：`verify_command` 走真实子进程并按调用次数计分（首轮失败是确定性事实，不是打桩），修复提示词必须带上验证失败清单，判据读 verdict 三态与 report.md。覆盖：验证转绿后才判通过、连败修满一轮收口未通过、未配验证命令时验证列写「未执行」而非「通过」、高难度两轮修复且 gate 连败后评审回归。两个变异（三态改回旧行为、修复轮数钳制放大）均被测试抓住。
 
 - **实时连接有上限，不再无限起线程（性能）**：`/api/events` 是唯一常驻长连接，而每个连接独占一个 worker 线程、只在客户端断开时退出。页面反复刷新、多端在线、隧道重连叠旧连接未关，线程数就线性涨（每个还带压缩器和一份状态载荷），长任务大屏逐步变慢，极端情况线程表打满后连 `/api/state` 都拿不到。现在默认上限 32（`CODEBEE_SSE_MAX` 可调），超限返回 503 + `Retry-After`，由 EventSource 自行退避重连。

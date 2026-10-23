@@ -1333,7 +1333,7 @@ function renderOperationCenter() {
       : op.status === "failed" ? t("失败") : t("已完成");
     const remove = op.status === "running" ? "" :
       '<button type="button" class="op-dismiss" aria-label="' + esc(t("移除")) +
-      '" title="' + esc(t("移除")) + '" onclick="dismissOperation(event,' + op.id + ')">' +
+      '" title="' + esc(t("移除")) + '" onclick="dismissOperation(event,' + jsq(op.id) + ')">' +
       '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg></button>';
     return '<div class="op-row ' + op.status + '"><span class="op-state" aria-hidden="true"></span>' +
       '<div class="op-copy"><div><b>' + esc(op.label) + '</b><span>' + esc(status) + " · " +
@@ -1486,8 +1486,26 @@ async function api(path, opts) {
       throw e;
     }
     if (res.status === 401) { showTokenGate(t("令牌不正确或已更换，请重新输入")); throw new Error(t("需要访问令牌")); }
+    // D2（三轮审查）：不再静默吞解析失败。先取原文，非 JSON 声明或空体保底 null，
+    // 声明 JSON 却解析失败则在 2xx 时显式抛错，让调用方不再对 null 解构被静默吞掉。
     let data = null;
-    try { data = await res.json(); } catch (e) { /* ignore */ }
+    const rawText = await res.text();
+    if (rawText.trim().length) {
+      const ct = res.headers && res.headers.get ? res.headers.get("content-type") : "";
+      const looksJson = ct && ct.toLowerCase().indexOf("application/json") !== -1;
+      if (looksJson) {
+        try { data = JSON.parse(rawText); }
+        catch (e) {
+          if (res.ok) {
+            const err = new Error(t("服务器响应格式异常（非预期 JSON）"));
+            err.status = res.status;
+            err.data = rawText.slice(0, 200);
+            throw err;
+          }
+          // 非 2xx 且体非 JSON（隧道/反代 502 HTML 页等）：保留 null，下方用状态码兜底
+        }
+      }
+    }
     if (res.status === 423 && data && data.control) {
       setControl(data.control);
       // 手机端接管闭环（用户实测反馈：423 连点全失败不知道怎么办）：
@@ -1517,7 +1535,10 @@ async function api(path, opts) {
       }
     }
     if (!res.ok) {
-      const failure = new Error((data && data.error) || ("HTTP " + res.status));
+      let msg = (data && data.error) || "";
+      // 错误体非 JSON（反代 502/504 HTML 页）时带 statusText，至少比裸「HTTP 502」多信息
+      if (!msg) msg = res.statusText ? (res.status + " " + res.statusText) : ("HTTP " + res.status);
+      const failure = new Error(msg);
       failure.status = res.status;
       failure.data = data;
       throw failure;
@@ -2866,7 +2887,7 @@ function availEmpty(icon, title, hint, actionLabel, actionCall) {
   return '<div class="avail-empty">' +
     '<span class="avail-empty-ico"><svg class="ico" aria-hidden="true"><use href="#' + icon + '"></use></svg></span>' +
     "<b>" + esc(title) + "</b><p>" + esc(hint) + "</p>" +
-    (actionLabel ? '<button class="ghost small" type="button" onclick="' + actionCall + '">' + esc(actionLabel) + "</button>" : "") +
+    (actionLabel ? '<button class="ghost small" type="button" onclick="' + jsq(actionCall) + '">' + esc(actionLabel) + "</button>" : "") +
     "</div>";
 }
 
@@ -3297,10 +3318,12 @@ function startSSE() {
         S.es = null; S.sseLive = false; schedulePolling(); poll();
         scheduleSSEReconnect();
       } else {
-        $("conn").textContent = t("重连中…");
-        $("conn").className = "conn bad";
         poll();
       }
+      // D3（三轮审查）：SSE 已不可用（被限/断线）时诚实告知，并提示已用轮询兜底——
+      // 之前只显示「重连中…」，用户无从判断是瞬时抖动还是被限流持续失败。
+      const conn = $("conn");
+      if (conn) { conn.textContent = t("实时连接受限，已用轮询兜底"); conn.className = "conn bad"; }
     };
   } catch (e) { /* EventSource 不可用：保持轮询 */ }
 }
@@ -11103,7 +11126,12 @@ async function loadArtifacts(runId) {
   // 双入口同源渲染：检查器「成品文件」TAB + 主栏详情「成果」分区。
   let d;
   try { d = await api("/api/runs/" + encodeURIComponent(runId) + "/files"); }
-  catch (e) { return; }
+  catch (e) {
+    // D5（三轮审查）：成果拉取失败原静默吞掉，主栏「成果」与检查器成品 TAB
+    // 无任何错误态。给出明确 toast，但不阻断其它面板渲染。
+    toast(t("成果加载失败：") + (e && e.message ? e.message : t("网络异常")), true);
+    return;
+  }
   // 成果分区/徽章只吃当前详情目标的 run：详情开着但 runId 是别的任务（检查器
   // 后台跟刷旧选中）时，绝不能把别家的文件写进主栏——那是肉眼可见的串台
   const detailOpen = !$("run-detail").classList.contains("hidden");
@@ -12212,7 +12240,7 @@ async function cancelRun() {
   let r;
   try {
     r = await api("/api/runs/" + encodeURIComponent(rid) + "/cancel", { method: "POST" });
-  } catch (e) { toast(t("取消失败：网络异常"), true); return; }
+  } catch (e) { toast(t("取消失败：") + (e && e.message ? e.message : t("网络异常")), true); return; }
   toast(r && r.ok ? t("已强制终止运行") : t("该运行已结束，无需取消"));
 }
 
@@ -15265,7 +15293,7 @@ function renderAppearance() {
       const prev = l.id === "workbench"
         ? '<span class="layout-prev lp-workbench" aria-hidden="true"><span class="lp-side"><i></i><i></i><i></i></span><span class="lp-main"><i class="lp-card"></i><i class="lp-bar w70"></i><i class="lp-bar w45"></i></span><span class="lp-status"><i></i><i></i><i></i></span></span>'
         : '<span class="layout-prev lp-classic" aria-hidden="true"><span class="lp-rail"></span><span class="lp-side"><i></i><i></i><i></i></span><span class="lp-main"><i class="lp-bar w70"></i><i class="lp-bar w45"></i><i class="lp-card"></i></span></span>';
-      return '<button type="button" class="layout-card' + (l.id === curLayout ? " active" : "") + '" data-layout="' + l.id + '" title="' + esc(t(l.desc)) + '" onclick="setLayout(\'' + l.id + '\')">'
+      return '<button type="button" class="layout-card' + (l.id === curLayout ? " active" : "") + '" data-layout="' + esc(l.id) + '" title="' + esc(t(l.desc)) + '" onclick="setLayout(\'' + jsq(l.id) + '\')">'
         + prev
         + '<span class="layout-meta"><span class="layout-name">' + esc(t(l.name)) + '</span>'
         + '<svg class="ico layout-check" aria-hidden="true"><use href="#i-check"></use></svg></span>'
@@ -20795,7 +20823,7 @@ function renderHelp() {
   if (toc) {
     toc.innerHTML = HELP_CHAPTERS.map((c) =>
       '<button class="hitem' + (c.id === helpCur ? " active" : "") + (c.todo ? " todo" : "") +
-      '" data-ch="' + c.id + '" onclick="helpGo(\'' + c.id + '\')">' +
+      '" data-ch="' + esc(c.id) + '" onclick="helpGo(\'' + jsq(c.id) + '\')">' +
       '<svg class="ico" aria-hidden="true"><use href="#' + c.icon + '"></use></svg><span>' + t(c.label) + '</span>' +
       (c.todo ? '<em class="h-todo">' + t("整理中") + '</em>' : "") +
       '</button>').join("");
@@ -20813,8 +20841,8 @@ function helpPagerHtml() {
   const prev = idx > 0 ? HELP_CHAPTERS[idx - 1] : null;
   const next = idx >= 0 && idx < HELP_CHAPTERS.length - 1 ? HELP_CHAPTERS[idx + 1] : null;
   return '<nav class="help-pager">' +
-    (prev ? '<button class="pg-btn" onclick="helpGo(\'' + prev.id + '\')"><small><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>' + t("上一章") + '</small><b>' + t(prev.label) + '</b></button>' : '<span class="pg-spacer"></span>') +
-    (next ? '<button class="pg-btn next" onclick="helpGo(\'' + next.id + '\')"><small>' + t("下一章") + '<svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></small><b>' + t(next.label) + '</b></button>' : '<span class="pg-spacer"></span>') +
+    (prev ? '<button class="pg-btn" onclick="helpGo(\'' + jsq(prev.id) + '\')"><small><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>' + t("上一章") + '</small><b>' + t(prev.label) + '</b></button>' : '<span class="pg-spacer"></span>') +
+    (next ? '<button class="pg-btn next" onclick="helpGo(\'' + jsq(next.id) + '\')"><small>' + t("下一章") + '<svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></small><b>' + t(next.label) + '</b></button>' : '<span class="pg-spacer"></span>') +
     '</nav>';
 }
 function updateHelpProgress() {
