@@ -496,7 +496,9 @@ def reconcile_short_story_book_id(page, book):
         "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
         "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
         "(e.innerText||'').trim().includes('新建短故事'));"
-        "return{ready:document.readyState==='complete'&&location.href.includes('/short-manage'),"
+        "return{ready:document.readyState==='complete'&&"
+        "(location.href.includes('/short-manage')"
+        "||location.href.includes('/short-draft')),"
         "create,titleVisible};}", title, 500)
     if probe and probe.get("ready") and probe.get("create"):
         if probe.get("titleVisible"):
