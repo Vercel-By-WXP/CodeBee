@@ -375,16 +375,24 @@ class SingleCliReviewFallbackTests(unittest.TestCase):
                            if line.startswith("@@RESULT@@")][-1]
             result = json.loads(result_line[len("@@RESULT@@"):])
 
+        # 2026-10-23 起：评审 CLI 全灭不再停摆在"评审未完成"。稿件在，就由
+        # 本地确定性算法真实评审一遍；不过线就进修订循环，再不过线就按真实
+        # 分数收口——探针的稿件只有 12 字，本地兜底按"信息量不足"一票否决给
+        # 3.0，这是质量判定，不是停摆。用户拿到的是带分数、带原因、带修订
+        # 记录的完整报告，而不是一句"评审未完成"。
         self.assertEqual(result["status"], "failed", result)
-        self.assertTrue(result["review_degraded"], result)
+        self.assertFalse(result["draft_degraded"], result)
+        self.assertFalse(result["publishable"], result)
+        self.assertEqual(result["overall"], 3.0, result)
+        self.assertEqual(result["scores"], {"质量": 3.0}, result)
         self.assertEqual(result["rounds_used"], 2, result)
+        # 修订循环真的跑起来了（不是评审失败就躺平）
         self.assertIn("draft", result["calls"], result)
         self.assertIn("revise-r1", result["calls"], result)
-        self.assertTrue(any(call.startswith("critique") for call in result["calls"]))
-        self.assertIsNone(result["overall"], result)
-        self.assertEqual(result["scores"], {}, result)
-        self.assertIn("评审未完成，稿件质量未判定", result["report"], result)
-        self.assertIn("未评估", result["report"], result)
+        self.assertIn("critique-r2", result["calls"], result)
+        self.assertIn("评审本地兜底", result["report"], result)
+        self.assertIn("确定性算法", result["report"], result)
+        self.assertIn("评审来源", result["report"], result)
 
     def test_stalled_draft_with_saved_text_continues_review_and_revision(self):
         with tempfile.TemporaryDirectory() as tmp:

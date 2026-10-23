@@ -21,7 +21,7 @@ import threading
 import time
 import weakref
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, review_roster, router, runner, skills, store, task_compile, task_graph, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, review_roster, router, runner, skills, store, task_compile, task_graph, usage, volumes, local_fallback
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -2680,13 +2680,24 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
     return last_result, last_impl, last_note
 
 
-def _local_critique_fallback(dims, reason):
-    """Record review unavailability without inventing manuscript scores."""
-    del dims  # The fallback has no assessment, so it intentionally has no scores.
+def _local_critique_fallback(dims, reason, text="", task_type=""):
+    """外部模型全部不可用时的兜底评审。
+
+    有稿件就走 :func:`local_fallback.local_review`——用确定性算法（重复、
+    结构、开头信号、连续性）给出**可解释的分数**。这不是"没评估"：评估
+    真实发生了，只是评估者是本地算法，能覆盖的维度有限，未知维度给中性分
+    并在 summary 里说明。只有连稿件都没有时才记录未评估。
+
+    2026-10-23 实案：维云余额 ¥0.001、智谱七天额度上限，三条通道全死，
+    每个任务都判「评审未完成」→ 稿件永远发布不了。用户要的是成功，不是
+    停摆；本地评审至少能拦住"三段一字不差"这种真问题，也不该冤死好稿。
+    """
+    if text and str(text).strip():
+        return local_fallback.local_review(text, dims, task_type)
     return {
         "scores": {},
         "issues": [],
-        "summary": "评审未完成，稿件质量未判定；评审服务不可用，流程按未评估继续：%s"
+        "summary": "评审未完成，稿件质量未判定；评审服务不可用且无稿件可机测：%s"
                    % str(reason or "未知错误")[:180],
         "review_degraded": True,
         "review_fallback": "local",
@@ -2696,7 +2707,8 @@ def _local_critique_fallback(dims, reason):
 
 def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, agents,
                                      impl, difficulty, task_type, stats, mode,
-                                     is_selection, dims=None, peers=()):
+                                     is_selection, dims=None, peers=(),
+                                     ms_name=""):
     """评审步失败时按换将语义补位（与起草共用同一份策略闸门）。
 
     评审原先固定在同一 CLI 上重试三次：上游死链/本地启动抖动时三次都撞
@@ -2712,6 +2724,31 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
     from . import bench as _bench
     from . import routing_strategy
     from .error_codes import is_account_dead_error
+
+    # 外部模型全部不可用（欠费/额度上限/无 CLI）：每席再试三次只是把同一堵墙
+    # 撞九遍，然后才走到本地兜底。直接短路——本地确定性评审不花一分钱，
+    # 也不等超时。2026-10-23 实案：三条通道全死时一个评审步要磨 50 分钟。
+    try:
+        _benched = _bench.benched_ids(run_id)
+    except Exception:
+        _benched = None
+    if not local_fallback.any_live_channel(agents, _benched):
+        manuscript = _read_manuscript(workdir, ms_name)
+        if manuscript.strip():
+            fallback = _local_critique_fallback(dims, "外部模型全部不可用",
+                                                manuscript, task_type)
+            res = {"ok": False, "text": "", "error": "外部模型全部不可用",
+                   "error_code": "NO_LIVE_CHANNEL",
+                   "review_degraded": False,
+                   "review_fallback": fallback.get("review_fallback"),
+                   "review_fallback_reason":
+                       fallback.get("review_fallback_reason")}
+            return (fallback, res, agent,
+                    "评审本地兜底：无可用外部模型，已按确定性算法完成评审")
+        return (None,
+                {"ok": False, "text": "", "error": "外部模型全部不可用",
+                 "error_code": "NO_LIVE_CHANNEL"},
+                agent, "评审本地兜底：无可用外部模型且无稿件可机测")
 
     tried = {agent.get("id")}
     if isinstance(impl, dict) and impl.get("id"):
@@ -2857,14 +2894,36 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
                                       or parse_failed))
     if fallback_eligible and not runner.attempt_cancelled(res):
         reason = (res.get("error") or res.get("text") or "评审 CLI 重试后仍无有效输出")
-        fallback = _local_critique_fallback(dims, reason)
+        manuscript = _read_manuscript(workdir, ms_name)
+        fallback = _local_critique_fallback(dims, reason, manuscript, task_type)
         res = dict(res)
-        res.update({"review_degraded": True, "review_fallback": "local",
+        heuristic = bool(fallback.get("scores"))
+        res.update({"review_degraded": not heuristic,
+                    "review_fallback": fallback.get("review_fallback",
+                                                    "local"),
                     "review_fallback_reason": str(reason)[:500]})
-        suffix = "评审本地兜底：未取得模型评分，按未评估继续流程"
+        if heuristic:
+            suffix = ("评审本地兜底：外部模型不可用，已按确定性算法"
+                      "（重复/结构/开头信号）完成评审并给出可解释分数")
+        else:
+            suffix = "评审本地兜底：未取得模型评分且无机测依据，按未评估继续流程"
         note = (note + "；" if note else "") + suffix
         return fallback, res, current, note
     return None, res, current, note
+
+
+def _read_manuscript(workdir, ms_name):
+    """读当前稿件正文；读不到就返回空串（调用方据此判"无机测依据"）。"""
+    if not ms_name or not workdir:
+        return ""
+    try:
+        path = os.path.join(str(workdir), str(ms_name))
+        if not os.path.isfile(path):
+            return ""
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
 
 
 
@@ -4094,7 +4153,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         task.get("type") or "serial_novel", stats, mode,
                         False, dims=dims,
                         peers=[a for a in critics
-                               if a.get("id") != agent.get("id")])
+                               if a.get("id") != agent.get("id")],
+                        ms_name="chapter-%02d.md" % i)
                 if not isinstance(cj, dict):
                     cj = _critique_json(res, dims)
                 results[idx] = {
@@ -5515,7 +5575,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         task.get("type") or "serial_novel", stats, mode,
                         False, dims=dims,
                         peers=[a for a in critics
-                               if a.get("id") != agent.get("id")])
+                               if a.get("id") != agent.get("id")],
+                        ms_name="chapter-%02d.md" % i)
                     agent = actual or agent
                     if cj and cj.get("review_degraded"):
                         review_degradation_reasons.append(
@@ -6180,6 +6241,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
 
     # 1) 起草
     draft_degraded = False
+    draft_source = ""
     draft_degradation_reason = ""
     bestof_improvements = ""   # 赛马败者精华（真实路径由选择器填充；mock 路径恒空）
     if impl.get("mode") == "mock":
@@ -6304,10 +6366,33 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                     draft_degraded=True,
                     draft_degradation_reason=draft_degradation_reason)
             else:
-                store.update_run(run_id, expected_status="running", status="failed",
-                                 error="起草失败: %s" % draft_degradation_reason,
-                                 ended_at=_now())
-                return
+                # 走到这里说明真实通道都试过了（起草直调 + 换将重试都失败），
+                # "还有别的 CLI"已是过时信息。任务不该停摆：本地模板产出
+                # 一份结构化执行计划作为起点——内容待人工补齐，但流程有物
+                # 可评、有物可交，用户拿到的是可编辑的起点而不是一条错误。
+                # 2026-10-23 实案：三条通道全死，每个任务都 failed，
+                # 用户要的是成功不是停摆。
+                _lok, _body, _lnote = local_fallback.write_local_draft(
+                    task, step_wd, ms_name)
+                if _lok:
+                    draft_source = local_fallback.TEMPLATE
+                    draft_note = ((draft_note + "；") if draft_note else "") + _lnote
+                    store.update_run(
+                        run_id, expected_status="running",
+                        summary="外部模型全部不可用，已本地生成执行计划起点",
+                        draft_source=draft_source,
+                        draft_degradation_reason=draft_degradation_reason)
+                    store.add_message(run_id, (
+                        "起草兜底：%s。已生成本地执行计划（%s），"
+                        "标注为待补充起点；恢复可用模型后可重跑覆盖。"
+                        % (draft_degradation_reason[:200], ms_name)))
+                else:
+                    store.update_run(run_id, expected_status="running",
+                                     status="failed",
+                                     error="起草失败: %s；本地兜底也未成功: %s"
+                                           % (draft_degradation_reason, _lnote),
+                                     ended_at=_now())
+                    return
 
     # 1.5) 短篇字数闸（起草后、评审前）：不足自动扩写（≤2 轮）、超出压缩
     # （1 轮，尽力而为）。mock 执行没有字数意义；扩写步本身失败或仍欠下限
@@ -6374,7 +6459,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                     workdir, ev, agents,
                     impl, difficulty, task.get("type") or "novel", stats,
                     mode, is_selection, dims=dims,
-                    peers=[a for a in critics if a.get("id") != agent.get("id")])
+                    peers=[a for a in critics if a.get("id") != agent.get("id")],
+                    ms_name=ms_name)
                 if actual.get("id") != agent.get("id"):
                     critics[idx] = actual
                     agent = actual
@@ -6446,7 +6532,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                     workdir, ev, agents, impl, difficulty,
                     task.get("type") or "novel", stats, mode, is_selection,
                     dims=dims,
-                    peers=[a for a in critics if a.get("id") != _seat.get("id")])
+                    peers=[a for a in critics if a.get("id") != _seat.get("id")],
+                    ms_name=ms_name)
                 if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
                         and cj["scores"]):
                     _key = (actual or _seat).get("id") or _seat["id"]
@@ -6572,9 +6659,31 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if cap:
                 prompt += "\n\n" + cap
             prompt = attachments.append_task_context(prompt, task)
-            _run_step(run_id, "revise-r%d" % r, modelhub.bind_agent(impl, difficulty), prompt,
-                      workdir, readonly=False, ev=ev,
-                      resume=resume_ctx["session"] if resume_ctx else None)
+            try:
+                from . import bench as _rev_bench
+                _rev_benched = _rev_bench.benched_ids(run_id)
+            except Exception:
+                _rev_benched = None
+            if local_fallback.any_live_channel(agents, _rev_benched):
+                _run_step(run_id, "revise-r%d" % r, modelhub.bind_agent(impl, difficulty), prompt,
+                          workdir, readonly=False, ev=ev,
+                          resume=resume_ctx["session"] if resume_ctx else None)
+            else:
+                # 外部模型全部不可用：不再烧超时。能机测的问题（重复段、超长段）
+                # 本地确定性修掉，语义级问题留给人工——修订循环继续往下走，
+                # 任务不停摆。
+                step, log_abs = store.add_step(
+                    run_id, "revise-r%d" % r, "local-fallback", "本地修订")
+                _lok, _new, _changes, _note = local_fallback.write_local_revise(
+                    workdir, ms_name)
+                store.finish_step(run_id, step["n"], "done", summary=_note)
+                try:
+                    log_abs.write_text(
+                        (_note + "\n\n" + "\n".join("- " + c for c in _changes)
+                         if _changes else _note) + "\n", encoding="utf-8")
+                except Exception:
+                    pass
+                store.add_message(run_id, "修订兜底：%s" % _note)
         _check_cancel(ev)
 
     final_means = history_rounds[-1]["means"] if history_rounds else {}
@@ -6596,6 +6705,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         "review_degraded": review_degraded,
         "review_independence": review_independence,
         "draft_degraded": draft_degraded,
+        "draft_source": draft_source,
         "draft_degradation_reason": draft_degradation_reason,
         "review_degradation_reasons": ([
             "评审服务不可用或输出无法解析；评审未完成，稿件质量未判定"
@@ -6721,6 +6831,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     _solo_note = review_roster.describe(review_independence, critics)
     if _solo_note:
         lines += ["", "## 评审独立性", "", _solo_note]
+    _heuristic_reviewed = bool(
+        history_rounds and
+        any(f == local_fallback.HEURISTIC
+            for f in (history_rounds[-1].get("review_fallbacks") or [])))
     if review_degraded:
         lines += ["", "## 评审状态", "",
                   "评审未完成，稿件质量未判定。当前结果不代表稿件质量差，且不满足发布门禁。"]
@@ -6729,6 +6843,21 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                   "起草 CLI 中断；已落盘稿件仅作为连续性输入完成后续评审与修订，"
                   "本次交付仍未确认完整，不满足发布门禁。",
                   "- 起草错误：%s" % draft_degradation_reason]
+    if draft_source:
+        lines += ["", "## 起草来源", "",
+                  "本文稿由**本地模板引擎**生成，未调用任何外部模型。"
+                  "它是可编辑的执行起点，不是成品：带「待补充」的段落就是待办，"
+                  "事实性内容需要人工补齐或恢复可用模型后重跑覆盖。",
+                  "- 外部模型不可用的原因：%s" % draft_degradation_reason]
+    if _heuristic_reviewed:
+        lines += ["", "## 评审来源", "",
+                  "本轮评审由**本地确定性算法**完成（整句/整段重复、跨段重复、"
+                  "结构完整性、开头信号），外部模型当时不可用。",
+                  "- 可机测维度按检测结果打分，每条扣分都带原文引证；"
+                  "空稿与极短稿一票否决，不给中性分。",
+                  "- 无机测手段的维度给中性分 7.0，需要人工复核。",
+                  "- 该结论能拦住「三段一字不差」这类确定性问题，"
+                  "但不能替代人工对人物、节奏、立意的判断。"]
     lines += ["", "## 末轮主要问题", ""]
     last_issues = (history_rounds[-1].get("issues") if history_rounds else []) or []
     majors = [i for i in last_issues if i.get("severity") == "major"]

@@ -294,16 +294,18 @@ class ReviewerDropTests(unittest.TestCase):
                     if x.startswith("@@RESULT@@")][-1]
             result = json.loads(line[len("@@RESULT@@"):])
 
-        self.assertEqual(result["status"], "done", result)
-        self.assertTrue(result["publishable"], result)
-        self.assertFalse(result["review_degraded"], result)
-        self.assertEqual(result["review_independence"],
-                         review_roster.SOLO_MODE, result)
-        self.assertEqual(result["overall"], 8.0, result)
-        # 死掉那一席没有被"换"成同组的 live-cli，而是补了作者的复核席
+        # 一席死在账号级错误上、另一席健康：流程必须走完并给出**真实**结论，
+        # 不能停摆在"评审未完成"。这里探针只写了 3 个字的稿件，本地确定性兜底
+        # 按"信息量不足"一票否决给 3.0（而不是送中性分），与 live-cli 的 8.0
+        # 均值 5.5，低于阈值 → publishable=False。
+        # 注意 review_degraded 这里是"评分低于门槛"的语义（review_config.assess
+        # 所置），不是"评审未完成"——区别就在 overall 有没有真实分数。
+        self.assertEqual(result["status"], "failed", result)
+        self.assertFalse(result["publishable"], result)
+        self.assertEqual(result["overall"], 5.5, result)
         self.assertIn("dead-cli", result["calls"], result)
-        self.assertIn("author-cli#recheck", result["calls"], result)
-        self.assertIn("评审减员后补位", result["critics"], result)
+        self.assertIn("live-cli", result["calls"], result)
+        self.assertIn("评审本地兜底", result["critics"], result)
 
 
 if __name__ == "__main__":
