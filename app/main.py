@@ -4355,6 +4355,15 @@ def _start_pet_keeper(port):
     threading.Thread(target=_loop, name="pet-keeper", daemon=True).start()
 
 
+def access_url(base, token, print_token=False):
+    """启动输出里的访问地址。默认打码：桌面端把启动输出原样写进
+    desktop-logs/backend.log，带令牌的地址等于把服务凭据写成可外传的文件。
+    完整链接仍在 UI「手机连接」面板（/api/connect）；--print-token 保留原行为。"""
+    if print_token:
+        return "%s/?token=%s" % (base, token)
+    return "%s/?token=***（完整带令牌链接见「手机连接」面板）" % base
+
+
 def main():
     parser = argparse.ArgumentParser(description="CodeBee 多智能体编排台")
     parser.add_argument("command", nargs="?", choices=("scaffold-adapter", "code-map"),
@@ -4380,6 +4389,9 @@ def main():
                              "获得随机 *.trycloudflare.com 公网地址，重启会变）")
     parser.add_argument("--no-phone-relay", action="store_true",
                         help="本次启动不恢复已启用的统一手机连接；已配对手机不会因此被撤销")
+    parser.add_argument("--print-token", action="store_true",
+                        help="启动输出里打印带令牌的完整访问地址（默认打码：桌面端会把启动输出"
+                             "原样写进 desktop-logs/backend.log，令牌因此变成可外传的凭据）")
     parser.add_argument("--wait-port", action="store_true",
                         help="自更新重启用：先等旧实例释放端口再启动（Windows 双 LISTEN 防护）")
     parser.add_argument("--capabilities", action="store_true",
@@ -4903,8 +4915,14 @@ def main():
             raise SystemExit("[CodeBee] 端口 %d 已被占用，无法启动：%s %s"
                              % (args.port, e, hint))
 
+    # 启动输出会被桌面端原样写进 desktop-logs/backend.log（backend.cjs 逐行落盘），
+    # 带 token 的地址因此从「控制台提示」变成「可外传的凭据」：拿到日志 = 拿到全部
+    # 任务与产物、还能直接建任务。默认打码，完整链接仍在 UI 的「手机连接」面板
+    # （/api/connect）；纯命令行用户显式加 --print-token 才打印全量。
+    show_token = bool(getattr(args, "print_token", False))
+
     def _announce_public(url):
-        print("[CodeBee] 公网     %s/?token=%s" % (url, tok))
+        print("[CodeBee] 公网     %s" % access_url(url, tok, show_token))
         print("[CodeBee]          ← 任何网络可访问；临时地址重启会变，手机重新扫码即可。"
               "\n[CodeBee]          要固定域名：cloudflared tunnel login 后参考 README 公网章节。")
         store.bump_state()  # 扫码弹框下次打开即可拿到公网地址
@@ -4946,8 +4964,8 @@ def main():
     if phone_relay.view().get("enabled"):
         print("[CodeBee] 手机入口 %s（各设备独立配对；电脑需保持在线）" % phone_relay.relay_url())
     elif remote.PUBLIC_URL:
-        print("[CodeBee] 公网     %s/?token=%s   ← 任何网络可访问（反代回源已强制校验令牌）"
-              % (remote.PUBLIC_URL, tok))
+        print("[CodeBee] 公网     %s   ← 任何网络可访问（反代回源已强制校验令牌）"
+              % access_url(remote.PUBLIC_URL, tok, show_token))
     elif not args.no_public_tunnel and args.host not in ("127.0.0.1", "localhost", "::1"):
         if remote.has_local_creds():
             print("[CodeBee] （检测到已有 Cloudflare 隧道凭据：临时隧道在此类机器上不可用，"
@@ -4971,10 +4989,12 @@ def main():
               "请勿把 token 分享到公开日志或截图。", flush=True)
         lan = remote.lan_ip()
         if lan:
-            print("[CodeBee] 局域网   http://%s:%d/?token=%s   ← 手机同一 WiFi 直接打开" % (lan, args.port, tok))
+            print("[CodeBee] 局域网   %s   ← 手机同一 WiFi 直接打开"
+                  % access_url("http://%s:%d" % (lan, args.port), tok, show_token))
         ts = remote.tailscale_ip()
         if ts:
-            print("[CodeBee] Tailscale http://%s:%d/?token=%s   ← 外网随时随地访问" % (ts, args.port, tok))
+            print("[CodeBee] Tailscale %s   ← 外网随时随地访问"
+                  % access_url("http://%s:%d" % (ts, args.port), tok, show_token))
         elif not remote.PUBLIC_URL:
             print("[CodeBee] （未检测到 Tailscale；安装后重启本服务即可获得外网地址）")
         print("[CodeBee] 远程访问受令牌保护；手机打开一次带 token 的地址后会记住。")
