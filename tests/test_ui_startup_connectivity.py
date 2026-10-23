@@ -107,6 +107,21 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertIn("res.status === 304", api)
         self.assertIn("if (state) applyState(state)", refresh)
 
+    def test_initial_304_without_cached_state_retries_unconditionally(self):
+        source = self.source
+        refresh = source[source.index("async function refreshState()"):
+                        source.index("let _lookupRefresh", source.index("async function refreshState()"))]
+        api = source[source.index("async function api(path, opts)"):
+                    source.index("/* 质量门禁", source.index("async function api(path, opts)"))]
+        # A relay/proxy can replay a stale conditional response before the
+        # phone has a snapshot.  That must trigger one unconditional retry;
+        # otherwise the UI remains blank and the connection badge stays red.
+        self.assertIn("response.status === 304", refresh)
+        self.assertIn("!S.state", refresh)
+        self.assertIn("_retried304", refresh)
+        self.assertIn('S._stateEtag = ""', refresh)
+        self.assertIn("onResponse(res)", api)
+
     def test_sse_degradation_does_not_hide_a_successful_state_snapshot(self):
         source = self.source
         start = source.index("function startSSE()")

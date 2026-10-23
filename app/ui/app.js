@@ -1492,6 +1492,11 @@ async function api(path, opts) {
       throw e;
     }
     if (res.status === 304) {
+      // Conditional requests still need to expose the status to callers.
+      // In particular, a phone relay may return a stale 304 before the
+      // browser has received its first snapshot; refreshState can then make
+      // one safe unconditional retry instead of leaving the UI blank.
+      if (onResponse) onResponse(res);
       operationFinish(operationToken, "done");
       return null;
     }
@@ -3220,15 +3225,28 @@ async function refreshState() {
   // The phone relay adds a second network hop and can transfer the initial
   // snapshot over a slow mobile link. Give this critical request enough time
   // to complete instead of cycling through false timeout failures.
-  const headers = S._stateEtag ? { "If-None-Match": S._stateEtag } : {};
-  const state = await api("/api/state", {
-    timeout: 30000, busy: false, operation: false,
-    headers: authHeaders(headers),
-    onResponse: (response) => {
-      if (response.status === 200) S._stateEtag = response.headers.get("ETag") || "";
-    },
-  });
-  if (state) applyState(state);
+  let _retried304 = false;
+  while (true) {
+    const headers = S._stateEtag ? { "If-None-Match": S._stateEtag } : {};
+    let notModified = false;
+    const state = await api("/api/state", {
+      timeout: 30000, busy: false, operation: false,
+      headers: authHeaders(headers),
+      onResponse: (response) => {
+        if (response.status === 304) notModified = true;
+        else if (response.status === 200) S._stateEtag = response.headers.get("ETag") || "";
+      },
+    });
+    if (state) applyState(state);
+    if (state) break;
+    // Never let an unexpected first-frame 304 strand a mobile page with no
+    // state. One unconditional retry is enough; subsequent 304s are kept as a
+    // valid cached response once a snapshot exists.
+    // !S.state is the first-frame condition that needs recovery.
+    if (!notModified || S.state || _retried304) break;
+    _retried304 = true;
+    S._stateEtag = "";
+  }
 }
 
 let _lookupRefresh = null;
