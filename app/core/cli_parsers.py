@@ -20,6 +20,32 @@ def _codex_config_noise(text):
     return bool(text) and bool(_CODEX_CONFIG_NOISE.search(str(text)))
 
 
+def _obj(value):
+    """字段类型漂移的收敛点：上游把对象字段写成字符串/数字时按空对象处理。
+
+    这些字段只承载统计与展示（usage / item），不是判定依据；上游换个形状就让
+    `u.get(...)` 抛 AttributeError 穿出 run_agent，会把「网关返回怪字段」变成
+    Python traceback，错误分类与换将白名单全部不生效。
+    """
+    return value if isinstance(value, dict) else {}
+
+
+def _int_or_zero(value):
+    """宽松取整：``"n/a"``/``"1.2k"``/``None`` 一律 0，不参与异常传播。"""
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _float_or_zero(value):
+    """宽松取小数：费用字段同样是统计信息，类型漂移不该中断整轮解析。"""
+    try:
+        return max(0.0, float(value or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _parse_codex_jsonl(stdout):
     """解析 codex exec JSONL 事件流。返回 (text, usage, sid)。
 
@@ -42,19 +68,19 @@ def _parse_codex_jsonl(stdout):
         if ev.get("type") == "thread.started":
             sid = str(ev.get("thread_id") or sid)
         elif ev.get("type") == "item.completed":
-            item = ev.get("item") or {}
+            item = _obj(ev.get("item"))
             if item.get("type") == "agent_message" and item.get("text"):
                 text = item["text"]
         elif ev.get("type") == "turn.completed":
-            u = ev.get("usage") or {}
-            inp = int(u.get("input_tokens") or 0)
-            out = int(u.get("output_tokens") or 0)
+            u = _obj(ev.get("usage"))
+            inp = _int_or_zero(u.get("input_tokens"))
+            out = _int_or_zero(u.get("output_tokens"))
             usage["input"] += inp
             usage["output"] += out
-            usage["cached"] += int(u.get("cached_input_tokens") or 0)
-            usage["reasoning"] += int(u.get("reasoning_output_tokens") or 0)
+            usage["cached"] += _int_or_zero(u.get("cached_input_tokens"))
+            usage["reasoning"] += _int_or_zero(u.get("reasoning_output_tokens"))
             total = u.get("total_tokens")
-            usage["total"] += int(total) if total is not None else inp + out
+            usage["total"] += _int_or_zero(total) if total is not None else inp + out
     return text, usage, sid
 
 
@@ -179,21 +205,21 @@ def _parse_claude_json(stdout):
                 data = ev
     if not isinstance(data, dict):
         return None
-    u = data.get("usage") or {}
-    inp = int(u.get("input_tokens") or 0)
-    out = int(u.get("output_tokens") or 0)
+    u = _obj(data.get("usage"))
+    inp = _int_or_zero(u.get("input_tokens"))
+    out = _int_or_zero(u.get("output_tokens"))
     # 缓存读 + 缓存写都计入 cached（读是省钱的部分，写是额外消耗的部分）
-    cached = int(u.get("cache_read_input_tokens") or 0) + \
-        int(u.get("cache_creation_input_tokens") or 0)
+    cached = _int_or_zero(u.get("cache_read_input_tokens")) + \
+        _int_or_zero(u.get("cache_creation_input_tokens"))
     usage = {"input": inp, "output": out, "cached": cached, "reasoning": 0,
              "total": inp + out + cached}
     # 网关实服模型：请求 deepseek-v4.1-flash 却被网关映射成 gemini-3.8-flash
     # 之类（2026-09-23 夜班实案）——用量统计记错名、失败排查看错病根，都
     # 靠 result 行的 modelUsage 对出来
-    served = sorted({str(k) for k in ((data.get("modelUsage") or {}) or {})})
+    served = sorted({str(k) for k in _obj(data.get("modelUsage"))})
     return {
         "text": data.get("result") or "",
-        "cost_usd": data.get("total_cost_usd") or 0.0,
+        "cost_usd": _float_or_zero(data.get("total_cost_usd")),
         "usage": usage,
         "tokens": usage["total"],
         "is_error": bool(data.get("is_error")),
