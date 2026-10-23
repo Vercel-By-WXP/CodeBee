@@ -14764,25 +14764,34 @@ function renderHome() {
     return;
   }
   listEl.innerHTML = recent.map((r) => {
-    const st = r.status === "running" ? "run" : r.status === "queued" ? "wait" : (r.status === "failed" || r.status === "timeout") ? "bad" : "ok";
-    const discTxt = st === "run" ? "▸" : st === "ok" ? "✓" : st === "bad" ? "✕" : "◔";
+    const tone = r.status === "running" ? "run" : (r.status === "queued" || r.status === "cancelled") ? "wait" : (r.status === "failed" || r.status === "timeout") ? "bad" : "ok";
+    const label = r.status === "running" ? t("运行中") : r.status === "queued" ? t("排队中")
+      : r.status === "failed" ? t("失败") : r.status === "timeout" ? t("超时")
+      : r.status === "cancelled" ? t("已取消") : t("已完成");
+    const icon = tone === "run" ? '<span class="rd-task-spin" aria-hidden="true"></span>'
+      : tone === "wait" ? '<span class="rd-task-pause" aria-hidden="true"><i></i><i></i></span>'
+      : '<svg class="ico" aria-hidden="true"><use href="#i-' + (tone === "ok" ? "check" : "x") + '"></use></svg>';
     // 进度契约与状态栏一致：step_count 折算、current_step 是对象取 .n
     const total = r.step_count || 0;
     const progress = total ? Math.min(100, Math.max(0, Math.round(Number(r.progress) || 0))) : (r.progress != null ? Math.round(Number(r.progress)) : null);
+    const pct = progress == null ? null : Math.min(100, Math.max(0, progress));
     const step = (r.current_step && r.current_step.n) || 0;
-    const meta3 = [relTime(r.created_at || r.started_at || ""), r.flow_name || r.flow || "",
-      (total ? t("第 ") + step + "/" + total + t(" 步") : "")].filter(Boolean);
-    const metaHtml = meta3.map((x, i) => (i ? '<span class="rd-m3-dot"></span>' : "") + "<span>" + esc(String(x)) + "</span>").join("");
-    return '<div class="rd-task-item" onclick="homeOpenRun(\'' + esc(r.id || "") + '\')">'
-      + '<span class="rd-disc ' + st + '">' + discTxt + "</span>"
-      + '<div class="rd-task-info">'
-      + '<div class="rd-task-title">' + esc(r.title || r.id || "") + "</div>"
-      + '<div class="rd-meta3">' + metaHtml + "</div>"
-      + "</div>"
-      + (progress != null
-        ? '<span class="rd-track"><span class="rd-track-fill" style="width:' + progress + '%"></span></span><span class="rd-pct">' + progress + "%</span>"
-        : '<svg class="ico rd-task-arrow" aria-hidden="true"><use href="#i-chevron-r"></use></svg>')
-      + "</div>";
+    const time = relTime(r.created_at || r.started_at || "");
+    const metaHtml = (time ? '<svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"></use></svg><span>' + esc(time) + "</span>" : "")
+      + [r.flow_name || r.flow || "", total ? t("第 ") + step + "/" + total + t(" 步") : ""].filter(Boolean)
+        .map((x) => '<span class="rd-m3-dot"></span><span>' + esc(String(x)) + "</span>").join("");
+    return '<button type="button" class="rd-task-item" onclick="homeOpenRun(\'' + esc(r.id || "") + '\')">'
+      + '<span class="rd-task-ico ' + tone + '">' + icon + "</span>"
+      + '<span class="rd-task-info">'
+      + '<span class="rd-task-title">' + esc(r.title || r.id || "") + "</span>"
+      + '<span class="rd-meta3">' + metaHtml + "</span>"
+      + "</span>"
+      + '<span class="rd-task-side ' + tone + '">'
+      + '<span class="rd-task-chip">' + esc(label) + "</span>"
+      + '<span class="rd-task-track"><i style="width:' + (pct == null ? 0 : pct) + '%"></i></span>'
+      + '<span class="rd-task-pct">' + (pct == null ? "—" : pct + "%") + "</span>"
+      + "</span>"
+      + "</button>";
   }).join("");
 }
 

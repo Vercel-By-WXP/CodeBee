@@ -1286,79 +1286,252 @@ html[data-layout="workbench"] .rd-section-head h2 {
 html[data-layout="workbench"] .rd-link-btn {
   background: none;
   border: none;
+  padding: 2px 0;
   color: var(--accent);
-  font-size: 13px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
-html[data-layout="workbench"] .rd-link-btn:hover {
-  text-decoration: underline;
+html[data-layout="workbench"] .rd-link-btn .ico {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.15s ease;
+}
+
+html[data-layout="workbench"] .rd-link-btn:hover .ico {
+  transform: translateX(2px);
 }
 
 html[data-layout="workbench"] .rd-task-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
 }
 
 html[data-layout="workbench"] .rd-task-item {
   display: flex;
   align-items: center;
-  padding: 12px 14px;
-  border-radius: 10px;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 html[data-layout="workbench"] .rd-task-item:hover {
-  background: var(--panel2);
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent) 3%, var(--panel));
 }
 
-html[data-layout="workbench"] .rd-task-dot {
-  width: 8px;
-  height: 8px;
+html[data-layout="workbench"] .rd-task-item:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+html[data-layout="workbench"] .rd-task-ico {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+}
+
+html[data-layout="workbench"] .rd-task-ico .ico {
+  width: 16px;
+  height: 16px;
+}
+
+html[data-layout="workbench"] .rd-task-ico.run {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-ico.ok {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-ico.bad {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-ico.wait {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-spin {
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  margin-right: 12px;
-  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  animation: rd-task-spin 0.9s linear infinite;
 }
 
-html[data-layout="workbench"] .rd-task-dot.running { background: var(--ok); }
-html[data-layout="workbench"] .rd-task-dot.waiting { background: var(--warn); }
-html[data-layout="workbench"] .rd-task-dot.completed { background: var(--muted); }
-html[data-layout="workbench"] .rd-task-dot.failed { background: var(--bad); }
+@keyframes rd-task-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-layout="workbench"] .rd-task-spin { animation-duration: 2.4s; }
+}
+
+html[data-layout="workbench"] .rd-task-pause {
+  display: flex;
+  gap: 3px;
+}
+
+html[data-layout="workbench"] .rd-task-pause i {
+  width: 3px;
+  height: 12px;
+  border-radius: 1.5px;
+  background: currentColor;
+}
 
 html[data-layout="workbench"] .rd-task-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 html[data-layout="workbench"] .rd-task-title {
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 2px;
 }
 
-html[data-layout="workbench"] .rd-task-meta {
-  font-size: 12px;
+html[data-layout="workbench"] .rd-meta3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-html[data-layout="workbench"] .rd-task-progress {
-  font-size: 13px;
+html[data-layout="workbench"] .rd-meta-clock {
+  width: 12px;
+  height: 12px;
+  opacity: 0.75;
+}
+
+html[data-layout="workbench"] .rd-m3-dot {
+  width: 3px;
+  height: 3px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+html[data-layout="workbench"] .rd-task-side {
+  flex: none;
+  width: 172px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+html[data-layout="workbench"] .rd-task-chip {
+  flex: none;
+  min-width: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 99px;
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--accent);
-  margin-left: 12px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
-html[data-layout="workbench"] .rd-task-arrow {
+html[data-layout="workbench"] .rd-task-track {
+  flex: none;
+  width: 64px;
+  height: 5px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+html[data-layout="workbench"] .rd-task-pct {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+html[data-layout="workbench"] .rd-task-side.run .rd-task-chip {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-side.ok .rd-task-chip {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-side.bad .rd-task-chip {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-side.wait .rd-task-chip {
   color: var(--muted);
-  margin-left: 8px;
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+}
+
+html[data-layout="workbench"] .rd-task-side.ok .rd-task-track i { background: var(--ok); }
+html[data-layout="workbench"] .rd-task-side.bad .rd-task-track i { background: var(--bad); }
+html[data-layout="workbench"] .rd-task-side.wait .rd-task-track i { background: var(--muted); }
+
+html[data-skin="contrast"][data-layout="workbench"] .rd-task-track {
+  height: 6px;
+  border: 1px solid var(--border);
+}
+
+html[data-skin="contrast"][data-layout="workbench"] .rd-task-chip {
+  border: 1px solid currentColor;
+}
+
+@media (max-width: 720px) {
+  html[data-layout="workbench"] .rd-task-side { width: auto; }
+  html[data-layout="workbench"] .rd-task-track { display: none; }
 }
 
 /* 任务信息弹层：统计改为一行一条的键值行。旧 flex 胶囊在窄弹层里
@@ -1440,70 +1613,7 @@ html[data-skin="warm"] .rd-tool-grid .rd-tool:nth-of-type(4) .rd-tool-ico {
   color: #3d7bd6;
 }
 
-/* ② 最近任务行：状态圆盘 + 三级元信息（时间 · 流程 · 步数）+ 细进度条 */
-html[data-skin="warm"] .rd-task-item .rd-disc {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: #fff;
-}
-
-html[data-skin="warm"] .rd-disc.run {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-html[data-skin="warm"] .rd-disc.ok { background: var(--ok, #3d8f5f); }
-html[data-skin="warm"] .rd-disc.bad { background: var(--bad); }
-html[data-skin="warm"] .rd-disc.wait { background: var(--warn, #b98a2e); }
-
-html[data-skin="warm"] .rd-task-item .rd-meta3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-html[data-skin="warm"] .rd-m3-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.6;
-}
-
-html[data-skin="warm"] .rd-task-item .rd-track {
-  width: 90px;
-  height: 4px;
-  border-radius: 99px;
-  background: var(--panel2);
-  overflow: hidden;
-  flex: none;
-}
-
-html[data-skin="warm"] .rd-task-item .rd-track-fill {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: var(--accent);
-}
-
-html[data-skin="warm"] .rd-task-item .rd-pct {
-  flex: none;
-  width: 42px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text);
-}
+/* ② 最近任务行样式已升为全皮肤基础样式（见上方「最近任务」段），此处不再保留 warm 专属覆盖 */
 
 /* ③ 状态栏运行条目：软底圆角卡（原发丝分隔线样式让位） */
 html[data-skin="warm"] #status-running-list .running-item {
