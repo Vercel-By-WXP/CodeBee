@@ -25,16 +25,31 @@ _EXTERNAL_SKILL_ITEM_BUDGET = 1200
 _EXTERNAL_SKILL_MAX_ITEMS = 4
 
 
+# ``type`` is a routing discriminator ("code"/"doc"/"novel"), not topic text.
+# Matching it as a keyword made every ``code`` task hit the ``codex-`` namespace
+# prefix carried by every codex skill id, so unrelated multi-KB prose (a novel
+# writing system on a refactoring task) was injected into the prompt.
+_TASK_TOPIC_FIELDS = ("title", "goal", "context")
+# ``codex-skill:foo`` / ``codebee-skill:foo`` record provenance, not topics.
+_SOURCE_PREFIX_RE = re.compile(r"^\s*[a-z0-9_-]+-skill\s*[:：#]\s*", re.I)
+
+
 def _task_text(task):
     task = task or {}
-    return " ".join(str(task.get(k) or "") for k in ("type", "title", "goal", "context")).lower()
+    return " ".join(str(task.get(k) or "") for k in _TASK_TOPIC_FIELDS).lower()
+
+
+def _row_hay(row):
+    hay = " ".join(str(row.get(k) or "") for k in (
+        "id", "name", "display_name", "description")).lower()
+    return _SOURCE_PREFIX_RE.sub("", hay)
 
 
 def _relevant(row, text):
     terms = set(re.findall(r"[a-z0-9][a-z0-9_-]{2,}", text.lower()))
     cjk = "".join(re.findall(r"[\u4e00-\u9fff]", text))
     terms.update(cjk[i:i + 2] for i in range(max(0, len(cjk) - 1)))
-    hay = " ".join(str(row.get(k) or "") for k in ("id", "name", "display_name", "description")).lower()
+    hay = _row_hay(row)
     if not terms:
         return False
     return any(term in hay for term in terms)

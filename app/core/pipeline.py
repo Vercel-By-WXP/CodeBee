@@ -4163,12 +4163,28 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 pool = [a for a in (agents or [])
                         if a.get("mode") == "real" and a.get("id") not in tried
                         and not _bench.is_benched(run_id, a.get("id"))]
-                for spare in pool[:2]:
+                spares = list(pool[:2])
+                # 没有其他真实 CLI 可补时派生独立复核席。只装了一条 CLI 或者
+                # 其余全被本场停用，逐章评审就会永远停在「有效评审不足两名」，
+                # 整本书判未评估。同源的第二遍独立会话（不同人格、互不可见）
+                # 至少给出第二份判断，强过直接判死。
+                _src = next((a for a in (critics or [])
+                             if a.get("mode") == "real"), None) or impl
+                _src_id = review_roster.solo_source(_src) if isinstance(
+                    _src, dict) else ""
+                if _src_id and not _bench.is_benched(run_id, _src_id):
+                    for _no in (1, 2):
+                        _seat = review_roster.make_solo_seat(_src, _no)
+                        if _seat and _seat.get("id") not in tried:
+                            spares.append(_seat)
+                for spare in spares[:2]:
                     res = _run_step(run_id, role, modelhub.bind_agent(spare, difficulty),
                                     crit_prompt_for(
                                         text,
                                         note="小说第 %d 章" % i,
-                                        event_check=event_check, chapter=i) + note_extra,
+                                        event_check=event_check, chapter=i)
+                                    + note_extra
+                                    + review_roster.prompt_suffix(spare),
                                     workdir, readonly=True, ev=ev)
                     cj = _critique_json(res, dims)
                     if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
