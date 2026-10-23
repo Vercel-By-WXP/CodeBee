@@ -6,7 +6,8 @@ export const SECRET = /^[a-f0-9]{64}$/;
 export const PAIR_CODE = /^[a-f0-9]{32}$/;
 export const REQUEST_HEADERS = new Set([
   "accept", "accept-language", "content-type", "range", "if-none-match",
-  "if-modified-since", "accept-encoding", "x-codebee-client", "x-codebee-name", "origin",
+  "if-modified-since", "accept-encoding", "x-codebee-token", "x-codebee-client",
+  "x-codebee-name", "origin",
 ]);
 export const RESPONSE_HEADERS = new Set([
   "content-type", "content-disposition", "content-length", "content-range", "accept-ranges",

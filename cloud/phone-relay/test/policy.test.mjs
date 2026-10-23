@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assetTarget, rateLimitSubject } from "../src/policy.mjs";
+import { assetTarget, rateLimitSubject, REQUEST_HEADERS } from "../src/policy.mjs";
 
 const DEVICE = "a".repeat(32);
 const PHONE_A = "b".repeat(64);
@@ -29,4 +29,11 @@ test("unpaired and non-request actions remain limited by IP", () => {
 test("manifest is mapped to the mirrored workbench asset", () => {
   assert.equal(assetTarget("/manifest.json"), "/ui/manifest.json");
   assert.equal(assetTarget("/api/wxdigest"), null);
+});
+
+test("paired API requests forward the CodeBee token to the desktop", () => {
+  // The relay authenticates the phone with its session cookie, but the
+  // desktop still authenticates each forwarded API request with this token.
+  // Dropping it makes every /api/state request look unauthenticated.
+  assert.equal(REQUEST_HEADERS.has("x-codebee-token"), true);
 });
