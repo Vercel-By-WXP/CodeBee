@@ -101,17 +101,18 @@ class QimaoShortPublishChainTests(unittest.TestCase):
         self.assertIn("确认发布", page.real_clicks)
         self.assertEqual(state["decl_calls"], ["含AI生成内容"])
 
-    def test_dialog_without_declaration_select_aborts_before_confirm(self):
-        page, state = self._page(
+    def test_dialog_without_declaration_select_passes_through(self):
+        # 真机实案（2026-10-23 CDP 解剖，书 13876017）：短故事「立即发布
+        # 确认」弹层 el-select 数为 0——声明在建书时已定。无声明下拉必须
+        # 放行去点「确认发布」，中止会让发布永不可达。
+        page, _ = self._page(
             dialogs_seq=[["确认发布"], []],
-            body_seq=[""],
+            body_seq=["", "发布成功"],
             declaration_results=[{"ok": False, "err": "no-select"}])
         with mock.patch.object(flow_qimao.time, "sleep"):
-            with self.assertRaises(FlowError):
-                run_qimao_short_publish(page, {"timeout": 30}, 0,
-                                        lambda i, s: None, {})
-        self.assertNotIn("确认发布", page.real_clicks)
-        self.assertEqual(state["decl_calls"], ["含AI生成内容"])
+            run_qimao_short_publish(page, {"timeout": 30}, 0,
+                                    lambda i, s: None, {})
+        self.assertIn("确认发布", page.real_clicks)
 
     def test_declaration_failure_aborts_before_confirm(self):
         page, _ = self._page(
