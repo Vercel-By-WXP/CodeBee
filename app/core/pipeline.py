@@ -6444,6 +6444,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     # 2.5) 成片渲染（handdraw_video 专属）：评审达标才渲染；渲染失败按失败
     # 收束，不静默降级成纯制作包（skillpack 不并谎）。mock 执行无渲染意义。
     render_error = None
+    if task.get("type") == "handdraw_video":
+        verdict["review_passed"] = bool(publishable)
     if (task.get("type") == "handdraw_video" and publishable
             and impl.get("mode") != "mock"):
         from . import handdraw_render
@@ -6469,16 +6471,25 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         verdict["render"] = render_note
         if not _ok:
             render_error = render_note
+            publishable = False
+            verdict["publishable"] = False
 
     # 3) 报告
+    if publishable:
+        conclusion = ("✅ 立项审核通过，可进入试写（不代表平台签约）"
+                     if is_selection else "✅ 达到发布标准")
+    elif render_error:
+        conclusion = "⚠ 评审通过但成片渲染失败"
+    elif draft_degraded:
+        conclusion = "⚠ 起草中断，已落盘稿件仅用于继续评审修订"
+    elif review_degraded:
+        conclusion = "⚠ 评审未完成，稿件质量未判定"
+    else:
+        conclusion = "❌ 未达标，建议再修"
     lines = ["# 评审报告：%s" % task["title"], "",
              "- 任务类型：%s" % task["type"],
              "- 结论：**%s**（综合 %s / 阈值 %.1f，%d 轮评审）"
-             % (("✅ 立项审核通过，可进入试写（不代表平台签约）" if is_selection else "✅ 达到发布标准")
-                if publishable else ("⚠ 起草中断，已落盘稿件仅用于继续评审修订"
-                                     if draft_degraded else
-                                     "⚠ 评审未完成，稿件质量未判定" if review_degraded
-                                     else "❌ 未达标，建议再修"),
+             % (conclusion,
                 "%.1f" % overall if overall is not None else "未评估",
                 threshold, verdict["rounds_used"]),
              "- 编排模式：%s　起草/修订：%s　评审组：%s" % (
@@ -6547,13 +6558,13 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
                          error=story_gate_error, summary="字数闸未过（评审已达标）",
                          ended_at=_now())
-    elif publishable:
-        store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
-                         summary="评审任务达标（综合 %.1f）" % overall, ended_at=_now())
     elif render_error:
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
                          error="稿件已过评审，但成片渲染失败：%s" % render_error,
                          summary="成片渲染失败", ended_at=_now())
+    elif publishable:
+        store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
+                         summary="评审任务达标（综合 %.1f）" % overall, ended_at=_now())
     elif history_rounds and history_rounds[-1].get("review_degraded"):
         store.update_run(
             run_id, expected_status="running", status="failed", verdict=verdict,

@@ -24,6 +24,7 @@
   "files": [
     "app",
     "bin",
+    "tools/render_handdraw.py",
     "tools/wx_reader.py",
     "tools/run_end_autocommit.py",
     "VERSION",

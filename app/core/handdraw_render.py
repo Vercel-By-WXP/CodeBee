@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """handdraw_video 成片渲染编排：storyboard.json → mp4。
 
-渲染器本体在 tools/render_handdraw.py（需 Pillow + imageio-ffmpeg + edge-tts，
+渲染器本体在包根目录 tools/render_handdraw.py（需 Pillow + imageio-ffmpeg + edge-tts，
 本机装在 Python 3.13 64 位下）。服务端是 32 位 Python 3.8，本模块只做三件事：
 校验 storyboard schema、找具备依赖的解释器、子进程跑渲染并回收结果——
 不 import 任何渲染依赖，测试可全静态进行。
@@ -78,6 +78,13 @@ def find_interpreter():
     return None
 
 
+def renderer_path():
+    """Return the bundled renderer path in both a checkout and npm install."""
+    package_root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    return os.path.join(package_root, "tools", "render_handdraw.py")
+
+
 def render_for_run(task, workdir, timeout_s=RENDER_TIMEOUT_S):
     """返回 (ok, video_path, note)。ok=False 时 note 是可直接给人看的原因。"""
     sb_path = os.path.join(workdir, "storyboard.json")
@@ -90,8 +97,7 @@ def render_for_run(task, workdir, timeout_s=RENDER_TIMEOUT_S):
     if not interp:
         return False, None, ("未找到具备 Pillow+imageio-ffmpeg+edge-tts 的解释器"
                              "（本机请在 Python 3.13 下 pip install edge-tts imageio-ffmpeg）")
-    tool = os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), "tools", "render_handdraw.py")
+    tool = renderer_path()
     out_path = os.path.join(workdir, "handdraw.mp4")
     rpt_path = os.path.join(workdir, "render_report.json")
     cmd = interp + ["-X", "utf8", tool, "--storyboard", sb_path,
