@@ -249,16 +249,24 @@ function wbDraw() {
     }
   }
   
-  // Verify card
+  // Verify card：三态（通过 / 未通过 / 未执行）。run.verdict 是对象，旧代码写
+  // `run.verdict === "pass"` 恒为 false，跑通的任务也显示「验证未通过」；
+  // 而没配验证命令的任务（verify_ran=false）又不该显示为通过——口径同后端
+  // _verify_text（2026-10-23 修）。
   const verify = $("wb-verify-card");
   if (verify) {
-    if (!run || !run.verdict) {
+    const v = run && run.verdict && typeof run.verdict === "object" ? run.verdict : null;
+    if (!v) {
       verify.innerHTML = '<span style="color:var(--muted)">' + t("暂无验证结果") + "</span>";
     } else {
-      const ok = run.verdict === "pass";
-      verify.innerHTML = '<div class="wb-verify-line ' + (ok ? "ok" : "bad") + '">' +
-        '<svg class="ico" aria-hidden="true"><use href="#i-' + (ok ? "check" : "x") + '"></use></svg>' +
-        (ok ? t("验证通过") : t("验证未通过")) +
+      const ran = v.verify_ran !== false;
+      const ok = ran && v.pass !== false && v.publishable !== false;
+      const tone = !ran ? "" : ok ? "ok" : "bad";
+      const icon = !ran ? "clock" : ok ? "check" : "x";
+      const label = !ran ? t("验证未执行") : ok ? t("验证通过") : t("验证未通过");
+      verify.innerHTML = '<div class="wb-verify-line' + (tone ? " " + tone : "") + '">' +
+        '<svg class="ico" aria-hidden="true"><use href="#i-' + icon + '"></use></svg>' +
+        label +
         "</div>";
     }
   }

@@ -381,6 +381,7 @@
     "等待验证": "Waiting for verification",
     "验证通过": "Verification passed",
     "验证未通过": "Verification failed",
+    "验证未执行": "Verification not run",
     "超时": "Timed out",
     "等待中": "Waiting",
     "未命名任务": "Untitled task",

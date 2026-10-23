@@ -34,6 +34,36 @@ def _fast_path_flag(task, mode, difficulty, user_context_len):
     return fp
 
 
+def _verify_text(verify_pass, verify_ran):
+    """验证步骤的呈现文本：没跑 ≠ 通过（2026-10-23 修）。
+
+    `_run_verify` 在任务未配置验证命令时返回 (True, False)：verify_pass 为真
+    只表示「没有失败证据」，不代表真的跑过。报告与摘要只读 verify_pass 会把
+    「未配置」印成「验证通过」，让无测试证据的任务看起来有质量门。三态并列，
+    未执行单独成一类。"""
+    if not verify_ran:
+        return "未执行"
+    return "通过" if verify_pass else "未通过"
+
+
+def _verify_report_lines(task, verify_pass, verify_ran):
+    """报告里「验证结论」段落：命令 → 三态，未执行时补一行显式警示。
+
+    单独成函数是为了让三种状态有唯一出口：报告正文走这里，任务摘要走同一套
+    `_verify_text`，证据文件见 `pipeline._evidence_lines_from_run`——三处口径
+    一致，避免日后某处又退回只看 verify_pass（2026-10-23 的真实报告里
+    「验证命令：（未配置） → 通过」+「结论：✅ 通过」同时出现）。"""
+    command = task.get("verify_command") or "（未配置）"
+    out = ["- 验证命令：%s → %s" % (command, _verify_text(verify_pass, verify_ran))]
+    if not verify_ran:
+        # 结论可能因模型评审通过而显示 ✅，读者不会去翻 verdict.verify_ran，
+        # 所以必须有一行明文说明「这次没跑」。
+        out.append("- ⚠ 验证未执行：%s，以上结论仅来自模型评审，不含任何测试证据。" % (
+            "本任务未配置验证命令" if not task.get("verify_command")
+            else "运行未到达验证步骤"))
+    return out
+
+
 def _run_code(run, task, agents, ev, stats, mode):
     run_id = run["id"]
     workdir = task["workdir"]
@@ -544,8 +574,10 @@ def _run_code(run, task, agents, ev, stats, mode):
             workflow["implementation_steps"], "有" if workflow["verification"] else "无",
             workflow["reviewers"], workflow["max_repair_rounds"],
             "允许" if workflow["allow_switch"] else "关闭"),
-        "- 验证命令：%s → %s" % (task.get("verify_command") or "（未配置）",
-                                 "通过" if verify_pass else "未通过"),
+    ]
+    # 验证结论单独成函数：跳过/未执行与「跑通」在纸面上必须能分开（2026-10-23）。
+    lines += _verify_report_lines(task, verify_pass, verify_ran)
+    lines += [
         "- 综合评分：%s　修复/换将：%s" % (
             overall_score if overall_score is not None else "-",
             ("%d 轮修复" % (len(repairs) - 1)) if len(repairs) > 1 else "无") +
@@ -624,7 +656,7 @@ def _run_code(run, task, agents, ev, stats, mode):
     _pl().store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                      summary="代码任务%s（验证%s / 评审%s%s%s）" % (
                          "通过" if overall_pass else "未通过",
-                         "通过" if verify_pass else "未通过",
+                         _verify_text(verify_pass, verify_ran),
                          ((("通过" if review_json.get("pass") else "未通过") +
                            ("" if review_status == "ok" else
                             "（%s）" % ("覆盖不完整" if review_status == "partial"
