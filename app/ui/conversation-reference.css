@@ -342,3 +342,154 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-context-source { min-height: 29px; padding: 4px 5px; color: var(--muted); }
 .rd-context-source span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rd-context-link { min-height: 27px; padding: 4px 5px; color: var(--muted); }
+
+/* 失败步骤与评审裁定：都曾与普通回答同形——失败只在 meta 末尾多一个词，
+ * 裁定是一整段 JSON/摘要。失败升级为红卡（退出码/原因进标题栏），评审换
+ * 结构卡（均分/维度/严重度分行）。颜色全部走 --bad/--accent/--chat-*，
+ * 亮暗皮肤由 color-mix 自适应（2026-10-22 用户反馈「优化样式」）。 */
+.rd-chat .chat-fail-card {
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--bad) 22%, var(--chat-rule));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bad) 4%, var(--panel));
+}
+.rd-chat .chat-fail-head,
+.rd-chat .chat-review-head {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  min-width: 0; font-size: 12px; line-height: 1.5;
+}
+.rd-chat .chat-fail-title,
+.rd-chat .chat-review-title {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600;
+}
+.rd-chat .chat-fail-title { color: var(--bad); }
+.rd-chat .chat-fail-title .ico { width: 13px; height: 13px; }
+.rd-chat .chat-fail-code {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--bad) 22%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  color: var(--bad);
+  font: 600 10.5px/1.5 var(--mono);
+}
+.rd-chat .chat-fail-reason { color: var(--chat-muted); font-size: 11.5px; }
+.rd-chat .chat-fail-meta,
+.rd-chat .chat-review-meta {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-width: 0; margin-left: auto;
+  color: var(--chat-muted); font-size: 11.5px;
+}
+.rd-chat .chat-fail-meta .chat-acts2,
+.rd-chat .chat-review-meta .chat-acts2 { margin-left: 2px; }
+.rd-chat .chat-fail-body {
+  margin-top: 8px;
+  color: var(--chat-text);
+  font-size: 13px; line-height: 1.65;
+}
+.rd-chat .chat-fail-tag {
+  display: inline-block; margin-right: 7px; padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: color-mix(in srgb, var(--chat-muted) 40%, var(--chat-text));
+  font: 600 10.5px/1.6 var(--mono);
+}
+.rd-chat .chat-fail-body code {
+  color: color-mix(in srgb, var(--chat-text) 88%, var(--muted));
+  font: 12px/1.6 var(--mono);
+  overflow-wrap: anywhere;
+}
+.rd-chat .chat-fail-diag { margin-left: 2px; color: color-mix(in srgb, var(--chat-muted) 40%, var(--chat-text)); }
+.rd-chat .chat-fail-attempts {
+  margin: 7px 0 0; padding: 5px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--bad) 16%, var(--chat-rule));
+  list-style: none;
+}
+.rd-chat .chat-fail-attempt {
+  display: flex; align-items: baseline; gap: 9px;
+  padding: 2px 0;
+  color: var(--chat-muted); font-size: 11.5px;
+}
+.rd-chat .chat-fail-attempt b { min-width: 44px; color: var(--chat-text); font: 500 11.5px var(--mono); }
+.rd-chat .chat-fail-nth { margin-left: auto; opacity: .75; }
+
+.rd-chat .chat-review-card {
+  padding: 1px 0 1px 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--chat-rule));
+}
+.rd-chat .chat-review-title { color: var(--chat-text); }
+.rd-chat .chat-review-title .ico { width: 13px; height: 13px; color: var(--accent); }
+.rd-chat .chat-review-flag {
+  padding: 0 6px; border-radius: 5px;
+  color: var(--chat-muted); background: color-mix(in srgb, var(--muted) 12%, transparent);
+  font-size: 10.5px; font-weight: 600;
+}
+.rd-chat .chat-review-flag.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.rd-chat .chat-review-flag.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.rd-chat .chat-review-scores {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px 6px;
+  margin-top: 5px;
+  color: var(--chat-muted); font-size: 11.5px;
+}
+.rd-chat .chat-review-avg { margin-right: 3px; color: var(--chat-text); font-weight: 600; }
+.rd-chat .chat-score-chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 0 6px; border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  color: color-mix(in srgb, var(--chat-muted) 40%, var(--chat-text));
+}
+.rd-chat .chat-score-chip b { color: var(--chat-text); font: 600 11px var(--mono); }
+.rd-chat .chat-review-lead {
+  margin-top: 7px;
+  color: var(--chat-text); font-size: 13px; line-height: 1.65;
+}
+.rd-chat .chat-review-list {
+  display: flex; flex-direction: column; gap: 9px;
+  margin: 9px 0 0; padding: 0;
+  list-style: none;
+}
+.rd-chat .chat-review-item {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start;
+  font-size: 13px; line-height: 1.65;
+}
+.rd-chat .chat-review-item > div:only-child { grid-column: 1 / -1; }
+.rd-chat .chat-sev {
+  margin-top: 2px; padding: 0 6px; border-radius: 5px;
+  color: color-mix(in srgb, var(--chat-muted) 40%, var(--chat-text));
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  font: 600 10px/1.7 var(--mono); letter-spacing: .02em;
+}
+.rd-chat .chat-sev.major { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.rd-chat .chat-sev.critical { color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.rd-chat .chat-review-dim { margin-right: 6px; color: var(--chat-text); font-weight: 600; }
+.rd-chat .chat-review-note { color: var(--chat-text); }
+.rd-chat .chat-review-more { margin-top: 7px; color: var(--chat-muted); font-size: 11.5px; }
+
+/* 运行中：状态行而不是答案正文——呼吸点 + 执行中标签。 */
+.rd-chat .chat-live-status {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--chat-muted); font-size: 13px;
+}
+.rd-chat .chat-live-dot {
+  flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: chat-live-breathe 1.6s ease-in-out infinite;
+}
+@keyframes chat-live-breathe { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .rd-chat .chat-live-dot { animation: none; opacity: .7; }
+}
+.rd-chat .chat-live-text { min-width: 0; }
+.rd-chat .chat-live-tag {
+  padding: 0 7px; border-radius: 999px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 10.5px;
+}
+
+@media (max-width: 720px) {
+  .rd-chat .chat-fail-head,
+  .rd-chat .chat-review-head { gap: 6px; }
+  .rd-chat .chat-fail-meta,
+  .rd-chat .chat-review-meta { width: 100%; margin-left: 0; }
+  .rd-chat .chat-fail-attempt b { min-width: 40px; }
+}

@@ -12377,14 +12377,14 @@ async function chatSummarizeDirect() {
   }
 }
 
-/* 评审裁定 JSON 原文 → 人读短摘要（multi=true 多行版，供对话气泡）。
+/* 评审裁定 JSON 原文 → 结构化摘要（文本摘要与结构化评审卡共用一份解析）。
  * 后端已把新 run 的步骤 summary 落成摘要（runner_parsing.verdict_brief），
  * 但历史 run 的 summary/对话 output 已按 ```json 原文落盘，前端同样兜底。
- * 识别不出裁定形状（含被截断的残文，走 scores 片区抢分数对）返回 ""，
+ * 识别不出裁定形状（含被截断的残文，走 scores 片区抢分数对）返回 null，
  * 调用方回退原文；普通回答永远原样放行。 */
-function verdictDigestText(txt, multi) {
+function verdictDigestData(txt) {
   const s = String(txt || "").trim();
-  if (!s || s.indexOf('"scores"') < 0) return "";
+  if (!s || s.indexOf('"scores"') < 0) return null;
   let obj = null;
   const fence = s.match(/```(?:json)?\s*(\{[\s\S]*?)(?:```|$)/);
   const bare = (/^\{[\s\S]*\}$/.test(s) ? s : (fence ? fence[1] : ""))
@@ -12402,38 +12402,184 @@ function verdictDigestText(txt, multi) {
     // 截断残文：只从 "scores": { … } 片区抢「维度: 数值」对（截在 600 字
     // 的老 summary 解析不了整对象，但分数表通常在前排完好）
     const sm = s.match(/"scores"\s*:\s*\{([\s\S]*?)(?:\}|$)/);
-    if (!sm) return "";
+    if (!sm) return null;
     dims = (sm[1].match(/"([^"\\]{1,24})"\s*:\s*\d+(?:\.\d+)?/g) || [])
       .map((pair) => pair.match(/"([^"\\]{1,24})"\s*:\s*(\d+(?:\.\d+)?)/))
       .filter(Boolean)
       .map((mm) => [mm[1], Number(mm[2])]);
   }
-  if (!dims.length) return "";
-  const avg = dims.reduce((a, d) => a + d[1], 0) / dims.length;
-  const passHead = pass === false ? "评审未通过，" : pass === true ? "评审通过，" : "";
-  const head = passHead + "均分 " + avg.toFixed(1);
-  const dimTxt = dims.slice(0, 6).map((d) => d[0] + " " + d[1].toFixed(1)).join(" · ");
-  concl = concl.replace(/\s+/g, " ").trim();
+  if (!dims.length) return null;
+  const rows = (Array.isArray(issues) ? issues : [])
+    .filter((it) => it && typeof it === "object")
+    .map((it) => ({
+      sev: String(it.severity || "").trim(),
+      dim: String(it.dim || it.path || "").trim(),
+      note: String(it.note || it.header || it.detail || "").replace(/\s+/g, " ").trim(),
+    })).filter((it) => it.dim || it.note);
+  return {
+    pass, dims, issues: rows,
+    avg: dims.reduce((a, d) => a + d[1], 0) / dims.length,
+    concl: concl.replace(/\s+/g, " ").trim(),
+  };
+}
+
+/* 结构化摘要 → 人读短文本（multi=true 多行版）。
+ * 对话时间线另走结构化评审卡，这里服务步骤摘要与「复制」同口径。 */
+function verdictDigestText(txt, multi) {
+  const d = verdictDigestData(txt);
+  if (!d) return "";
+  const passHead = d.pass === false ? "评审未通过，" : d.pass === true ? "评审通过，" : "";
+  const head = passHead + "均分 " + d.avg.toFixed(1);
+  const dimTxt = d.dims.slice(0, 6).map((x) => x[0] + " " + x[1].toFixed(1)).join(" · ");
   if (!multi) {
     let out = head + "（" + dimTxt + "）";
-    if (concl) out += "：" + concl.slice(0, 90);
+    if (d.concl) out += "：" + d.concl.slice(0, 90);
     return out.slice(0, 240);
   }
   const lines = [head + "（" + dimTxt + "）"];
-  if (concl) lines.push("结论：" + concl.slice(0, 200));
-  if (Array.isArray(issues) && issues.length) {
-    lines.push("意见 " + issues.length + " 条：");
-    for (const it of issues.slice(0, 6)) {
-      if (!it || typeof it !== "object") continue;
-      const dim = String(it.dim || it.path || "").trim();
-      const note = String(it.note || it.header || it.detail || "")
-        .replace(/\s+/g, " ").trim().slice(0, 110);
-      const sev = String(it.severity || "").trim();
-      const body = dim && note ? dim + "：" + note : (note || dim);
-      if (body) lines.push("· " + (sev ? "[" + sev + "] " : "") + body);
+  if (d.concl) lines.push("结论：" + d.concl.slice(0, 200));
+  if (d.issues.length) {
+    lines.push("意见 " + d.issues.length + " 条：");
+    for (const it of d.issues.slice(0, 6)) {
+      const body = it.dim && it.note ? it.dim + "：" + it.note.slice(0, 110)
+        : (it.note || it.dim);
+      if (body) lines.push("· " + (it.sev ? "[" + it.sev + "] " : "") + body);
     }
   }
   return lines.join("\n").slice(0, 1000);
+}
+
+const CHAT_ICON_WARN = '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24">' +
+  '<path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 10v4"/><path d="M12 17.2v.1"/></svg>';
+const CHAT_ICON_REVIEW = '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24">' +
+  '<path d="M9 4h6"/><path d="M8 2h8a1 1 0 0 1 1 1v3H7V3a1 1 0 0 1 1-1Z"/>' +
+  '<path d="M7 4H4v18h16V4h-3"/><path d="m9 12 2 2 4-4"/></svg>';
+
+/* 时间显示统一收敛到 HH:MM（日期在 meta 条里，全量戳塞气泡就是噪音）。 */
+function chatTimeText(v) {
+  const s = String(v || "");
+  return /^\d{4}-\d{2}-\d{2}[ T]/.test(s) ? s.slice(11, 16) : s;
+}
+
+function chatItemDur(it) {
+  return (typeof it.duration_s === "number" && Number.isFinite(it.duration_s) && it.duration_s >= 0)
+    ? t("用时") + " " + chatDurTxt(it.duration_s) : "";
+}
+
+function chatMetaLine(it) {
+  return [String(it.who || "").trim(), chatTimeText(it.at), chatItemDur(it)]
+    .filter(Boolean).join(" · ");
+}
+
+function chatCopyAction(idx) {
+  return '<span class="chat-acts2"><button type="button" class="chat-act" data-cact="copy" data-ci="' +
+    idx + '">' + esc(t("复制")) + "</button></span>";
+}
+
+/* 失败输出拆成「退出码/原因 + 原始 stderr + 后端诊断」三段。后端写法见
+ * runner._failure_output_detail 与 banner_only 括注：
+ * 「退出码 1；stderr/stdout: > build · …（仅启动横幅、无错误文本：疑似…）」。
+ * 识别不出这个形状（捕获上限、codex/claude 定制错误）整段当正文，不硬拆。 */
+function chatFailureParts(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  let head = "", rest = text;
+  const m = text.match(/^([^；;\n]{1,80}?)[；;]\s*stderr\/stdout\s*[:：]\s*([\s\S]*)$/)
+    || text.match(/^(退出码\s*-?\d+|超时|取消|任务总时限已到|输出停滞[^；;\n]*)[；;]\s*([\s\S]*)$/);
+  if (m) { head = m[1].trim(); rest = m[2].trim(); }
+  let code = "", reason = head;
+  const cm = head.match(/^退出码\s*(-?\d+)$/);
+  if (cm) { code = cm[1]; reason = ""; }
+  // 尾部括注含全角/半角冒号才是后端追加的诊断；真实 stderr 尾部的括注
+  // 极少带冒号，误判的代价也只是把同一段话换个颜色展示。
+  let diag = "";
+  const dm = rest.match(/^([\s\S]*?)[（(]([^（）()\n]*[：:][^（）()\n]*)）$/);
+  if (dm) { rest = dm[1].trim(); diag = dm[2].trim(); }
+  return { code, reason, detail: rest, diag };
+}
+
+function chatFailBodyHTML(p) {
+  if (!p) return "";
+  const raw = p.detail
+    ? (p.code || p.reason
+      ? '<span class="chat-fail-tag">stderr/stdout</span><code>' + esc(p.detail) + "</code>"
+      : esc(p.detail))
+    : "";
+  const diag = p.diag ? '<span class="chat-fail-diag">（' + esc(p.diag) + "）</span>" : "";
+  return raw || diag ? '<div class="chat-fail-body">' + raw + diag + "</div>" : "";
+}
+
+function chatFailCodeChip(code) {
+  return code ? '<span class="chat-fail-code">' + esc(t("退出码")) + " " + esc(code) + "</span>" : "";
+}
+
+/* 单个失败步骤：红卡把「执行失败」从正文里的一个词提成状态标题，退出码
+ * 单独成标签，正文只留可读报错（2026-10-22 用户反馈：失败与答案同形，
+ * 串场的失败墙分不清哪条是结果）。 */
+function chatFailCardHTML(it, idx, raw) {
+  const p = chatFailureParts(raw) || { code: "", reason: "", detail: String(raw || ""), diag: "" };
+  return '<div class="chat-fail-card">' +
+    '<div class="chat-fail-head">' +
+    '<span class="chat-fail-title">' + CHAT_ICON_WARN + esc(t("执行失败")) + "</span>" +
+    chatFailCodeChip(p.code) +
+    (p.reason ? '<span class="chat-fail-reason">' + esc(p.reason) + "</span>" : "") +
+    '<span class="chat-fail-meta">' + esc(chatMetaLine(it)) + chatCopyAction(idx) + "</span>" +
+    "</div>" + chatFailBodyHTML(p) + "</div>";
+}
+
+/* 连续同文失败合并：同一 CLI 同一报错连发三次时，报错只写一遍，逐次尝试
+ * 只留时间/用时行。单条失败仍走 chatFailCardHTML（不丢细节）。 */
+function chatFailGroupHTML(list, idx) {
+  const first = list[0];
+  const p = chatFailureParts(chatCleanText(first.text))
+    || { code: "", reason: "", detail: chatCleanText(first.text), diag: "" };
+  const rows = list.map((it, i) =>
+    '<li class="chat-fail-attempt"><b>' + esc(chatTimeText(it.at)) + "</b>" +
+    (chatItemDur(it) ? "<span>" + esc(chatItemDur(it)) + "</span>" : "") +
+    '<span class="chat-fail-nth">' + esc(t("第 {0} 次", i + 1)) + "</span></li>").join("");
+  return '<div class="chat-fail-card chat-fail-group">' +
+    '<div class="chat-fail-head">' +
+    '<span class="chat-fail-title">' + CHAT_ICON_WARN +
+    esc(t("同一失败连续 {0} 次", list.length)) + "</span>" +
+    chatFailCodeChip(p.code) +
+    (p.reason ? '<span class="chat-fail-reason">' + esc(p.reason) + "</span>" : "") +
+    '<span class="chat-fail-meta">' + esc(String(first.who || "").trim()) +
+    chatCopyAction(idx) + "</span>" +
+    "</div>" + chatFailBodyHTML(p) +
+    '<ul class="chat-fail-attempts">' + rows + "</ul></div>";
+}
+
+/* 评审裁定从「一整段 JSON/摘要正文」改成结构卡：均分 + 维度分数一行，
+ * 意见按严重度标签分行（2026-10-22 用户反馈「展示这么一大堆根本没人看」）。 */
+function chatReviewHTML(it, idx, d) {
+  const flag = d.pass === false
+    ? '<span class="chat-review-flag bad">' + esc(t("未通过")) + "</span>"
+    : (d.pass === true ? '<span class="chat-review-flag ok">' + esc(t("通过")) + "</span>" : "");
+  const scores = '<span class="chat-review-avg">' + esc(t("均分")) + " " +
+    esc(d.avg.toFixed(1)) + "</span>" +
+    d.dims.slice(0, 8).map((x) =>
+      '<span class="chat-score-chip">' + esc(x[0]) + "<b>" + esc(x[1].toFixed(1)) + "</b></span>").join("");
+  const items = d.issues.slice(0, 6).map((x) => {
+    const sev = /^(minor|major|critical)$/.test(x.sev) ? x.sev : "";
+    const note = x.note.length > 180 ? x.note.slice(0, 180) + "…" : x.note;
+    return '<li class="chat-review-item">' +
+      (x.sev ? '<span class="chat-sev' + (sev ? " " + sev : "") + '">' + esc(x.sev) + "</span>" : "") +
+      "<div>" + (x.dim ? '<span class="chat-review-dim">' + esc(x.dim) + "：</span>" : "") +
+      (note ? '<span class="chat-review-note">' + esc(note) + "</span>" : "") + "</div></li>";
+  }).join("");
+  return '<div class="chat-review-card">' +
+    '<div class="chat-review-head">' +
+    '<span class="chat-review-title">' + CHAT_ICON_REVIEW + esc(t("评审意见")) + "</span>" + flag +
+    '<span class="chat-review-meta">' + esc(chatMetaLine(it)) + chatCopyAction(idx) + "</span>" +
+    "</div>" +
+    '<div class="chat-review-scores">' + scores + "</div>" +
+    (d.concl ? '<div class="chat-review-lead">' + esc(d.concl.slice(0, 240)) + "</div>" : "") +
+    (items ? '<ul class="chat-review-list">' + items + "</ul>" : "") +
+    (d.issues.length > 6
+      ? '<div class="chat-review-more">' +
+        esc(t("…其余 {0} 条见该步日志", d.issues.length - 6)) + "</div>"
+      : "") +
+    "</div>";
 }
 let chatSig = "";
 let chatLiveSig = "";        // 时间线实时增量签名（思考/正文长度变才重建 DOM）
@@ -13152,10 +13298,7 @@ function drawChatFlow(run, data, active) {
   if (liveSig === chatLiveSig && flow.childElementCount) return;
   chatLiveSig = liveSig;
   flow.dataset.runId = run.id;   // run 戳：applyRdTabs 判「内容是否已对齐当前对话」用
-  // 时间显示统一收敛到 HH:MM（日期在 meta 条里，全量戳塞气泡就是噪音）；
   // 附件兼容 字符串路径 / {name|path} 对象 两种形态（对象直接拼会成 [object Object]）
-  const chatTime = (v) => { const s = String(v || "");
-    return /^\d{4}-\d{2}-\d{2}[ T]/.test(s) ? s.slice(11, 16) : s; };
   const attName = (a) => { const p = typeof a === "string" ? a
     : ((a && (a.name || a.path)) || "");
     return String(p).split(/[\\/]/).pop() || ""; };
@@ -13166,7 +13309,26 @@ function drawChatFlow(run, data, active) {
     if (sumBtn) sumBtn.classList.toggle("hidden", !chatEngineIsDirect(run));
   }
   renderChatQueue(items, run);
+  // 连续同文失败合并（2026-10-22 用户反馈：同一 CLI 三次同错把时间线撑成
+  // 失败墙，报错正文一模一样却抄三遍）。只合并完全相邻且清理后正文一致的
+  // 失败步骤；孤立失败仍单独成卡，细节不丢。
+  const failKey = (it) => (it.kind === "agent" && it.status === "failed")
+    ? chatCleanText(it.text).replace(/\s+/g, " ").trim() : "";
+  const failGroups = new Map(), failMembers = new Set();
+  for (let i = 0; i < items.length;) {
+    const key = failKey(items[i]);
+    if (!key) { i++; continue; }
+    let j = i + 1;
+    while (j < items.length && failKey(items[j]) === key) j++;
+    if (j - i >= 2) {
+      failGroups.set(i, items.slice(i, j));
+      for (let q = i; q < j; q++) failMembers.add(q);
+    }
+    i = j;
+  }
   let html = items.map((it, idx) => {
+    if (failMembers.has(idx))
+      return failGroups.get(idx) ? chatFailGroupHTML(failGroups.get(idx), idx) : "";
     // 反向通道（2026-10-22 multica）：agent 主动汇报自成气泡——阻塞（警示
     // 描边+可回信解除）/进展（弱化）/解除（记账行）。回信走既有对话条，即
     // add_message 链，用户回复自动解除对应阻塞。
@@ -13180,7 +13342,7 @@ function drawChatFlow(run, data, active) {
         (isBlocker ? " blocker" : "") + (it.resolved ? " resolved" : "") + '">' +
         '<div class="chat-step-meta">' + esc(label) + (meta ? " · " + esc(meta) : "") + "</div>" +
         (it.text ? esc(it.text) : "") +
-        '<div class="chat-meta">' + esc(t("智能体汇报")) + " " + esc(chatTime(it.at)) +
+        '<div class="chat-meta">' + esc(t("智能体汇报")) + " " + esc(chatTimeText(it.at)) +
         (isBlocker && !it.resolved
           ? ' · <button type="button" class="chat-act" data-cact="copy" data-ci="' + idx + '">' + esc(t("复制")) + "</button>"
           : "") +
@@ -13220,17 +13382,22 @@ function drawChatFlow(run, data, active) {
                 : '<span class="att-chip2 att-open" data-att="' + esc(a.rel) +
                   '" title="' + esc(t("点击查看")) + '">' + esc(a.nm) + "</span>")).join("") + "</div>"
           : "") +
-        '</div><div class="chat-meta"><span class="chat-meta-label">' + esc(it.who || "") + " " + esc(chatTime(it.at)) +
+        '</div><div class="chat-meta"><span class="chat-meta-label">' + esc(it.who || "") + " " + esc(chatTimeText(it.at)) +
         (it.consumed ? "" : " · " + esc(t("待送达"))) + "</span>" + acts + "</div></div></div>";
     }
     // 协议尾行是给编排器判收的机器标记，不该出现在聊天正文里（真源在提示词约定）；
     // <followups> 块后端已剥并转成结构化字段，这里再兜一次底防老数据/漏剥；
     // 开场「本轮做了什么：…」+「回复：」是模型复读协议措辞的元描述（提示词已禁，
     // 这里兜历史数据），只剥消息开头的第一行
-    // 评审裁定 JSON 原文整段糊泡没人读（2026-10-22 用户反馈）：换多行人读摘要，
+    // 评审裁定 JSON 原文整段糊泡没人读（2026-10-22 用户反馈）：换结构评审卡；
     // 完整原文在该步日志里（复制按钮同口径走 verdictDigestText，见复制处理器）
     const rawBody = chatCleanText(it.text);
-    const body = verdictDigestText(rawBody, true) || rawBody;
+    const digest = rawBody && it.status !== "running" ? verdictDigestData(rawBody) : null;
+    const body = digest ? verdictDigestText(rawBody, true) : rawBody;
+    // 失败步骤换成红卡：退出码/原因成标题栏，原始 stderr 与后端诊断分行。
+    // 连续同文失败在 map 入口已合并，这里接的是孤立失败。
+    if (it.status === "failed" && rawBody) return chatFailCardHTML(it, idx, rawBody);
+    if (digest) return chatReviewHTML(it, idx, digest);
     // 运行中还没有正文：先给思考过程块（有思维链/工具活动时），正文位退化为
     // 实时预览（stream 累计值）；两者皆无才是等待提示。终态无正文不再渲染
     // 正文行——占位话并进元信息行，失败串场时每轮少占一行（2026-10-22 用户反馈）
@@ -13238,12 +13405,14 @@ function drawChatFlow(run, data, active) {
     const bodySection = body ? '<div class="chat-body">' + chatBodyHTML(body) + "</div>"
       : (liveText ? '<div class="chat-body chat-live-text">' + esc(liveText.slice(-4000)) + "</div>"
       : (it.status === "running"
-        ? '<div class="chat-body"><div class="chat-cli-wait">' + esc(t("CLI 已启动，等待首段输出…")) + "</div></div>"
+        ? '<div class="chat-body chat-live-status"><span class="chat-live-dot"></span>' +
+          '<span class="chat-live-text">' + esc(t("CLI 已启动，等待首段输出…")) + "</span>" +
+          '<span class="chat-live-tag">' + esc(t("执行中")) + "</span></div>"
         : ""));
     // 元信息只留 名字+时间（+用时+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音
     const metaBad = it.status === "failed" || it.status === "cancelled";
-    const durTxt = (typeof it.duration_s === "number" && Number.isFinite(it.duration_s) && it.duration_s >= 0)
-      ? " · " + esc(t("用时")) + " " + esc(chatDurTxt(it.duration_s)) : "";
+    const durRaw = chatItemDur(it);
+    const durTxt = durRaw ? " · " + esc(durRaw) : "";
     // 智能体回复：整幅正文，元信息小字落在正文下方；
     // 悬停可复制回答原文（协议清洗后）
     const actsA = body ? '<span class="chat-acts2">' +
@@ -13270,7 +13439,7 @@ function drawChatFlow(run, data, active) {
         chatAcpEventsHTML(it) +
         chatExecutionHTML(it, idx, latestLogIndex) : "") +
       bodySection +
-      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTime(it.at)) + durTxt +
+      '<div class="chat-meta">' + esc(it.who || "") + " " + esc(chatTimeText(it.at)) + durTxt +
       (!body && it.status !== "running" ? " · " + esc(t("本轮无文本输出")) : "") +
       (metaBad ? " · " + esc(t(it.status === "failed" ? "失败" : "已取消")) : "") + actsA + "</div>" +
       (it.status === "running" ? chatLogHTML(it, idx, latestLogIndex) : "") +

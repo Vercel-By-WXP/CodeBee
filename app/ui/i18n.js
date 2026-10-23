@@ -4227,6 +4227,11 @@
     "风格标签": "Style tags",
     "默认": "Default",
     "成员 ID": "Member ID",
+    "评审意见": "Review notes",
+    "均分": "Average",
+    "同一失败连续 {0} 次": "Same failure {0} times in a row",
+    "第 {0} 次": "Attempt {0}",
+    "…其余 {0} 条见该步日志": "…{0} more in this step's log",
   };
 
   // ---------- 工具 ----------
