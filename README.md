@@ -256,6 +256,7 @@ CodeBee 不安装或替换这些 CLI。请先按各项目官方文档完成登�
 ## 文档
 
 - [QUICKSTART.md](QUICKSTART.md)：安装、启动和第一个任务
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md)：起不来、检测不到 CLI、不换将、报告怎么读
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块、数据流和扩展点
 - [docs/routing_strategy.md](docs/routing_strategy.md)：可插拔路由策略接口
 - [docs/review_storage.md](docs/review_storage.md)：评审数据结构化存储方案

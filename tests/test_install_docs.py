@@ -79,5 +79,37 @@ class InstallDocsTests(unittest.TestCase):
         self.assertGreater(checked, 0, "未在 QUICKSTART 中找到 npm/npx 命令")
 
 
+class TroubleshootingDocsTests(unittest.TestCase):
+    """排障文档必须和代码同源：换将名单、错误码都不能凭记忆写。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = (ROOT / "TROUBLESHOOTING.md").read_text(encoding="utf-8")
+        cls.error_codes = (ROOT / "app" / "core" / "error_codes.py").read_text(encoding="utf-8")
+        cls.routing = (ROOT / "app" / "core" / "routing_strategy.py").read_text(encoding="utf-8")
+
+    def test_doc_exists_and_is_linked(self):
+        self.assertTrue((ROOT / "TROUBLESHOOTING.md").is_file())
+        self.assertIn("TROUBLESHOOTING.md", README)
+        self.assertIn("TROUBLESHOOTING.md", QUICKSTART)
+
+    def test_account_dead_codes_are_documented(self):
+        # 账号级死错决定「这个 CLI 本场还能不能用」，文档必须点全，
+        # 否则用户会以为换个提示词就能重试。
+        block = self.error_codes.split("ACCOUNT_DEAD_CODES = frozenset({", 1)[1].split("})", 1)[0]
+        codes = set(re.findall(r"ErrorCode\.([A-Z_]+)\.value", block))
+        self.assertGreaterEqual(len(codes), 5)
+        for code in codes:
+            self.assertIn(code, self.doc, "账号级死错 %s 未写进排障文档" % code)
+
+    def test_fallback_whitelist_matches_code(self):
+        block = self.routing.split("def should_fallback", 1)[1].split("if isinstance(error, dict)", 1)[0]
+        whitelist = set(re.findall(r"ErrorCode\.([A-Z_]+)\.value", block))
+        self.assertGreaterEqual(len(whitelist), 10)
+        for code in whitelist:
+            self.assertIn(code, self.doc,
+                          "换将白名单里的 %s 未写进排障文档" % code)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -78,6 +78,9 @@ npm 安装方式把这些参数写在 codebee 之后，例如 `codebee --port 18
 
 ## 常见问题
 
+更多现象（起不来、检测异常、不换将、报告三态怎么读、数据在哪）见
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
+
 ### CLI 没被检测到怎么办？
 
 先在启动 CodeBee 的同一终端运行 where <cli> 或 command -v <cli>。
