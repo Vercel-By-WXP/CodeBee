@@ -752,10 +752,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 from core import evalbench
                 failures = []
                 for run in store.list_runs(limit=100, include_hidden=True):
-                    if not isinstance(run, dict) or run.get("status") not in ("failed", "error"):
+                    if not isinstance(run, dict) or run.get("status") not in ("failed", "error", "timeout"):
                         continue
                     for step in run.get("steps") or []:
-                        if not isinstance(step, dict) or step.get("status") not in ("failed", "error"):
+                        if not isinstance(step, dict) or step.get("status") not in ("failed", "error", "timeout"):
                             continue
                         failure_preview, err = evalbench.failure_sample_preview(run, step.get("n"))
                         if not err:

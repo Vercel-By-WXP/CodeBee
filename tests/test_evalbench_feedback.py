@@ -43,6 +43,17 @@ class EvalBenchFeedbackTests(unittest.TestCase):
         self.assertIsNone(rejected)
         self.assertTrue(error)
 
+    def test_timeout_run_and_step_are_available_for_regression_preview(self):
+        run = {
+            "id": "run-timeout-1", "task_id": "task-timeout", "status": "timeout",
+            "steps": [{"n": 2, "role": "implement", "status": "timeout",
+                       "summary": "Timed out after 90 seconds"}],
+        }
+        preview, error = evalbench.failure_sample_preview(run, 2)
+        self.assertIsNone(error)
+        self.assertEqual(preview["run_id"], "run-timeout-1")
+        self.assertEqual(preview["failure_excerpt"], "Timed out after 90 seconds")
+
     def test_conversion_requires_confirmation_and_never_persists_failure_output(self):
         sample = {"name": "Failure regression", "requirement": "Expected behavior",
                   "prompt": "Reproduction input", "dims": ["正确性", "完整性"]}
@@ -92,16 +103,22 @@ class EvalBenchFeedbackTests(unittest.TestCase):
         handler._authed = lambda: True
         response = {}
         handler._json = lambda status, body: response.update(status=status, body=body)
-        runs = [self.run, dict(self.run, id="run-ok", status="done")]
+        timeout_run = {
+            "id": "run-timeout", "task_id": "task-timeout", "status": "timeout",
+            "steps": [{"n": 2, "role": "implement", "status": "timeout",
+                       "summary": "Timed out after 90 seconds"}],
+        }
+        runs = [self.run, timeout_run, dict(self.run, id="run-ok", status="done")]
 
         with mock.patch.object(main.store, "list_runs", return_value=runs):
             Handler._route_get(handler)
 
         self.assertEqual(response["status"], 200)
-        self.assertEqual(len(response["body"]["failures"]), 1)
+        self.assertEqual(len(response["body"]["failures"]), 2)
         excerpt = response["body"]["failures"][0]["failure_excerpt"]
         self.assertIn("[key]", excerpt)
         self.assertNotIn("sk-123456789abcdef", excerpt)
+        self.assertEqual(response["body"]["failures"][1]["run_id"], "run-timeout")
 
     def test_create_from_run_route_rejects_missing_run_and_unconfirmed_sample(self):
         handler = Handler.__new__(Handler)

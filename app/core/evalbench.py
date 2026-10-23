@@ -183,9 +183,9 @@ def sample_op(op, sample=None, sid=""):
 
 
 def failure_sample_preview(run, step_n):
-    """Build a redacted preview for an explicitly selected failed run step."""
-    if not isinstance(run, dict) or run.get("status") not in ("failed", "error"):
-        return None, "只能从失败运行创建回归样题"
+    """Build a redacted preview for an explicitly selected failed/timed-out step."""
+    if not isinstance(run, dict) or run.get("status") not in ("failed", "error", "timeout"):
+        return None, "只能从失败或超时运行创建回归样题"
     try:
         step_n = int(step_n)
     except (TypeError, ValueError):
@@ -193,8 +193,8 @@ def failure_sample_preview(run, step_n):
     steps = run.get("steps") or []
     step = next((item for item in steps if isinstance(item, dict) and
                  item.get("n") == step_n), None)
-    if not step or step.get("status") not in ("failed", "error"):
-        return None, "未找到失败步骤"
+    if not step or step.get("status") not in ("failed", "error", "timeout"):
+        return None, "未找到失败或超时步骤"
     excerpt = scrub_text(step.get("summary") or step.get("output") or "", limit=800)
     return {
         # Preserve the opaque local key so the create endpoint resolves this run.
