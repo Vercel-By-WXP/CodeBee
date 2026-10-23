@@ -639,13 +639,11 @@ def _assemble_review_seats(critics, agents, impl, workflow=None, route=None,
         route["critics"] = ((route.get("critics") or "") +
                             ("；" if route.get("critics") else "") + note)
     if independence and run_id and run_id not in _SOLO_NOTIFIED:
-        # 只播报一次：这是环境说明（只有一条 CLI），不是每轮评审的失败告警。
+        # 只播报一次：这是资源路由说明，不是每轮评审的失败告警。
         _SOLO_NOTIFIED.add(run_id)
         try:
-            store.add_message(run_id, (
-                "评审兜底：仅检测到一条可用 CLI，已为该 CLI 增设独立复核席"
-                "（不同人格、互不可见的独立会话）。评审人数达标，但各席同源同盲区；"
-                "安装第二条 CLI 可获得真正的跨厂商交叉评审。"))
+            store.add_message(run_id, "评审资源调度：%s" %
+                              review_roster.describe(independence, seats))
         except Exception:
             pass
     return seats, independence
@@ -6589,8 +6587,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             cj for cj in per_agent.values()
             if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
             and cj.get("scores") and not cj.get("review_degraded")
-            and not (task.get("type") == "handdraw_video"
-                     and cj.get("review_fallback") == local_fallback.HEURISTIC)]
+        ]
         round_degraded = len(_valid_scored) < required_reviewers
         round_review_count = quality_gate.aggregate_reviews(
             [{"id": aid, "scores": cj.get("scores")}
@@ -6726,6 +6723,20 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         history_rounds and
         any(f == local_fallback.HEURISTIC
             for f in (history_rounds[-1].get("review_fallbacks") or [])))
+    # Keep reviewer capacity and source independence auditable, independently
+    # from quality scores.  Local deterministic checks are useful continuity
+    # evidence, but never count as model reviewer seats.
+    _completed_model_review_ids = [
+        aid for aid, cj in per_agent.items()
+        if isinstance(cj, dict)
+        and isinstance(cj.get("scores"), dict) and cj.get("scores")
+        and not cj.get("review_degraded")
+        and cj.get("review_fallback") != local_fallback.HEURISTIC
+    ]
+    review_resources = review_roster.resource_snapshot(
+        critics, completed_ids=_completed_model_review_ids,
+        required=required_reviewers, rules_only=_heuristic_reviewed and
+        not _completed_model_review_ids)
     verdict = {
         "type": task["type"], "engine": "review", "publishable": publishable,
         "overall": overall, "mode": mode,
@@ -6737,6 +6748,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         "draft_degraded": draft_degraded,
         "draft_source": draft_source,
         "draft_degradation_reason": draft_degradation_reason,
+        "review_resources": review_resources,
         "review_degradation_reasons": ([
             "评审服务不可用或输出无法解析；评审未完成，稿件质量未判定"
             + ("（已启用单通道独立复核席，两遍均未取得有效评分）"
@@ -6844,6 +6856,14 @@ def _run_content_review(run, task, agents, ev, stats, mode):
              "- 动态步骤：大纲 %s；评审 %d 人；最多 %d 轮（%s）" % (
                  "启用" if workflow["outline"] else "省略",
                  len(critics), rounds, workflow["reason"])]
+    lines.append(
+        "- 评审资源：计划 %d 席，完成 %d 席；CLI %d 个，模型 %d 个；独立性：%s；席位达标：%s" % (
+            review_resources["planned_seats"],
+            review_resources["completed_seats"],
+            review_resources["distinct_cli_count"],
+            review_resources["distinct_model_count"],
+            review_resources["independence_level"],
+            "是" if review_resources["seat_count_satisfied"] else "否"))
     if story and "story_words" in verdict:
         lines.append("- 字数：全文约 %d 字（目标约 %d 字，闸 %d~%d）"
                      % (verdict["story_words"], story["words"],

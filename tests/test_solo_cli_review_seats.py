@@ -189,6 +189,39 @@ class SoloSeatTests(unittest.TestCase):
         self.assertEqual(seats, [])
         self.assertEqual((note, independence), ("", ""))
 
+    def test_same_cli_different_bound_models_are_preferred(self):
+        author = {"id": "claude-cli", "mode": "real", "kind": "claude",
+                  "provider_id": "vendor-a", "model": "model-a",
+                  "review_models": ["model-a", "model-b"]}
+        seats, _note, independence = review_roster.ensure_review_seats(
+            [], [author], author, 2)
+        self.assertEqual(len(seats), 2)
+        self.assertEqual(next(s for s in seats if s.get("_review_model"))[
+            "_review_model"], "model-b")
+        self.assertEqual(independence, review_roster.CROSS_MODEL_SAME_CLI)
+
+    def test_independence_levels_are_separate_from_seat_count(self):
+        cross_vendor = [
+            {"id": "a", "mode": "real", "kind": "claude", "model": "m1"},
+            {"id": "b", "mode": "real", "kind": "codex", "model": "m1"},
+        ]
+        same_model = [
+            {"id": "a", "mode": "real", "kind": "claude", "model": "m1"},
+            review_roster.make_solo_seat(
+                {"id": "a", "mode": "real", "kind": "claude", "model": "m1"}, 1),
+        ]
+        self.assertEqual(review_roster.independence_level(cross_vendor),
+                         review_roster.CROSS_VENDOR)
+        self.assertEqual(review_roster.independence_level(same_model),
+                         review_roster.SAME_MODEL_MULTI_VIEW)
+        self.assertEqual(review_roster.independence_level([]), review_roster.NO_REVIEW)
+
+    def test_duplicate_seat_identity_does_not_create_extra_reviewer(self):
+        seat = {"id": "a", "mode": "real", "kind": "claude", "model": "m1"}
+        self.assertEqual(review_roster.completed_seat_count([seat, dict(seat)]), 1)
+        self.assertEqual(review_roster.independence_level([seat, dict(seat)]),
+                         review_roster.NO_REVIEW)
+
     def test_solo_seat_keeps_binding_of_source_cli(self):
         author = {"id": "claude-cli", "mode": "real", "kind": "claude",
                   "label": "Claude", "model": "m1"}
@@ -209,6 +242,24 @@ class SoloSeatTests(unittest.TestCase):
             modelhub.bind_agent(seat, "default")
         # 影子 id 不能拿去查绑定，否则查不到就落到「智能推荐」换供应商。
         self.assertEqual(seen, ["claude-cli"])
+
+    def test_model_review_seat_selects_only_requested_model_from_source_chain(self):
+        source = {"id": "claude-cli", "mode": "real", "kind": "claude"}
+        seat = review_roster.make_model_seat(source, "model-b")
+        resolved = {"model": "model-a", "env": {"A": "1"},
+                    "call_chain": [
+                        {"model": "model-a", "provider_id": "vendor-a", "env": {"A": "1"}},
+                        {"model": "model-b", "provider_id": "vendor-a", "env": {"B": "2"}},
+                    ]}
+        with mock.patch.object(modelhub, "_binding_for", return_value={"chain": []}), \
+             mock.patch.object(modelhub, "resolve_binding", return_value=resolved), \
+             mock.patch("app.core.manager.sync_runtime_config", return_value=True), \
+             mock.patch.object(modelhub, "recommend_binding",
+                               side_effect=AssertionError("不得重新推荐绑定")):
+            bound = modelhub.bind_agent(seat, "default")
+        self.assertEqual(bound["model"], "model-b")
+        self.assertEqual([e["model"] for e in bound["call_chain"]], ["model-b"])
+        self.assertEqual(bound["env"], {"B": "2"})
 
     def test_account_scope_covers_seat_and_source(self):
         author = {"id": "claude-cli", "mode": "real"}

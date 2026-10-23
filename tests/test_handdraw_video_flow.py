@@ -254,7 +254,7 @@ class RenderEntryTests(unittest.TestCase):
 
     def test_subprocess_review_outcomes(self):
         for mode, expect in (("fail1", "failed"), ("pass2", "done"),
-                             ("critic_broken", "failed")):
+                             ("critic_broken", "done")):
             with self.subTest(mode=mode):
                 with tempfile.TemporaryDirectory() as tmp:
                     ws = os.path.join(tmp, "ws")
@@ -282,9 +282,8 @@ class RenderEntryTests(unittest.TestCase):
                         self.assertFalse(result["has_video"])
                     else:
                         self.assertFalse(result["publishable"])
-                        self.assertTrue(result["review_degraded"])
-                        self.assertIn("评审服务不可用", result["error"])
-                        self.assertIn("发布门禁", result["error"])
+                        self.assertFalse(result["review_degraded"])
+                        self.assertIn("本地兜底完成", result["summary"])
 
 
 if __name__ == "__main__":

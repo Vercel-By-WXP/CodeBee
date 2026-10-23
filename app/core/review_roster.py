@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""评审席装配：可用 CLI 不足两名时仍然形成有效评审。
+"""评审席装配：资源自适应，但不伪造来源独立性。
 
 评审契约（``quality_gate.MIN_REVIEWERS``）要求至少两份有效评审，而自动选组
 会排除作者本人。用户环境只装了**一条** CLI 时，「排除作者」后候选为空，于是
@@ -9,8 +9,8 @@
 本模块把「够不够两席」的装配规则收敛到一处，供 review（单稿）与 serial
 （连载）两条引擎共用：
 
-* 两席及以上真实 CLI：原样返回。跨模型族隔离仍由 ``router.pick_critics``
-  决定，本模块不改变既有语义。
+* 两席及以上真实 CLI：原样返回。评审席数量与来源独立性是两套指标；
+  只有前者决定本轮是否有足够的评分样本，后者只如实披露来源。
 * 只有一席：给该 CLI 派生**复核席**（id 形如 ``claude-cli#recheck``），同一
   CLI 的若干个互不可见的独立会话，各自带**不同**复核人格、串行执行、不携带
   任何既有分数。评分照常聚合，结论标 ``review_independence="solo-dual-pass"``：
@@ -35,7 +35,14 @@ import threading
 
 
 SOLO_SUFFIX = "#recheck"
+# Backwards-compatible public name.  A solo pass is now one of several explicit
+# independence levels; callers that only understand the old value keep working.
 SOLO_MODE = "solo-dual-pass"
+CROSS_VENDOR = "cross-vendor"
+CROSS_MODEL_SAME_CLI = "cross-model-same-cli"
+SAME_MODEL_MULTI_VIEW = SOLO_MODE
+RULES_ONLY = "rules-only"
+NO_REVIEW = "no-review"
 MAX_SOLO_SEATS = 2
 
 # 两套复核人格：同为「你没写过、也没看过任何评分」，但注意面相反。同模型跑两
@@ -149,8 +156,70 @@ def make_solo_seat(agent, index=1):
     return seat
 
 
+def make_model_seat(agent, model, index=1):
+    """派生同一 CLI 的另一模型评审席。
+
+    ``model`` 只允许来自源 CLI 的已配置模型链；绑定解析会在
+    :func:`modelhub.bind_agent` 中再次校验，找不到时回落到源模型，绝不借此
+    偷换供应商。不同模型仍共享源 CLI 的串行锁，但拥有不同的模型/会话审计
+    字段，独立性等级可精确区分为 ``cross-model-same-cli``。
+    """
+    if not isinstance(agent, dict) or not str(model or "").strip():
+        return None
+    source = solo_source(agent)
+    if not source:
+        return None
+    model = str(model).strip()
+    try:
+        no = max(1, int(index))
+    except (TypeError, ValueError):
+        no = 1
+    slug = "".join(ch if ch.isalnum() else "-" for ch in model).strip("-") or "model"
+    seat = dict(agent)
+    seat["id"] = "%s#model-%s-review%d" % (source, slug, no)
+    seat["label"] = "%s（模型复核·%s）" % (agent.get("label") or source, model)
+    seat["_review_model"] = model
+    seat["_review_model_source"] = source
+    seat["_solo_source"] = source
+    seat["_solo_index"] = no
+    seat["_binding_source"] = agent.get("_binding_source") or source
+    seat["_solo_recheck"] = True
+    seat.pop("_solo_pass", None)
+    return seat
+
+
 def _real(agent):
     return isinstance(agent, dict) and agent.get("mode") == "real"
+
+
+def _model_candidates(agent):
+    """收集源 CLI 的已知模型，不把未知模型名硬塞进运行器。"""
+    if not isinstance(agent, dict):
+        return []
+    values = []
+    for key in ("review_models", "models", "model_fallbacks"):
+        raw = agent.get(key) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        for item in raw:
+            values.append(item.get("name") if isinstance(item, dict) else item)
+    values.append(agent.get("model"))
+    for item in agent.get("call_chain") or []:
+        if isinstance(item, dict):
+            values.append(item.get("model"))
+    # Ask modelhub lazily so this module remains usable in isolation/tests and
+    # avoids an import cycle at module import time.
+    try:
+        from . import modelhub
+        values.extend(modelhub.review_model_candidates(agent))
+    except Exception:
+        pass
+    out = []
+    for value in values:
+        value = str(value or "").strip()
+        if value and value not in out:
+            out.append(value)
+    return out
 
 
 def ensure_review_seats(critics, agents, impl, needed):
@@ -173,7 +242,7 @@ def ensure_review_seats(critics, agents, impl, needed):
     except (TypeError, ValueError):
         need = 0
     if not need or len(seats) >= need:
-        return seats, "", ""
+        return seats, "", independence_of(seats)
 
     pool = [a for a in (agents or []) if _real(a) and a.get("id")]
     if not pool:
@@ -202,7 +271,7 @@ def ensure_review_seats(critics, agents, impl, needed):
         notes.append("可用评审 CLI 不足 %d 席：补入 %s" % (
             need, "、".join(c.get("label") or c.get("id") for c in filled)))
 
-    # 二级：仍缺才派生复核席。base 优先作者 CLI（刚跑通过起草，唯一被证实的通道）。
+    # 二级：仍缺才派生复核席。优先同 CLI 的不同模型，再用不同人格会话。
     added = []
     if len(seats) < need:
         ordered = []
@@ -211,6 +280,23 @@ def ensure_review_seats(critics, agents, impl, needed):
         ordered.extend(a for a in pool if a.get("id") != author_id)
         base = ordered[0] if ordered else None
         no = 1
+        model_seats = []
+        for model in _model_candidates(base):
+            # 源席本身的模型不算“另一模型”；其余模型优先形成真正的模型级
+            # 视角差异。已有席位模型也不重复派生。
+            source_model = str(base.get("model") or "").strip()
+            if model == source_model or any(str(a.get("_review_model") or a.get("model") or "") == model
+                                            for a in seats):
+                continue
+            model_seats.append(make_model_seat(base, model, len(model_seats) + 1))
+        for seat in model_seats:
+            if len(seats) >= need:
+                break
+            if seat is None or seat["id"] in occupied:
+                continue
+            occupied.add(seat["id"])
+            seats.append(seat)
+            added.append(seat)
         while base is not None and len(seats) < need and len(added) < MAX_SOLO_SEATS:
             seat = make_solo_seat(base, no)
             no += 1
@@ -238,21 +324,124 @@ def ensure_review_seats(critics, agents, impl, needed):
                              "独立性弱于跨厂商评审" % (source_label, len(added)))
 
     if not notes:
-        return seats, "", ""
+        return seats, "", independence_of(seats)
     return seats, "；".join(notes), independence_of(seats)
 
 
+def _provider_key(agent):
+    provider = agent.get("provider_id") or agent.get("provider") or agent.get("kind")
+    if isinstance(provider, dict):
+        provider = provider.get("id") or provider.get("name")
+    return str(provider or "").strip()
+
+
+def completed_seat_count(seats):
+    """Count distinct real reviewer identities; duplicate records are not seats."""
+    seen = set()
+    count = 0
+    for agent in (seats or []):
+        if not _real(agent):
+            continue
+        identity = str(agent.get("id") or "").strip()
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        count += 1
+    return count
+
+
+def resource_snapshot(seats, completed_ids=None, required=0,
+                      rules_only=False):
+    """Return auditable reviewer-resource facts for a completed round.
+
+    ``seats`` is the planned/attempted roster; ``completed_ids`` must contain
+    only seats that returned a valid model review.  Deterministic local checks
+    are deliberately excluded from the model-seat count and can be represented
+    with ``rules_only=True``.
+    """
+    unique = {}
+    for seat in (seats or []):
+        if not _real(seat):
+            continue
+        sid = str(seat.get("id") or "").strip()
+        if sid and sid not in unique:
+            unique[sid] = seat
+    completed = set(str(sid).strip() for sid in (completed_ids or []) if sid)
+    done = [seat for sid, seat in unique.items() if sid in completed]
+    try:
+        required = max(0, int(required or 0))
+    except (TypeError, ValueError):
+        required = 0
+    providers = {_provider_key(seat) for seat in done if _provider_key(seat)}
+    models = {str(seat.get("_review_model") or seat.get("model") or "").strip()
+              for seat in done}
+    models.discard("")
+    clis = {solo_source(seat) for seat in done if solo_source(seat)}
+    level = RULES_ONLY if rules_only else independence_level(done)
+    return {
+        "required_seats": required,
+        "completed_seats": len(done),
+        "distinct_cli_count": len(clis),
+        "distinct_model_count": len(models),
+        "independence_level": level,
+        "seat_count_satisfied": len(done) >= required,
+        "planned_seats": len(unique),
+    }
+
+
+def independence_level(seats):
+    """返回严格的来源独立性等级，不参与质量评分或发布门禁。"""
+    real = []
+    seen = set()
+    for agent in (seats or []):
+        identity = str(agent.get("id") or "").strip() if isinstance(agent, dict) else ""
+        if _real(agent) and identity and identity not in seen:
+            seen.add(identity)
+            real.append(agent)
+    if not real:
+        return NO_REVIEW
+    providers = {_provider_key(a) for a in real if _provider_key(a)}
+    models = {str(a.get("_review_model") or a.get("model") or "").strip()
+              for a in real}
+    models.discard("")
+    sources = {solo_source(a) for a in real if solo_source(a)}
+    if len(providers) >= 2:
+        return CROSS_VENDOR
+    if len(sources) >= 2 and len(providers) >= 2:
+        return CROSS_VENDOR
+    if len(models) >= 2:
+        return CROSS_MODEL_SAME_CLI
+    if len(real) >= 2:
+        return SAME_MODEL_MULTI_VIEW
+    return NO_REVIEW
+
+
 def independence_of(seats):
-    """据评审席构成给出独立性档位：正常跨通道为空串，单通道兜底为 solo 档。"""
-    if any(is_solo_seat(a) for a in (seats or [])):
-        return SOLO_MODE
-    return ""
+    """兼容旧调用的独立性等级。
+
+    旧测试/旧报告使用没有 provider/model 元数据的普通席并期待空字符串；
+    保留该兼容行为，同时所有带模型或复核元数据的席位返回新等级。
+    """
+    real = [a for a in (seats or []) if _real(a)]
+    if any(is_solo_seat(a) for a in real):
+        level = independence_level(real)
+        return SOLO_MODE if level == NO_REVIEW else level
+    if not any(_provider_key(a) or a.get("model") for a in real):
+        return ""
+    return independence_level(real)
 
 
 def describe(independence, seats=None):
     """报告用的一句话说明；独立通道场景返回空串（老稿零噪音）。"""
-    if independence != SOLO_MODE:
+    if independence not in (SOLO_MODE, CROSS_MODEL_SAME_CLI, CROSS_VENDOR):
         return ""
+    if independence == CROSS_VENDOR:
+        return "评审来源独立性：来自多个 CLI/供应商（%d 个来源），可进行跨厂商交叉评审。" % len({
+            _provider_key(a) for a in (seats or []) if _real(a) and _provider_key(a)})
+    if independence == CROSS_MODEL_SAME_CLI:
+        models = sorted({str(a.get("_review_model") or a.get("model") or "未知模型")
+                         for a in (seats or []) if _real(a)})
+        return "评审来源独立性：同一 CLI 使用不同模型（%s），会话互不可见；不等同于跨厂商评审。" % "、".join(models)
     sources = sorted({solo_source(a) for a in (seats or []) if is_solo_seat(a)})
     return ("评审独立性降级：仅 %s 一条 CLI 可用，由该 CLI 的多个独立会话"
             "（不同人格、互不可见）交叉打分。各席同源同盲区，不等同于跨厂商评审。"

@@ -2055,6 +2055,25 @@ def vision_candidates(prefer_provider_id="", prefer_model=""):
     return out
 
 
+def review_model_candidates(agent):
+    """Return configured, resolvable models for a CLI's own review binding only."""
+    if not isinstance(agent, dict):
+        return []
+    rid = agent.get("_binding_source") or agent.get("id")
+    if not rid:
+        return []
+    try:
+        binding = resolve_binding(rid, "default")
+    except Exception:
+        binding = None
+    out = []
+    for entry in (binding or {}).get("call_chain") or []:
+        model = str(entry.get("model") or "").strip()
+        if model and model not in out:
+            out.append(model)
+    return out
+
+
 def bind_agent(agent, difficulty="default", task_type="", role=""):
     """按绑定生成应用了供应商/模型覆盖的 agent 副本；无绑定时原样返回。
 
@@ -2091,6 +2110,20 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
             and not _has_native_provider(rid)):
         configured = False
     r = resolve_binding(rid, difficulty) or resolve_binding(agent.get("kind"), difficulty)
+    # Review-seat diversification may select a second model from this exact
+    # source CLI's resolved binding. Restrict the call chain to that model and
+    # retain its provider credentials; never recommend another vendor here.
+    review_model = str(agent.get("_review_model") or "").strip()
+    if review_model and r:
+        matches = [entry for entry in (r.get("call_chain") or [])
+                   if str(entry.get("model") or "").strip() == review_model]
+        if matches:
+            chosen = dict(matches[0])
+            r = dict(r, model=review_model, env=dict(chosen.get("env") or {}),
+                     provider=chosen.get("provider"),
+                     call_chain=[chosen], model_fallbacks=[])
+            if chosen.get("codex_provider"):
+                r["codex_provider"] = chosen["codex_provider"]
     binding_mode = "explicit" if configured else "auto"
     if not r and not configured:
         r = recommend_binding(rid, difficulty, task_type=task_type, role=role)
