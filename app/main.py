@@ -94,6 +94,41 @@ _BOOT_TS = time.time()  # 服务进程启动时间戳：/api/pet_state 下发，
 # 不掐空闲流、半死连接尽早显形（EventSource 不派发注释事件，纯链路层探活）
 SSE_PING_S = 15.0
 
+# SSE 并发上限。每个 /api/events 连接独占一个 worker 线程（ThreadingHTTPServer
+# 没有连接池），而连接只在客户端断开时才退出；页面反复刷新、多端同时在线、
+# 隧道重连叠旧连接未关，线程数就线性涨，每个还持有压缩器和一份 ~0.5MB 状态
+# 载荷。长任务大屏因此逐步变慢，极端情况下线程表打满后连 /api/state 都拿不到。
+# 上限按「活跃流」计数（SSE 是唯一常驻长连接，这个数就是占用），超限直接 503 +
+# Retry-After，EventSource 自己退避重连——不静默排队，也不让新连接把老连接挤死。
+# 32 远大于真实使用（桌面 + 手机 + 两三个浏览器标签），正常使用碰不到。
+SSE_MAX_CONNECTIONS = max(1, int(os.environ.get("CODEBEE_SSE_MAX") or 32))
+_SSE_ACTIVE = 0
+_SSE_LOCK = threading.Lock()
+
+
+def _sse_acquire():
+    """占用一个 SSE 槽位；超限返回 False（计数不增）。"""
+    global _SSE_ACTIVE
+    with _SSE_LOCK:
+        if _SSE_ACTIVE >= SSE_MAX_CONNECTIONS:
+            return False
+        _SSE_ACTIVE += 1
+        return True
+
+
+def _sse_release():
+    """归还槽位。任何退出路径（正常断开、异常、超时）都必须走这里，
+    否则一次泄漏就永久占掉一个名额。"""
+    global _SSE_ACTIVE
+    with _SSE_LOCK:
+        if _SSE_ACTIVE > 0:
+            _SSE_ACTIVE -= 1
+
+
+def _sse_active():
+    with _SSE_LOCK:
+        return _SSE_ACTIVE
+
 # 写接口统一限制 JSON 请求体，避免误传文件或异常客户端把 worker 线程和
 # 内存拖垮。16 MiB 足够覆盖任务上下文、故事圣经和附件清单（附件本体走
 # 独立上传接口）。
@@ -3718,6 +3753,23 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         return self._json(400, {"error": "action 必须是 acquire 或 release"})
 
     def _api_events(self):
+        """SSE 入口：先占并发槽位，超限直接 503 + Retry-After（见
+        SSE_MAX_CONNECTIONS）。不在这里排队——排队等于把新连接的线程也留下，
+        超限的意义就没了；EventSource 收到非 200 会按 Retry-After 自己退避。"""
+        if not _sse_acquire():
+            self._send(503, json.dumps({
+                "error": "实时连接数已达上限（%d），请稍后重连" % SSE_MAX_CONNECTIONS,
+                "sse_active": _sse_active(),
+            }, ensure_ascii=False), headers={"Retry-After": "5"})
+            return
+        try:
+            self._stream_events()
+        finally:
+            # 断开、写失败、半死连接超时、进程收尾都走这里；漏一次就永久少
+            # 一个名额，几次之后上限就变成真的「永不接受新连接」
+            _sse_release()
+
+    def _stream_events(self):
         """SSE 事件驱动：等 store 状态版本变化才构建/推送，空闲连接几乎零开销
         （此前每连接每 0.8s 盲构建全量 payload，多端并发会把 detect 的慢 IO
         放大成服务假死）。每 ~2s 醒一次；空闲超过 SSE_PING_S 发注释行心跳。"""
