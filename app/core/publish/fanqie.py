@@ -228,6 +228,10 @@ PUBLISH_SHORT_STORY = [
     # 旧稿恢复提示必须在填表前放弃：点「继续编辑」会拿旧稿顶掉本次正文
     {"do": "dismiss_stale"},
     {"do": "fill", "sel": "textarea[placeholder*='短故事名称']", "key": "chapter_title"},
+    # 该提示还会在标题自动保存之后异步弹出（服务端存在更新草稿时）——
+    # 步骤3 的检查窗口抓不到，模态抢焦点让正文 insertText 只落几字
+    # （2026-10-23 实案：4/7820 字，连挂两次）。填正文前再查一次。
+    {"do": "dismiss_stale", "timeout": 8},
     {"do": "fill", "sel": ".ProseMirror", "key": "chapter_body"},
     {"do": "shot", "name": "fanqie-short-publish-filled"},
     # 封面：配置块 → 抽屉 → 本地上传 → file input → 确认上传 → 预览确定
@@ -245,9 +249,12 @@ PUBLISH_SHORT_STORY = [
     {"do": "click_real", "text": "确认上传", "tries": 20,
      "scope": ".byte-drawer-content button,[class*=drawer] button",
      "if_key": "_cover_path"},
+    # 确认上传后的「确定」有时在预览模态、有时留在抽屉里（重传场景
+    # 2026-10-23 实测只在抽屉出现），两处 scope 都覆盖
     {"do": "click_real", "text": "确定", "tries": 20,
      "scope": ".byte-modal-wrapper button,.arco-modal button,"
-              "[role=dialog] button",
+              "[role=dialog] button,.byte-drawer-content button,"
+              "[class*=drawer] button",
      "if_key": "_cover_path"},
     {"do": "sleep", "s": 1.2, "if_key": "_cover_path"},
     {"do": "shot", "name": "fanqie-short-cover-uploaded", "if_key": "_cover_path"},
@@ -268,7 +275,10 @@ PUBLISH_SHORT_STORY = [
      "confirm": "我已阅读并同意"},
     {"do": "shot", "name": "fanqie-short-config-done"},
     {"do": "js_click", "text": "下一步", "scope": "button", "tries": 10},
-    {"do": "fanqie_short_publish", "timeout": 150},
+    # 发布前平台要跑完「智能纠错」才弹确认链，纠错占用渲染主线程期间
+    # CDP 求值被拖到超时、150s 预算被慢调用吃光（2026-10-23 实案两次
+    # 循环超时）。放宽到 240s 让循环活过纠错窗口。
+    {"do": "fanqie_short_publish", "timeout": 240},
     {"do": "shot", "name": "fanqie-short-published"},
     # 发布后的硬凭据：短故事管理页里该书名带「审核中」
     {"do": "verify", "url": "{short_manage_url}",

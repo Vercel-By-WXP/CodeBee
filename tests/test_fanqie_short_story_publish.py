@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app.core.publish import fanqie, flow_fanqie, manager
+from app.core.publish import fanqie, flow_fanqie, manager, qimao
 from app.core.publish.flow import run_flow
 from app.core.publish.flow_fanqie import (run_fanqie_short_publish,
                                           run_fanqie_short_trial)
@@ -116,10 +116,38 @@ class FanqieShortPublishFlowTableTests(unittest.TestCase):
         self.assertTrue(any(s.get("do") == "js_click"
                             and s.get("text") == "下一步" for s in self.steps))
         publish = next(s for s in self.steps if s.get("do") == "fanqie_short_publish")
-        self.assertGreaterEqual(int(publish.get("timeout") or 0), 120)
+        # 发布前平台要跑完「智能纠错」才弹确认链，纠错占用渲染主线程期间
+        # CDP 求值被拖到超时——预算必须活过纠错窗口（2026-10-23 两次循环超时）
+        self.assertGreaterEqual(int(publish.get("timeout") or 0), 240)
         verify = next(s for s in self.steps if s.get("do") == "verify")
         self.assertEqual(verify.get("url"), "{short_manage_url}")
         self.assertIn("审核中", verify.get("any") or [])
+
+    def test_stale_dismiss_repeats_before_body_fill(self):
+        # 「有刚刚更新的草稿」模态在标题自动保存之后才异步弹出，加载时的
+        # 一次 dismiss_stale 抓不到；模态抢焦点使正文 insertText 只落几字
+        # （2026-10-23 实案：4/7820 字，连挂两次）。填正文前必须再查一次。
+        stale_idx = [i for i, s in enumerate(self.steps)
+                     if s.get("do") == "dismiss_stale"]
+        self.assertEqual(len(stale_idx), 2)
+        title_idx = next(i for i, s in enumerate(self.steps)
+                         if s.get("do") == "fill"
+                         and s.get("key") == "chapter_title")
+        body_idx = next(i for i, s in enumerate(self.steps)
+                        if s.get("do") == "fill"
+                        and s.get("key") == "chapter_body")
+        self.assertEqual(stale_idx[1], title_idx + 1)
+        self.assertLess(stale_idx[1], body_idx)
+
+    def test_cover_confirm_scope_covers_drawer_and_modal(self):
+        # 确认上传后的「确定」有时在预览模态、有时留在抽屉里（重传场景
+        # 2026-10-23 实测只在抽屉出现），两处 scope 都要覆盖
+        ok_btn = next(s for s in self.steps
+                      if s.get("do") == "click_real"
+                      and s.get("text") == "确定")
+        scope = str(ok_btn.get("scope") or "")
+        self.assertIn(".byte-modal-wrapper button", scope)
+        self.assertIn(".byte-drawer-content button", scope)
 
 
 class ShortStoryCategoryTests(unittest.TestCase):
@@ -263,6 +291,51 @@ class FlowStepTypeTests(unittest.TestCase):
                                  "item_sel": ".pub-cat-item",
                                  "any_key": "_categories"}],
                          values={"_categories": ["悬疑惊悚"]})
+
+    def test_select_item_fallback_value_is_not_treated_as_selected(self):
+        # 当前值正是候选末项兜底（「其他」）时必须继续挑真分类——兜底项
+        # 不算「已选中」（2026-10-23 实案：分类停「其他」，select_item
+        # 整个跳过，发布链白跑一轮）
+        state = {"picked": False}
+
+        def call(js, *args, **kwargs):
+            if args and args[0] == ".pub-cat":
+                if "getBoundingClientRect" in js:
+                    return {"x": 5, "y": 6}
+                return "悬疑惊悚" if state["picked"] else "其他"
+            if args and args[0] == ".pub-cat-item":
+                state["picked"] = True
+                return {"ok": True, "x": 12, "y": 34, "t": "悬疑惊悚"}
+            return {"x": 5, "y": 6}
+
+        page = FakePage(call=call)
+        with mock.patch("app.core.publish.flow.time.sleep"):
+            run_flow(page, [{"do": "select_item", "name": "作品分类",
+                             "open_sel": ".pub-cat", "item_sel": ".pub-cat-item",
+                             "any_key": "_categories"}],
+                     values={"_categories": ["悬疑惊悚", "女频脑洞", "其他"]})
+        self.assertTrue(state["picked"])
+        self.assertTrue(page.waited)          # 真的开过下拉
+
+    def test_select_item_real_selection_still_skips(self):
+        # 当前值已是真分类（非兜底）时保持跳过，不开下拉不多点
+        def call(js, *args, **kwargs):
+            if args and args[0] == ".pub-cat":
+                if "getBoundingClientRect" in js:
+                    return {"x": 5, "y": 6}
+                return "悬疑惊悚"
+            return {"x": 5, "y": 6}
+
+        page = FakePage(call=call)
+        with mock.patch("app.core.publish.flow.time.sleep"):
+            run_flow(page, [{"do": "select_item",
+                             "open_sel": ".pub-cat",
+                             "item_sel": ".pub-cat-item",
+                             "any_key": "_categories"}],
+                     values={"_categories": ["悬疑惊悚", "其他"]})
+        self.assertEqual(page.waited, [])
+        self.assertEqual([m for m, _ in page.sent
+                          if m == "Input.dispatchMouseEvent"], [])
 
     def test_check_clicks_mask_then_verifies(self):
         state = {"checked": False}
@@ -598,6 +671,65 @@ class ShortStoryApiHandlerTests(unittest.TestCase):
         self.assertEqual(calls[1][2], str(wd / "story.md"))
         for _, _, _, kwargs in calls:
             self.assertTrue(kwargs["short_story"])
+
+
+class ShortStoryCreateTagGateTests(unittest.TestCase):
+    """短故事建书不得被注入标签点击步（2026-10-23 实案回归）。
+
+    番茄短故事建书页 publish-short/new 即编辑器，没有标签 UI；book_meta
+    里的标签经 _with_tag_steps 插桩出 click_text 步，页面上必然找不到
+    可点元素——任务 t-20261023-163337-4364 建书第 6 步就这样卡死
+    （「页面上找不到文本为『悬疑』的可点元素」，幽灵 worker 27 次重试
+    全灭，直到路由修复后第一次真跑才暴露）。七猫短故事表自带 tags
+    步骤、小说建书表带 {tag_*} 占位，两条老路径行为不变。"""
+
+    META = {"book_name": "测试短篇", "tags_theme": ["悬疑"],
+            "tags_role": ["多女主"], "tags_plot": ["家庭"],
+            "content_emotion": ["追夫"]}
+
+    def test_fanqie_short_story_flow_has_no_tag_ui(self):
+        self.assertFalse(manager._flow_supports_tags(
+            fanqie.FLOWS["create_short_story"]))
+
+    def test_qimao_short_story_flow_keeps_tags_step(self):
+        self.assertTrue(manager._flow_supports_tags(
+            qimao.FLOWS["create_short_story"]))
+
+    def test_novel_flow_with_tag_placeholders_counts_as_tag_ui(self):
+        steps = manager.load_flow("fanqie", "create_book")
+        self.assertTrue(manager._flow_supports_tags(steps))
+
+    def test_short_story_steps_drop_tag_injection(self):
+        values = {}
+        steps = manager.create_flow_steps(
+            "fanqie", True, fanqie.tag_groups(self.META), values, fanqie)
+        texts = [str(st.get("text") or "") for st in steps]
+        for tag in ("悬疑", "多女主", "家庭", "追夫"):
+            self.assertNotIn(tag, texts)
+        self.assertNotIn("_tags", values)
+        # 流程表本体不被裁剪：仍以 url_any publish-short/ 收尾
+        self.assertEqual(steps[-1].get("do"), "url_any")
+        self.assertTrue(any("publish-short/" in str(st.get("any") or "")
+                            for st in steps))
+
+    def test_novel_create_still_resolves_tag_placeholders(self):
+        values = fanqie.values_create_book(dict(self.META))
+        steps = manager.create_flow_steps(
+            "fanqie", False, fanqie.tag_groups(self.META), values, fanqie)
+        # 小说建书表自带 {tag_*} 占位：values 就绪、不插桩 click_text
+        self.assertEqual(values.get("tag_theme"), "悬疑")
+        injected = [st for st in steps if st.get("do") == "click_text"
+                    and st.get("text") in ("悬疑", "多女主", "家庭", "追夫")]
+        self.assertEqual(injected, [])
+
+    def test_qimao_short_story_still_gets_tags(self):
+        values = qimao.values_create_short_story(dict(self.META))
+        steps = manager.create_flow_steps(
+            "qimao", True,
+            qimao.tag_groups({"tags_role": ["反派"], "tags_plot": ["复仇"]}),
+            values, qimao)
+        self.assertIn("_tags", values)
+        self.assertTrue(any(st.get("do") == "tags" for st in steps))
 
 
 if __name__ == "__main__":

@@ -743,7 +743,13 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         timeout=8) or "")
 
                 cur = _current()
-                hit_cur = next((c for c in cands if c and c in cur), "")
+                # 候选按偏好排序、末项是兜底（如短故事分类的「其他」）：
+                # 当前值若正是兜底项，不能算「已选中」而跳过——否则误设/
+                # 默认的兜底值会被原样提交（2026-10-23 实案：分类停在
+                # 「其他」，select_item 整个跳过，发布链白跑一轮）。
+                # 单候选列表无从比较，保持原行为。
+                skip_cands = cands[:-1] if len(cands) > 1 else cands
+                hit_cur = next((c for c in skip_cands if c and c in cur), "")
                 if hit_cur and st.get("skip_if_selected", True):
                     note(i, "已选中「%s」，跳过" % hit_cur)
                     continue

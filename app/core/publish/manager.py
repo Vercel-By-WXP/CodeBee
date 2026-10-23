@@ -306,6 +306,35 @@ def _with_tag_steps(steps, groups, values, mod=None):
     return out
 
 
+def _flow_supports_tags(steps):
+    """流程表是否自带标签 UI：tags 步骤（数据驱动点选）或 {tag_*} 占位
+    （番茄式 click_real）。两者都没有 = 该建书表单没有标签区——此时
+    _with_tag_steps 的插桩 click_text 只会全员「找不到可点元素」
+    （2026-10-23 实案：番茄短故事建书页 publish-short/new 即编辑器，
+    没有标签 UI，book_meta 里的标签把建书第 6 步卡死，27 次重试全灭）。"""
+    for st in steps or []:
+        if st.get("do") == "tags":
+            return True
+        if "{tag_" in str(st.get("text") or ""):
+            return True
+    return False
+
+
+def create_flow_steps(plat, is_short_story, groups, values, mod):
+    """建书流程表 + 标签步组装（create_book_async 共用入口）。
+
+    短故事流程表无标签 UI 时丢弃 groups——插桩出来的 click_text 标签步
+    在页面上必然找不到可点元素（番茄 publish-short/new 即编辑器，
+    2026-10-23 实案：book_meta 的标签把建书卡死在第 6 步）。
+    小说建书表单有标签区，保持旧注入行为不变；七猫短故事表自带 tags
+    步骤，标签照常走 values["_tags"] 数据驱动点选。"""
+    steps = load_flow(plat, "create_short_story" if is_short_story
+                      else "create_book")
+    if is_short_story and not _flow_supports_tags(steps):
+        groups = []
+    return _with_tag_steps(steps, groups, values, mod)
+
+
 def _login_guard(plat):
     """动作前的登录前置，现场复核浏览器页面，避免 stale connected。"""
     ok_gate, why_gate = _unattended_attach_gate(plat)

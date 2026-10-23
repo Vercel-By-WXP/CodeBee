@@ -832,11 +832,8 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                            or mod.values_create_book)
                           if is_short_story else
                           mod.values_create_book)(dict(data, book_name=name))
-                steps = _mgr()._with_tag_steps(
-                    _mgr().load_flow(plat,
-                                     "create_short_story" if is_short_story
-                                     else "create_book"),
-                    mod.tag_groups(data), values, mod)
+                steps = _mgr().create_flow_steps(
+                    plat, is_short_story, mod.tag_groups(data), values, mod)
                 try:
                     _mgr().flow.run_flow(page, steps, values=values, config=mod.CONFIG,
                                   auto_submit=auto_submit, dup_check=auto_submit,
