@@ -8662,6 +8662,7 @@ function pbBlock(task, platform, selectionOnly = false) {
     chTitle = t("本地台账口径，点「校准」按平台实况纠正");
   }
   const busy = displayStatus === "busy";
+  const isShort = String(task.type || "").toLowerCase() === "short_story";
   let btns = "";
   let pendHtml = "";   // 批量选择 chips（bookReady 分支里填充，extra 段落拼接）
   if (displayStatus === "none" || displayStatus === "error" || displayStatus === "waiting_login") {
@@ -8700,11 +8701,31 @@ function pbBlock(task, platform, selectionOnly = false) {
   if (bookReady) {
     btns += '<span class="pb-book" title="' + esc(t("已在此平台创建的作品")) + '">' +
       esc(t("已建书：") + (book.title || "")) + "</span>";
+    if (isShort) {
+      // 短篇是单文档：整篇发布/存草稿，不出现任何按章 UI（发一章/批量
+      // 清单对短篇都是误操作面）。凭据行读台账 publish_short_story 动作。
+      const shortOk = hist.find((r) => r.platform === platform &&
+        r.action === "publish_short_story" && r.ok);
+      btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
+        ' onclick="pbShortStory(\'' + esc(task.id) + "', '" + platform + '\', false)" title="' +
+        esc(t("整篇自动填入并完成设置/封面/协议后提交发布，以平台管理页状态为凭据；发布后不可撤回")) + '">' +
+        t("发布短篇") + (shortOk ? t("（已提交）") : "") + "</button>";
+      btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
+        ' onclick="pbShortStory(\'' + esc(task.id) + "', '" + platform + '\', true)" title="' +
+        esc(t("整篇自动填入并点「存为草稿」：落平台草稿箱不上线，之后到平台检查并提交")) + '">' +
+        t("存草稿") + "</button>";
+      if (shortOk) {
+        btns += '<div class="pb-hint">' +
+          esc(t("短篇已提交发布（{0}）：状态以平台短故事管理页为准", shortOk.ts || "")) +
+          "</div>";
+      }
+    } else {
     btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
       ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
       esc(chTitle) + '">' +
       t("发一章") + (publishedLatest ? t("（已发布至 {0} 章）", publishedLatest)
         : nCh ? t("（已发 ") + nCh + t("）") : "") + "</button>";
+    }
     btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
       ' onclick="pbSyncPublished(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
       esc(t("按平台实况纠正已发章数")) + '">' + t("校准") + "</button>";
@@ -8717,6 +8738,8 @@ function pbBlock(task, platform, selectionOnly = false) {
       ' onclick="pbUnbind(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
       esc(t("只清除本地的作品登记，不动平台上的作品；清掉后可重新创建作品或改绑其他书")) + '">' + t("解除绑定") + "</button>";
     // 批量发布（publish/auto.py）：待发清单 + 护栏 + 进度都来自 /pending 视图
+    // 短篇没有章形态，整块按章 UI（批量/选择/进度）不渲染
+    if (!isShort) {
     const au = (((S.pubAuto && S.pubAuto.books) || [])
       .find((b) => b.platform === platform)) || {};
     const run = (S.pubAuto && S.pubAuto.running &&
@@ -8877,6 +8900,7 @@ function pbBlock(task, platform, selectionOnly = false) {
         : t("自动发布中断：") + (run.error || "");
       btns += '<div class="' + (run.status === "done" ? "pb-hint" : "pb-err") + '">' +
         esc(doneLine + t("（") + (run.at || "") + t("）")) + "</div>";
+    }
     }
   } else {
     if (book && book.title) {
@@ -9207,6 +9231,28 @@ window.pbUnbind = async function (taskId, platform) {
       { method: "POST", body: JSON.stringify({ platform: platform }) });
     toast(t("已解绑，可重新创建作品或登记已有作品"));
   } catch (e) { toast(t("解绑失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+/* 短篇发布/存草稿（2026-10-23）：单文档整篇上传，服务端按平台流程表
+ * 走设置区/封面/协议/确认链；凭据以平台管理页状态为准。 */
+window.pbShortStory = async function (taskId, platform, asDraft) {
+  const draft = asDraft === true;
+  if (!(await uiConfirm(draft
+    ? t("将整篇自动填入平台编辑器并点「存为草稿」：内容落平台草稿箱不上线，完成后到平台检查并提交发布。继续？")
+    : t("将整篇自动填入并完成设置/封面/协议后提交发布，以平台管理页状态为凭据；发布提交后不可撤回。继续？"),
+    { ok: draft ? t("开始存草稿") : t("开始发布") }))) return;
+  try {
+    const r = await api("/api/publish/task/" + encodeURIComponent(taskId) + "/" +
+      (draft ? "short-story-draft" : "short-story-publish"),
+      { method: "POST", body: JSON.stringify({ platform: platform }) });
+    if (r && r.ok) {
+      toast(draft ? t("短篇存草稿已启动，进度见发布台")
+                  : t("短篇发布已启动：确认链与验证完成后记账，结果见发布历史"));
+    } else {
+      toast(t("启动失败：") + ((r && r.error) || ""), true);
+    }
+  } catch (e) { toast(t("启动失败：") + e.message, true); }
   S._pbSig = ""; pbKick();
 };
 
