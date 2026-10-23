@@ -10407,7 +10407,7 @@ function drawInspector() {
         encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" title="' +
         esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) +
         '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
-        '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
+        '<i class="fx">' + esc(_crFileBadge(f.name)) + "</i>" +
         '<span class="p">' + esc(f.name) + "</span><i>" + fmtSize(f.size) + "</i></a>").join("")
     : '<span class="insp-hint">' + esc(t("本次运行没有在工作目录里产出新文件。")) + "</span>";
 
@@ -11014,7 +11014,7 @@ function artifactsChips(runId, files, prevRun, hasPlan) {
       '<a class="file-chip artifact-file-open" href="' + urlAuth("/api/runs/" + encodeURIComponent(runId) + "/file?name=" +
       encodeURIComponent(f.name)) + '" target="_blank" rel="noopener" ' +
       'title="' + esc(f.name + " · " + fmtSize(f.size)) + '" data-file-run="' + esc(runId) + '" data-file-name="' + esc(f.name) + '" data-file-size="' + (Number(f.size) || 0) + '">' +
-      '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
+      '<i class="fx">' + esc(_crFileBadge(f.name)) + "</i>" +
       '<span class="p">' + esc(f.name) + '</span><i>' + fmtSize(f.size) + "</i></a>" +
       (acts ? '<span class="fc-acts' + (diffable ? '' : ' solo') + '">' + acts + "</span>" : "") +
       "</span>";
@@ -13829,6 +13829,53 @@ window.submitChatChanges = async function (runId) {
   await refreshDetailSide(true);
 };
 
+/* 产出文件归类与徽章字（时间线结果卡「等宽网格+分组」定案 2026-10-23，
+ * demo app/ui/demo_artifact_chips.html 方案 D）：文档/数据·配置/媒体着色分组，
+ * 其余归「其他」；dotfile（.gitignore 等）归配置组、徽章取去点后 3 字（→git），
+ * 修掉 slice(0,4) 把 .gitignore 截成 giti 的旧缺陷——检查器/详情页共用。 */
+function _crFileFam(name) {
+  const s = String(name);
+  if (s.startsWith(".")) return "data";
+  const ext = _fpExt(s) || "";
+  if (ext === "md" || ext === "txt" || ext === "html" || ext === "htm") return "doc";
+  if (ext === "json" || ext === "csv" || ext === "yaml" || ext === "yml") return "data";
+  if (ext === "mp4" || ext === "mp3" || ext === "png" || ext === "jpg" ||
+      ext === "jpeg" || ext === "webm" || ext === "gif") return "media";
+  return "other";
+}
+function _crFileBadge(name) {
+  const s = String(name);
+  if (s.startsWith(".")) return s.slice(1, 4) || "file";
+  return _fpExt(s).slice(0, 4) || "file";
+}
+const _CR_FILE_GROUPS = [["doc", "文档"], ["data", "数据 · 配置"], ["media", "媒体"], ["other", "其他"]];
+function chatFileGrid(run, files) {
+  const buckets = {};
+  files.forEach((f) => { const k = _crFileFam(f.name); (buckets[k] = buckets[k] || []).push(f); });
+  return _CR_FILE_GROUPS.filter((g) => (buckets[g[0]] || []).length).map((g) => {
+    const cells = buckets[g[0]].map((f) => {
+      const fUrl = urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" + encodeURIComponent(f.name));
+      // 网页成品给「运行」：弹窗里 iframe 真跑（源码弹窗看不出页面长什么样，
+      // 用户要的是「看到东西跑起来」——与详情页「预览」页签同款挂载）
+      const fExt = _fpExt(f.name);
+      const runBtn = (fExt === "html" || fExt === "htm")
+        ? '<button type="button" class="chip-btn" title="' + esc(t("运行展示")) +
+          '" onclick="artRunPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-rocket"/></svg></button>'
+        : "";
+      return '<div class="file-chip has-actions">' +
+        '<i class="fx fx-' + g[0] + '">' + esc(_crFileBadge(f.name)) + "</i>" +
+        '<span class="p" title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' + esc(f.name) + "</span>" +
+        '<span class="fsz">' + fmtSize(f.size) + "</span>" +
+        '<span class="fbtns">' + runBtn +
+        '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
+        '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg></a>' +
+        "</span></div>";
+    }).join("");
+    return '<div class="cr-grp"><div class="cr-grp-head"><b>' + esc(t(g[1])) + '</b><span class="n">' +
+      buckets[g[0]].length + '</span></div><div class="cr-grp-grid">' + cells + "</div></div>";
+  }).join("");
+}
+
 /* 执行结果卡（时间线收尾）：run 终态后的确定性摘要——成没成、跑多久、谁执行
  * 的、产出了哪些文件，全部产品明示，不依赖模型自觉交代。失败给「查看执行步骤」
  * 入口；文件 chip 复用成品预览通道（artPopup）。
@@ -13860,24 +13907,6 @@ function chatResultHTML(run, res) {
   if (res.turns) meta.push('<span class="cr-pill quiet">' + res.turns + " " + t("轮对话") + "</span>");
   if (res.duration_s != null) meta.push('<span class="cr-pill quiet">' + chatDurTxt(res.duration_s) + "</span>");
   const files = res.files || [];
-  const chips = files.map((f) => {
-    const fUrl = urlAuth("/api/runs/" + encodeURIComponent(run.id) + "/file?name=" + encodeURIComponent(f.name));
-    // 网页成品给「运行」：弹窗里 iframe 真跑（源码弹窗看不出页面长什么样，
-    // 用户要的是「看到东西跑起来」——与详情页「预览」页签同款挂载）
-    const fExt = _fpExt(f.name);
-    const runBtn = (fExt === "html" || fExt === "htm")
-      ? '<button type="button" class="chip-btn" title="' + esc(t("运行展示")) +
-        '" onclick="artRunPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-rocket"/></svg></button>'
-      : "";
-    return '<div class="file-chip has-actions">' +
-      '<i class="fx">' + esc(_fpExt(f.name).slice(0, 4) || "file") + "</i>" +
-      '<span class="p" title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' + esc(f.name) + "</span>" +
-      '<span class="fsz">' + fmtSize(f.size) + "</span>" +
-      '<span class="fbtns">' + runBtn +
-      '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
-      '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg></a>' +
-      "</span></div>";
-  }).join("");
   return '<div class="chat-row">' +
     '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="' + icon + '"></use></svg></span>' +
     '<div class="chat-result' + (partial ? " partial" : ok ? "" : bad ? " bad" : " off") + '">' +
@@ -13885,9 +13914,9 @@ function chatResultHTML(run, res) {
     esc(label) + "</div>" +
     (meta.length ? '<div class="cr-meta">' + meta.join("") + "</div>" : "") +
     ((bad || partial) && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
-    '<div class="cr-files">' + (chips
+    '<div class="cr-files">' + (files.length
       ? '<div class="cr-files-title">' + esc(t("产出文件")) + '<b class="cr-count">' + files.length + "</b></div>" +
-        '<div class="file-chips">' + chips + "</div>"
+        chatFileGrid(run, files)
       : '<div class="cr-files-title">' + esc(t("无文件产出")) + "</div>") + "</div>" +
     (bad ? '<button class="ghost cr-steps" onclick="rdChatNavGo(\'steps\')">' +
       esc(t("查看执行步骤")) + "</button>" : "") +

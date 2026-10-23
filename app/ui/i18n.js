@@ -3565,6 +3565,10 @@
     "已转入知识库（草稿态，转正后才会注入任务提示词）": "Saved to the knowledge base (draft — it won't feed task prompts until approved)",
     "转入失败：": "Save to knowledge base failed: ",
 
+    // —— 执行结果卡·产出文件分组 ——
+    "媒体": "Media",
+    "数据 · 配置": "Data & Config",
+
     // —— 数据与备份（导出/导入/每日清理）——
     "数据": "Data",
     "数据与备份": "Data & Backup",

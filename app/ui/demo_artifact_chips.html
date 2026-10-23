@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="ocean" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>产出文件 chip 样式提案 · demo</title>
+<style>
+/* ================= 皮肤 token：逐字拷贝自 style.css，无新造颜色 ================= */
+:root {
+  --bg: #212121; --sidebar: #171717; --panel: #2f2f2f; --panel2: #3a3a3a;
+  --border: rgba(255, 255, 255, .09); --border-strong: rgba(255, 255, 255, .18);
+  --text: #ececec; --muted: #a6a6a6;
+  --accent: #5b8cff; --accent2: #8b5cf6;
+  --ok: #34c98e; --warn: #f5b942; --bad: #f0566a;
+  --shadow: 0 18px 48px rgba(7, 19, 38, .16);
+  --mono: "Cascadia Code", Consolas, monospace;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+}
+html[data-theme="light"]:not([data-skin]), html[data-theme="light"][data-skin="classic"] {
+  --bg: #f4f7fb; --sidebar: #eef3f8; --panel: rgba(255, 255, 255, .88); --panel2: #eaf0f6;
+  --border: rgba(21, 49, 78, .11); --border-strong: rgba(21, 49, 78, .24);
+  --text: #10253d; --muted: #63758b;
+  --accent: #167dce; --accent2: #7858de;
+  --ok: #139878; --warn: #b07d18; --bad: #d63c55;
+  --shadow: 0 18px 48px rgba(24, 54, 89, .10);
+}
+html[data-theme="dark"]:not([data-skin]), html[data-theme="dark"][data-skin="classic"] {
+  --bg: #091522; --sidebar: #0b1c2c; --panel: rgba(15, 34, 53, .88); --panel2: #132c43;
+  --border: rgba(194, 223, 249, .12); --border-strong: rgba(194, 223, 249, .24);
+  --text: #edf6ff; --muted: #92a9bf;
+  --accent: #53b9f5; --accent2: #a28af5;
+  --shadow: 0 22px 60px rgba(0, 0, 0, .30);
+}
+html[data-skin="ocean"] {
+  --bg: #0e1626; --sidebar: #0a111e; --panel: #17243a; --panel2: #21304a;
+  --border: rgba(255, 255, 255, .10); --border-strong: rgba(255, 255, 255, .20);
+  --text: #e7eefb; --muted: #93a6c4;
+  --accent: #3ba9f5; --accent2: #6d6cf6;
+  --ok: #35c99b; --warn: #f0b429; --bad: #f2637a;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+}
+html[data-skin="ocean"][data-theme="light"] {
+  --bg: #ffffff; --sidebar: #eff5fd; --panel: #ffffff; --panel2: #f0f6fd;
+  --border: #d7e3f4; --border-strong: #b9cde8;
+  --text: #0c1a2c; --muted: #5d7290;
+  --accent: #1f6fd0; --accent2: #5b4fe0;
+  --ok: #0d9a72; --warn: #a9761a; --bad: #d23c58;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+}
+html[data-skin="forest"] {
+  --bg: #141d18; --sidebar: #0f1613; --panel: #1d2a23; --panel2: #26362d;
+  --border: rgba(255, 255, 255, .09); --border-strong: rgba(255, 255, 255, .18);
+  --text: #e6f1ea; --muted: #94ac9e;
+  --accent: #35c98c; --accent2: #2bbfa8;
+  --ok: #35c98c; --warn: #e5b154; --bad: #ef6a6a;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .42);
+}
+html[data-skin="forest"][data-theme="light"] {
+  --bg: #ffffff; --sidebar: #eef6f1; --panel: #ffffff; --panel2: #eff7f2;
+  --border: #d6e7dd; --border-strong: #b9d4c5;
+  --text: #10201a; --muted: #5b7266;
+  --accent: #0e8f61; --accent2: #0d8577;
+  --ok: #0e8f61; --warn: #9c6d12; --bad: #c94f42;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .07);
+}
+
+/* ================= 页面骨架（仅 demo 用） ================= */
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-ui); font-size: 14px; line-height: 1.55;
+}
+.bar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
+}
+.bar h1 { font-size: 14px; margin: 0 12px 0 0; font-weight: 600; }
+.bar .grp { display: inline-flex; gap: 4px; align-items: center; }
+.bar .grp > span { font-size: 11.5px; color: var(--muted); margin-right: 2px; }
+.bar button {
+  font: inherit; font-size: 12px; color: var(--muted);
+  background: none; border: 1px solid var(--border-strong); border-radius: 999px;
+  padding: 3px 11px; cursor: pointer;
+}
+.bar button:hover { color: var(--text); background: var(--panel2); }
+.bar button.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.bar .tip { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+main { max-width: 760px; margin: 0 auto; padding: 22px 20px 60px; transition: max-width .25s ease; }
+main.narrow { max-width: 470px; }
+.sec { margin-top: 34px; }
+.sec > h2 { font-size: 13px; margin: 0 0 4px; color: var(--accent); }
+.sec > p.note { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; line-height: 1.7; }
+.sec > p.note b { color: var(--text); font-weight: 600; }
+.demo-card { background: color-mix(in srgb, var(--panel) 60%, transparent); border: 1px dashed var(--border-strong); border-radius: 14px; padding: 14px 16px; }
+
+/* ================= 结果卡上下文：与 chat-result 同款 ================= */
+.chat-result { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--panel); }
+.cr-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; color: var(--ok); }
+.cr-head .ico { width: 16px; height: 16px; flex: none; }
+.cr-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 7px; font-size: 12px; }
+.cr-pill {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+  padding: 2.5px 9px; border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--panel2); font-size: 11.5px; color: var(--text); line-height: 1.5;
+}
+.cr-pill b { font-weight: 500; color: var(--muted); flex: none; }
+.cr-pill i { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.cr-pill.quiet { background: none; border-color: transparent; padding-inline: 3px; color: var(--muted); }
+.cr-files { margin-top: 10px; }
+.cr-files-title { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.cr-files-title .cr-count {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1;
+  padding: 2.5px 7px; border: 1px solid var(--border-strong); border-radius: 999px;
+}
+.cr-files-title .tip { font-size: 11px; color: var(--muted); opacity: .75; margin-left: 2px; }
+
+/* ================= 公共：file-chips / 图标钮（现状口径） ================= */
+.file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border: 1px solid var(--border-strong); border-radius: 8px;
+  font-size: 12px; color: var(--text); text-decoration: none; max-width: 100%;
+}
+.file-chip i { font-style: normal; color: var(--muted); font-size: 11px; flex: none; }
+.file-chip .p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip .fsz { flex: none; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+.file-chip .fbtns { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 2px; }
+.chip-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.chip-btn .ico { width: 13px; height: 13px; }
+.chip-btn:hover { color: var(--accent); background: var(--panel2); }
+.chip-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+.ico { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ================= 方案 D：等宽网格 + 类型分组 ================= */
+.vd .grp-label { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); margin: 12px 0 6px; }
+.vd .cr-files .grp-label:first-of-type { margin-top: 2px; }
+.vd .grp-label b { color: var(--text); font-weight: 600; }
+.vd .grp-label .n {
+  font-family: var(--mono); font-size: 10px; color: var(--muted); line-height: 1.4;
+  padding: 1px 7px; border: 1px solid var(--border-strong); border-radius: 999px;
+}
+.vd .grp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.vd .file-chip { gap: 8px; padding: 5px 6px; border-radius: 10px; min-width: 0;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.vd .file-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--panel2);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.vd .file-chip .p { flex: 1; font-weight: 500; }
+.vd .file-chip .fsz { font-variant-numeric: tabular-nums; }
+.vd .fx {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 34px; padding: 1.5px 6px; border-radius: 5px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase; line-height: 1.5;
+}
+.vd .fx-doc   { color: var(--accent);  background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.vd .fx-data  { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 13%, transparent); }
+.vd .fx-media { color: var(--warn);    background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.vd .fx-other { color: var(--muted);   background: color-mix(in srgb, var(--muted) 15%, transparent); }
+
+/* ================= 方案 E：详情页「成品文件」同款行式（含 +分组 变体） ================= */
+.ve .file-chips { gap: 0; margin-top: 2px; }
+.ve .fc-row {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 6px 8px 6px 12px; border-radius: 10px;
+}
+.ve .fc-row + .fc-row { border-top: 1px solid var(--border); border-radius: 0; }
+.ve .fc-row:hover { background: var(--panel2); }
+.ve .fc-row:hover + .fc-row { border-top-color: transparent; }
+.ve .fc-row .file-chip {
+  display: flex; align-items: center; gap: 9px;
+  flex: 1; min-width: 0; padding: 0; background: none; border: none;
+}
+.ve .fc-row .file-chip .fx {
+  flex: none; font-style: normal; font-weight: 700; font-size: 10px; letter-spacing: .5px;
+  color: var(--ok); text-transform: uppercase; width: 32px; text-align: center;
+}
+.ve .fc-row .file-chip .p {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px;
+}
+.ve .fc-row .file-chip i:not(.fx) {
+  flex: none; font-family: var(--mono); font-size: 11px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ve .fc-acts { flex: none; display: grid; grid-template-columns: 62px 62px; gap: 4px; align-items: center; }
+.ve .fc-acts .file-chip.prev {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  width: 62px; padding: 5px 0; background: none; border: none; border-radius: 8px;
+  font: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.ve .fc-acts .file-chip.prev .ico { width: 13px; height: 13px; }
+.ve .fc-acts .file-chip.prev:hover {
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.ve .grp-label { display: flex; align-items: center; gap: 7px; padding: 10px 12px 5px; font-size: 11px; color: var(--muted); }
+.ve .file-chips .grp-label:first-child { padding-top: 4px; }
+.ve .grp-label b { color: var(--text); font-weight: 600; font-size: 11.5px; }
+.ve .grp-label .n {
+  font-family: var(--mono); font-size: 10px; color: var(--muted); line-height: 1.4;
+  padding: 1px 7px; border: 1px solid var(--border-strong); border-radius: 999px;
+}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>产出文件 chip 样式提案</h1>
+  <span class="grp"><span>皮肤</span>
+    <button data-skin="ocean" data-theme="light" class="on">ocean 日间</button>
+    <button data-skin="ocean" data-theme="dark">ocean 夜间</button>
+    <button data-skin="forest" data-theme="light">forest 日间</button>
+    <button data-skin="forest" data-theme="dark">forest 夜间</button>
+    <button data-skin="classic" data-theme="light">classic 日间</button>
+    <button data-skin="classic" data-theme="dark">classic 夜间</button>
+  </span>
+  <span class="grp"><span>宽度</span>
+    <button data-w="normal" class="on">正常栏</button>
+    <button data-w="narrow">窄栏压测</button>
+  </span>
+  <span class="tip">色值全部来自 style.css 皮肤变量拷贝（color-mix 派生浅底），无新造颜色</span>
+</div>
+
+<main id="main">
+
+  <div class="sec">
+    <h2>现状对照</h2>
+    <p class="note">问题：① 扩展名只是一粒灰字，<b>md / json / mp4 无视觉差别</b>，扫不出「哪个是成品」；② <b>.gitignore 被截成「giti」</b>，读不出来；③ 尺寸数字非等宽对齐，一行里 28 B / 1.8 MB 深浅跳动；④ 12 个 chip 全部同权重，<b>重点文件（成片 mp4、正文 md）淹没在配置文件里</b>。</p>
+    <div class="demo-card" data-variant="cur"></div>
+  </div>
+
+  <div class="sec">
+    <h2>方案 E · 详情页「成品文件」同款行式（推荐）</h2>
+    <p class="note">按你给的参考图（详情页现状口径）搬到时间线：<b>彩色大写扩展名</b>（统一 --ok 绿、32px 定宽）｜文件名｜mono 尺寸，右端 <b>固定双列文字钮</b>（预览 / 下载，62px 永不漂移），行间发丝分隔线、hover 行底色；<b>每行全宽，天然等长</b>。时间线与详情页从此一套形态，认知零成本。取舍：高度 ≈ 12 行 × 29px ≈ 350px，是各方案里最高的；扩展名统一绿色，类型靠文字本身区分。注：GITI 截断是详情页现存缺陷（.gitignore → giti），demo 里已按修复后状态显示为 GIT，移植时两处一并修。</p>
+    <div class="demo-card" data-variant="ve"></div>
+  </div>
+
+  <div class="sec">
+    <h2>方案 E2 · E + 类型分组组头</h2>
+    <p class="note">E 的行式不变，把上一条「归类」叠上：组头（文档 8 / 数据·配置 3 / 媒体 1）插在行簇之间，组内保持产出顺序，dotfile 归「数据·配置」。取舍：比 E 多 3 个组头行高（≈ +75px）；组头会打断发丝分隔线的连续感。</p>
+    <div class="demo-card" data-variant="ve2"></div>
+  </div>
+
+  <div class="sec">
+    <h2>方案 D · 等宽网格 + 类型分组（上一版提案，对照）</h2>
+    <p class="note">按「等宽 + 归类」重排：<b>grid 等宽格子</b>（正常栏 2 列、窄栏自动落 1 列，宽度永远一致，长名省略进悬停提示）；<b>按类型分组</b>——文档（md/txt/html）、数据·配置（json/csv + dotfile）、媒体（mp4/图片），组头带计数，dotfile 归配置组不再单挂「其他」。取舍：高度 ≈ 240px（介于 A ≈ 100px 与 B ≈ 330px 之间）；单文件组（媒体 1 个）会留半行空格；组内保持产出顺序。</p>
+    <div class="demo-card" data-variant="vd"></div>
+  </div>
+
+  <div class="sec">
+    <h2>压测 · 长文件名 + dotfile（E / E2 / D）</h2>
+    <p class="note">86 字符文件名验证省略号不撑破行；.gitignore 验证徽章与归类。</p>
+    <div class="demo-card" data-variant="ve" data-stress="1"></div>
+    <div class="demo-card" data-variant="ve2" data-stress="1" style="margin-top:10px"></div>
+    <div class="demo-card" data-variant="vd" data-stress="1" style="margin-top:10px"></div>
+  </div>
+
+</main>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+</svg>
+
+<script>
+"use strict";
+/* 截图同源假数据：12 个真实文件名与尺寸 */
+var FILES = [
+  ["handdraw-video.md", "28.3 KB"],
+  ["INSPECTION.md", "6.1 KB"],
+  ["document.md", "26.6 KB"],
+  ["storyboard.json", "4.5 KB"],
+  [".gitignore", "28 B"],
+  ["report.md", "5.1 KB"],
+  ["article.md", "11.5 KB"],
+  ["render_report.json", "482 B"],
+  ["handdraw.mp4", "1.8 MB"],
+  ["_rev1021_picks2.txt", "1009 B"],
+  ["_rev1021_picks.txt", "10.6 KB"],
+  ["_rev1021_themes.txt", "16.1 KB"]
+];
+var STRESS = [
+  ["2026-10-23_手绘视频任务_最终成片_含字幕与配音_v3_修订版_交稿确认_请以此版本为准_final_output.mp4", "1.8 MB"],
+  [".gitignore", "28 B"]
+];
+
+function famOf(name) {
+  var ext = name.indexOf(".") === 0 ? "" : (name.split(".").pop() || "").toLowerCase();
+  if (["md", "txt", "html", "htm"].indexOf(ext) >= 0) return "doc";
+  if (["json", "csv", "yaml", "yml"].indexOf(ext) >= 0) return "data";
+  if (["mp4", "mp3", "png", "jpg", "jpeg", "webm", "gif"].indexOf(ext) >= 0) return "media";
+  return "other";
+}
+/* 方案 D 的归类口径：dotfile（.gitignore 等）归「数据 · 配置」组 */
+function grpOf(name) {
+  if (name.indexOf(".") === 0) return "data";
+  var f = famOf(name);
+  return f === "other" ? "data" : f;
+}
+function badgeTxt(name) {
+  if (name.indexOf(".") === 0) return name.slice(1, 4);   /* .gitignore → git */
+  var ext = (name.split(".").pop() || "").toLowerCase();
+  return (ext.slice(0, 4)) || "file";
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function fbtns(name, variant) {
+  var run = variant !== "cur" && /\.html?$/.test(name)
+    ? '<button type="button" class="chip-btn" title="运行展示"><svg class="ico"><use href="#i-rocket"/></svg></button>' : "";
+  return '<span class="fbtns">' + run +
+    '<button type="button" class="chip-btn" title="预览"><svg class="ico"><use href="#i-file-text"/></svg></button>' +
+    '<button type="button" class="chip-btn" title="下载"><svg class="ico"><use href="#i-download"/></svg></button></span>';
+}
+function chipCur(name, size) {
+  var ext = badgeTxt(name);
+  return '<div class="file-chip has-actions">' +
+    '<i class="fx">' + esc(ext) + "</i>" +
+    '<span class="p" title="' + esc(name + " · " + size) + '">' + esc(name) + "</span>" +
+    '<span class="fsz">' + esc(size) + "</span>" + fbtns(name, "cur") + "</div>";
+}
+function rowE(name, size) {
+  return '<div class="fc-row">' +
+    '<div class="file-chip">' +
+      '<i class="fx">' + esc(badgeTxt(name)) + "</i>" +
+      '<span class="p" title="' + esc(name + " · " + size) + '">' + esc(name) + "</span>" +
+      "<i>" + esc(size) + "</i>" +
+    "</div>" +
+    '<span class="fc-acts">' +
+      '<button type="button" class="file-chip prev" title="预览"><svg class="ico"><use href="#i-file-text"/></svg>预览</button>' +
+      '<button type="button" class="file-chip prev" title="下载"><svg class="ico"><use href="#i-download"/></svg>下载</button>' +
+    "</span></div>";
+}
+function cardE(stress, grouped) {
+  var list = stress ? STRESS : FILES;
+  var rows;
+  if (grouped) {
+    var GROUPS = [["doc", "文档"], ["data", "数据 · 配置"], ["media", "媒体"], ["other", "其他"]];
+    var buckets = {};
+    list.forEach(function (f) {
+      var k = grpOf(f[0]);
+      (buckets[k] = buckets[k] || []).push(f);
+    });
+    rows = GROUPS.filter(function (g) { return (buckets[g[0]] || []).length; }).map(function (g) {
+      var arr = buckets[g[0]];
+      return '<div class="grp-label"><b>' + g[1] + '</b><span class="n">' + arr.length + "</span></div>" +
+        arr.map(function (f) { return rowE(f[0], f[1]); }).join("");
+    }).join("");
+  } else {
+    rows = list.map(function (f) { return rowE(f[0], f[1]); }).join("");
+  }
+  return '<div class="chat-result">' +
+    '<div class="cr-head"><svg class="ico"><use href="#i-check"/></svg>本轮完成</div>' +
+    '<div class="cr-meta">' +
+      '<span class="cr-pill"><b>调用通道</b>builtin<i>handdraw-video</i></span>' +
+      '<span class="cr-pill quiet">3 轮对话</span>' +
+      '<span class="cr-pill quiet">1 分 24 秒</span>' +
+    "</div>" +
+    '<div class="cr-files">' +
+      '<div class="cr-files-title">产出文件<span class="cr-count">' + list.length + "</span>" +
+        '<span class="tip">' + (stress ? "压测样本" : (grouped ? "详情页同款行式 + 分组" : "详情页同款行式")) + "</span></div>" +
+      '<div class="file-chips">' + rows + "</div>" +
+    "</div></div>";
+}
+function cardD(stress) {
+  var list = stress ? STRESS : FILES;
+  var GROUPS = [["doc", "文档"], ["data", "数据 · 配置"], ["media", "媒体"], ["other", "其他"]];
+  var buckets = {};
+  list.forEach(function (f) {
+    var k = grpOf(f[0]);
+    (buckets[k] = buckets[k] || []).push(f);
+  });
+  var inner = GROUPS.filter(function (g) { return (buckets[g[0]] || []).length; }).map(function (g) {
+    var arr = buckets[g[0]];
+    var cells = arr.map(function (f) {
+      return '<div class="file-chip has-actions">' +
+        '<i class="fx fx-' + g[0] + '">' + esc(badgeTxt(f[0])) + "</i>" +
+        '<span class="p" title="' + esc(f[0] + " · " + f[1]) + '">' + esc(f[0]) + "</span>" +
+        '<span class="fsz">' + esc(f[1]) + "</span>" + fbtns(f[0], "va") + "</div>";
+    }).join("");
+    return '<div class="grp-label"><b>' + g[1] + '</b><span class="n">' + arr.length + "</span></div>" +
+      '<div class="grp-grid">' + cells + "</div>";
+  }).join("");
+  return '<div class="chat-result">' +
+    '<div class="cr-head"><svg class="ico"><use href="#i-check"/></svg>本轮完成</div>' +
+    '<div class="cr-meta">' +
+      '<span class="cr-pill"><b>调用通道</b>builtin<i>handdraw-video</i></span>' +
+      '<span class="cr-pill quiet">3 轮对话</span>' +
+      '<span class="cr-pill quiet">1 分 24 秒</span>' +
+    "</div>" +
+    '<div class="cr-files">' +
+      '<div class="cr-files-title">产出文件<span class="cr-count">' + list.length + "</span>" +
+        '<span class="tip">' + (stress ? "压测样本" : "等宽网格 · 按类型归类") + "</span></div>" +
+      inner +
+    "</div></div>";
+}
+
+function cardHTML(variant, stress) {
+  if (variant === "vd") return cardD(stress);
+  if (variant === "ve" || variant === "ve2") return cardE(stress, variant === "ve2");
+  var list = stress ? STRESS : FILES;
+  var chips = list.map(function (f) { return chipCur(f[0], f[1]); }).join("");
+  return '<div class="chat-result">' +
+    '<div class="cr-head"><svg class="ico"><use href="#i-check"/></svg>本轮完成</div>' +
+    '<div class="cr-meta">' +
+      '<span class="cr-pill"><b>调用通道</b>builtin<i>handdraw-video</i></span>' +
+      '<span class="cr-pill quiet">3 轮对话</span>' +
+      '<span class="cr-pill quiet">1 分 24 秒</span>' +
+    "</div>" +
+    '<div class="cr-files">' +
+      '<div class="cr-files-title">产出文件<span class="cr-count">' + list.length + "</span>" +
+        '<span class="tip">' + (stress ? "压测样本" : "hover 看交互") + "</span></div>" +
+      '<div class="file-chips">' + chips + "</div>" +
+    "</div></div>";
+}
+
+document.querySelectorAll(".demo-card").forEach(function (el) {
+  var v = el.getAttribute("data-variant");
+  if (v === "ve2") el.classList.add("ve");   /* ve2 = .ve 全部样式 + 组头 */
+  el.classList.add(v);
+  el.innerHTML = cardHTML(v, el.hasAttribute("data-stress"));
+});
+
+/* 皮肤切换：改 html 的 data-skin / data-theme，token 全部随皮肤变量走 */
+document.querySelectorAll(".bar button[data-skin]").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    document.documentElement.setAttribute("data-skin", btn.getAttribute("data-skin"));
+    document.documentElement.setAttribute("data-theme", btn.getAttribute("data-theme"));
+    document.querySelectorAll(".bar button[data-skin]").forEach(function (b) { b.classList.remove("on"); });
+    btn.classList.add("on");
+  });
+});
+document.querySelectorAll(".bar button[data-w]").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    document.getElementById("main").classList.toggle("narrow", btn.getAttribute("data-w") === "narrow");
+    document.querySelectorAll(".bar button[data-w]").forEach(function (b) { b.classList.remove("on"); });
+    btn.classList.add("on");
+  });
+});
+</script>
+</body>
+</html>
