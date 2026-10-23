@@ -892,7 +892,7 @@ function renderTypeMenu() {
   if (!menu || !S.flows) return;
   menu.innerHTML = (S.flows || []).map((f) => {
     const est = S.flowEstimates && S.flowEstimates[f.id];
-    return '<button type="button" class="type-item" role="option" data-v="' + esc(f.id) + '" onclick="pickType(\'' + esc(f.id) + '\')">' +
+    return '<button type="button" class="type-item" role="option" data-v="' + esc(f.id) + '" onclick="pickType(\'' + jsq(f.id) + '\')">' +
     '<span class="ti-ico" aria-hidden="true">' + flowIconHtml(f) + "</span>" +
     '<span class="ti-body"><span class="ti-name">' + esc(t(f.name)) +
     (f.builtin ? "" : '<em class="ti-tag">' + t("自定义") + "</em>") + "</span>" +
@@ -1131,7 +1131,7 @@ function renderQuickChips() {
   const list = WORKSPACE_MODES[workspaceChoice.mode].quick.map(flowById).filter(Boolean);
   box.innerHTML = list.map((f) =>
     '<button type="button" class="cmp-chip' + (f.id === cur ? " on" : "") +
-    '" onclick="pickQuickType(\'' + esc(f.id) + '\')">' + flowIconHtml(f) +
+    '" onclick="pickQuickType(\'' + jsq(f.id) + '\')">' + flowIconHtml(f) +
     "<span>" + esc(t(f.name)) + "</span></button>").join("");
 }
 window.pickQuickType = function (id) {
@@ -2771,7 +2771,7 @@ function availModelChip(m, pid) {
   const label = m.down ? t("熔断中") : (m.enabled ? t("可用") : t("已停用"));
   const tip = m.enabled ? t("点击停用该模型（调度链自动移除，可再启用）") : t("点击启用该模型");
   return '<button type="button" class="avail-model' + cls + '" title="' + esc(label + " · " + tip) +
-    '" onclick="availModelOp(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', ' +
+    '" onclick="availModelOp(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\', ' +
     (m.enabled ? "true" : "false") + ')">' + esc(m.name) + "</button>";
 }
 
@@ -2796,14 +2796,14 @@ function availProvRow(p, q) {
   const acts = [];
   if (p.enabled === false) {
     acts.push('<button type="button" class="avail-act" onclick="availProviderOp(\'' +
-      esc(p.id) + '\', \'enable\', \'' + esc(pname) + '\')">' + esc(t("启用")) + "</button>");
+      jsq(p.id) + '\', \'enable\', \'' + jsq(pname) + '\')">' + esc(t("启用")) + "</button>");
   } else {
     if (st === "bad" && !h.silenced) {
       acts.push('<button type="button" class="avail-act" onclick="availSilence(\'' +
-        esc(pname) + '\')">' + esc(t("静默告警")) + "</button>");
+        jsq(pname) + '\')">' + esc(t("静默告警")) + "</button>");
     }
     acts.push('<button type="button" class="avail-act is-danger" onclick="availProviderOp(\'' +
-      esc(p.id) + '\', \'disable\', \'' + esc(pname) + '\')">' + esc(t("停用")) + "</button>");
+      jsq(p.id) + '\', \'disable\', \'' + jsq(pname) + '\')">' + esc(t("停用")) + "</button>");
   }
   const open = AVAIL.open.has(p.id) || !!q;
   return '<article class="avail-row' + (p.enabled === false ? " is-off" : "") + '">' +
@@ -2822,7 +2822,7 @@ function availProvRow(p, q) {
         esc(t(activeFailure ? "当前失败详情" : "历史失败记录")) + "：</b> " +
         esc(String(h.last_error).slice(0, 400)) + "</div>" : "") +
       (models.length ? '<div class="avail-row-foot"><button type="button" class="avail-models-toggle" aria-expanded="' +
-        (open ? "true" : "false") + '" onclick="availToggle(\'' + esc(p.id) + '\')"><span>' +
+        (open ? "true" : "false") + '" onclick="availToggle(\'' + jsq(p.id) + '\')"><span>' +
         models.length + " " + esc(t("个模型")) + (downN ? " · " + downN + " " + esc(t("异常")) : "") +
         '</span><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg></button></div>' : "") +
       (open && models.length ? '<div class="avail-models">' + models.map((m) => availModelChip(m, p.id)).join("") + "</div>" : "") +
@@ -3471,7 +3471,7 @@ function renderBindings() {
       bindModelBox(c, b.provider_id) + offWarn + protoWarn + chainWarn +
       '<div class="ops"><label class="toggle"><input type="checkbox" id="binddiff-' + esc(c.id) + '"' +
       (b.difficulty_routing ? " checked" : "") + '>' + t(" 按难度自动选模型（简单/困难）") + '</label>' +
-      '<button class="ghost small" onclick="saveBinding(\'' + esc(c.id) + '\')">' + t("保存") + '</button></div></div>';
+      '<button class="ghost small" onclick="saveBinding(\'' + jsq(c.id) + '\')">' + t("保存") + '</button></div></div>';
   }).join("") +
     (!targets.length ? '<p class="hint">' + t("还没有已安装且可编排的 CLI——先到「本机智能体」页安装并启用。") + '</p>' : "") +
     (nonBindable ? '<p class="hint">' + t("另有 ") + nonBindable +
@@ -3525,10 +3525,10 @@ function renderProvList() {
     const st = n == null ? t("未获取") : n + t(" 模型");
     const off = p.enabled === false;
     return '<div class="prov-item' + (p.id === S.selProv ? " active" : "") + (off ? " off" : "") +
-      '" onclick="selectProvider(\'' + esc(p.id) + '\')">' +
+      '" onclick="selectProvider(\'' + jsq(p.id) + '\')">' +
       '<input type="checkbox" class="pi-check"' + (S.selProvs[p.id] ? " checked" : "") +
       ' title="' + t("勾选以批量操作") + '" onclick="event.stopPropagation()"' +
-      ' onchange="toggleProvSel(\'' + esc(p.id) + '\', this.checked)">' +
+      ' onchange="toggleProvSel(\'' + jsq(p.id) + '\', this.checked)">' +
       '<div class="pi-body"><div class="pi-top"><div class="pi-name">' + esc(p.name) + "</div>" +
       '<span class="pi-n">' + st + "</span></div>" +
       '<div class="pi-meta"><span class="tag">' + esc(protoLabel(p)) + "</span>" +
@@ -3658,23 +3658,23 @@ function renderProvDetail() {
     srcTag(p.source) + builtinHtml + builtinProcessHtml + tpHtml + pbHtml + "</div>" +
     '<div class="pd-url" title="' + esc(p.base_url || "") + '">' + esc(p.base_url || "") + "</div>" +
     '<div class="pd-ops">' +
-    '<button class="primary small" onclick="testProv(\'' + esc(p.id) + '\')">' + t("测试连接") + "</button>" +
-    '<button class="ghost small" onclick="probeWire(\'' + esc(p.id) + '\')" title="' +
+    '<button class="primary small" onclick="testProv(\'' + jsq(p.id) + '\')">' + t("测试连接") + "</button>" +
+    '<button class="ghost small" onclick="probeWire(\'' + jsq(p.id) + '\')" title="' +
     esc(t("实测该网关同一密钥是否也支持另一条 wire 协议；通过后绑定链可跨协议注入")) + '">' + t("适配测试") + "</button>" +
-    '<button class="ghost small" onclick="refreshProviderModels(\'' + esc(p.id) + '\')">' + t("获取模型列表") + "</button>" +
-    (p.builtin ? "" : '<button class="ghost small" onclick="duplicateProvider(\'' + esc(p.id) + '\')" title="' + t("复制一份（同地址同密钥，可再换 KEY / 改名）") + '">' + t("复制一份") + "</button>") +
-    '<button class="ghost small" onclick="toggleProviderEnabled(\'' + esc(p.id) + '\', ' +
+    '<button class="ghost small" onclick="refreshProviderModels(\'' + jsq(p.id) + '\')">' + t("获取模型列表") + "</button>" +
+    (p.builtin ? "" : '<button class="ghost small" onclick="duplicateProvider(\'' + jsq(p.id) + '\')" title="' + t("复制一份（同地址同密钥，可再换 KEY / 改名）") + '">' + t("复制一份") + "</button>") +
+    '<button class="ghost small" onclick="toggleProviderEnabled(\'' + jsq(p.id) + '\', ' +
     (p.enabled === false) + ')">' + (p.enabled === false ? t("启用供应商") : t("停用供应商")) + "</button>" +
     '<span class="pd-ops-gap"></span>' +
-    '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">' + t("删除") + "</button>" +
+    '<button class="danger small" onclick="delProvider(\'' + jsq(p.id) + '\')">' + t("删除") + "</button>" +
     "</div></div>";
   if (selN) {
     html += '<div class="mrow-batch"><span class="n">' + t("已选 ") + selN + t(" 个模型") + "</span>" +
-      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'enable\')">' + t("启用") + '</button>' +
-      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'disable\')">' + t("停用") + '</button>' +
-      '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'restore\')">' + t("恢复") + '</button>' +
-      '<button class="danger small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'delete\')">' + t("删除") + '</button>' +
-      '<button class="ghost small" onclick="clearModelSel(\'' + esc(p.id) + '\')">' + t("取消") + '</button></div>';
+      '<button class="ghost small" onclick="batchModelOp(\'' + jsq(p.id) + '\', \'enable\')">' + t("启用") + '</button>' +
+      '<button class="ghost small" onclick="batchModelOp(\'' + jsq(p.id) + '\', \'disable\')">' + t("停用") + '</button>' +
+      '<button class="ghost small" onclick="batchModelOp(\'' + jsq(p.id) + '\', \'restore\')">' + t("恢复") + '</button>' +
+      '<button class="danger small" onclick="batchModelOp(\'' + jsq(p.id) + '\', \'delete\')">' + t("删除") + '</button>' +
+      '<button class="ghost small" onclick="clearModelSel(\'' + jsq(p.id) + '\')">' + t("取消") + '</button></div>';
   }
   html += '<details class="pd-config"><summary>' + t("编辑供应商配置（地址 / 协议 / 难度模型）") + '</summary>' +
     providerCard(p) + "</details>";
@@ -3686,7 +3686,7 @@ function renderProvDetail() {
     const kw = (S.modelFilter || {})[p.id] || "";
     html += '<div class="pm-tools">' +
       '<input id="pm-search-' + esc(p.id) + '" type="search" placeholder="' + t("按名称过滤模型…") + '" autocomplete="off"' +
-      ' value="' + esc(kw) + '" oninput="filterModels(\'' + esc(p.id) + '\', this.value)">' +
+      ' value="' + esc(kw) + '" oninput="filterModels(\'' + jsq(p.id) + '\', this.value)">' +
       '<span class="pm-count" id="pm-count-' + esc(p.id) + '"></span>' +
       pmAddHtml(p) + '</div>';
     // 模型列表状态过滤：默认只看启用（与供应商列表同一套 chip 口径）
@@ -3708,12 +3708,12 @@ function renderProvDetail() {
         t(" 个模型（刷新不会再带回）") + "</summary><div class=\"prow-hidden-list\">";
       for (const m of hidden) {
         html += '<label><input type="checkbox"' + (sel[m.name] ? " checked" : "") +
-          ' onchange="toggleModelSel(\'' + esc(p.id) + '\', \'' + esc(m.name) + '\', this.checked)">' +
+          ' onchange="toggleModelSel(\'' + jsq(p.id) + '\', \'' + jsq(m.name) + '\', this.checked)">' +
           esc(m.name) + "</label>";
       }
       html += '</div><div class="prow-hidden-ops">' +
-        '<button class="ghost small" onclick="batchModelOp(\'' + esc(p.id) + '\', \'restore\')">' + t("恢复所选") + '</button>' +
-        '<button class="ghost small" onclick="restoreHidden(\'' + esc(p.id) + '\')">' + t("恢复全部") + '</button>' +
+        '<button class="ghost small" onclick="batchModelOp(\'' + jsq(p.id) + '\', \'restore\')">' + t("恢复所选") + '</button>' +
+        '<button class="ghost small" onclick="restoreHidden(\'' + jsq(p.id) + '\')">' + t("恢复全部") + '</button>' +
         "</div></details>";
     }
   }
@@ -3748,16 +3748,16 @@ function keyListHtml(p) {
       '<span class="kval hint">' + esc(k.key) + "</span>" +
       (inUse ? '<span class="tag ok">' + t("使用中") + "</span>" : "") + badge + err +
       '<span class="row-ops">' +
-      (k.cooling ? '<button class="ghost small row-op" onclick="keyOp(\'' + esc(p.id) + '\', \'' + esc(k.id) + '\', \'reset\')" title="' + t("充值后手动恢复（清掉冷却）") + '">' + t("恢复") + "</button>" : "") +
+      (k.cooling ? '<button class="ghost small row-op" onclick="keyOp(\'' + jsq(p.id) + '\', \'' + jsq(k.id) + '\', \'reset\')" title="' + t("充值后手动恢复（清掉冷却）") + '">' + t("恢复") + "</button>" : "") +
       '<label class="tog-mini" title="' + (k.enabled ? t("停用该密钥（编排自动跳过）") : t("启用")) + '">' +
         '<input type="checkbox" ' + (k.enabled ? "checked" : "") +
-        ' onchange="keyOp(\'' + esc(p.id) + '\', \'' + esc(k.id) + '\', this.checked ? \'enable\' : \'disable\')"><i></i></label>' +
-      '<button class="danger small row-op" onclick="keyOp(\'' + esc(p.id) + '\', \'' + esc(k.id) + '\', \'delete\')">' + t("删除") + "</button>" +
+        ' onchange="keyOp(\'' + jsq(p.id) + '\', \'' + jsq(k.id) + '\', this.checked ? \'enable\' : \'disable\')"><i></i></label>' +
+      '<button class="danger small row-op" onclick="keyOp(\'' + jsq(p.id) + '\', \'' + jsq(k.id) + '\', \'delete\')">' + t("删除") + "</button>" +
       "</span></div>";
   }).join("");
   return '<div class="keys-box"><div class="keys-head"><b>' + t("密钥（按顺序调用，欠费自动切备用）") + "</b>" +
     (single ? '<span class="hint">' + t("点「添加密钥」配备用号") + "</span>" : "") +
-    '<button class="ghost small" onclick="promptAddKey(\'' + esc(p.id) + '\')">＋ ' + t("添加密钥") + "</button></div>" +
+    '<button class="ghost small" onclick="promptAddKey(\'' + jsq(p.id) + '\')">＋ ' + t("添加密钥") + "</button></div>" +
     (rows || '<div class="hint" style="padding:4px 8px">' + t("尚未配置密钥") + "</div>") +
     "</div>";
 }
@@ -3885,7 +3885,7 @@ function provModelGroupsHtml(p) {
     const allSel = gm.every((m) => sel[m.name]);
     html += '<div class="pgroup"><div class="pgroup-title">' +
       '<label class="pcheck-all"><input type="checkbox"' + (allSel ? " checked" : "") +
-      ' onchange="toggleGroupSel(\'' + esc(p.id) + '\', \'' + esc(g) + '\', this.checked)">' + t("全选") + '</label>' +
+      ' onchange="toggleGroupSel(\'' + jsq(p.id) + '\', \'' + jsq(g) + '\', this.checked)">' + t("全选") + '</label>' +
       esc(g) + t(" 协议 · ") + gm.length + t(" 个") +
       wireCapTags(p, g) +
       (kw ? t("（过滤中，拖拽排序暂停）") : t("（拖动 ☰ 调序；启用的排最前）")) + "</div>";
@@ -3960,28 +3960,28 @@ function provModelRow(pid, m, group) {
   const price = (m.price_in != null && m.price_out != null)
     ? '<span class="hint">¥' + esc(m.price_in) + "/¥" + esc(m.price_out) + "</span>" : "";
   const priceBtn = '<span class="tag" title="' + t("手标单价（¥/百万 tokens），台账记账与花费预算按此折算") + '"' +
-    ' onclick="editModelPrice(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("价") + "</span>";
+    ' onclick="editModelPrice(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\')">' + t("价") + "</span>";
   const imgcap = '<span class="tag imgcap' + (m.image_in ? " ok" : "") + '" title="' +
     (m.image_in ? t("支持图片输入，点击关闭")
                 : t("纯文本模型，点击开启图片输入（内置智能体传图以此为准）")) + '"' +
-    ' onclick="toggleModelImage(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("图") + "</span>";
+    ' onclick="toggleModelImage(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\')">' + t("图") + "</span>";
   const sel = modelSel(pid);
   return '<div class="prow' + (m.enabled ? "" : " off") + '" draggable="true" data-group="' +
     esc(group) + '" data-name="' + esc(m.name) + '">' +
     '<input type="checkbox" class="pcheck"' + (sel[m.name] ? " checked" : "") +
     ' title="' + t("勾选以批量操作") + '"' +
-    ' onchange="toggleModelSel(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', this.checked)">' +
+    ' onchange="toggleModelSel(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\', this.checked)">' +
     '<span class="drag" title="' + t("拖动调整优先级") + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
     '<span class="pprio">#' + m.priority + "</span>" +
     '<span class="pname" title="' + esc(m.name) + '">' + esc(m.name) + "</span>" +
     price + priceBtn + imgcap + tmHtml +
     '<span class="row-ops">' +
-    '<button class="ghost small row-op" onclick="testModelBtn(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("测试") + '</button>' +
+    '<button class="ghost small row-op" onclick="testModelBtn(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\')">' + t("测试") + '</button>' +
     '<button class="danger small row-op" title="' + t("从列表删除：刷新/重新导入不会再带回，可在分组底部恢复") + '"' +
-    ' onclick="delModel(\'' + esc(pid) + '\', \'' + esc(m.name) + '\')">' + t("删除") + '</button>' +
+    ' onclick="delModel(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\')">' + t("删除") + '</button>' +
     '<label class="tog-mini" title="' + (m.enabled ? t("停用（不影响配置，仅编排选模跳过）") : t("启用")) + '">' +
     '<input type="checkbox" ' + (m.enabled ? "checked" : "") +
-    ' onchange="modelOp(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', this.checked ? \'enable\' : \'disable\')"><i></i></label>' +
+    ' onchange="modelOp(\'' + jsq(pid) + '\', \'' + jsq(m.name) + '\', this.checked ? \'enable\' : \'disable\')"><i></i></label>' +
     "</span></div>";
 }
 
@@ -4083,7 +4083,7 @@ function editModelPrice(pid, name) {
       (m && m.price_out != null ? m.price_out : "") + '"></div></div>';
   openModal(t("标定单价：") + name, body,
     '<button class="ghost" onclick="closeModal()">' + t("取消") + '</button>' +
-    '<button class="primary" onclick="saveModelPrice(\'' + esc(pid) + '\', \'' + esc(name) + '\')">' + t("保存") + '</button>');
+    '<button class="primary" onclick="saveModelPrice(\'' + jsq(pid) + '\', \'' + jsq(name) + '\')">' + t("保存") + '</button>');
 }
 
 async function saveModelPrice(pid, name) {
@@ -4207,9 +4207,9 @@ function pmAddHtml(p) {
   return '<div class="pm-add">' +
     '<input id="pm-add-' + esc(p.id) + '" type="text" autocomplete="off" spellcheck="false"' +
     ' placeholder="' + t("手工添加模型名（列表接口调不通时用），回车添加") + '"' +
-    ' onkeydown="pmAddKey(event, \'' + esc(p.id) + '\')">' +
+    ' onkeydown="pmAddKey(event, \'' + jsq(p.id) + '\')">' +
     '<button class="ghost small" title="' + esc(t("厂商列表接口调不通时，直接把模型名加进列表")) + '"' +
-    ' onclick="addModelManual(\'' + esc(p.id) + '\')">' +
+    ' onclick="addModelManual(\'' + jsq(p.id) + '\')">' +
     '<svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>' + t("添加") + '</button></div>';
 }
 
@@ -4280,8 +4280,8 @@ function providerCard(p) {
       : "") +
     (cur === "auto"
       ? '<p class="hint">' + t("协议=自动：该网关支持哪些 wire 由「适配测试」实测决定（上方能力标签）。") + '</p>' : "") +
-    '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + esc(p.id) + '\')">' + t("保存") + '</button>' +
-    '<button class="danger small" onclick="delProvider(\'' + esc(p.id) + '\')">' + t("删除") + '</button></div></div>';
+    '<div class="ops"><button class="ghost small" onclick="saveProvider(\'' + jsq(p.id) + '\')">' + t("保存") + '</button>' +
+    '<button class="danger small" onclick="delProvider(\'' + jsq(p.id) + '\')">' + t("删除") + '</button></div></div>';
 }
 
 async function saveProvider(id) {
@@ -6342,11 +6342,11 @@ function renderRunList() {
     // 行结构照参考站的「主副标题 + 右侧状态与相对时间」：标题与摘要竖排成一块，
     // 状态点用侧栏同款字形（staskGlyph），时间用相对档（完整时间戳挪进悬停提示）
     const sub = String(r.summary || r.error || (r.step_count ? r.step_count + t(" 个步骤") : "")).trim();
-    return '<div class="item" onclick="openRun(\'' + esc(r.id) + '\')">' +
+    return '<div class="item" onclick="openRun(\'' + jsq(r.id) + '\')">' +
       '<div class="t">' +
       '<input type="checkbox" class="rcheck"' + (S.selRuns[r.id] ? " checked" : "") + (can ? "" : " disabled") +
       ' title="' + (can ? t("勾选以批量删除") : t("运行中的记录不可删除，请先取消")) + '"' +
-      ' onclick="event.stopPropagation()" onchange="toggleRunSel(\'' + esc(r.id) + '\', this.checked)">' +
+      ' onclick="event.stopPropagation()" onchange="toggleRunSel(\'' + jsq(r.id) + '\', this.checked)">' +
       '<span class="rglyph">' + staskGlyph(r.status || "") + "</span>" +
       '<div class="rt">' +
       '<span class="name">' + esc(r.title) + runKindTag(r.kind) + "</span>" +
@@ -6355,7 +6355,7 @@ function renderRunList() {
       '<span class="chip ' + esc(r.status || "") + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="time" title="' + esc(r.created_at) + '">' + esc(relTime(r.created_at)) + "</span>" +
       '<button class="danger small" title="' + (can ? t("删除该记录") : t("运行中的记录不可删除，请先取消")) + '"' + (can ? "" : " disabled") +
-      ' onclick="event.stopPropagation(); deleteRun(\'' + esc(r.id) + '\')">' + t("删除") + '</button></div></div>';
+      ' onclick="event.stopPropagation(); deleteRun(\'' + jsq(r.id) + '\')">' + t("删除") + '</button></div></div>';
   }).join("");
 }
 
@@ -8415,10 +8415,10 @@ async function renderBiblePanel(task) {
     '<span class="hint">' + esc(t("story-bible.md · 人物/世界观/伏笔台账，每章起草与评审自动注入")) + "</span>" +
     '<span class="flex1"></span>';
   if (editing) {
-    html += '<button class="primary" onclick="bibleSave(\'' + esc(task.id) + '\')">' + t("保存") + "</button>" +
+    html += '<button class="primary" onclick="bibleSave(\'' + jsq(task.id) + '\')">' + t("保存") + "</button>" +
       '<button class="ghost" onclick="bibleCancel()">' + t("取消") + "</button>";
   } else {
-    html += '<button class="ghost" onclick="bibleEdit(\'' + esc(task.id) + '\')"' +
+    html += '<button class="ghost" onclick="bibleEdit(\'' + jsq(task.id) + '\')"' +
       (running ? ' disabled title="' + esc(t("运行中不能修改")) + '"' : "") + ">" +
       '<svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>' + t("编辑") + "</button>";
   }
@@ -8600,10 +8600,10 @@ function renderBookMetaPanel(task) {
     if (st === "running") {
       action = '<button class="ghost" disabled><svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("生成中…") + "</button>";
     } else if (st === "done") {
-      action = '<button class="ghost" onclick="bmGen(\'' + esc(task.id) + "', '" + p.id + '\')" title="' + esc(t("重新生成会覆盖现有内容")) + '">' +
+      action = '<button class="ghost" onclick="bmGen(\'' + jsq(task.id) + "', '" + p.id + '\')" title="' + esc(t("重新生成会覆盖现有内容")) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>' + t("重新生成") + "</button>";
     } else {
-      action = '<button class="primary" onclick="bmGen(\'' + esc(task.id) + "', '" + p.id + '\')">' +
+      action = '<button class="primary" onclick="bmGen(\'' + jsq(task.id) + "', '" + p.id + '\')">' +
         (st === "failed" ? t("重试") : t("生成")) + "</button>";
     }
     // 头部行：平台名 + 状态徽章 + 右侧操作按钮（action 必须在 head 内闭合，
@@ -8830,7 +8830,7 @@ function pbBlock(task, platform, selectionOnly = false) {
   let pendHtml = "";   // 批量选择 chips（bookReady 分支里填充，extra 段落拼接）
   if (displayStatus === "none" || displayStatus === "error" || displayStatus === "waiting_login") {
     if (boundAccount) {
-      btns += '<button class="ghost" onclick="pbConnectAcc(\'' + platform + '\',\'' + esc(boundAccount) + '\')">' +
+      btns += '<button class="ghost" onclick="pbConnectAcc(\'' + platform + '\',\'' + jsq(boundAccount) + '\')">' +
         (displayStatus === "error" ? t("重连") : t("登录")) + "</button>";
     } else {
       btns += '<button class="ghost" onclick="pbConnect(\'' + platform + '\')">' +
@@ -8838,12 +8838,12 @@ function pbBlock(task, platform, selectionOnly = false) {
     }
   } else if (displayStatus === "connected") {
     if (boundAccount) {
-      btns += '<button class="ghost" onclick="pbDisconnectAcc(\'' + platform + '\',\'' + esc(boundAccount) + '\')" title="' + esc(t("关掉该平台账号的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
+      btns += '<button class="ghost" onclick="pbDisconnectAcc(\'' + platform + '\',\'' + jsq(boundAccount) + '\')" title="' + esc(t("关掉该平台账号的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
     } else {
       btns += '<button class="ghost" onclick="pbDisconnect(\'' + platform + '\')" title="' + esc(t("关掉该平台的浏览器窗口（登录态保留）")) + '">' + t("断开") + "</button>";
     }
   }
-  btns += '<button class="ghost pb-tool" onclick="' + (boundAccount ? "pbProbeAcc('" + platform + "','" + esc(boundAccount) + "')" : "pbProbe('" + platform + "')") + '" title="' +
+  btns += '<button class="ghost pb-tool" onclick="' + (boundAccount ? "pbProbeAcc('" + jsq(platform) + "','" + jsq(boundAccount) + "')" : "pbProbe('" + jsq(platform) + "')") + '" title="' +
     esc(t("dump 平台表单结构（校准自动填表用）")) + '">' + t("探测") + "</button>";
   // 多账号（2026-10-18）：每台账号独立浏览器/独立配额，chips 带各自登录/断开
   const accList = ps.accounts || [];
@@ -8854,8 +8854,8 @@ function pbBlock(task, platform, selectionOnly = false) {
         : (acc.status === "busy" ? t("操作中") : (acc.status === "error" ? t("出错") : t("未连接")));
       btns += '<span class="pb-acc-chip" title="' + esc(t("独立浏览器账号：") + (acc.profile || "")) + '">' +
         esc(acc.id + "·" + accSt) +
-        ' <button class="ghost pb-tool" onclick="pbConnectAcc(\'' + platform + '\',\'' + esc(acc.id) + '\')">' + t("登录") + "</button>" +
-        ' <button class="ghost pb-tool" onclick="pbDisconnectAcc(\'' + platform + '\',\'' + esc(acc.id) + '\')">' + t("断开") + "</button></span>";
+        ' <button class="ghost pb-tool" onclick="pbConnectAcc(\'' + platform + '\',\'' + jsq(acc.id) + '\')">' + t("登录") + "</button>" +
+        ' <button class="ghost pb-tool" onclick="pbDisconnectAcc(\'' + platform + '\',\'' + jsq(acc.id) + '\')">' + t("断开") + "</button></span>";
     }
     btns += "</div>";
   }
@@ -8870,11 +8870,11 @@ function pbBlock(task, platform, selectionOnly = false) {
       const shortOk = hist.find((r) => r.platform === platform &&
         r.action === "publish_short_story" && r.ok);
       btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
-        ' onclick="pbShortStory(\'' + esc(task.id) + "', '" + platform + '\', false)" title="' +
+        ' onclick="pbShortStory(\'' + jsq(task.id) + "', '" + platform + '\', false)" title="' +
         esc(t("整篇自动填入并完成设置/封面/协议后提交发布，以平台管理页状态为凭据；发布后不可撤回")) + '">' +
         t("发布短篇") + (shortOk ? t("（已提交）") : "") + "</button>";
       btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
-        ' onclick="pbShortStory(\'' + esc(task.id) + "', '" + platform + '\', true)" title="' +
+        ' onclick="pbShortStory(\'' + jsq(task.id) + "', '" + platform + '\', true)" title="' +
         esc(t("整篇自动填入并点「存为草稿」：落平台草稿箱不上线，之后到平台检查并提交")) + '">' +
         t("存草稿") + "</button>";
       if (shortOk) {
@@ -8884,21 +8884,21 @@ function pbBlock(task, platform, selectionOnly = false) {
       }
     } else {
     btns += ' <button class="primary" ' + (busy ? "disabled" : "") +
-      ' onclick="pbUploadChapter(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
+      ' onclick="pbUploadChapter(\'' + jsq(task.id) + "', '" + platform + '\')" title="' +
       esc(chTitle) + '">' +
       t("发一章") + (publishedLatest ? t("（已发布至 {0} 章）", publishedLatest)
         : nCh ? t("（已发 ") + nCh + t("）") : "") + "</button>";
     }
     btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
-      ' onclick="pbSyncPublished(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
+      ' onclick="pbSyncPublished(\'' + jsq(task.id) + "', '" + platform + '\')" title="' +
       esc(t("按平台实况纠正已发章数")) + '">' + t("校准") + "</button>";
     // 改绑定/解除绑定（2026-10-16）：登记的书名/ID对不上或书已废时就地
     // 纠错/清位，不再只能手工翻 books.json（登记在连载链根任务上根本不好找）
     btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
-      ' onclick="pbRegToggle(\'' + esc(task.id) + "','" + platform + '\')" title="' +
+      ' onclick="pbRegToggle(\'' + jsq(task.id) + "','" + platform + '\')" title="' +
       esc(t("登记的书名或ID与平台对不上？在这里改成真实的作品名/ID，改完直接发章")) + '">' + t("改绑定") + "</button>";
     btns += ' <button class="ghost pb-tool" ' + (busy ? "disabled" : "") +
-      ' onclick="pbUnbind(\'' + esc(task.id) + "', '" + platform + '\')" title="' +
+      ' onclick="pbUnbind(\'' + jsq(task.id) + "', '" + platform + '\')" title="' +
       esc(t("只清除本地的作品登记，不动平台上的作品；清掉后可重新创建作品或改绑其他书")) + '">' + t("解除绑定") + "</button>";
     // 批量发布（publish/auto.py）：待发清单 + 护栏 + 进度都来自 /pending 视图
     // 短篇没有章形态，整块按章 UI（批量/选择/进度）不渲染
@@ -8933,13 +8933,13 @@ function pbBlock(task, platform, selectionOnly = false) {
       // 死按钮只会让用户无路可走（2026-10-08 实案：guard false 全灰点不了）
       btns += ' <button class="ghost" ' + (busy ? "disabled" : "") +
       ' title="' + esc(au.guard_ok ? t("按章号顺序逐章自动提交；成功后自动对账并继续下一章") : t("护栏提示：") + (au.guard_reason || "")) + '"' +
-        ' onclick="pbPublishAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
+        ' onclick="pbPublishAll(\'' + jsq(task.id) + "', '" + platform + '\')">' +
         t("发布全部待发") + t("（") + au.pending + t("）") + "</button>";
       // 全部发草稿（2026-10-09）：质量闸拦发布不拦草稿——逐章自动填稿点
       // 「存草稿」连跑到清空，提交发布由用户到平台草稿箱手工完成
       btns += ' <button class="ghost" ' + (busy || au.draft_ok === false ? "disabled" : "") +
         ' title="' + esc(au.draft_ok !== false ? t("逐章自动填稿并点「存草稿」：内容落平台草稿箱不上线，不受质量门禁拦截，无需逐章人工确认；完成后到平台检查并提交发布") : t("护栏提示：") + (au.draft_reason || "")) + '"' +
-        ' onclick="pbDraftAll(\'' + esc(task.id) + "', '" + platform + '\')">' +
+        ' onclick="pbDraftAll(\'' + jsq(task.id) + "', '" + platform + '\')">' +
         t("全部存草稿") + t("（") + au.pending + t("）") + "</button>";
     }
     // 批量选择：待发章号 chips 按卷分组（卷计划来自服务端 items[].volume），
@@ -8976,7 +8976,7 @@ function pbBlock(task, platform, selectionOnly = false) {
           chips += '<div class="pb-vol"><label class="pb-vol-sel' + (allOn ? " on" : cnt ? " partial" : "") +
             '" title="' + esc(t("勾选卷头＝整卷进所选，再点取消")) + '">' +
             '<input type="checkbox" ' + (allOn ? "checked" : "") +
-            ' onchange="pbSelVolume(\'' + esc(task.id) + "','" + platform + "'," + gi + ',this.checked)">' +
+            ' onchange="pbSelVolume(\'' + jsq(task.id) + "','" + platform + "'," + gi + ',this.checked)">' +
             '<span class="pb-vol-name">' + esc(g.v || t("未分卷")) + '</span>' +
             '<span class="pb-vol-count">' + esc(t("已选 {0}/{1} 章", cnt, g.ns.length)) + "</span></label></div>";
         }
@@ -8989,7 +8989,7 @@ function pbBlock(task, platform, selectionOnly = false) {
           chips += '<label class="pb-chip review-' + review + (sel.has(n) ? " on" : "") + '" data-chapter="' + n + '" title="' +
             esc(t("第 {0} 章", n) + (item.reason ? " · " + item.reason : "")) + '">' +
             '<input type="checkbox" ' + (sel.has(n) ? "checked" : "") +
-            ' onchange="pbSelToggle(\'' + esc(task.id) + "','" + platform + "'," + n + ',this.checked)">' +
+            ' onchange="pbSelToggle(\'' + jsq(task.id) + "','" + platform + "'," + n + ',this.checked)">' +
             '<span class="pb-chip-number">' + n + '</span><small class="pb-chip-review">' + esc(t(states[review])) + "</small></label>";
         }
         chips += "</div></section>";
@@ -8999,9 +8999,9 @@ function pbBlock(task, platform, selectionOnly = false) {
         '<div class="pb-pend-heading"><strong>' + esc(t("待发 ")) + its.length + esc(t(" 章")) + '</strong>' +
         '<span>' + esc(t("按卷计划自动分卷")) + "</span></div>" +
         '<button class="ghost pb-ready-select" ' + (S.pbSel[key].ready.size ? "" : "disabled") +
-        ' title="' + esc(t("仅选择单章审稿和发布门禁均已通过的章节")) + '" onclick="pbSelReady(\'' + esc(task.id) + "','" + platform + '\')">' + esc(t("只选可直发")) + '</button>' +
-        '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',true)" + '">' + esc(t("全选")) + "</a>" +
-        '<a href="javascript:void(0)" onclick="pbSelAll(\'' + esc(task.id) + "','" + platform + "',false)" + '">' + esc(t("清空")) + "</a>" +
+        ' title="' + esc(t("仅选择单章审稿和发布门禁均已通过的章节")) + '" onclick="pbSelReady(\'' + jsq(task.id) + "','" + platform + '\')">' + esc(t("只选可直发")) + '</button>' +
+        '<a href="javascript:void(0)" onclick="pbSelAll(\'' + jsq(task.id) + "','" + platform + "',true)" + '">' + esc(t("全选")) + "</a>" +
+        '<a href="javascript:void(0)" onclick="pbSelAll(\'' + jsq(task.id) + "','" + platform + "',false)" + '">' + esc(t("清空")) + "</a>" +
         "</div>" +
         '<div class="pb-review-legend" aria-label="' + esc(t("章节审核状态说明")) + '">' +
         '<span class="review-ready"><i aria-hidden="true"></i>' + esc(t("已过审 · 可直发")) + '</span>' +
@@ -9025,12 +9025,12 @@ function pbBlock(task, platform, selectionOnly = false) {
         '<button class="ghost" data-selection-action data-locked="' + busy + '" ' + (busy || !sel.size ? "disabled" : "") +
         ' title="' + esc(t("所选章节逐章自动提交（无人值守），护栏每日上限/连败退避照常生效") +
           (au.guard_ok ? "" : "；" + t("护栏提示：") + (au.guard_reason || ""))) + '"' +
-        ' onclick="pbPublishSelected(\'' + esc(task.id) + "','" + platform + '\',true)">' +
+        ' onclick="pbPublishSelected(\'' + jsq(task.id) + "','" + platform + '\',true)">' +
         t("直发所选") + t("（") + sel.size + t("）") + "</button>" +
         '<button class="ghost" data-selection-action data-locked="' + (busy || au.draft_ok === false) + '" ' + (busy || !sel.size || au.draft_ok === false ? "disabled" : "") +
         ' title="' + esc(t("所选章节逐章自动存草稿（不上线、不受质量门禁拦截），完成后到平台检查并提交发布") +
           (au.draft_ok !== false ? "" : "；" + t("护栏提示：") + (au.draft_reason || ""))) + '"' +
-        ' onclick="pbDraftSelected(\'' + esc(task.id) + "','" + platform + '\')">' +
+        ' onclick="pbDraftSelected(\'' + jsq(task.id) + "','" + platform + '\')">' +
         t("存草稿所选") + t("（") + sel.size + t("）") + "</button>" +
         "</div></div></div>";
     }
@@ -9054,7 +9054,7 @@ function pbBlock(task, platform, selectionOnly = false) {
       btns += '<div class="pb-hint">' + esc(run.message || t("已填好一章，请在浏览器确认提交")) + "</div>";
       if (run.last_chapter) {
         btns += '<button class="ghost pb-tool" onclick="pbConfirmChapter(\'' +
-          esc(task.id) + "', '" + platform + "', " + Number(run.last_chapter) +
+          jsq(task.id) + "', '" + platform + "', " + Number(run.last_chapter) +
           ')">' + t("我已在平台提交") + "</button>";
       }
     } else if (run && run.status !== "running") {
@@ -9072,8 +9072,8 @@ function pbBlock(task, platform, selectionOnly = false) {
     // 多账号（2026-10-18）：建书用哪台账号的浏览器/配额，下拉选择
     btns += '<span class="pb-acc-sel-wrap">' + pbAccountSelectHtml(platform) + "</span>";
     btns += '<button class="primary" ' + (busy ? "disabled" : "") +
-      ' onclick="pbCreateBook(\'' + esc(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
-    btns += '<button class="ghost" onclick="pbRegToggle(\'' + esc(task.id) + "','" + platform + '\')" title="' +
+      ' onclick="pbCreateBook(\'' + jsq(task.id) + "', '" + platform + '\')">' + t("创建作品") + "</button>";
+    btns += '<button class="ghost" onclick="pbRegToggle(\'' + jsq(task.id) + "','" + platform + '\')" title="' +
       esc(t("作品已在平台建好（建书流程没走通或手工建的）？补登记后直接发章，不会在平台新建")) + '">' + t("登记已有作品") + "</button>";
   }
   if (selectionOnly) return pendHtml;
@@ -9082,7 +9082,7 @@ function pbBlock(task, platform, selectionOnly = false) {
     const view = (((S.pubAuto || {}).books || []).find((b) => b.platform === platform) || {});
     pendHtml = '<div class="pb-pend-summary"><span>' + esc(t("待发 ")) + pending + esc(t(" 章")) +
       (view.next_chapter ? ' · ' + esc(t("下一章：第 {0} 章", view.next_chapter)) : '') + '</span>' +
-      '<button class="primary" onclick="pbOpenSelection(\'' + esc(task.id) + "','" + platform + '\')">' +
+      '<button class="primary" onclick="pbOpenSelection(\'' + jsq(task.id) + "','" + platform + '\')">' +
       esc(t("选择章节并发布")) + '</button></div>';
   }
   let extra = "";
@@ -9101,11 +9101,11 @@ function pbBlock(task, platform, selectionOnly = false) {
     extra += '<div class="pb-reg' + (reg.open ? "" : " hidden") + '" id="pb-reg-' + platform + '">' +
       '<input id="pb-reg-title-' + platform + '" value="' + esc(curTitle) +
       '" placeholder="' + esc(t("平台上的作品名（必填）")) +
-      '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'title\',this.value)">' +
+      '" oninput="pbRegDraftSave(\'' + jsq(task.id) + "','" + platform + '\',\'title\',this.value)">' +
       '<input id="pb-reg-id-' + platform + '" value="' + esc(curId) +
       '" placeholder="' + esc(t("作品ID（选填，管理页URL里有）")) +
-      '" oninput="pbRegDraftSave(\'' + esc(task.id) + "','" + platform + '\',\'id\',this.value)">' +
-      '<button class="ghost" onclick="pbRegister(\'' + esc(task.id) + "', '" + platform + '\'' + (bookReady ? ", true" : "") + ')">' +
+      '" oninput="pbRegDraftSave(\'' + jsq(task.id) + "','" + platform + '\',\'id\',this.value)">' +
+      '<button class="ghost" onclick="pbRegister(\'' + jsq(task.id) + "', '" + platform + '\'' + (bookReady ? ", true" : "") + ')">' +
       t(bookReady ? t("确认修改") : t("确认登记")) + "</button>" +
       "</div>";
   }
@@ -9447,8 +9447,8 @@ window.pbUploadChapter = async function (taskId, platform) {
   if (!files.length) { box.innerHTML = '<div class="pb-hint">' + esc(t("暂无待发章节，已发布和已存草稿的章节已排除")) + "</div>"; return; }
   files.sort((a, b) => a.chapter_no - b.chapter_no);
   const item = (f) =>
-    '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + esc(taskId) + "', '" + platform +
-    '\',\'' + esc(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>";
+    '<button class="ghost pb-ch-item" onclick="pbSendChapter(\'' + jsq(taskId) + "', '" + platform +
+    '\',\'' + jsq(f.name) + '\')" title="' + esc(f.name) + '">' + esc(f.name.split("/").pop()) + "</button>";
   const hint = '<div class="pb-hint">' + esc(t("选一章后自动提交并核验平台结果；已成功发布的章节会被台账拦下：")) + "</div>";
   // 最高章号：让卷规划表铺到最后一章（否则超出显式卷表的章节会掉进「其他」）
   let maxCh = 0;
@@ -9898,9 +9898,9 @@ function _renderGitSnapshot(run, task) {
   // 裁决是任务级动作：只在待裁决且任务空闲时给出（运行/排队中合并会踩正在写的分支）
   if (state === "isolated" && tid && !active) {
     html += '<div class="git-actions">' +
-      '<button class="primary" onclick="gitMerge(\'' + esc(tid) + "')\">" +
+      '<button class="primary" onclick="gitMerge(\'' + jsq(tid) + "')\">" +
       '<svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>' + t("合并回原分支") + "</button>" +
-      '<button class="danger ghost" onclick="gitDiscard(\'' + esc(tid) + "')\">" +
+      '<button class="danger ghost" onclick="gitDiscard(\'' + jsq(tid) + "')\">" +
       '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>' + t("丢弃分支") + "</button>" +
       '<span class="hint">' + esc(t("合并＝采纳产物回原分支；丢弃＝删除任务分支（不可恢复）。")) + "</span></div>";
   }
@@ -9987,8 +9987,8 @@ function renderGitWbMain(d, task) {
     "</div>";
   (d.stashes || []).forEach((s) => {
     html += '<div class="gwb-stash"><span class="gm">' + esc(s.ref) + '</span><span class="p">' + esc(s.subject) + "</span>" +
-      (ro ? "" : '<button class="ghost" onclick="gitWbStashPop(\'' + esc(s.ref) + '\')">' + t("还原") + "</button>" +
-        '<button class="ghost gwb-danger" onclick="gitWbStashDrop(\'' + esc(s.ref) + '\')">' + t("删除") + "</button>") +
+      (ro ? "" : '<button class="ghost" onclick="gitWbStashPop(\'' + jsq(s.ref) + '\')">' + t("还原") + "</button>" +
+        '<button class="ghost gwb-danger" onclick="gitWbStashDrop(\'' + jsq(s.ref) + '\')">' + t("删除") + "</button>") +
       "</div>";
   });
   // 三组变更文件
@@ -10014,9 +10014,9 @@ function renderGitWbMain(d, task) {
       '<span class="chip isolated">' + t("待裁决") + "</span></div>";
     if (!ro) {
       html += '<div class="git-actions">' +
-        '<button class="primary" onclick="gitMerge(\'' + esc(tid) + "')\">" +
+        '<button class="primary" onclick="gitMerge(\'' + jsq(tid) + "')\">" +
         '<svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>' + t("合并回原分支") + "</button>" +
-        '<button class="danger ghost" onclick="gitDiscard(\'' + esc(tid) + "')\">" +
+        '<button class="danger ghost" onclick="gitDiscard(\'' + jsq(tid) + "')\">" +
         '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>' + t("丢弃分支") + "</button>" +
         '<span class="hint">' + esc(t("合并＝采纳产物回原分支；丢弃＝删除任务分支（不可恢复）。")) + "</span></div>";
     }
@@ -10356,9 +10356,9 @@ function drawInspector() {
       : '<span class="insp-hint">' + esc(t("暂无工作区变更。")) + "</span>") + "</div>";
     const canVerdict = g.state === "isolated" && d.task.status !== "running" && d.task.status !== "queued";
     html += '<div class="insp-actions"' + (canVerdict ? "" : ' style="display:none"') + ">" +
-      '<button class="primary small" onclick="gitMerge(\'' + esc(d.task.id) + "')\">" +
+      '<button class="primary small" onclick="gitMerge(\'' + jsq(d.task.id) + "')\">" +
       '<svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>' + t("合并回原分支") + "</button>" +
-      '<button class="danger ghost small" onclick="gitDiscard(\'' + esc(d.task.id) + "')\">" +
+      '<button class="danger ghost small" onclick="gitDiscard(\'' + jsq(d.task.id) + "')\">" +
       '<svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>' + t("丢弃分支") + "</button></div>";
     main.innerHTML = html;
     if (boxDiff.dataset.run !== runId) { boxDiff.classList.add("hidden"); boxDiff.dataset.run = runId; }
@@ -10397,7 +10397,7 @@ function drawInspector() {
     ring.style.strokeDashoffset = String(C * (1 - Math.min(1, Math.max(0, pct))));
   }
   $("insp-steps").innerHTML = (d.steps || []).map((s) =>
-    '<button class="insp-step ' + esc(s.status || "") + '" onclick="sideOpenRun(\'' + esc(runId) + "', " + (Number(s.n) || 0) + ')" title="' +
+    '<button class="insp-step ' + esc(s.status || "") + '" onclick="sideOpenRun(\'' + jsq(runId) + "', " + (Number(s.n) || 0) + ')" title="' +
     esc(verdictDigestText(s.summary) || s.summary || "") + '">' +
     '<span class="sdot ' + esc(s.status || "") + '"></span>' +
     '<span class="role">' + esc(s.role || "") + "</span>" +
@@ -12349,7 +12349,7 @@ function renderDirector(run, active) {
         " " + esc(m.consumed_by.role || "") + "</span>"
       : (m.consumed ? "" :
         '<button class="m-retract ghost small" title="' + esc(t("尚未送达，可撤回")) +
-        '" onclick="dirRetract(\'' + esc(String(m.id || "")) + '\')">' + t("撤回") + "</button>")) +
+        '" onclick="dirRetract(\'' + jsq(String(m.id || "")) + '\')">' + t("撤回") + "</button>")) +
     "</div>").join("");
   const hint = $("rd-direct-hint");
   if (hint) hint.textContent = run.paused
@@ -13876,14 +13876,14 @@ function chatFileGrid(run, files) {
       const fExt = _fpExt(f.name);
       const runBtn = (fExt === "html" || fExt === "htm")
         ? '<button type="button" class="chip-btn" title="' + esc(t("运行展示")) +
-          '" onclick="artRunPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-rocket"/></svg></button>'
+          '" onclick="artRunPopup(\'' + jsq(run.id) + "', '" + jsq(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-rocket"/></svg></button>'
         : "";
       return '<div class="file-chip has-actions">' +
         '<i class="fx fx-' + g[0] + '">' + esc(_crFileBadge(f.name)) + "</i>" +
         '<span class="p" title="' + esc(f.name + " · " + fmtSize(f.size)) + '">' + esc(f.name) + "</span>" +
         '<span class="fsz">' + fmtSize(f.size) + "</span>" +
         '<span class="fbtns">' + runBtn +
-        '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + esc(run.id) + "', '" + esc(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
+        '<button type="button" class="chip-btn" title="' + esc(t("预览")) + '" onclick="artPopup(\'' + jsq(run.id) + "', '" + jsq(f.name) + "', " + (Number(f.size) || 0) + ')"><svg class="ico" aria-hidden="true"><use href="#i-file-text"/></svg></button>' +
         '<a class="chip-btn" href="' + fUrl + '" download="' + esc(f.name) + '" title="' + esc(t("下载")) + '"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg></a>' +
         "</span></div>";
     }).join("");
@@ -15186,7 +15186,7 @@ function renderHome() {
     const metaHtml = (time ? '<svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"></use></svg><span>' + esc(time) + "</span>" : "")
       + [r.flow_name || r.flow || "", total ? t("第 ") + step + "/" + total + t(" 步") : ""].filter(Boolean)
         .map((x) => '<span class="rd-m3-dot"></span><span>' + esc(String(x)) + "</span>").join("");
-    return '<button type="button" class="rd-task-item" onclick="homeOpenRun(\'' + esc(r.id || "") + '\')">'
+    return '<button type="button" class="rd-task-item" onclick="homeOpenRun(\'' + jsq(r.id || "") + '\')">'
       + '<span class="rd-task-ico ' + tone + '">' + icon + "</span>"
       + '<span class="rd-task-info">'
       + '<span class="rd-task-title">' + esc(r.title || r.id || "") + "</span>"
@@ -15847,10 +15847,10 @@ function bindModelBox(c, provId) {
             ? t("openai 面仅 chat 形态（codex 只讲 responses），解析时跳过")
             : t("协议不匹配，解析时跳过")) + "</span>" : badge) +
           (i > 0 ? '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
-                  '" title="' + t("设为主模型") + '" onclick="bindPromote(\'' + esc(c.id) + '\', this)">' +
+                  '" title="' + t("设为主模型") + '" onclick="bindPromote(\'' + jsq(c.id) + '\', this)">' +
                   '<svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg></button>' : "") +
           '<button class="mini" data-m="' + esc(c2.m) + '" data-p="' + esc(c2.p) +
-            '" title="' + t("移除") + '" onclick="bindRemove(\'' + esc(c.id) + '\', this)">×</button>' +
+            '" title="' + t("移除") + '" onclick="bindRemove(\'' + jsq(c.id) + '\', this)">×</button>' +
           "</span>";
       }).join("")
     : '<span class="hint">' + t("未设置") + (provId
@@ -15858,7 +15858,7 @@ function bindModelBox(c, provId) {
         : t("（自动推荐厂商与模型；没有兼容可用供应商时才使用 CLI 自身配置）")) + "</span>";
   return '<div class="field"><label>' + t("运行时模型链（跨厂商，最多 ") + MAX_ORCH_MODELS + t(" 条）") + "</label>" +
     '<div class="orch-row">' + chips +
-    '<button class="ghost small" onclick="bindToggle(\'' + esc(c.id) + '\')">' +
+    '<button class="ghost small" onclick="bindToggle(\'' + jsq(c.id) + '\')">' +
     (st.open ? t("收起") : t("＋ 添加")) + "</button>" +
     (st.dirty ? ' <span class="hint">' + t("有未保存改动") + '</span>' : "") +
     "</div>" +
@@ -15979,7 +15979,7 @@ function mgmtBusy(id) {
 function card(c) {
   const orchBox = c.orch_kind
     ? '<label class="toggle"><input type="checkbox" ' + (c.orch_enabled ? "checked" : "") +
-      ' onchange="toggleOrch(\'' + esc(c.id) + '\', this.checked)">' + t(" 参与编排") + '</label>'
+      ' onchange="toggleOrch(\'' + jsq(c.id) + '\', this.checked)">' + t(" 参与编排") + '</label>'
     : '<span class="tag">' + t("仅管理") + '</span>';
   const capability = c.capabilities || {};
   const capTags = [capability.transport, capability.resume ? t("支持续会话") : "",
@@ -15991,26 +15991,26 @@ function card(c) {
     ? (hasModels
         ? '<div class="field"><label>' + t("默认模型（写入配置文件）") + '</label><div class="input-row">' +
           modelSelectHtml(c.id, c.model, c.orch_kind || c.id) +
-          '<button class="ghost small" onclick="saveModel(\'' + esc(c.id) + '\')">' + t("保存") + '</button></div></div>'
+          '<button class="ghost small" onclick="saveModel(\'' + jsq(c.id) + '\')">' + t("保存") + '</button></div></div>'
         : '<div class="field"><label>' + t("默认模型（写入配置文件）") + '</label>' +
           '<div class="hint warn">' + t("还没有可选模型：先到「模型接入」页导入供应商并获取模型列表。") + '</div></div>')
     : (c.model ? '<div class="facts">' + t("模型：") + '<b>' + esc(fmtModel(c.model)) + "</b></div>" : "");
   const ops = [
     // 一键打开（web 类开浏览器 / console 类新终端跑 TUI）：已安装且配了 launch 才出
-    c.installed && c.launch ? '<button class="primary small" onclick="openAgent(\'' + esc(c.id) + '\')">' +
+    c.installed && c.launch ? '<button class="primary small" onclick="openAgent(\'' + jsq(c.id) + '\')">' +
       (c.launch.kind === "web" ? t("打开网页") : t("打开")) + "</button>" : "",
-    c.installed && c.orch_kind ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'smoke\')">' + t("冒烟测试") + '</button>' : "",
-    c.installed && c.has_upgrade ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'upgrade\')">' + t("升级") + '</button>' : "",
-    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + esc(c.id) + '\')">' + t("检查更新") + '</button>' : "",
-    !c.installed && c.has_install ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'install\')">' + t("安装") + '</button>' : "",
-    c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + esc(c.id) + '\')">' + t("日志") + '</button>' : "",
+    c.installed && c.orch_kind ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + jsq(c.id) + '\', \'smoke\')">' + t("冒烟测试") + '</button>' : "",
+    c.installed && c.has_upgrade ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + jsq(c.id) + '\', \'upgrade\')">' + t("升级") + '</button>' : "",
+    c.installed && c.has_upgrade ? '<button class="ghost small" onclick="checkUpdate(\'' + jsq(c.id) + '\')">' + t("检查更新") + '</button>' : "",
+    !c.installed && c.has_install ? '<button class="ghost small"' + dis + ' onclick="mgmt(\'' + jsq(c.id) + '\', \'install\')">' + t("安装") + '</button>' : "",
+    c.installed ? '<button class="ghost small" onclick="showMgmtLog(\'' + jsq(c.id) + '\')">' + t("日志") + '</button>' : "",
     !c.installed && !c.has_install ? '<span class="hint">' + t("安装命令待配置（编辑 data/catalog.json）") + '</span>' : "",
   ].join("");
   return '<div class="card">' +
     '<div class="head"><span class="name">' + esc(c.name) + "</span>" +
     (c.installed ? statusChip("done") : '<span class="tag">' + t("未安装") + '</span>') + updateChip(c) +
     // 卸载放卡片右上角（与状态徽标同行），不再吊在操作行尾部
-    (c.installed && c.uninstall_cmd ? '<button class="danger small"' + dis + ' onclick="mgmt(\'' + esc(c.id) + '\', \'uninstall\')">' + t("卸载") + '</button>' : "") +
+    (c.installed && c.uninstall_cmd ? '<button class="danger small"' + dis + ' onclick="mgmt(\'' + jsq(c.id) + '\', \'uninstall\')">' + t("卸载") + '</button>' : "") +
     "</div>" +
     '<div class="note">' + esc(t(c.note || "")) + "</div>" +
     (capTags ? '<div class="facts capability-tags">' + capTags + '</div>' : "") +
@@ -16043,10 +16043,10 @@ function mgmtPanel(agentId) {
     '<div class="mgmt-head">' + (running ? '<span class="live-dot"></span>' : "") + chip +
     '<span class="mgmt-title">' + esc(st.opLabel || "") + "</span>" + vcmp +
     '<span class="mgmt-ops">' +
-    '<button class="ghost small" onclick="toggleMgmtLog(\'' + esc(agentId) + '\')">' +
+    '<button class="ghost small" onclick="toggleMgmtLog(\'' + jsq(agentId) + '\')">' +
     (st.showLog ? t("收起日志") : t("查看日志")) + "</button>" +
-    (st.runId ? '<button class="ghost small" onclick="openRunInRuns(\'' + esc(st.runId) + '\')">' + t("完整运行") + '</button>' : "") +
-    '<button class="ghost small" onclick="clearMgmt(\'' + esc(agentId) + '\')">×</button>' +
+    (st.runId ? '<button class="ghost small" onclick="openRunInRuns(\'' + jsq(st.runId) + '\')">' + t("完整运行") + '</button>' : "") +
+    '<button class="ghost small" onclick="clearMgmt(\'' + jsq(agentId) + '\')">×</button>' +
     "</span></div>" +
     (st.summary ? '<div class="hint">' + esc(String(st.summary).slice(0, 300)) + "</div>" : "") +
     logBox + "</div>";
@@ -16322,12 +16322,12 @@ function openFlowsManager() {
     (f.serial ? '<span class="tag">' + t("连载 ") + f.serial.chapters + t(" 章") + "</span>" : "") +
     (f.builtin ? '<span class="tag ok">' + t("预置") + '</span>' : '<span class="tag">' + t("自定义") + '</span>') +
     (f.edited ? '<span class="tag">' + t("已改") + '</span>' : "") +
-    '<button class="ghost small" onclick="flowForm(\'' + esc(f.id) + '\')">' + t("编辑") + '</button>' +
-    '<button class="ghost small" onclick="flowExport(\'' + esc(f.id) + '\')">' + t("导出") + '</button>' +
-    '<button class="ghost small" onclick="flowHistory(\'' + esc(f.id) + '\')">' + t("历史") + '</button>' +
+    '<button class="ghost small" onclick="flowForm(\'' + jsq(f.id) + '\')">' + t("编辑") + '</button>' +
+    '<button class="ghost small" onclick="flowExport(\'' + jsq(f.id) + '\')">' + t("导出") + '</button>' +
+    '<button class="ghost small" onclick="flowHistory(\'' + jsq(f.id) + '\')">' + t("历史") + '</button>' +
     (f.builtin
-      ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + esc(f.id) + '\')">' + t("恢复默认") + '</button>' : "")
-      : '<button class="danger small" onclick="deleteFlow(\'' + esc(f.id) + '\')">' + t("删除") + '</button>') +
+      ? (f.edited ? '<button class="ghost small" onclick="flowReset(\'' + jsq(f.id) + '\')">' + t("恢复默认") + '</button>' : "")
+      : '<button class="danger small" onclick="deleteFlow(\'' + jsq(f.id) + '\')">' + t("删除") + '</button>') +
     '</div><div class="desc">' + esc(t(f.note || "")) +
     (f.rubric ? t("　维度：") + esc(f.rubric.map((d) => t(d)).join(" / ")) : "") +
     (f.threshold ? t("　阈值：") + f.threshold : "") +
@@ -16372,7 +16372,7 @@ async function flowHistory(fid) {
     const src = v.current ? '<span class="tag ok">' + t("当前") + "</span>"
       : '<span class="tag">' + t(FLOW_SOURCE_TXT[v.source] || v.source) + " " + esc(v.ts) + "</span>";
     const btn = v.current ? "" :
-      '<button class="ghost small" onclick="flowRestore(\'' + esc(fid) + "', '" + esc(v.ts) + '\')">' + t("恢复") + "</button>";
+      '<button class="ghost small" onclick="flowRestore(\'' + jsq(fid) + "', '" + jsq(v.ts) + '\')">' + t("恢复") + "</button>";
     return '<div class="item"><div class="t"><span class="name">' + esc(v.name || fid) +
       "</span>" + src + '<span class="tag">' + esc(v.digest) + "</span>" + statTxt(v.stats) + btn +
       "</div></div>";
@@ -16627,8 +16627,8 @@ function renderSkillDrafts() {
     (d.note ? '<div class="note">' + esc(d.note) + "</div>" : "") +
     '<div class="facts">' + t("正文 ") + "<b>" + (d.chars || 0) + "</b>" + t(" 字 · 更新于 ") + esc(d.updated_at || "") + "</div>" +
     '<div class="ops">' +
-    '<button class="ghost small" onclick="skillDraftOp(\'' + esc(d.file) + '\', \'promote\')">' + t("审阅通过，启用") + "</button>" +
-    '<button class="danger small" onclick="skillDraftOp(\'' + esc(d.file) + '\', \'discard\')">' + t("丢弃") + "</button>" +
+    '<button class="ghost small" onclick="skillDraftOp(\'' + jsq(d.file) + '\', \'promote\')">' + t("审阅通过，启用") + "</button>" +
+    '<button class="danger small" onclick="skillDraftOp(\'' + jsq(d.file) + '\', \'discard\')">' + t("丢弃") + "</button>" +
     "</div></div>").join("")
     || '<div class="empty">' + t("暂无草稿——在对话里让智能体「把这条方法论存成技能」即可在此出现。") + "</div>";
 }
@@ -16668,7 +16668,7 @@ function renderSkills() {
       '<div class="note">' + esc(t(p.note || "")) + "</div>" +
       '<div class="facts">' + t("正文 ") + "<b>" + p.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
       cardHtml +
-      '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + esc(p.id) + '\', \'' +
+      '<div class="ops"><button class="ghost small" onclick="skillPackOp(\'' + jsq(p.id) + '\', \'' +
       (p.enabled ? "disable" : "enable") + '\')">' + (p.enabled ? t("停用") : t("启用")) + "</button></div></div>";
   }).join("")
     || '<div class="empty">' + t("暂无经验包") + "</div>";
@@ -16681,7 +16681,7 @@ function renderSkills() {
   if (chipBox) {
     const chip = (val, label) =>
       '<button class="cat-chip' + (filt === val ? " active" : "") + '" onclick="skillCatFilter(\'' +
-      esc(val) + '\')">' + (val ? '<span class="cdot" style="background:' + CAT_COLOR[val] + '"></span>' : "") +
+      jsq(val) + '\')">' + (val ? '<span class="cdot" style="background:' + CAT_COLOR[val] + '"></span>' : "") +
       esc(label) + "<b>" + (val ? (counts[val] || 0) : lessons.length) + "</b></button>";
     chipBox.innerHTML = cats.length > 1 ? chip("", t("全部")) + cats.map((c) => chip(c, t(c))).join("") : "";
   }
@@ -16695,7 +16695,7 @@ function renderSkills() {
     '<span class="name">' + esc(t(x.title)) + "</span>" +
     (x.kind === "做法" ? '<span class="tag ok" title="' + t("已验证有效的做法（程序性记忆）") + '">' + t("做法") + "</span>" : "") +
     (x.category ? '<span class="tag cat" style="color:' + (CAT_COLOR[x.category] || "var(--muted)") + '" ' +
-      'onclick="skillCatFilter(\'' + esc(x.category) + '\')" title="' + t("只看该类") + '">' + esc(t(x.category)) + "</span>" : "") +
+      'onclick="skillCatFilter(\'' + jsq(x.category) + '\')" title="' + t("只看该类") + '">' + esc(t(x.category)) + "</span>" : "") +
     '<span class="tag">' + esc(x.scope === "*" ? t("通用") : x.scope) + "</span>" +
     (x.seen > 1 ? '<span class="tag">' + t("出现 ") + x.seen + t(" 次") + "</span>" : "") +
     ((x.merged_titles || []).length ? '<span class="tag" title="' + t("被近似题合并吸收的变体标题数") + '">' + t("吸收 ") + x.merged_titles.length + t(" 个近似题") + "</span>" : "") +
@@ -16706,10 +16706,10 @@ function renderSkills() {
     (x.enabled === false ? '<span class="tag">' + t("已停用") + "</span>" : "") + "</div>" +
     '<div class="note">' + esc(t(x.content)) + "</div>" +
     '<div class="ops">' +
-    '<button class="ghost small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'' +
+    '<button class="ghost small" onclick="skillLessonOp(\'' + jsq(x.id) + '\', \'' +
     (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? t("启用") : t("停用")) + "</button>" +
-    '<button class="ghost small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'useless\')" title="' + t("标记这条教训没帮上忙？将停用并记一次无用反馈") + '">' + t("没用") + "</button>" +
-    '<button class="danger small" onclick="skillLessonOp(\'' + esc(x.id) + '\', \'delete\')">' + t("删除") + "</button>" +
+    '<button class="ghost small" onclick="skillLessonOp(\'' + jsq(x.id) + '\', \'useless\')" title="' + t("标记这条教训没帮上忙？将停用并记一次无用反馈") + '">' + t("没用") + "</button>" +
+    '<button class="danger small" onclick="skillLessonOp(\'' + jsq(x.id) + '\', \'delete\')">' + t("删除") + "</button>" +
     "</div></div>").join("") ||
     (filt ? '<div class="empty">' + t("该分类下暂无教训") + "</div>"
           : '<div class="empty">' + t("还没有自动教训——完成一次真实任务后，系统会自己复盘并沉淀。") + "</div>");
@@ -16755,7 +16755,7 @@ function renderAgentSkills() {
     const filesHtml = files.length
       ? '<div class="facts">' + t("随包资料 ") + files.length + t(" 个：") +
         files.slice(0, 5).map((f) =>
-          '<a href="javascript:void(0)" onclick="agentSkillRead(\'' + esc(s.name) + '\', \'' + esc(f.path) + '\')">' + esc(f.path) + "</a>").join("、") +
+          '<a href="javascript:void(0)" onclick="agentSkillRead(\'' + jsq(s.name) + '\', \'' + jsq(f.path) + '\')">' + esc(f.path) + "</a>").join("、") +
         (files.length > 5 ? t(" 等") : "") + "</div>"
       : "";
     const findings = (s.findings || []).map((f) => "「" + esc(f.category || "") + "」").join("");
@@ -16772,9 +16772,9 @@ function renderAgentSkills() {
       (findings ? '<div class="note" style="color:var(--bad)">' + t("安检发现：") + findings + "</div>" : "") +
       '<div class="facts">' + t("正文 ") + "<b>" + s.chars + "</b>" + t(" 字（自动注入该类任务的规划与评审提示词）") + "</div>" +
       filesHtml +
-      '<div class="ops"><button class="ghost small" onclick="agentSkillOp(\'' + esc(s.name) + '\', \'' +
+      '<div class="ops"><button class="ghost small" onclick="agentSkillOp(\'' + jsq(s.name) + '\', \'' +
       (s.enabled ? "disable" : "enable") + '\')">' + (s.enabled ? t("停用") : t("启用")) + "</button>" +
-      '<button class="danger small" onclick="agentSkillOp(\'' + esc(s.name) + '\', \'delete\')">' + t("删除") + "</button>" +
+      '<button class="danger small" onclick="agentSkillOp(\'' + jsq(s.name) + '\', \'delete\')">' + t("删除") + "</button>" +
       "</div></div>";
   }).join("") || '<div class="empty">' + t("还没有导入的开源技能") + "</div>";
 }
@@ -18036,12 +18036,12 @@ function kbCard(x) {
     '<div class="note">' + esc(x.body) + "</div>" +
     '<div class="facts">' + (x.as_of ? t("事实截至 ") + esc(x.as_of) : "") +
     (x.source ? (x.as_of ? '<span class="sep">·</span>' : "") +
-      '<a href="#" onclick="openRun(\'' + esc(x.source) + '\');return false">' + t("来源运行") + "</a>" : "") + "</div>" +
+      '<a href="#" onclick="openRun(\'' + jsq(x.source) + '\');return false">' + t("来源运行") + "</a>" : "") + "</div>" +
     '<div class="ops">' +
-    (draft ? '<button class="ghost small" onclick="kbOp(\'' + esc(x.id) + '\', \'approve\')">' + t("转正") + "</button>" : "") +
-    '<button class="ghost small" onclick="kbEditOpen(\'' + esc(x.id) + '\')">' + t("编辑") + "</button>" +
-    '<button class="ghost small" onclick="kbOp(\'' + esc(x.id) + '\', \'' + (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? t("启用") : t("停用")) + "</button>" +
-    '<button class="danger small" onclick="kbOp(\'' + esc(x.id) + '\', \'delete\')">' + t("删除") + "</button>" +
+    (draft ? '<button class="ghost small" onclick="kbOp(\'' + jsq(x.id) + '\', \'approve\')">' + t("转正") + "</button>" : "") +
+    '<button class="ghost small" onclick="kbEditOpen(\'' + jsq(x.id) + '\')">' + t("编辑") + "</button>" +
+    '<button class="ghost small" onclick="kbOp(\'' + jsq(x.id) + '\', \'' + (x.enabled === false ? "enable" : "disable") + '\')">' + (x.enabled === false ? t("启用") : t("停用")) + "</button>" +
+    '<button class="danger small" onclick="kbOp(\'' + jsq(x.id) + '\', \'delete\')">' + t("删除") + "</button>" +
     "</div></div>";
 }
 
@@ -18198,7 +18198,7 @@ function autoCardHtml(tsk) {
     '<span class="name">' + esc(tsk.name) + "</span>" +
     autoStatusTag(tsk) +
     '<label class="toggle" title="' + t("启用 / 停用") + '"><input type="checkbox"' + (tsk.enabled ? " checked" : "") +
-    ' onchange="autoToggle(\'' + esc(tsk.id) + '\', this.checked)"><span>' + (tsk.enabled ? t("启用中") : t("已停用")) + "</span></label>" +
+    ' onchange="autoToggle(\'' + jsq(tsk.id) + '\', this.checked)"><span>' + (tsk.enabled ? t("启用中") : t("已停用")) + "</span></label>" +
     "</div>" +
     '<div class="auto-kind">' + esc(autoKindText(tsk)) +
     (flow ? '<span class="tag">' + t("流程：") + esc(t(flow.name)) + "</span>" : "") +
@@ -18210,9 +18210,9 @@ function autoCardHtml(tsk) {
     "<span>" + t("已运行 ") + (tsk.run_count || 0) + t(" 次") + "</span>" +
     "</div>" +
     '<div class="ops">' +
-    '<button class="primary small" onclick="autoRunNow(\'' + esc(tsk.id) + '\')">' + t("立即执行") + "</button>" +
-    '<button class="ghost small" onclick="autoEdit(\'' + esc(tsk.id) + '\')">' + t("编辑") + "</button>" +
-    '<button class="danger small" onclick="autoRemove(\'' + esc(tsk.id) + '\')">' + t("删除") + "</button>" +
+    '<button class="primary small" onclick="autoRunNow(\'' + jsq(tsk.id) + '\')">' + t("立即执行") + "</button>" +
+    '<button class="ghost small" onclick="autoEdit(\'' + jsq(tsk.id) + '\')">' + t("编辑") + "</button>" +
+    '<button class="danger small" onclick="autoRemove(\'' + jsq(tsk.id) + '\')">' + t("删除") + "</button>" +
     "</div></div>";
 }
 
@@ -18308,7 +18308,7 @@ function renderAutomation() {
       '<div class="card auto-tpl-card"><div class="head"><span class="name">' + esc(t(tp.name)) + "</span></div>" +
       '<div class="note">' + esc(t(tp.desc || "")) + "</div>" +
       '<div class="ops"><span class="auto-pace">' + esc(autoTplPace(tp)) + "</span>" +
-      '<button class="ghost small" onclick="autoTemplate(\'' + esc(tp.id) + '\')">' + t("用此模板") + "</button></div></div>"
+      '<button class="ghost small" onclick="autoTemplate(\'' + jsq(tp.id) + '\')">' + t("用此模板") + "</button></div></div>"
     ).join("") || '<div class="empty">' + t("暂无模板") + "</div>";
   }
 }
@@ -18321,9 +18321,9 @@ function renderSerialDaily() {
     const result = job.last_day_status === "done" ? t("今日已完成")
       : job.last_day_status === "alerted" ? t("今日未完成，已告警") : t("今日执行中");
     const controls = job.status === "active"
-      ? '<button class="ghost small" onclick="serialDailyAction(\'' + esc(job.id) + '\',\'pause\')">' + t("暂停") + "</button>"
+      ? '<button class="ghost small" onclick="serialDailyAction(\'' + jsq(job.id) + '\',\'pause\')">' + t("暂停") + "</button>"
       : job.status === "paused"
-        ? '<button class="ghost small" onclick="serialDailyAction(\'' + esc(job.id) + '\',\'resume\')">' + t("恢复") + "</button>" : "";
+        ? '<button class="ghost small" onclick="serialDailyAction(\'' + jsq(job.id) + '\',\'resume\')">' + t("恢复") + "</button>" : "";
     return '<div class="card"><div class="head"><span class="name">' + esc(job.task_title) + "</span>" +
       '<span class="tag">' + t(status[job.status] || job.status) + "</span></div>" +
       '<div class="auto-kind">' + t("每天") + " " + job.chapters_per_day + " " + t("章 ·") + " " +
@@ -18331,7 +18331,7 @@ function renderSerialDaily() {
       '<div class="auto-meta"><span>' + esc(result) + (job.day ? " · " + esc(job.day) : "") + "</span>" +
       (job.last_error ? '<span class="auto-tag-err">' + esc(job.last_error) + "</span>" : "") + "</div>" +
       '<div class="ops">' + controls +
-      (job.status !== "cancelled" ? '<button class="danger small" onclick="serialDailyAction(\'' + esc(job.id) + '\',\'cancel\')">' + t("取消计划") + "</button>" : "") +
+      (job.status !== "cancelled" ? '<button class="danger small" onclick="serialDailyAction(\'' + jsq(job.id) + '\',\'cancel\')">' + t("取消计划") + "</button>" : "") +
       "</div></div>";
   }).join("");
 }
@@ -18434,7 +18434,7 @@ async function autoForm(task, tpl) {
     "</div>";
   openModal(task ? t("编辑定时任务") : t("新建定时任务"), body, "");
   const foot = $("modal-foot");
-  if (foot) foot.innerHTML = '<button class="primary" onclick="saveAutoForm(\'' + esc(task ? task.id : "") + '\')">' + t("保存") + "</button>" +
+  if (foot) foot.innerHTML = '<button class="primary" onclick="saveAutoForm(\'' + jsq(task ? task.id : "") + '\')">' + t("保存") + "</button>" +
     (restoredDraft ? '<button class="ghost" onclick="autoDiscardDraft()">' + t("清除草稿") + "</button>" : "") +
     '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>";
   const kindSel = $("au-kind");
@@ -19112,7 +19112,7 @@ const ZT_RETRYABLE = { retry: 1, failed: 1, escalated: 1, commented: 1,
 function zentaoClaimCard(c, archived) {
   const tasks = (c.tasks || []).map((tk) =>
     "<span>" + t("【") + (tk.side === "frontend" ? t("前端") : t("后端")) + t("】") +
-    '<a href="#" onclick="zentaoOpenRun(\'' + esc(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
+    '<a href="#" onclick="zentaoOpenRun(\'' + jsq(tk.run_id || "") + '\');return false;">' + esc(tk.task_id || "?") + "</a></span>").join("");
   const bugUrl = zentaoBugUrl(c);
   const name = "#" + esc(c.bug_id) + " " + esc(c.title || "");
   const headName = bugUrl
@@ -19121,11 +19121,11 @@ function zentaoClaimCard(c, archived) {
     : name;
   const retryBtn = (!archived && ZT_RETRYABLE[c.state])
     ? '<button class="ghost small" title="' + esc(t("不等下轮扫描，立即重新触发修复")) +
-      '" onclick="zentaoRetryClaim(\'' + esc(c.bug_id) + '\')">' + t("立即处理") + "</button>"
+      '" onclick="zentaoRetryClaim(\'' + jsq(c.bug_id) + '\')">' + t("立即处理") + "</button>"
     : "";
   const act = archived
-    ? '<button class="ghost small" onclick="zentaoArchiveClaim(\'' + esc(c.bug_id) + '\',false)">' + t("取消归档") + "</button>"
-    : '<button class="ghost small" title="' + esc(t("移入已归档区，不再出现在进行中列表")) + '" onclick="zentaoArchiveClaim(\'' + esc(c.bug_id) + '\',true)">' + t("归档") + "</button>";
+    ? '<button class="ghost small" onclick="zentaoArchiveClaim(\'' + jsq(c.bug_id) + '\',false)">' + t("取消归档") + "</button>"
+    : '<button class="ghost small" title="' + esc(t("移入已归档区，不再出现在进行中列表")) + '" onclick="zentaoArchiveClaim(\'' + jsq(c.bug_id) + '\',true)">' + t("归档") + "</button>";
   return '<div class="card' + (archived ? " zt-archived" : "") + '"><div class="head"><span class="name">' + headName + "</span>" +
     zentaoStateTag(c.state) + retryBtn + act + "</div>" +
     '<div class="auto-meta">' +
@@ -19272,11 +19272,11 @@ function pluginCardHtml(p) {
   } else if (p.installed) {
     ops = '<label class="switch" title="' + esc(p.enabled ? t("已启用") : t("已停用")) + '">' +
       '<input type="checkbox"' + (p.enabled ? " checked" : "") +
-      ' onchange="pluginToggle(\'' + esc(p.id) + '\', this.checked)"></label>' +
-      '<button class="ghost small" onclick="pluginUpdate(\'' + esc(p.id) + '\')">' + t("更新") + "</button>" +
-      '<button class="ghost small" onclick="pluginRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
+      ' onchange="pluginToggle(\'' + jsq(p.id) + '\', this.checked)"></label>' +
+      '<button class="ghost small" onclick="pluginUpdate(\'' + jsq(p.id) + '\')">' + t("更新") + "</button>" +
+      '<button class="ghost small" onclick="pluginRemove(\'' + jsq(p.id) + '\')">' + t("卸载") + "</button>";
   } else {
-    ops = '<button class="primary small" onclick="pluginInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+    ops = '<button class="primary small" onclick="pluginInstall(\'' + jsq(p.id) + '\')">' + t("安装") + "</button>";
   }
   const caps = (p.capabilities || []).map((x) => '<span class="tag">' + esc(x) + "</span>").join("");
   const features = [
@@ -19364,14 +19364,14 @@ function mkCardHtml(p, section) {
   let ops;
   if (p.builtin) ops = '<button class="ghost small" disabled>' + t("已内置") + "</button>";
   else if (p.installed) ops = '<span class="tag ok">' + t("已安装") + "</span>" +
-    '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
-  else ops = '<button class="primary small" onclick="mkInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+    '<button class="ghost small" onclick="mkRemove(\'' + jsq(p.id) + '\')">' + t("卸载") + "</button>";
+  else ops = '<button class="primary small" onclick="mkInstall(\'' + jsq(p.id) + '\')">' + t("安装") + "</button>";
   // 已装插件卡片直接给启停开关（对齐 ZCode 插件管理形态：启停不用去经验库翻）。
   // 注意传 pack_id（user-哈希）而非市场 id——启停记账在 skills 用户包上
   const toggle = p.installed
     ? '<label class="switch" title="' + (p.enabled ? t("已启用") : t("已停用")) + '">' +
       '<input type="checkbox"' + (p.enabled ? " checked" : "") +
-      ' onchange="mkTogglePack(\'' + esc(p.pack_id || p.id) + '\', this.checked)"></label>'
+      ' onchange="mkTogglePack(\'' + jsq(p.pack_id || p.id) + '\', this.checked)"></label>'
     : "";
   const sec = section ? '<span class="tag mk-sec">' + esc(section) + "</span>" : "";
   return '<div class="card mk-card"><div class="head">' +
@@ -19532,14 +19532,14 @@ function mkrCardHtml(p) {
   if (p.installed) ops = '<span class="tag ok">' + t("已安装") +
       (p.installed_version ? " v" + esc(p.installed_version) : "") + "</span>" +
     (p.update_available
-      ? '<button class="ghost small" onclick="mkrUpdate(\'' + esc(p.id) + '\', \'' + esc(p.version || "") + '\')" title="' +
+      ? '<button class="ghost small" onclick="mkrUpdate(\'' + jsq(p.id) + '\', \'' + jsq(p.version || "") + '\')" title="' +
         esc(t("目录已有 v") + (p.version || "?") + t("；重装覆写（仅本包标记文件），内容变化会提示核对")) + '">' +
         t("更新到 v") + esc(p.version || "?") + "</button>"
       : "") +
-    '<button class="ghost small" onclick="mkRemove(\'' + esc(p.id) + '\')">' + t("卸载") + "</button>";
+    '<button class="ghost small" onclick="mkRemove(\'' + jsq(p.id) + '\')">' + t("卸载") + "</button>";
   else if (p.compat === "blocked") ops = '<button class="ghost small" disabled title="' +
     esc(p.block_reason || t("该插件无法从公开生态下载")) + '">' + t("不适配") + "</button>";
-  else ops = '<button class="primary small" data-mk="' + esc(p.id) + '" onclick="mkrInstall(\'' + esc(p.id) + '\')">' + t("安装") + "</button>";
+  else ops = '<button class="primary small" data-mk="' + esc(p.id) + '" onclick="mkrInstall(\'' + jsq(p.id) + '\')">' + t("安装") + "</button>";
   const meta = [p.author, p.version ? "v" + p.version : ""].filter(Boolean).join(" · ");
   // 信任卡（ClawTrust 思路）：热度（来源自报下载量，仅参考）+ 装前安检结论
   const trust = [
@@ -19787,7 +19787,7 @@ function mkrShowInstallPreview(p) {
     "</div>",
     '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>" +
     '<button class="' + (p.risk_label && p.risk_label.indexOf("高风险") >= 0 ? "danger" : "primary") +
-    '" id="mkpv-ok" onclick="mkrInstallConfirm(\'' + esc(p.token || "") + '\',\'' + esc(p.id || "") + '\')">' +
+    '" id="mkpv-ok" onclick="mkrInstallConfirm(\'' + jsq(p.token || "") + '\',\'' + jsq(p.id || "") + '\')">' +
     (p.risk_label && p.risk_label.indexOf("高风险") >= 0 ? t("我已确认风险，仍要安装") : t("确认安装")) + "</button>");
 }
 
@@ -19992,7 +19992,7 @@ async function loadSettingsV2() {
       html += '<div class="set-v2-row">' + inp +
         '<span class="set-v2-lb" title="' + esc(t(f.description || f.path)) + '">' + esc(t(f.description || f.path)) + "</span></div>";
     }
-    html += '<div class="input-row" style="margin-top:6px"><button class="ghost small" onclick="saveSettingsV2(\'' + esc(ns) + '\')">' + t("保存") + "</button>" +
+    html += '<div class="input-row" style="margin-top:6px"><button class="ghost small" onclick="saveSettingsV2(\'' + jsq(ns) + '\')">' + t("保存") + "</button>" +
       '<span class="set-v2-msg msg"></span></div></div>';
   }
   box.innerHTML = html;
@@ -20360,8 +20360,8 @@ function renderEvalBench() {
       (s.verify ? '<span class="tag ok">' + t("带客观验证") + "</span>" : "") +
       (s.redteam ? '<span class="tag" style="color:var(--err,#d33)">' + t("安全测试") + "</span>" : "") +
       (s.builtin ? "" : '<span class="tag">' + t("自定义") + "</span>" +
-        '<button class="ghost small" onclick="sampleExport(\'' + esc(s.id) + '\')">' + t("导出") + "</button>" +
-        '<button class="danger small" onclick="sampleDelete(\'' + esc(s.id) + '\')">' + t("删除") + "</button>") +
+        '<button class="ghost small" onclick="sampleExport(\'' + jsq(s.id) + '\')">' + t("导出") + "</button>" +
+        '<button class="danger small" onclick="sampleDelete(\'' + jsq(s.id) + '\')">' + t("删除") + "</button>") +
       "</div>" +
       '<div class="desc">' + esc(t(s.requirement)) + t("　维度：") +
       esc(s.dims.map((d) => t(d)).join(" / ")) + "</div></div>").join("");
@@ -22271,7 +22271,7 @@ function ovRenderRecent() {
   box.innerHTML = runs.map((r) => {
     const st = String(r.status || "");
     const sub = String(r.summary || r.error || "").trim();
-    return '<button class="ov-run" type="button" onclick="jumpToRun(\'' + esc(r.id) + '\')">' +
+    return '<button class="ov-run" type="button" onclick="jumpToRun(\'' + jsq(r.id) + '\')">' +
       '<span class="ov-run-ico">' + staskGlyph(st) + "</span>" +
       '<span class="ov-run-main"><b>' + esc(r.title || "") + "</b>" +
       (sub ? "<i>" + esc(sub.length > 90 ? sub.slice(0, 89) + "…" : sub) + "</i>" : "") +
@@ -22424,7 +22424,7 @@ function updateStatusSidebar() {
         const step = (r.current_step && r.current_step.n) || 0;
         const mins = Math.floor((Date.now() - new Date(r.started_at || Date.now()).getTime()) / 60000);
         const role = r.flow_name || r.agent_label || "";
-        return '<div class="running-item" onclick="homeOpenRun(\'' + esc(r.id) + '\')" style="cursor:pointer">'
+        return '<div class="running-item" onclick="homeOpenRun(\'' + jsq(r.id) + '\')" style="cursor:pointer">'
           + '<div class="running-item-title">' + esc(r.title || r.id || "") + '</div>'
           + '<div class="running-item-meta">'
           + '<span>' + (total ? t("第 ") + step + t("/") + total + t(" 步") : "") + (mins ? " · " + mins + t(" 分") : "") + '</span>'
@@ -22463,13 +22463,13 @@ function updateStatusSidebar() {
         else groups.earlier.push(r);
       });
       const pendItem = (r) =>
-        '<div class="pending-item" onclick="homeOpenRun(\'' + esc(r.id) + '\')" style="cursor:pointer">'
+        '<div class="pending-item" onclick="homeOpenRun(\'' + jsq(r.id) + '\')" style="cursor:pointer">'
         + '<div class="pending-item-title">' + esc(r.title || r.id) + "</div>"
         + (r.reasons && r.reasons.length ? '<div class="pending-item-desc">' + esc(r.reasons.map((x) => t(x)).join(" · ")) + "</div>" : "")
         + '<div class="pending-foot">'
-        + '<button type="button" class="pending-go" onclick="event.stopPropagation(); homeOpenRun(\'' + esc(r.id) + '\')">'
+        + '<button type="button" class="pending-go" onclick="event.stopPropagation(); homeOpenRun(\'' + jsq(r.id) + '\')">'
         + t("去确认") + '<svg class="ico ico-sm" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>'
-        + '<button type="button" class="pending-ignore" title="' + esc(t("不再提醒这条待处理")) + '" onclick="event.stopPropagation(); ignorePendingRun(\'' + esc(r.id) + '\')">'
+        + '<button type="button" class="pending-ignore" title="' + esc(t("不再提醒这条待处理")) + '" onclick="event.stopPropagation(); ignorePendingRun(\'' + jsq(r.id) + '\')">'
         + t("忽略") + "</button>"
         + "</div>"
         + "</div>";
@@ -22839,7 +22839,7 @@ async function listRemoteBackups() {
   if (msg) msg.textContent = files.length ? "" : t("端点上没有备份包");
   if (box) box.innerHTML = files.map((f) =>
     '<div class="item"><div class="t"><span class="name">' + esc(f) + "</span>" +
-    '<button class="ghost small" onclick="pullRemoteBackup(\'' + esc(f) + '\')">' + t("拉取") + "</button></div></div>").join("");
+    '<button class="ghost small" onclick="pullRemoteBackup(\'' + jsq(f) + '\')">' + t("拉取") + "</button></div></div>").join("");
 }
 
 async function pullRemoteBackup(name) {
