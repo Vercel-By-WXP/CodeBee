@@ -9690,6 +9690,29 @@ html[data-theme="dark"] .panel {
 .avail-model.down::before { background: var(--bad); opacity: 1; }
 .avail-model.off { color: var(--muted); opacity: .6; }
 .avail-model.off::before { background: var(--muted); }
+/* 模型芯片可点启停（2026-10-23）：button 化后补指针态，视觉不变 */
+button.avail-model { cursor: pointer; font-family: var(--mono); }
+button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
+
+/* 行内操作（2026-10-23）：停用/启用/静默免跳转 */
+.avail-row-acts { display: inline-flex; gap: 6px; flex: none; }
+.avail-act {
+  padding: 3px 9px; border: 1px solid var(--border); border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-family: inherit; font-size: 11.5px; cursor: pointer;
+}
+.avail-act:hover { color: var(--text); border-color: var(--border-strong); }
+.avail-act.is-danger:hover {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+}
+
+/* 自动刷新开关：30 秒静默重读，不触发真探测 */
+.avail-auto {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 12px; cursor: pointer; user-select: none;
+}
+.avail-auto input { accent-color: var(--accent); cursor: pointer; }
 
 /* CLI 降级链：编号徽章表达回落顺序 */
 .avail-chain { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }

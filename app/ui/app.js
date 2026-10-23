@@ -2750,10 +2750,13 @@ function availKpisHtml(c) {
   }).join("");
 }
 
-function availModelChip(m) {
+function availModelChip(m, pid) {
   const cls = m.down ? " down" : (m.enabled ? "" : " off");
   const label = m.down ? t("熔断中") : (m.enabled ? t("可用") : t("已停用"));
-  return '<span class="avail-model' + cls + '" title="' + esc(label) + '">' + esc(m.name) + "</span>";
+  const tip = m.enabled ? t("点击停用该模型（调度链自动移除，可再启用）") : t("点击启用该模型");
+  return '<button type="button" class="avail-model' + cls + '" title="' + esc(label + " · " + tip) +
+    '" onclick="availModelOp(\'' + esc(pid) + '\', \'' + esc(m.name) + '\', ' +
+    (m.enabled ? "true" : "false") + ')">' + esc(m.name) + "</button>";
 }
 
 function availProvRow(p, q) {
@@ -2772,15 +2775,30 @@ function availProvRow(p, q) {
   if (h.last_fail_at) meta.push(t("最近失败") + " <b>" + esc(h.last_fail_at) + "</b>");
   if (h.last_ok_at) meta.push(t("最近成功") + " <b>" + esc(h.last_ok_at) + "</b>");
   if (h.silenced) meta.push(t("告警已静默"));
+  // 行内操作（2026-10-23）：以前只读，看到熔断还得绕去健康弹框/模型接入动手。
+  const pname = p.name || p.id;
+  const acts = [];
+  if (p.enabled === false) {
+    acts.push('<button type="button" class="avail-act" onclick="availProviderOp(\'' +
+      esc(p.id) + '\', \'enable\', \'' + esc(pname) + '\')">' + esc(t("启用")) + "</button>");
+  } else {
+    if (st === "bad" && !h.silenced) {
+      acts.push('<button type="button" class="avail-act" onclick="availSilence(\'' +
+        esc(pname) + '\')">' + esc(t("静默告警")) + "</button>");
+    }
+    acts.push('<button type="button" class="avail-act is-danger" onclick="availProviderOp(\'' +
+      esc(p.id) + '\', \'disable\', \'' + esc(pname) + '\')">' + esc(t("停用")) + "</button>");
+  }
   const open = AVAIL.open.has(p.id) || !!q;
   return '<article class="avail-row' + (p.enabled === false ? " is-off" : "") + '">' +
     '<span class="avail-row-dot ' + st + '"></span>' +
     '<div class="avail-row-main">' +
       '<div class="avail-row-head">' +
-        '<span class="avail-row-name">' + esc(p.name || p.id) + "</span>" +
+        '<span class="avail-row-name">' + esc(pname) + "</span>" +
         availChip(availStatusLabel(st), st) +
         '<span class="avail-row-host" title="' + esc(p.base_url) + '">' +
           esc(availHost(p.base_url)) + (p.protocol ? " · " + esc(p.protocol) : "") + "</span>" +
+        '<span class="avail-row-acts">' + acts.join("") + "</span>" +
       "</div>" +
       (meta.length ? '<div class="avail-row-meta">' + meta.map((s) => "<span>" + s + "</span>").join("") + "</div>" : "") +
       (h.last_error ? '<div class="avail-row-err' + (activeFailure ? "" : " is-history") +
@@ -2791,7 +2809,7 @@ function availProvRow(p, q) {
         (open ? "true" : "false") + '" onclick="availToggle(\'' + esc(p.id) + '\')"><span>' +
         models.length + " " + esc(t("个模型")) + (downN ? " · " + downN + " " + esc(t("异常")) : "") +
         '</span><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg></button></div>' : "") +
-      (open && models.length ? '<div class="avail-models">' + models.map(availModelChip).join("") + "</div>" : "") +
+      (open && models.length ? '<div class="avail-models">' + models.map((m) => availModelChip(m, p.id)).join("") + "</div>" : "") +
     "</div></article>";
 }
 
@@ -2957,6 +2975,129 @@ function availToggle(id) {
   if (!id) return;
   if (AVAIL.open.has(id)) AVAIL.open.delete(id); else AVAIL.open.add(id);
   renderAvailability();
+}
+
+/* ---- 通道体检行内操作（2026-10-23）：端点全部复用现成路由，本页仍不做探测。
+ *   停用/启用厂商 → /api/models/provider-op（停用即出调度，链条目自动剔除）
+ *   点击模型启停 → /api/models/model-op（只动这一格，其余模型不受影响）
+ *   静默告警     → /api/health/op（404=告警行已消失，按成功收场） */
+async function availProviderOp(pid, op, pname) {
+  if (!pid || (op !== "enable" && op !== "disable")) return;
+  if (op === "disable") {
+    const yes = await uiConfirm(
+      t("确认停用通道 {0}？调度链里它的条目会自动移除，配置保留，可随时再启用。", pname || pid),
+      { title: t("停用通道"), danger: true, ok: t("停用") });
+    if (!yes) return;
+  }
+  try {
+    await api("/api/models/provider-op", { method: "POST",
+      body: JSON.stringify({ ids: [pid], op }) });
+    if (op === "disable") {
+      // 停用成功后 clear_inactive 多半已把健康行一并清掉：顺手静默尽力而为，
+      // 失败不能掩盖停用本身的成功（同健康告警弹框的口径）。
+      try { await applyHealthOp(pname || pid, "silence"); } catch (e) {}
+    }
+    toast(op === "disable"
+      ? t("已停用 {0}：调度链已自动移除它的条目", pname || pid)
+      : t("已启用 {0}", pname || pid));
+    loadAvailability({ silent: true });
+  } catch (e) {
+    toast(t("操作失败：") + e.message, true);
+  }
+}
+
+async function availModelOp(pid, name, enable) {
+  if (!pid || !name) return;
+  if (!enable) {
+    const yes = await uiConfirm(
+      t("确认停用模型 {0} · {1}？调度链里它的条目会自动移除，其余模型不受影响。", pid, name),
+      { title: t("停用模型"), danger: true, ok: t("停用") });
+    if (!yes) return;
+  }
+  try {
+    await api("/api/models/model-op", { method: "POST",
+      body: JSON.stringify({ provider_id: pid, name, op: enable ? "enable" : "disable" }) });
+    toast(enable
+      ? t("已启用模型 {0} · {1}", pid, name)
+      : t("已停用模型 {0} · {1}，调度链已自动移除它", pid, name));
+    loadAvailability({ silent: true });
+  } catch (e) {
+    toast(t("操作失败：") + e.message, true);
+  }
+}
+
+async function availSilence(pname) {
+  if (!pname) return;
+  try {
+    await applyHealthOp(pname, "silence");
+    toast(t("已静默 {0} 的告警（恢复后自动重新武装）", pname));
+    loadAvailability({ silent: true });
+  } catch (e) {
+    if (e && e.status === 404) {
+      // 快照与现实的时间差：健康行可能已被 clear_inactive 清掉或已自愈重建
+      toast(t("该告警已消失，无需处理"));
+      loadAvailability({ silent: true });
+      return;
+    }
+    toast(t("操作失败：") + e.message, true);
+  }
+}
+
+/* 自动刷新：30 秒静默重读一次（不触发真探测，真探测仍只归「重新体检」）。
+ * 开关落 localStorage；离开体检页或页面隐藏时都不打接口。 */
+let availAutoTimer = null;
+function availAutoStart() {
+  const box = $("avail-auto");
+  const on = localStorage.getItem("orch.availAuto") === "1";
+  if (box) box.checked = on;
+  if (availAutoTimer) { clearInterval(availAutoTimer); availAutoTimer = null; }
+  if (!on) return;
+  availAutoTimer = setInterval(() => {
+    if (S.tab !== "availability" || document.hidden) return;
+    loadAvailability({ silent: true });
+  }, 30000);
+}
+
+function availAutoStop() {
+  if (availAutoTimer) { clearInterval(availAutoTimer); availAutoTimer = null; }
+}
+
+function availSetAuto(on) {
+  localStorage.setItem("orch.availAuto", on ? "1" : "0");
+  if (on) availAutoStart(); else availAutoStop();
+}
+
+/* 一键复制纯文本诊断报告：贴给支持/同事时不用截一长串图。 */
+function availReportText() {
+  const d = AVAIL.data;
+  if (!d) return "";
+  const provs = d.providers || [];
+  const c = availCounts(provs);
+  const lines = [];
+  lines.push(t("通道体检") + " · " + (d.generated_at || ""));
+  lines.push(availVerdict(c).text);
+  provs.forEach((p) => {
+    const h = p.health || {};
+    const downN = (p.models || []).filter((m) => m.down).length;
+    let line = "[" + availStatusLabel(availProvStatus(p)) + "] " + (p.name || p.id);
+    if (downN) line += " · " + t("{0} 个模型熔断", downN);
+    if (h.last_error) line += "\n    " + String(h.last_error).slice(0, 200);
+    lines.push(line);
+  });
+  (d.clis || []).forEach((row) => {
+    const a = row.account || {};
+    let line = "[" + availStatusLabel(availCliStatus(row)) + "] CLI " + row.id;
+    if (a && a.summary) line += " · " + a.summary;
+    if (a && a.last_error) line += "\n    " + String(a.last_error).slice(0, 200);
+    lines.push(line);
+  });
+  return lines.join("\n");
+}
+
+function availCopyReport() {
+  const text = availReportText();
+  if (!text) { toast(t("还没有体检数据，先点「重新体检」"), true); return; }
+  copyText(text, () => toast(t("诊断报告已复制")));
 }
 
 /* 主页快捷入口的通道摘要：与体检页共用同一份缓存，60 秒内不重复拉取 */
@@ -14862,8 +15003,8 @@ const SKIN_KEY = "orch.skin";
 const THEME_KEY = "orch.theme";
 
 const LAYOUTS = [
-  { id: "classic", name: t("经典工作区"), desc: t("左侧任务树 + 居中主栏，一屏专注当前任务（默认）") },
-  { id: "workbench", name: t("工作台"), desc: t("首页输入卡 + 右侧状态栏，全局进度与待办一眼可见") },
+  { id: "classic", name: t("经典工作区"), desc: t("左侧任务树 + 居中主栏，一屏专注当前任务") },
+  { id: "workbench", name: t("工作台"), desc: t("首页输入卡 + 右侧状态栏，全局进度与待办一眼可见（默认）") },
 ];
 const LAYOUT_IDS = new Set(LAYOUTS.map((x) => x.id));
 const LAYOUT_KEY = "orch.layout";
@@ -14873,12 +15014,11 @@ function currentSkin() {
   return SKIN_IDS.has(s) ? s : "ocean";   // 值缺失/非法（如换过版本）一律回落深海
 }
 
-/* 布局独立于皮肤：没有布局键的老用户按原暖纸皮肤迁移到工作台布局，落盘后
- * 再换配色不会把布局一起带走（旧版暖纸=布局，新版已拆成两条配置）。 */
+/* 布局独立于皮肤，默认工作台；首次进入由 applyAppearance() 把该默认值落盘，
+ * 之后用户显式选过的布局不会被换肤等操作带走。 */
 function currentLayout() {
   const v = localStorage.getItem(LAYOUT_KEY) || "";
-  if (LAYOUT_IDS.has(v)) return v;
-  return currentSkin() === "warm" ? "workbench" : "classic";
+  return LAYOUT_IDS.has(v) ? v : "workbench";
 }
 
 function currentMode() { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; }
@@ -23000,7 +23140,8 @@ function switchTab(name, shell) {
   if (name === "orch") { loadOrchestrator(); loadSettings(); }  // 进编排设置页拉取配置
   if (name === "evalbench") loadEvalBench();   // 进模型评测页：榜单 + 候选清单
   if (name === "strategy") loadStrategyLab();  // 进机制与策略页：权重 + 影子对账
-  if (name === "availability") loadAvailability({ silent: true });   // 进通道体检页：纯重读快显，真探测只归「重新体检」按钮
+  if (name === "availability") { loadAvailability({ silent: true }); availAutoStart(); }   // 进通道体检页：纯重读快显，真探测只归「重新体检」按钮
+  else availAutoStop();   // 离开体检页即停自动刷新（定时器内还有 S.tab 守卫双保险）
   if (name === "skills") loadSkills();   // 进经验库页拉取沉淀
   if (name === "memory") loadMemoryCenter(); // 统一记忆中心：全局摘要 + 项目治理
   if (name === "atlas") loadAtlas();          // 记忆图谱：星图可视化 + 全域搜索 + 注入预演 + 治理台
@@ -23035,7 +23176,8 @@ function exitSettings(forceForm) {
   S.tab = "tasks";
   $("sub-tasks").classList.remove("mobile-composing");
   S.mainPage = "";   // 主栏回到表单：不再是快捷导航页
-  stopAutoPoll();   // 离开设置视图：自动化页轮询一并停掉
+  stopAutoPoll();   // 离开设置视图：自动化页轮询一并停
+  availAutoStop();   // 通道体检页的自动刷新同契约掉
   atlasLiveStop();   // 图谱页点「新聊天/返回任务表单」：不经 switchTab，停表同契约
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-tasks"));
@@ -23607,8 +23749,11 @@ document.addEventListener("DOMContentLoaded", () => {
     } else goalTransition(phase);
   });
   $("btn-q-runs").addEventListener("click", () => switchTab("runs", "main"));
+  // 看板落地时漏绑了这颗（其余快捷项都绑了）→ 按钮看得见、点了没反应（2026-10-23 实案）
+  $("btn-q-kanban").addEventListener("click", () => switchTab("kanban", "main"));
   $("btn-q-automation").addEventListener("click", () => switchTab("automation", "main"));
   $("btn-q-browser").addEventListener("click", () => switchTab("browser", "main"));
+  $("btn-q-availability").addEventListener("click", () => switchTab("availability", "main"));   // 通道体检升入快捷导航（index.html 两侧同步改）
   wbBind();
   bindCtxMenus();
   bindInspector();

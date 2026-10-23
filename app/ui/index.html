@@ -32,8 +32,7 @@
 <link rel="stylesheet" href="atlas.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
-     首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
-     旧版只有「暖纸皮肤」自带工作台布局：没有 orch.layout 的老用户按暖纸迁移到 workbench。 -->
+     首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。默认布局=工作台。 -->
 <script>
 (function () {
   try {
@@ -42,12 +41,12 @@
     const layout0 = localStorage.getItem("orch.layout");
     document.documentElement.dataset.layout = (layout0 === "classic" || layout0 === "workbench")
       ? layout0
-      : (document.documentElement.dataset.skin === "warm" ? "workbench" : "classic");
+      : "workbench";
     document.documentElement.dataset.lang = localStorage.getItem("orch.lang") === "en" ? "en" : "zh";
     document.documentElement.lang = document.documentElement.dataset.lang === "en" ? "en" : "zh-CN";
   } catch (e) {
     document.documentElement.dataset.skin = "ocean";
-    document.documentElement.dataset.layout = "classic";
+    document.documentElement.dataset.layout = "workbench";
     document.documentElement.dataset.theme = "light";
     document.documentElement.dataset.lang = "zh";
   }
@@ -231,6 +230,12 @@
           <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
           <span data-i18n="浏览器">浏览器</span>
         </button>
+        <!-- 通道体检（2026-10-23 自设置导航升入）：看一眼通道状态不再绕设置，
+             主页快捷入口卡与这颗共用 switchTab('availability') 一条链路 -->
+        <button class="qitem" id="btn-q-availability" data-page="availability" title="通道体检" data-i18n-title="通道体检">
+          <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+          <span data-i18n="通道体检">通道体检</span>
+        </button>
       </div>
       <div id="side-projects" class="side-section tasks">
         <div class="side-label-row">
@@ -319,7 +324,7 @@
         <kbd>Esc</kbd>
       </label>
       <div id="settings-search-empty" class="settings-search-empty hidden" data-i18n="没有匹配的设置">没有匹配的设置</div>
-      <!-- 概览 / 运行记录 / 自动化已升为左栏快捷导航（见 .side-quick），此处不再重复挂条目 -->
+      <!-- 概览 / 运行记录 / 自动化 / 通道体检已升为左栏快捷导航（见 .side-quick），此处不再重复挂条目 -->
       <div data-i18n="工作流" class="set-group">工作流</div>
       <button class="set-item active" data-sub="tasks" data-search="任务 新建 提示词 运行 编排 工作流 task prompt run workflow"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span data-i18n="任务">任务</span></button>
       <div data-i18n="集成" class="set-group">集成</div>
@@ -330,7 +335,6 @@
       <button class="set-item" data-sub="agents" data-search="本机智能体 cli agent 安装 命令行 local agents install"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="本机智能体">本机智能体</span></button>
       <button class="set-item" data-sub="models" data-search="模型接入 供应商 API 密钥 provider models api keys"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="模型接入">模型接入</span></button>
       <button class="set-item" data-sub="bindings" data-search="模型调度 路由 绑定 降级 fallback routing binding"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="模型调度（可选）">模型调度（可选）</span></button>
-      <button class="set-item" data-sub="availability" data-search="通道体检 可用性 健康 厂商 模型 CLI 熔断 告警 availability health status circuit"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="通道体检">通道体检</span></button>
       <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
       <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
       <button class="set-item" data-sub="strategy" data-search="机制与策略 路由 权重 挑战者 影子 对账 evolver strategy weights challenger shadow routing"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="机制与策略">机制与策略</span></button>
@@ -1365,6 +1369,9 @@
           </div>
           <div class="avail-hero-act">
             <span class="avail-stamp" id="avail-stamp"></span>
+            <button id="avail-copy" class="ghost small" type="button" onclick="availCopyReport()" title="复制诊断报告" data-i18n-title="复制诊断报告">
+              <svg class="ico" aria-hidden="true"><use href="#i-copy"></use></svg><span data-i18n="复制报告">复制报告</span>
+            </button>
             <button id="avail-refresh" class="ghost small" type="button" onclick="loadAvailability()">
               <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="重新体检">重新体检</span>
             </button>
@@ -1394,6 +1401,10 @@
               <option value="recent" data-i18n="最近失败">最近失败</option>
               <option value="models" data-i18n="模型数">模型数</option>
             </select>
+          </label>
+          <label class="avail-auto" for="avail-auto" title="每 30 秒自动重读体检数据（不触发真探测）" data-i18n-title="每 30 秒自动重读体检数据（不触发真探测）">
+            <input id="avail-auto" type="checkbox" onchange="availSetAuto(this.checked)">
+            <span data-i18n="自动刷新">自动刷新</span>
           </label>
         </div>
 
