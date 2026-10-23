@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="ocean" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>对话时间线 · 失败步骤与评审摘要样式提案</title>
+<style>
+  /* ===== 皮肤变量（与 style.css / skin-gradients.css 同源摘录） ===== */
+  html {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  html[data-skin="sea"] {
+    --bg: #0c1424; --sidebar: #0a1120; --panel: #141f33; --panel2: #1b2a44;
+    --border: rgba(190, 215, 255, .11); --border-strong: rgba(190, 215, 255, .22);
+    --text: #e9f1ff; --muted: #93a8c7; --accent: #6f9bff; --accent2: #45c2d6;
+    --ok: #35c99b; --warn: #f0b429; --bad: #f2637a; --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+    --bg-art: radial-gradient(56% 48% at 12% 4%, rgba(89, 139, 253, .24), transparent 70%), radial-gradient(58% 50% at 90% 10%, rgba(53, 179, 201, .18), transparent 72%), radial-gradient(60% 54% at 70% 100%, rgba(154, 212, 203, .10), transparent 74%);
+  }
+  html[data-skin="sea"][data-theme="light"] {
+    --bg: #f4f9ff; --sidebar: #edf4ff; --panel: #ffffff; --panel2: #eaf2fe;
+    --border: #d9e6fa; --border-strong: #bed2f2;
+    --text: #15233b; --muted: #5d7190; --accent: #3f63d2; --accent2: #168b9f;
+    --ok: #0d8a72; --warn: #a9761a; --bad: #d23c58; --shadow: 0 10px 30px rgba(43, 78, 133, .10);
+    --bg-art: radial-gradient(58% 52% at 12% 6%, rgba(89, 139, 253, .20), transparent 70%), radial-gradient(54% 48% at 88% 12%, rgba(154, 212, 203, .34), transparent 72%), radial-gradient(64% 58% at 72% 96%, rgba(53, 179, 201, .16), transparent 74%);
+  }
+  html[data-skin="ocean"] {
+    --bg: #0e1626; --sidebar: #0a111e; --panel: #17243a; --panel2: #21304a;
+    --border: rgba(255, 255, 255, .10); --border-strong: rgba(255, 255, 255, .20);
+    --text: #e7eefb; --muted: #93a6c4; --accent: #3ba9f5; --accent2: #6d6cf6;
+    --ok: #35c99b; --warn: #f0b429; --bad: #f2637a; --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  }
+  html[data-skin="ocean"][data-theme="light"] {
+    --bg: #ffffff; --sidebar: #f7f7f8; --panel: #ffffff; --panel2: #f2f2f3;
+    --border: #e7e7e9; --border-strong: #d7d7da;
+    --text: #242426; --muted: #77777d; --accent: #376fbd; --accent2: #2e62aa;
+    --ok: #139878; --warn: #b07d18; --bad: #d63c55; --shadow: 0 2px 10px rgba(24, 24, 27, .045);
+  }
+  html[data-skin="warm"] {
+    --bg: #1a1916; --sidebar: #222019; --panel: #252320; --panel2: #2f2c27;
+    --border: rgba(232, 228, 220, .10); --border-strong: rgba(232, 228, 220, .20);
+    --text: #e8e4dc; --muted: #9a9387; --accent: #d4943a; --accent2: #c47a2e;
+    --ok: #4a9a7a; --warn: #d4943a; --bad: #c45a4a; --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  }
+  html[data-skin="warm"][data-theme="light"] {
+    --bg: #f4f2ec; --sidebar: #faf9f5; --panel: #fffefa; --panel2: #f0ede5;
+    --border: #e8e4dc; --border-strong: #d4cfc4;
+    --text: #1d1b17; --muted: #8f887a; --accent: #a86a20; --accent2: #8f5a1a;
+    --ok: #2f6f57; --warn: #a2671f; --bad: #b0473d; --shadow: 0 10px 30px rgba(29, 27, 23, .08);
+  }
+  html[data-skin="contrast"] {
+    --bg: #000000; --sidebar: #000000; --panel: #0b0b0b; --panel2: #1c1c1c;
+    --border: #6f6f6f; --border-strong: #c9c9c9;
+    --text: #ffffff; --muted: #dcdcdc; --accent: #4da3ff; --accent2: #ff9d4d;
+    --ok: #23d18b; --warn: #ffc21a; --bad: #ff5d5d; --shadow: none;
+  }
+  html[data-skin="contrast"][data-theme="light"] {
+    --bg: #ffffff; --sidebar: #ffffff; --panel: #ffffff; --panel2: #f0f0f0;
+    --border: #767676; --border-strong: #000000;
+    --text: #000000; --muted: #4a4a4a; --accent: #0b52c9; --accent2: #b03000;
+    --ok: #05703f; --warn: #7a5200; --bad: #b3001b; --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  .hidden { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+  html[data-skin="sea"] body {
+    background-image: var(--bg-art);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+  .ico {
+    width: 1em; height: 1em; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  /* ===== demo 工具条（不属于生产样式） ===== */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 11px 24px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .demo-tag { margin-right: auto; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; }
+  .demo-group { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--panel2); }
+  .demo-chip {
+    border: none; background: none; color: var(--muted); font: inherit;
+    font-size: 11.5px; line-height: 1; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  .demo-chip:hover { color: var(--text); }
+  .demo-chip.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .10); }
+  .demo-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--muted); cursor: pointer; user-select: none;
+  }
+  .demo-toggle input { accent-color: var(--accent); margin: 0; }
+
+  .stage { max-width: 860px; margin: 0 auto; padding: 22px 18px 64px; }
+  .stage.split { max-width: 1580px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (max-width: 1180px) { .stage.split { grid-template-columns: minmax(0, 1fr); } }
+  .pane {
+    border: 1px solid var(--border); border-radius: 16px;
+    background: var(--panel); overflow: hidden; min-width: 0;
+  }
+  .pane-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 16px; border-bottom: 1px solid var(--border);
+    color: var(--muted); font-size: 12px;
+  }
+  .pane-head b { color: var(--text); font-weight: 600; }
+  .pane-head span { font-size: 11.5px; }
+  .pane-note { color: var(--muted); font-size: 11.5px; }
+
+  /* ===== 对话列：现状与提案共用排版底座 ===== */
+  .flow {
+    max-width: 768px; margin: 0 auto;
+    padding: 22px 24px 28px;
+    display: flex; flex-direction: column; gap: 24px;
+    color: var(--chat-text);
+    font-size: 14px; line-height: 1.7;
+  }
+  .flow { --chat-text: var(--text); --chat-muted: var(--muted); --chat-rule: var(--border); }
+  html[data-theme="light"] .flow { --chat-text: #505052; --chat-muted: #929295; --chat-rule: #ebebed; }
+  html[data-skin="contrast"] .flow { --chat-text: var(--text); --chat-muted: var(--text); --chat-rule: var(--border-strong); }
+
+  .row { display: flex; flex-direction: column; min-width: 0; }
+  .chat-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chat-meta {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 7px; color: var(--chat-muted);
+    font-size: 12px; line-height: 1.5;
+  }
+  .chat-meta .acts { margin-left: auto; }
+  .chat-act {
+    appearance: none; border: none; background: transparent; color: var(--chat-muted);
+    font: inherit; font-size: 11.5px; cursor: pointer; padding: 1px 7px; border-radius: 6px;
+  }
+  .chat-act:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+
+  /* 现状：CLI 日志折叠行 */
+  .cli-log { margin-top: 6px; }
+  .cli-log > summary {
+    cursor: pointer; color: var(--chat-muted); font-size: 12px;
+    list-style: none; user-select: none;
+  }
+  .cli-log > summary::-webkit-details-marker { display: none; }
+  .cli-log > summary::before { content: "▸"; margin-right: 6px; opacity: .7; }
+  .cli-log[open] > summary::before { content: "▾"; }
+  .cli-log pre {
+    margin: 8px 0 0; max-height: 200px; overflow: auto;
+    padding: 9px 11px; border: 1px solid var(--chat-rule); border-radius: 10px;
+    color: var(--chat-text); font: 11.5px/1.6 var(--mono); white-space: pre-wrap;
+    overflow-wrap: anywhere; background: color-mix(in srgb, var(--panel2) 55%, transparent);
+  }
+
+  /* 变更胶囊（现状） */
+  .changes-row { align-self: flex-end; }
+  .change-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 12px; border: 1px solid var(--chat-rule); border-radius: 999px;
+    background: color-mix(in srgb, var(--panel2) 55%, transparent);
+    color: var(--chat-muted); font-size: 12px;
+  }
+  .change-pill b { font: 600 11.5px var(--mono); color: var(--ok); }
+  .change-pill b.del { color: var(--bad); }
+
+  /* ===================================================================
+     提案：失败步骤卡
+     - 失败是「异常」，用低饱和红底 + 左侧状态标题；正文仍在同一张卡里
+     - 退出码、stderr 前缀从正文里拆出来做成小标签，正文只留可读的报错
+     - 连续相同失败合并成尝试列表，相同的报错只写一遍
+     =================================================================== */
+  .fail {
+    border: 1px solid color-mix(in srgb, var(--bad) 22%, var(--chat-rule));
+    background: color-mix(in srgb, var(--bad) 4%, var(--panel));
+    border-radius: 12px;
+    padding: 10px 13px;
+  }
+  .fail-head, .grp-head {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-size: 12px; line-height: 1.5;
+  }
+  .fail-title {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--bad); font-size: 12.5px; font-weight: 600;
+  }
+  .fail-title .ico { width: 13px; height: 13px; }
+  .fail-code {
+    font: 600 10.5px/1.5 var(--mono);
+    padding: 0 6px; border-radius: 6px;
+    color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bad) 22%, transparent);
+  }
+  .fail-meta {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+    color: var(--chat-muted); font-size: 11.5px;
+  }
+  .fail-meta .acts { margin-left: 2px; }
+  .fail-body {
+    margin-top: 8px; font-size: 13px; line-height: 1.65;
+    color: var(--chat-text);
+  }
+  .stderr-tag {
+    display: inline-block; margin-right: 7px; padding: 0 5px;
+    border-radius: 4px; background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: color-mix(in srgb, var(--chat-muted) 55%, var(--chat-text));
+    font: 600 10.5px/1.6 var(--mono);
+  }
+  .fail-body code {
+    font: 12px/1.6 var(--mono);
+    color: color-mix(in srgb, var(--chat-text) 88%, var(--muted));
+  }
+  .fail-body .diag { color: color-mix(in srgb, var(--chat-muted) 55%, var(--chat-text)); }
+
+  /* 合并组：连续同一失败 */
+  .grp {
+    border: 1px solid color-mix(in srgb, var(--bad) 22%, var(--chat-rule));
+    background: color-mix(in srgb, var(--bad) 4%, var(--panel));
+    border-radius: 12px; overflow: hidden;
+  }
+  .grp-head { padding: 9px 13px 8px; }
+  .grp-count {
+    padding: 0 7px; border-radius: 999px; font-size: 11px;
+    color: var(--chat-muted); background: color-mix(in srgb, var(--text) 6%, transparent);
+  }
+  .grp-body { padding: 0 13px 9px; font-size: 13px; line-height: 1.65; }
+  .grp-rows {
+    list-style: none; margin: 0; padding: 6px 0;
+    border-top: 1px solid color-mix(in srgb, var(--bad) 16%, var(--chat-rule));
+  }
+  .grp-row {
+    display: flex; align-items: baseline; gap: 9px;
+    padding: 2px 13px; font-size: 11.5px; color: var(--chat-muted);
+  }
+  .grp-row b { min-width: 54px; color: var(--chat-text); font: 500 11.5px var(--mono); }
+  .grp-row .dur { font: 11.5px var(--mono); }
+  .grp-row .nth { margin-left: auto; opacity: .75; }
+  .grp-toggle {
+    display: flex; align-items: center; gap: 5px;
+    padding: 6px 13px 8px; font-size: 11.5px; color: var(--chat-muted);
+    border-top: 1px dashed color-mix(in srgb, var(--bad) 16%, var(--chat-rule));
+  }
+
+  /* 运行中：状态行而不是正文 */
+  .live-line {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--chat-muted); font-size: 13px; line-height: 1.6;
+  }
+  .live-dot {
+    width: 6px; height: 6px; flex: none; border-radius: 50%;
+    background: var(--accent); animation: live-breathe 1.6s ease-in-out infinite;
+  }
+  @keyframes live-breathe { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; opacity: .7; } }
+  .live-meta { margin-left: auto; color: var(--chat-muted); font-size: 11.5px; }
+  .live-tag {
+    padding: 0 7px; border-radius: 999px; font-size: 10.5px;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+
+  /* CLI 日志：安静的折叠条，已加载用弱标签提示 */
+  .runlog { margin-top: 10px; }
+  .runlog > summary {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 0; cursor: pointer; list-style: none;
+    color: var(--chat-muted); font-size: 12px; user-select: none;
+  }
+  .runlog > summary::-webkit-details-marker { display: none; }
+  .runlog .chev { width: 11px; height: 11px; opacity: .7; transition: transform .12s; }
+  .runlog[open] .chev { transform: rotate(90deg); }
+  .runlog .state {
+    padding: 0 6px; border-radius: 999px; font-size: 10.5px;
+    color: var(--chat-muted); background: color-mix(in srgb, var(--text) 6%, transparent);
+  }
+  .runlog pre {
+    margin: 7px 0 0; max-height: 210px; overflow: auto;
+    padding: 9px 11px; border: 1px solid var(--chat-rule); border-radius: 10px;
+    color: var(--chat-text); font: 11.5px/1.6 var(--mono); white-space: pre-wrap;
+    overflow-wrap: anywhere; background: color-mix(in srgb, var(--panel2) 45%, transparent);
+  }
+
+  /* 评审：结构卡——分数一行，意见按严重度标签 + 维度标签分行 */
+  .rev {
+    border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--chat-rule));
+    padding: 1px 0 1px 14px;
+  }
+  .rev-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .rev-title { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--chat-text); }
+  .rev-title .ico { width: 13px; height: 13px; color: var(--accent); }
+  .rev-meta { color: var(--chat-muted); font-size: 11.5px; }
+  .rev-head .acts { margin-left: auto; }
+  .rev-scores { margin-top: 3px; color: var(--chat-muted); font-size: 11.5px; }
+  .rev-scores b { color: var(--chat-text); font-weight: 600; }
+  .rev-list { list-style: none; margin: 9px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .rev-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; }
+  .sev {
+    margin-top: 2px; padding: 0 6px; border-radius: 5px;
+    font: 600 10px/1.7 var(--mono); letter-spacing: .02em;
+    color: var(--chat-muted); background: color-mix(in srgb, var(--muted) 12%, transparent);
+  }
+  .sev.major { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .sev.critical { color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+  .rev-dim { color: var(--chat-text); font-weight: 600; margin-right: 6px; }
+  .rev-note { color: var(--chat-text); line-height: 1.65; }
+
+  /* 变更胶囊（提案）：轻总结条，不抢消息 */
+  .changes-row .change-pill { padding: 6px 12px 6px 10px; }
+
+  @media (max-width: 720px) {
+    .flow { padding: 18px 8px 20px; gap: 20px; }
+    .fail-head, .grp-head { gap: 6px; }
+    .fail-meta { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="demo-bar">
+  <span class="demo-tag">对话时间线 · 失败步骤与评审摘要的样式提案（假数据）</span>
+  <div class="demo-group" id="viewGroup">
+    <button class="demo-chip" data-view="before" type="button">现状</button>
+    <button class="demo-chip on" data-view="after" type="button">提案</button>
+    <button class="demo-chip" data-view="split" type="button">并排对比</button>
+  </div>
+  <div class="demo-group" id="skinGroup">
+    <button class="demo-chip on" data-skin="ocean" data-theme="light" type="button">默认浅色</button>
+    <button class="demo-chip" data-skin="ocean" data-theme="dark" type="button">深色</button>
+    <button class="demo-chip" data-skin="sea" data-theme="light" type="button">sea</button>
+    <button class="demo-chip" data-skin="warm" data-theme="light" type="button">暖纸</button>
+    <button class="demo-chip" data-skin="contrast" data-theme="dark" type="button">高对比</button>
+  </div>
+  <label class="demo-toggle"><input type="checkbox" id="dupToggle" checked> 合并连续相同失败</label>
+</div>
+
+<main class="stage" id="stage">
+  <section class="pane" id="paneBefore">
+    <div class="pane-head"><b>现状</b><span class="pane-note">失败与正文同形，只在 meta 末尾多一个「失败」</span></div>
+    <div class="flow" id="flowBefore"></div>
+  </section>
+  <section class="pane" id="paneAfter">
+    <div class="pane-head"><b>提案</b><span class="pane-note">失败=红卡；连败=尝试列表；评审=结构卡</span></div>
+    <div class="flow" id="flowAfter"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  const ICON_WARN = '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 10v4"/><path d="M12 17.2v.1"/></svg>';
+  const ICON_REVIEW = '<svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4h6"/><path d="M8 2h8a1 1 0 0 1 1 1v3H7V3a1 1 0 0 1 1-1Z"/><path d="M7 4H4v18h16V4h-3"/><path d="m9 12 2 2 4-4"/></svg>';
+
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  /* -------- 假数据：取自截图同一任务的真实形状 -------- */
+  const REVIEW = {
+    who: "Claude Code", time: "15:36:32", dur: "3 分 38 秒",
+    scores: [
+      ["准确性", "8.0"], ["结构清晰", "9.0"], ["表达流畅", "8.5"], ["实用价值", "9.0"],
+    ],
+    avg: "8.6",
+    issues: [
+      { sev: "minor", dim: "结构清晰",
+        note: "通读范围行承诺『覆盖度见第六节对账』，但第六节只对账了机械组 54 组 134 条，34 个语义家族命中条目的具体数量与审阅明细全文未给出任何对账，交叉引用落空，验收标准①-④也无从覆盖该口径。" },
+      { sev: "minor", dim: "准确性",
+        note: "计数器口径自称 hits/seen【不作为价值或时效判据】，但 M12 保留条标注与 G4 推荐标签仍把 hits 数值写入保留依据位置（M12 保留列标 hits=23、G4 标 hits=109），未说明排序参照系，…" },
+    ],
+  };
+
+  const FAILS = [
+    { who: "OpenCode CLI", time: "15:31:46", dur: "1 分 10 秒", code: 1,
+      banner: "> build · deepseek-v4.1-flash-free",
+      diag: "仅启动横幅、无错误文本：疑似本地启动/配置抖动，可换 CLI 补位" },
+    { who: "OpenCode CLI", time: "15:32:53", dur: "35 秒", code: 1,
+      banner: "> build · deepseek-v4.1-flash-free",
+      diag: "仅启动横幅、无错误文本：疑似本地启动/配置抖动，可换 CLI 补位" },
+    { who: "OpenCode CLI", time: "00:38:03", dur: "7 分 29 秒", code: 1,
+      banner: "> build · deepseek-v4.1-flash-free",
+      diag: "仅启动横幅、无错误文本：疑似本地启动/配置抖动，可换 CLI 补位" },
+  ];
+
+  const CAP = {
+    who: "Claude Code", time: "00:59:05", dur: "21 分", code: null,
+    text: "CLI 输出超过捕获上限（stdout/stderr 各最多 8388608 字节），本次结果不完整",
+  };
+
+  const RUNNING = {
+    who: "Claude Code", time: "09:15:06",
+    text: "CLI 已启动，等待首段输出…",
+    log: [
+      "$ claude --model deepseek-v4.1-flash-free --print",
+      "[cli] resolving workspace E:\\GoOut\\MultiAgentOrchestration",
+      "[cli] session restored · 2 messages",
+      "[cli] waiting for first token …",
+    ].join("\n"),
+  };
+
+  const CHANGES = { count: 4, add: 463, del: 470 };
+
+  const reviewText = () => REVIEW.issues
+    .map((it) => "· [" + it.sev + "] " + it.dim + "：" + it.note).join("\n");
+
+  const failText = (f) => "退出码 " + f.code + "；stderr/stdout: " + f.banner + "（" + f.diag + "）";
+
+  /* ================= 现状 ================= */
+  function beforeReview() {
+    return '<div class="row"><div class="chat-body">' + esc(reviewText()) + "</div>" +
+      '<div class="chat-meta"><span>' + esc(REVIEW.who) + " " + esc(REVIEW.time) + " · 用时 " + esc(REVIEW.dur) +
+      '</span><span class="acts"><button class="chat-act" type="button">复制</button></span></div></div>';
+  }
+  function beforeFail(f) {
+    return '<div class="row"><div class="chat-body">' + esc(failText(f)) + "</div>" +
+      '<div class="chat-meta"><span>' + esc(f.who) + " " + esc(f.time) + " · 用时 " + esc(f.dur) +
+      " · 失败</span></div></div>";
+  }
+  function beforeCap() {
+    return '<div class="row"><div class="chat-body">' + esc(CAP.text) + "</div>" +
+      '<div class="chat-meta"><span>' + esc(CAP.who) + " " + esc(CAP.time) + " · 用时 " + esc(CAP.dur) +
+      " · 失败</span></div></div>";
+  }
+  function beforeRunning() {
+    return '<div class="row"><div class="chat-body">' + esc(RUNNING.text) + "</div>" +
+      '<div class="chat-meta"><span>' + esc(RUNNING.who) + " " + esc(RUNNING.time) + "</span></div>" +
+      '<details class="cli-log"><summary>查看完整 CLI 执行日志 · 已加载</summary><pre>' + esc(RUNNING.log) + "</pre></details></div>";
+  }
+  function beforeChanges() {
+    return '<div class="row changes-row"><span class="change-pill">已编辑 ' + CHANGES.count +
+      " 个文件 <b>+" + CHANGES.add + '</b> <b class="del">-' + CHANGES.del + "</b></span></div>";
+  }
+
+  /* ================= 提案 ================= */
+  function afterReview() {
+    const scores = '<b>均分 ' + esc(REVIEW.avg) + "</b> · " + REVIEW.scores
+      .map((d) => esc(d[0]) + " " + esc(d[1])).join(" · ");
+    const items = REVIEW.issues.map((it) =>
+      '<li class="rev-item"><span class="sev ' + esc(it.sev) + '">' + esc(it.sev) + "</span>" +
+      '<div><span class="rev-dim">' + esc(it.dim) + "：</span>" +
+      '<span class="rev-note">' + esc(it.note) + "</span></div></li>").join("");
+    return '<div class="rev"><div class="rev-head">' +
+      '<span class="rev-title">' + ICON_REVIEW + "评审意见</span>" +
+      '<span class="rev-meta">' + esc(REVIEW.who) + " · " + esc(REVIEW.time) + " · 用时 " + esc(REVIEW.dur) + "</span>" +
+      '<span class="acts"><button class="chat-act" type="button">复制</button></span></div>' +
+      '<div class="rev-scores">' + scores + "</div>" +
+      '<ul class="rev-list">' + items + "</ul></div>";
+  }
+  function afterFail(f) {
+    return '<div class="fail"><div class="fail-head">' +
+      '<span class="fail-title">' + ICON_WARN + "执行失败</span>" +
+      (f.code != null ? '<span class="fail-code">退出码 ' + esc(f.code) + "</span>" : "") +
+      '<span class="fail-meta">' + esc(f.who) + " · " + esc(f.time) + " · 用时 " + esc(f.dur) +
+      '<span class="acts"><button class="chat-act" type="button">复制</button></span></span></div>' +
+      '<div class="fail-body"><span class="stderr-tag">stderr/stdout</span>' +
+      "<code>" + esc(f.banner) + "</code>" +
+      '<span class="diag">（' + esc(f.diag) + "）</span></div></div>";
+  }
+  function afterGroup(list) {
+    const rows = list.map((f, i) =>
+      '<li class="grp-row"><b>' + esc(f.time) + "</b><span class=\"dur\">用时 " + esc(f.dur) +
+      '</span><span class="nth">第 ' + (i + 1) + " 次</span></li>").join("");
+    return '<div class="grp"><div class="grp-head">' +
+      '<span class="fail-title">' + ICON_WARN + "同一失败连续 " + list.length + " 次</span>" +
+      '<span class="fail-code">退出码 ' + esc(list[0].code) + "</span>" +
+      '<span class="fail-meta">' + esc(list[0].who) + "</span></div>" +
+      '<div class="grp-body"><span class="stderr-tag">stderr/stdout</span>' +
+      "<code>" + esc(list[0].banner) + "</code>" +
+      '<span class="diag">（' + esc(list[0].diag) + "）</span></div>" +
+      '<ul class="grp-rows">' + rows + "</ul>" +
+      '<div class="grp-toggle">展开每次尝试的完整输出 ›</div></div>';
+  }
+  function afterCap() {
+    return '<div class="fail"><div class="fail-head">' +
+      '<span class="fail-title">' + ICON_WARN + "执行失败</span>" +
+      '<span class="fail-meta">' + esc(CAP.who) + " · " + esc(CAP.time) + " · 用时 " + esc(CAP.dur) +
+      '<span class="acts"><button class="chat-act" type="button">复制</button></span></span></div>' +
+      '<div class="fail-body">' + esc(CAP.text) + "</div></div>";
+  }
+  function afterRunning() {
+    return '<div class="row"><div class="live-line"><span class="live-dot"></span>' +
+      "<span>" + esc(RUNNING.text) + '</span><span class="live-tag">执行中</span>' +
+      '<span class="live-meta">' + esc(RUNNING.who) + " " + esc(RUNNING.time) + "</span></div>" +
+      '<details class="runlog"><summary><svg class="ico chev" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>查看完整 CLI 执行日志' +
+      '<span class="state">已加载</span></summary><pre>' + esc(RUNNING.log) + "</pre></details></div>";
+  }
+  function afterChanges() {
+    return '<div class="row changes-row"><span class="change-pill">已编辑 ' + CHANGES.count +
+      " 个文件 <b>+" + CHANGES.add + '</b> <b class="del">-' + CHANGES.del + "</b></span></div>";
+  }
+
+  function renderBefore() {
+    return [beforeReview()].concat(FAILS.map(beforeFail), [beforeCap(), beforeRunning(), beforeChanges()]).join("");
+  }
+  function renderAfter(groupDup) {
+    const out = [afterReview()];
+    if (groupDup) out.push(afterGroup(FAILS));
+    else FAILS.forEach((f) => out.push(afterFail(f)));
+    out.push(afterCap(), afterRunning(), afterChanges());
+    return out.join("");
+  }
+
+  const flowBefore = document.getElementById("flowBefore");
+  const flowAfter = document.getElementById("flowAfter");
+  const stage = document.getElementById("stage");
+  const paneBefore = document.getElementById("paneBefore");
+  const paneAfter = document.getElementById("paneAfter");
+  const dupToggle = document.getElementById("dupToggle");
+
+  function paint() {
+    flowBefore.innerHTML = renderBefore();
+    flowAfter.innerHTML = renderAfter(dupToggle.checked);
+  }
+
+  function setView(view) {
+    stage.classList.toggle("split", view === "split");
+    paneBefore.classList.toggle("hidden", view === "after");
+    paneAfter.classList.toggle("hidden", view === "before");
+    document.querySelectorAll("#viewGroup .demo-chip").forEach((b) =>
+      b.classList.toggle("on", b.dataset.view === view));
+  }
+  window.__setView = setView;
+
+  document.getElementById("viewGroup").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-view]");
+    if (btn) setView(btn.dataset.view);
+  });
+  document.getElementById("skinGroup").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-skin]");
+    if (!btn) return;
+    document.documentElement.dataset.skin = btn.dataset.skin;
+    document.documentElement.dataset.theme = btn.dataset.theme;
+    document.querySelectorAll("#skinGroup .demo-chip").forEach((b) => b.classList.toggle("on", b === btn));
+  });
+  dupToggle.addEventListener("change", () => {
+    flowAfter.innerHTML = renderAfter(dupToggle.checked);
+  });
+
+  paint();
+  setView("after");
+})();
+</script>
+</body>
+</html>

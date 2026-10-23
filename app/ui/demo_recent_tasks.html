@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="sea" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>最近任务 · 样式优化 demo</title>
+<style>
+  /* ===== 皮肤变量（从生产 style.css / warm-skin.css / skin-gradients.css 原样摘录） ===== */
+  html[data-skin="sea"] {
+    --bg: #0c1424; --sidebar: #0a1120; --panel: #141f33; --panel2: #1b2a44;
+    --border: rgba(190, 215, 255, .11); --border-strong: rgba(190, 215, 255, .22);
+    --text: #e9f1ff; --muted: #93a8c7; --accent: #6f9bff; --accent2: #45c2d6;
+    --ok: #35c99b; --warn: #f0b429; --bad: #f2637a; --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+    --bg-art: radial-gradient(56% 48% at 12% 4%, rgba(89, 139, 253, .24), transparent 70%), radial-gradient(58% 50% at 90% 10%, rgba(53, 179, 201, .18), transparent 72%), radial-gradient(60% 54% at 70% 100%, rgba(154, 212, 203, .10), transparent 74%);
+  }
+  html[data-skin="sea"][data-theme="light"] {
+    --bg: #f4f9ff; --sidebar: #edf4ff; --panel: #ffffff; --panel2: #eaf2fe;
+    --border: #d9e6fa; --border-strong: #bed2f2;
+    --text: #15233b; --muted: #5d7190; --accent: #3f63d2; --accent2: #168b9f;
+    --ok: #0d8a72; --warn: #a9761a; --bad: #d23c58; --shadow: 0 10px 30px rgba(43, 78, 133, .10);
+    --bg-art: radial-gradient(58% 52% at 12% 6%, rgba(89, 139, 253, .20), transparent 70%), radial-gradient(54% 48% at 88% 12%, rgba(154, 212, 203, .34), transparent 72%), radial-gradient(64% 58% at 72% 96%, rgba(53, 179, 201, .16), transparent 74%);
+  }
+  html[data-skin="ocean"] {
+    --bg: #0e1626; --sidebar: #0a111e; --panel: #17243a; --panel2: #21304a;
+    --border: rgba(255, 255, 255, .10); --border-strong: rgba(255, 255, 255, .20);
+    --text: #e7eefb; --muted: #93a6c4; --accent: #3ba9f5; --accent2: #6d6cf6;
+    --ok: #35c99b; --warn: #f0b429; --bad: #f2637a; --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  }
+  html[data-skin="ocean"][data-theme="light"] {
+    --bg: #ffffff; --sidebar: #f7f7f8; --panel: #ffffff; --panel2: #f2f2f3;
+    --border: #e7e7e9; --border-strong: #d7d7da;
+    --text: #242426; --muted: #77777d; --accent: #376fbd; --accent2: #2e62aa;
+    --ok: #139878; --warn: #b07d18; --bad: #d63c55; --shadow: 0 2px 10px rgba(24, 24, 27, .045);
+  }
+  html[data-skin="warm"] {
+    --bg: #1a1916; --sidebar: #222019; --panel: #252320; --panel2: #2f2c27;
+    --border: rgba(232, 228, 220, .10); --border-strong: rgba(232, 228, 220, .20);
+    --text: #e8e4dc; --muted: #9a9387; --accent: #d4943a; --accent2: #c47a2e;
+    --ok: #4a9a7a; --warn: #d4943a; --bad: #c45a4a; --shadow: 0 10px 30px rgba(0, 0, 0, .50);
+  }
+  html[data-skin="warm"][data-theme="light"] {
+    --bg: #f4f2ec; --sidebar: #faf9f5; --panel: #fffefa; --panel2: #f0ede5;
+    --border: #e8e4dc; --border-strong: #d4cfc4;
+    --text: #1d1b17; --muted: #8f887a; --accent: #a86a20; --accent2: #8f5a1a;
+    --ok: #2f6f57; --warn: #a2671f; --bad: #b0473d; --shadow: 0 10px 30px rgba(29, 27, 23, .08);
+  }
+  html[data-skin="contrast"] {
+    --bg: #000000; --sidebar: #000000; --panel: #0b0b0b; --panel2: #1c1c1c;
+    --border: #6f6f6f; --border-strong: #c9c9c9;
+    --text: #ffffff; --muted: #dcdcdc; --accent: #4da3ff; --accent2: #ff9d4d;
+    --ok: #23d18b; --warn: #ffc21a; --bad: #ff5d5d; --shadow: none;
+  }
+  html[data-skin="contrast"][data-theme="light"] {
+    --bg: #ffffff; --sidebar: #ffffff; --panel: #ffffff; --panel2: #f0f0f0;
+    --border: #767676; --border-strong: #000000;
+    --text: #000000; --muted: #4a4a4a; --accent: #0b52c9; --accent2: #b03000;
+    --ok: #05703f; --warn: #7a5200; --bad: #b3001b; --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  html[data-skin="sea"] body {
+    background-image: var(--bg-art);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+  .ico {
+    width: 1em; height: 1em; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  /* ===== demo 工具条（不属于生产样式） ===== */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 11px 24px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .demo-tag { margin-right: auto; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; }
+  .demo-group { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--panel2); }
+  .demo-chip {
+    border: none; background: none; color: var(--muted); font: inherit;
+    font-size: 11.5px; line-height: 1; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  .demo-chip:hover { color: var(--text); }
+  .demo-chip.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .10); }
+
+  .stage { max-width: 900px; margin: 0 auto; padding: 26px 40px 56px; }
+
+  /* ================= 提案：最近任务 ================= */
+  .rd-section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .rd-section-head h2 {
+    margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em;
+  }
+  .rd-link-btn {
+    display: inline-flex; align-items: center; gap: 3px;
+    border: none; background: none; padding: 2px 0;
+    color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 500;
+    cursor: pointer;
+  }
+  .rd-link-btn .ico { width: 13px; height: 13px; transition: transform .15s ease; }
+  .rd-link-btn:hover .ico { transform: translateX(2px); }
+
+  .rt-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .rd-task-item {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; padding: 11px 14px;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--panel); color: var(--text);
+    font: inherit; text-align: left; cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+  }
+  .rd-task-item:hover {
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--accent) 3%, var(--panel));
+  }
+  .rd-task-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  .rd-task-ico {
+    width: 34px; height: 34px; flex: none;
+    display: grid; place-items: center; border-radius: 11px;
+  }
+  .rd-task-ico .ico { width: 16px; height: 16px; }
+  .rd-task-ico.run { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .rd-task-ico.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .rd-task-ico.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  .rd-task-ico.wait { color: var(--muted); background: color-mix(in srgb, var(--muted) 10%, transparent); }
+
+  .rt-spin {
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    border-top-color: var(--accent);
+    animation: rt-spin .9s linear infinite;
+  }
+  @keyframes rt-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .rt-spin { animation-duration: 2.4s; } }
+
+  .rt-pause { display: flex; gap: 3px; }
+  .rt-pause i { width: 3px; height: 12px; border-radius: 1.5px; background: currentColor; }
+
+  .rd-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .rd-task-title {
+    font-size: 13.5px; font-weight: 600; line-height: 1.45; letter-spacing: -.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .rd-meta3 {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: 11.5px; line-height: 1.4; color: var(--muted); white-space: nowrap;
+  }
+  .rd-meta-clock { width: 12px; height: 12px; opacity: .75; }
+  .rd-m3-dot { width: 3px; height: 3px; flex: none; border-radius: 50%; background: currentColor; opacity: .55; }
+
+  .rd-task-side {
+    flex: none; width: 172px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .rd-task-chip {
+    flex: none; min-width: 52px; justify-content: center;
+    display: inline-flex; align-items: center;
+    font-size: 10.5px; font-weight: 600; line-height: 1; letter-spacing: .01em;
+    padding: 4px 8px; border-radius: 99px; white-space: nowrap;
+  }
+  .rd-task-pct {
+    flex: none; width: 34px; text-align: right;
+    font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .rd-task-track {
+    flex: none; width: 64px;
+    height: 5px; border-radius: 99px; overflow: hidden;
+    background: color-mix(in srgb, var(--text) 9%, transparent);
+  }
+  .rd-task-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+
+  .rd-task-side.run .rd-task-chip { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .rd-task-side.ok .rd-task-chip { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .rd-task-side.bad .rd-task-chip { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  .rd-task-side.wait .rd-task-chip { color: var(--muted); background: color-mix(in srgb, var(--muted) 10%, transparent); }
+  .rd-task-side.ok .rd-task-track i { background: var(--ok); }
+  .rd-task-side.bad .rd-task-track i { background: var(--bad); }
+  .rd-task-side.wait .rd-task-track i { background: var(--muted); }
+  html[data-skin="contrast"] .rd-task-track { border: 1px solid var(--border); height: 6px; }
+  html[data-skin="contrast"] .rd-task-chip { border: 1px solid currentColor; }
+
+  /* ===== 现状对照（生产非 warm 皮肤的实际形态） ===== */
+  .rd-recent-tasks.hidden, .old-view.hidden { display: none; }
+  .old-view .rd-task-item {
+    border: none; border-radius: 10px; background: none;
+    padding: 12px 14px; gap: 0;
+  }
+  .old-view .rd-task-item:hover { background: var(--panel2); }
+  .old-view .rd-disc { font-size: 12px; color: var(--muted); margin-right: 12px; flex: none; }
+  .old-view .rd-task-info { flex: 1; min-width: 0; }
+  .old-view .rd-task-title {
+    font-size: 14px; font-weight: 400; color: var(--text); margin-bottom: 2px;
+  }
+  .old-view .rd-meta3 { display: block; font-size: 12px; margin-top: 2px; }
+  .old-view .rd-meta3 span + span::before { content: " · "; }
+  .old-view .rd-task-pct { margin-left: 12px; font-size: 13px; font-weight: 600; }
+
+  /* ===== demo 页脚说明 ===== */
+  .demo-note {
+    margin: 30px 0 0; padding: 14px 16px;
+    border: 1px dashed var(--border-strong); border-radius: 12px;
+    font-size: 12px; line-height: 1.85; color: var(--muted);
+  }
+  .demo-note b { color: var(--text); font-weight: 600; }
+  .demo-note ul { margin: 6px 0 0; padding-left: 18px; }
+
+  @media (max-width: 640px) {
+    .stage { padding: 20px 16px 40px; }
+    .rd-task-side { width: auto; }
+    .rd-task-track { display: none; }
+  }
+</style>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+</svg>
+
+<div class="demo-bar">
+  <span class="demo-tag">最近任务 · 样式 demo（假数据，未动生产文件）</span>
+  <div class="demo-group" id="view-picker">
+    <button type="button" class="demo-chip on" data-view="new">优化后</button>
+    <button type="button" class="demo-chip" data-view="old">现状</button>
+  </div>
+  <div class="demo-group" id="skin-picker">
+    <button type="button" class="demo-chip on" data-skin="sea" data-theme="light">海盐·日</button>
+    <button type="button" class="demo-chip" data-skin="sea" data-theme="dark">海盐·夜</button>
+    <button type="button" class="demo-chip" data-skin="ocean" data-theme="light">深海·日</button>
+    <button type="button" class="demo-chip" data-skin="ocean" data-theme="dark">深海·夜</button>
+    <button type="button" class="demo-chip" data-skin="warm" data-theme="light">暖纸·日</button>
+    <button type="button" class="demo-chip" data-skin="contrast" data-theme="light">高对比</button>
+  </div>
+</div>
+
+<main class="stage">
+  <section class="rd-recent-tasks" id="view-new">
+    <div class="rd-section-head">
+      <h2>最近任务</h2>
+      <button type="button" class="rd-link-btn">查看全部 <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+    </div>
+    <div class="rt-list">
+      <button type="button" class="rd-task-item">
+        <span class="rd-task-ico run"><span class="rt-spin" aria-hidden="true"></span></span>
+        <span class="rd-task-body">
+          <span class="rd-task-title">《头七结账人》49-58章修订复评（第二轮·58章点名修）</span>
+          <span class="rd-meta3"><svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"/></svg><span>5 分</span><span class="rd-m3-dot"></span><span>第 15/18 步</span></span>
+        </span>
+        <span class="rd-task-side run">
+          <span class="rd-task-chip">运行中</span>
+          <span class="rd-task-pct">67%</span>
+          <span class="rd-task-track"><i style="width:67%"></i></span>
+        </span>
+      </button>
+
+      <button type="button" class="rd-task-item">
+        <span class="rd-task-ico bad"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></span>
+        <span class="rd-task-body">
+          <span class="rd-task-title">神瞳鉴宝：第49章点名修订（开篇冲突+章末钩子）</span>
+          <span class="rd-meta3"><svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"/></svg><span>5 分</span><span class="rd-m3-dot"></span><span>第 11/11 步</span></span>
+        </span>
+        <span class="rd-task-side bad">
+          <span class="rd-task-chip">失败</span>
+          <span class="rd-task-pct">55%</span>
+          <span class="rd-task-track"><i style="width:55%"></i></span>
+        </span>
+      </button>
+
+      <button type="button" class="rd-task-item">
+        <span class="rd-task-ico wait"><span class="rt-pause" aria-hidden="true"><i></i><i></i></span></span>
+        <span class="rd-task-body">
+          <span class="rd-task-title">神瞳鉴宝：31-40章修订复评（第二轮·33/38/40点名修）·续15</span>
+          <span class="rd-meta3"><svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"/></svg><span>5 分</span></span>
+        </span>
+        <span class="rd-task-side wait">
+          <span class="rd-task-chip">排队中</span>
+          <span class="rd-task-pct">0%</span>
+          <span class="rd-task-track"><i style="width:0%"></i></span>
+        </span>
+      </button>
+
+      <button type="button" class="rd-task-item">
+        <span class="rd-task-ico bad"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></span>
+        <span class="rd-task-body">
+          <span class="rd-task-title">每日仓库巡检 10-10 09:00</span>
+          <span class="rd-meta3"><svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"/></svg><span>5 分</span></span>
+        </span>
+        <span class="rd-task-side bad">
+          <span class="rd-task-chip">失败</span>
+          <span class="rd-task-pct">0%</span>
+          <span class="rd-task-track"><i style="width:0%"></i></span>
+        </span>
+      </button>
+
+      <button type="button" class="rd-task-item">
+        <span class="rd-task-ico wait"><span class="rt-pause" aria-hidden="true"><i></i><i></i></span></span>
+        <span class="rd-task-body">
+          <span class="rd-task-title">经验库周整理 10-22 00:30</span>
+          <span class="rd-meta3"><svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"/></svg><span>5 分</span></span>
+        </span>
+        <span class="rd-task-side wait">
+          <span class="rd-task-chip">排队中</span>
+          <span class="rd-task-pct">0%</span>
+          <span class="rd-task-track"><i style="width:0%"></i></span>
+        </span>
+      </button>
+
+      <button type="button" class="rd-task-item">
+        <span class="rd-task-ico ok"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></span>
+        <span class="rd-task-body">
+          <span class="rd-task-title">《头七结账人》49-58章修订复评（第一轮）</span>
+          <span class="rd-meta3"><svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"/></svg><span>2 小时</span><span class="rd-m3-dot"></span><span>第 18/18 步</span></span>
+        </span>
+        <span class="rd-task-side ok">
+          <span class="rd-task-chip">已完成</span>
+          <span class="rd-task-pct">100%</span>
+          <span class="rd-task-track"><i style="width:100%"></i></span>
+        </span>
+      </button>
+    </div>
+  </section>
+
+  <section class="rd-recent-tasks old-view hidden" id="view-old">
+    <div class="rd-section-head">
+      <h2>最近任务</h2>
+      <button type="button" class="rd-link-btn">查看全部</button>
+    </div>
+    <div class="rt-list" style="gap:2px">
+      <div class="rd-task-item">
+        <span class="rd-disc">◔</span>
+        <div class="rd-task-info">
+          <div class="rd-task-title">经验库周整理 10-22 00:30</div>
+          <div class="rd-meta3"><span>5 分</span></div>
+        </div>
+        <span class="rd-task-pct">0%</span>
+      </div>
+      <div class="rd-task-item">
+        <span class="rd-disc">◔</span>
+        <div class="rd-task-info">
+          <div class="rd-task-title">神瞳鉴宝：31-40章修订复评（第二轮·33/38/40点名修）·续15</div>
+          <div class="rd-meta3"><span>5 分</span></div>
+        </div>
+        <span class="rd-task-pct">0%</span>
+      </div>
+      <div class="rd-task-item">
+        <span class="rd-disc">✕</span>
+        <div class="rd-task-info">
+          <div class="rd-task-title">每日仓库巡检 10-10 09:00</div>
+          <div class="rd-meta3"><span>5 分</span></div>
+        </div>
+        <span class="rd-task-pct">0%</span>
+      </div>
+      <div class="rd-task-item">
+        <span class="rd-disc">✕</span>
+        <div class="rd-task-info">
+          <div class="rd-task-title">神瞳鉴宝：第49章点名修订（开篇冲突+章末钩子）</div>
+          <div class="rd-meta3"><span>5 分</span><span>第 11/11 步</span></div>
+        </div>
+        <span class="rd-task-pct">55%</span>
+      </div>
+      <div class="rd-task-item">
+        <span class="rd-disc">▸</span>
+        <div class="rd-task-info">
+          <div class="rd-task-title">《头七结账人》49-58章修订复评（第二轮·58章点名修）</div>
+          <div class="rd-meta3"><span>5 分</span><span>第 15/18 步</span></div>
+        </div>
+        <span class="rd-task-pct">67%</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="demo-note">
+    <b>改动点</b>
+    <ul>
+      <li><b>状态显性化</b>：原状态只有一个 12px 字形，失败与排队几乎看不出差别；现在改成「色块图标 + 状态胶囊」，排队 / 运行中 / 失败 / 已完成一眼可辨，失败不再伪装成 0%。</li>
+      <li><b>进度收成右侧固定列</b>：状态胶囊、细分轨、百分比在行尾排成一列并跨行对齐；百分比不再孤零零悬在列表尽头，轨道与图标颜色一起跟随状态。</li>
+      <li><b>行与页面同语言</b>：改成和「快捷入口」一致的卡片（12px 圆角、1px 描边、悬停加粗描边），全部颜色取自皮肤变量，14 套皮肤通用；高对比皮肤额外加硬边框、加粗轨道。</li>
+      <li><b>时间加时钟图标</b>：区分「5 分（钟前）」与「5 分（得分）」，文案保持全局 relTime 不变。</li>
+    </ul>
+  </div>
+</main>
+
+<script>
+  const skinPicker = document.getElementById("skin-picker");
+  skinPicker.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-skin]");
+    if (!btn) return;
+    skinPicker.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === btn));
+    document.documentElement.dataset.skin = btn.dataset.skin;
+    document.documentElement.dataset.theme = btn.dataset.theme;
+  });
+
+  const viewPicker = document.getElementById("view-picker");
+  viewPicker.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-view]");
+    if (!btn) return;
+    viewPicker.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === btn));
+    document.getElementById("view-new").classList.toggle("hidden", btn.dataset.view !== "new");
+    document.getElementById("view-old").classList.toggle("hidden", btn.dataset.view !== "old");
+  });
+</script>
+</body>
+</html>
