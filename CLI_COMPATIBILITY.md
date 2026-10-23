@@ -145,21 +145,27 @@ python scripts/cli_compat_record.py --cli github-copilot-cli --workdir <同目�
        --session <session-id> --expect 42
 ```
 
-**codex 复跑（同一脚本，环境已变）**：这次不再是 404，而是
-`Model DeepSeek-V4.1-Flash does not support native web search. Remove the web_search tool`。
-同一个网关在 20 分钟内从「不支持 `/v1/responses`」变成「支持但拒绝 `web_search` 工具」，
-说明**自建网关的能力面会漂**，任何单次结论都有保质期——这也是记录里必须写时间与
-CLI 精确版本的原因。codex 仍记失败（环境原因），不记「CodeBee 不支持」。
+**codex 第三次复跑（2026-10-23 傍晚，网关又变了）**：直接探网关三种请求形态，
+`/v1/responses` 对**任何** payload 都返回 404（带不带 `web_search` 工具都一样），
+`/v1/chat/completions` 直接读超时。同一天里这个网关给出了三种口径：404 → 拒绝
+`web_search` 工具 → 又全线 404。**自建网关的能力面会漂，任何单次结论都有保质期**——
+这也是记录里必须写时间与 CLI 精确版本的原因。codex 仍记失败（环境原因），
+不记「CodeBee 不支持」。
 
-**剩下 2 个通过样本仍然缺**，且不是代码能补的：claude-code 的 bigmodel 账号 7 天额度用尽
-（HTTP 429 `code 1310`，2026-10-26 14:09 后恢复）；opencode 免费模型锁区、备用供应商同样撞
-额度。等凭据恢复，用同一条命令即可复跑，不需要改代码。
+**claude 全模型复探（2026-10-23 18:12）**：换模型绕不开去——`glm-5.3` / `glm-5.3-flash` /
+`glm-4.6` / `glm-4.5-air` 全部 HTTP 429 `code 1310`（7 天额度上限，2026-10-26 14:09
+后恢复），`glm-4-plus` 是 1113 余额不足，`glm-5.3-air` 是 1211 模型不存在。
+账号级额度问题，等恢复后同一条命令即可复跑，不需要改代码。
+
+**剩下 2 个通过样本仍然缺**，且不是代码能补的：claude-code 是账号级 7 天额度上限
+（全模型 429，见上）；opencode 免费模型锁区、备用供应商同样撞额度。等凭据恢复，
+用同一条命令即可复跑，不需要改代码。
 
 | catalog CLI | CLI 版本 | 安装与版本识别 | 任务调用 | 超时/失败退出 | 会话恢复 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
 | github-copilot-cli | GitHub Copilot CLI 1.0.98. | 通过 | **通过**（verify 实跑且过） | **通过**（15s 预算 / 18.1s 停止） | **通过**（续会话答出暗号） | 本轮新接入编排，见上表 |
-| codex-cli | codex-cli 0.160.0 | 通过 | 失败（环境：网关拒绝 `web_search`） | 未测 | 未测 | npm 全局 .CMD |
-| claude-code | 2.1.288 (Claude Code) | 通过 | 失败（环境：模型无权限） | 未测 | 未测 | npm 全局 .CMD |
+| codex-cli | codex-cli 0.160.0 | 通过 | 失败（环境：网关 `/v1/responses` 全线 404、`/v1/chat/completions` 读超时） | 未测 | 未测 | npm 全局 .CMD；网关当天三变，见上 |
+| claude-code | 2.1.288 (Claude Code) | 通过 | 失败（环境：bigmodel 全模型 429 `code 1310`，10-26 14:09 恢复） | 未测 | 未测 | npm 全局 .CMD |
 | opencode | 1.18.34 | 通过 | 失败（环境：地区限制） | 未测 | 未测 | npm 全局 .CMD |
 | qwencode | 0.24.7 | 通过 | 未测 | 未测 | 未测 | npm 全局 .CMD |
 | aider | aider.EXE 0.86.2 | 通过 | 未测 | 未测 | 未测 | 版本串含可执行名 |
