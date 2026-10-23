@@ -3,6 +3,20 @@
 from __future__ import annotations
 
 import json
+import re
+
+
+# 新版 codex 会把 config.toml 里已废弃的键作为 error item 播报一次
+# （"Codex is ignoring N unrecognized configuration settings ... is ignored."）。
+# 这是启动噪音，既不是本轮失败原因，也不该参与错误分类。
+_CODEX_CONFIG_NOISE = re.compile(
+    r"unrecognized configuration settings|is ignored\.?|ignoring \d+ unrecognized",
+    re.I)
+
+
+def _codex_config_noise(text):
+    """True 当消息只是 config.toml 旧键告警（非本轮失败原因）。"""
+    return bool(text) and bool(_CODEX_CONFIG_NOISE.search(str(text)))
 
 
 def _parse_codex_jsonl(stdout):
@@ -122,7 +136,7 @@ def _codex_fail_msg(stdout):
             e = ev.get("error")
             detail = (e.get("message") or e.get("data") or ""
                       if isinstance(e, dict) else e)
-            if detail:
+            if detail and not _codex_config_noise(str(detail)):
                 terminal = str(detail)
         elif t in ("item.completed", "item.failed"):
             item = ev.get("item") or {}
@@ -130,14 +144,18 @@ def _codex_fail_msg(stdout):
                 detail = item.get("message") or item.get("error") or item.get("text")
                 if isinstance(detail, dict):
                     detail = detail.get("message") or detail.get("data") or detail
-                if detail:
+                # config.toml 里被新版 CLI 忽略的旧键会作为 error item 出现。
+                # 它不是本轮失败原因，拿它当终态错误会把真实原因替换成配置
+                # 告警（2026-10-23 实案：用户只看到 "disable_response_storage
+                # is ignored"，看不到真正的退出原因）。
+                if detail and not _codex_config_noise(str(detail)):
                     terminal = str(detail)
         elif t == "error":
             detail = ev.get("message") or ev.get("error") or ""
             if isinstance(detail, dict):
                 detail = detail.get("message") or detail.get("data") or detail
             m = str(detail)
-            if m and "reconnecting" not in m.lower():
+            if m and "reconnecting" not in m.lower() and not _codex_config_noise(m):
                 last_err = m
     return terminal or last_err
 

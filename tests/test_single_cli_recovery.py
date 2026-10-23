@@ -200,6 +200,31 @@ class TrustedFailureEvidenceTests(unittest.TestCase):
         result = runner._codex_fail_msg(json.dumps(event, ensure_ascii=False))
         self.assertIn("用户额度不足", result)
 
+    def test_codex_config_warning_is_not_treated_as_failure_reason(self):
+        """config.toml 旧键告警是启动噪音，不能顶替真实失败原因。
+
+        2026-10-23 实案：用户只看到 "disable_response_storage is ignored"，
+        真正的退出原因被这条 error item 覆盖，分类与换 CLI 都跟着走偏。
+        """
+        noise = json.dumps({
+            "type": "item.completed",
+            "item": {"type": "error", "message":
+                     "Codex is ignoring 6 unrecognized configuration settings.\n"
+                     "  user (C:\\Users\\HP\\.codex\\config.toml): "
+                     "`disable_response_storage` is ignored."},
+        }, ensure_ascii=False)
+        self.assertEqual(runner._codex_fail_msg(noise), "")
+
+        quota = json.dumps({
+            "type": "item.completed",
+            "item": {"type": "error", "message":
+                     "API Error: 403 用户额度不足, 剩余额度: ¥0.000000"},
+        }, ensure_ascii=False)
+        self.assertIn("用户额度不足",
+                      runner._codex_fail_msg(quota + "\n" + noise))
+        self.assertIn("用户额度不足",
+                      runner._codex_fail_msg(noise + "\n" + quota))
+
     def test_codex_error_event_with_nested_message_is_extracted(self):
         event = {"type": "error", "error": {"message": "API Error: 502 bad gateway"}}
         self.assertIn("502", runner._codex_fail_msg(json.dumps(event)))
