@@ -16696,7 +16696,6 @@ ATLAS._init = function(data) {
 
     const SOURCE_LABEL = { pack: '经验包', lesson: '经验', knowledge: '知识', project: '项目' };
     const SOURCE_COLOR = { pack: 'var(--text)', lesson: 'var(--accent)', knowledge: 'var(--ok)', project: 'var(--warn)' };
-    const SOURCE_COLOR_RAW = { pack: '#e7eefb', lesson: '#3ba9f5', knowledge: '#35c99b', project: '#f0b429' };
 
     const TOTALS = {
       lessons: lessons.length, knowledge: knowledge.length, projects: projects.length,
@@ -16731,6 +16730,45 @@ ATLAS._init = function(data) {
     const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const norm = (s) => String(s || '').toLowerCase();
 
+    /* canvas 读不到 CSS 变量：按当前皮肤解析一次调色板，换肤/明暗切换时
+       由 frame() 的签名比对重建。日间皮肤的 --text 是深墨，经验包节点与星尘
+       因此自动从近白转深——原来写死的 #e7eefb 在白底上等于隐身。 */
+    const themeRoot = document.documentElement;
+    const probeCtx = document.createElement('canvas').getContext('2d');
+    const cssVar = (n, f) => (getComputedStyle(themeRoot).getPropertyValue(n).trim() || f);
+    function rgbOf(v) {
+      probeCtx.fillStyle = '#000000'; probeCtx.fillStyle = v;
+      const s = probeCtx.fillStyle;
+      const h = /^#([0-9a-f]{6})$/i.exec(s);
+      if (h) { const n = parseInt(h[1], 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+      const m = /^rgba?\(([^)]+)\)/i.exec(s);
+      if (m) { const p = m[1].split(',').map(Number); return [p[0] | 0, p[1] | 0, p[2] | 0]; }
+      return [31, 111, 208];
+    }
+    const rgbaOf = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+    const rgbCss = (c) => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+    function readPalette() {
+      const light = themeRoot.getAttribute('data-theme') !== 'dark';
+      const accent = rgbOf(cssVar('--accent', '#1f6fd0'));
+      const ok = rgbOf(cssVar('--ok', '#0d9a72'));
+      const warn = rgbOf(cssVar('--warn', '#a9761a'));
+      const bad = rgbOf(cssVar('--bad', '#d23c58'));
+      const muted = rgbOf(cssVar('--muted', '#5d7290'));
+      const text = rgbOf(cssVar('--text', '#0c1a2c'));
+      return {
+        light, accent, ok, warn, bad, muted, text,
+        src: { pack: text, lesson: accent, knowledge: ok, project: warn },
+        starBase: light ? .06 : .08, starSpan: light ? .16 : .25
+      };
+    }
+    let PAL = null, palSig = '';
+    function syncPalette() {
+      const sig = (themeRoot.getAttribute('data-theme') || '') + '|' + (themeRoot.getAttribute('data-skin') || '');
+      if (sig === palSig) return;
+      palSig = sig; PAL = readPalette();
+    }
+    syncPalette();
+
     function searchScore(it, q) {
       const needle = norm(q);
       if (!needle) return 0;
@@ -16753,11 +16791,11 @@ ATLAS._init = function(data) {
     }
 
     function healthColor(it) {
-      if (it.source === 'knowledge' && it.stale) return '#e2a24a';
-      if (it.lost > it.won) return '#e26d5a';
-      if (it.won > 0) return '#6fbf85';
-      if (!it.hits) return '#6b6257';
-      return '#3ba9f5';
+      if (it.source === 'knowledge' && it.stale) return PAL.warn;
+      if (it.lost > it.won) return PAL.bad;
+      if (it.won > 0) return PAL.ok;
+      if (!it.hits) return PAL.muted;
+      return PAL.accent;
     }
 
     const GP = {
@@ -16854,7 +16892,7 @@ ATLAS._init = function(data) {
         const it = g.it; const count = g.items.length;
         const hits = g.items.reduce((a, x) => a + x.hits, 0);
         const h = healthOf(it);
-        const col = SOURCE_COLOR_RAW[it.source] || '#3ba9f5';
+        const col = SOURCE_COLOR[it.source] || 'var(--accent)';
         const active = g.items.some(x => x.id === state.selectedId);
         const sub = SOURCE_LABEL[it.source] + ' · ' + (it.source === 'knowledge' ? scopeText(it.scope) : it.category) +
           ' · 注入 ' + hits + (count > 1 ? ' · 组内 ' + count + ' 条' : '');
@@ -17054,7 +17092,7 @@ ATLAS._init = function(data) {
     if (!canvas || !atlasWrap) return;
     const ctx = canvas.getContext('2d');
     let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, R = 0;
-    const TILT = .62;
+    const TILT = .7;
     const BANDS = {
       pack: { r: .34, speed: -.000034 },
       lesson: { r: .585, speed: .000019 },
@@ -17096,31 +17134,28 @@ ATLAS._init = function(data) {
       });
     }
 
-    function makeSprite(color) {
+    function makeSprite(rgb) {
       const c = document.createElement('canvas');
       c.width = c.height = 64;
       const g = c.getContext('2d');
       const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-      const toRgba = (hex, a) => {
-        const n = parseInt(hex.slice(1), 16);
-        return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
-      };
-      grd.addColorStop(0, toRgba(color, 1));
-      grd.addColorStop(.22, toRgba(color, .7));
-      grd.addColorStop(.55, toRgba(color, .22));
-      grd.addColorStop(1, toRgba(color, 0));
+      grd.addColorStop(0, rgbaOf(rgb, 1));
+      grd.addColorStop(.22, rgbaOf(rgb, .7));
+      grd.addColorStop(.55, rgbaOf(rgb, .22));
+      grd.addColorStop(1, rgbaOf(rgb, 0));
       g.fillStyle = grd;
       g.fillRect(0, 0, 64, 64);
       return c;
     }
-    function spriteFor(color) {
-      if (!sprites.has(color)) sprites.set(color, makeSprite(color));
-      return sprites.get(color);
+    function spriteFor(rgb) {
+      const key = rgb.join(',');
+      if (!sprites.has(key)) sprites.set(key, makeSprite(rgb));
+      return sprites.get(key);
     }
 
     function makeStars() {
       stars.length = 0;
-      const n = Math.min(200, Math.round(W * H / 5000));
+      const n = Math.min(240, Math.round(W * H / 4200));
       for (let i = 0; i < n; i++) stars.push({ x: Math.random(), y: Math.random(), r: .3 + Math.random() * 1, p: Math.random() * TAU, s: .3 + Math.random() * .8 });
     }
 
@@ -17153,7 +17188,7 @@ ATLAS._init = function(data) {
 
     function nodeColor(n) {
       if (state.mode === 'health') return healthColor(n.it);
-      return SOURCE_COLOR_RAW[n.source] || '#3ba9f5';
+      return PAL.src[n.source] || PAL.accent;
     }
 
     function drawOrbits(now) {
@@ -17162,7 +17197,7 @@ ATLAS._init = function(data) {
         const rr = R * BANDS[src].r;
         ctx.beginPath();
         ctx.ellipse(cx, cy, rr, rr * TILT, rot, 0, TAU);
-        ctx.strokeStyle = bi === 3 ? 'rgba(59,169,245,.16)' : 'rgba(59,169,245,.09)';
+        ctx.strokeStyle = rgbaOf(PAL.accent, bi === 3 ? .18 : .11);
         ctx.lineWidth = .7;
         ctx.stroke();
         const ticks = 72;
@@ -17176,11 +17211,11 @@ ATLAS._init = function(data) {
           const x3 = cx + x2 * Math.cos(rot) - y2 * Math.sin(rot);
           const y3 = cy + x2 * Math.sin(rot) + y2 * Math.cos(rot);
           ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x3, y3);
-          ctx.strokeStyle = i % 7 === 0 ? 'rgba(59,169,245,.18)' : 'rgba(59,169,245,.06)';
+          ctx.strokeStyle = i % 7 === 0 ? rgbaOf(PAL.accent, .2) : rgbaOf(PAL.accent, .07);
           ctx.lineWidth = .5; ctx.stroke();
         }
       });
-      ctx.strokeStyle = 'rgba(59,169,245,.04)'; ctx.lineWidth = .5;
+      ctx.strokeStyle = rgbaOf(PAL.accent, .07); ctx.lineWidth = .5;
       ctx.beginPath(); ctx.moveTo(cx - R * 1.04, cy); ctx.lineTo(cx + R * 1.04, cy); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(cx, cy - R * .64); ctx.lineTo(cx, cy + R * .64); ctx.stroke();
     }
@@ -17192,15 +17227,15 @@ ATLAS._init = function(data) {
       ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(1, TILT);
       const rr = R * 1.08;
       const g = ctx.createRadialGradient(0, 0, R * .06, 0, 0, rr);
-      g.addColorStop(0, 'rgba(59,169,245,.05)');
-      g.addColorStop(.72, 'rgba(59,169,245,.025)');
-      g.addColorStop(1, 'rgba(59,169,245,0)');
+      g.addColorStop(0, rgbaOf(PAL.accent, .06));
+      g.addColorStop(.72, rgbaOf(PAL.accent, .03));
+      g.addColorStop(1, rgbaOf(PAL.accent, 0));
       ctx.beginPath(); ctx.moveTo(0, 0);
       ctx.arc(0, 0, rr, ang - .34, ang); ctx.closePath();
       ctx.fillStyle = g; ctx.fill();
       ctx.beginPath(); ctx.moveTo(0, 0);
       ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr);
-      ctx.strokeStyle = 'rgba(107,192,247,.08)'; ctx.lineWidth = .6; ctx.stroke();
+      ctx.strokeStyle = rgbaOf(PAL.accent, .1); ctx.lineWidth = .6; ctx.stroke();
       ctx.restore();
     }
 
@@ -17220,9 +17255,9 @@ ATLAS._init = function(data) {
           if (Math.abs(b.a - a.a) > .5) continue;
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
           const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-          g.addColorStop(0, 'rgba(59,169,245,.12)');
-          g.addColorStop(.5, 'rgba(59,169,245,.04)');
-          g.addColorStop(1, 'rgba(59,169,245,.12)');
+          g.addColorStop(0, rgbaOf(PAL.accent, .14));
+          g.addColorStop(.5, rgbaOf(PAL.accent, .05));
+          g.addColorStop(1, rgbaOf(PAL.accent, .14));
           ctx.strokeStyle = g; ctx.stroke();
         }
       });
@@ -17237,18 +17272,18 @@ ATLAS._init = function(data) {
           ctx.beginPath(); ctx.setLineDash([2, 7]);
           ctx.lineDashOffset = -(now * .035);
           ctx.moveTo(cx, cy); ctx.lineTo(n.x, n.y);
-          ctx.strokeStyle = 'rgba(59,169,245,.3)'; ctx.lineWidth = .8; ctx.stroke();
+          ctx.strokeStyle = rgbaOf(PAL.accent, .3); ctx.lineWidth = .8; ctx.stroke();
           ctx.setLineDash([]);
           ctx.beginPath(); ctx.arc(n.x, n.y, 2.2, 0, TAU);
-          ctx.fillStyle = col; ctx.fill();
+          ctx.fillStyle = rgbCss(col); ctx.fill();
         });
       }
       if (state.selectedId) {
         const n = sky.find(x => x.id === state.selectedId);
         if (n) {
           const g = ctx.createLinearGradient(cx, cy, n.x, n.y);
-          g.addColorStop(0, 'rgba(107,192,247,.5)');
-          g.addColorStop(1, 'rgba(59,169,245,.04)');
+          g.addColorStop(0, rgbaOf(PAL.accent, .5));
+          g.addColorStop(1, rgbaOf(PAL.accent, .04));
           ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(n.x, n.y);
           ctx.strokeStyle = g; ctx.lineWidth = .9; ctx.stroke();
         }
@@ -17264,12 +17299,12 @@ ATLAS._init = function(data) {
         const px = n.x + (cx - n.x) * t;
         const py = n.y + (cy - n.y) * t;
         const g = ctx.createLinearGradient(n.x, n.y, cx, cy);
-        g.addColorStop(0, 'rgba(59,169,245,.12)');
-        g.addColorStop(1, 'rgba(59,169,245,.02)');
+        g.addColorStop(0, rgbaOf(PAL.accent, .14));
+        g.addColorStop(1, rgbaOf(PAL.accent, .02));
         ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(cx, cy);
         ctx.strokeStyle = g; ctx.lineWidth = .6; ctx.stroke();
         ctx.beginPath(); ctx.arc(px, py, 1.6, 0, TAU);
-        ctx.fillStyle = 'rgba(107,192,247,' + (.7 * (1 - t) + .15) + ')'; ctx.fill();
+        ctx.fillStyle = rgbaOf(PAL.accent, .7 * (1 - t) + .15); ctx.fill();
       }
     }
 
@@ -17277,16 +17312,16 @@ ATLAS._init = function(data) {
       const age = (now - state.ping) / 900;
       if (age < 0 || age >= 1) return;
       ctx.beginPath(); ctx.arc(cx, cy, 40 + age * (R * .5), 0, TAU);
-      ctx.strokeStyle = 'rgba(59,169,245,' + (.25 * (1 - age)) + ')'; ctx.lineWidth = .8; ctx.stroke();
+      ctx.strokeStyle = rgbaOf(PAL.accent, .3 * (1 - age)); ctx.lineWidth = .8; ctx.stroke();
       ctx.beginPath(); ctx.arc(cx, cy, 30 + age * (R * .3), 0, TAU);
-      ctx.strokeStyle = 'rgba(107,192,247,' + (.14 * (1 - age)) + ')'; ctx.stroke();
+      ctx.strokeStyle = rgbaOf(PAL.accent, .16 * (1 - age)); ctx.stroke();
     }
 
     function drawStars(now) {
       stars.forEach(s => {
         const tw = .35 + .65 * (.5 + .5 * Math.sin(now * .001 * s.s + s.p));
         ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, TAU);
-        ctx.fillStyle = 'rgba(231,238,251,' + (.08 + tw * .25) + ')'; ctx.fill();
+        ctx.fillStyle = rgbaOf(PAL.text, PAL.starBase + tw * PAL.starSpan); ctx.fill();
       });
       for (let i = shots.length - 1; i >= 0; i--) {
         const s = shots[i];
@@ -17295,8 +17330,8 @@ ATLAS._init = function(data) {
         const x = s.x * W + s.vx * t * 40;
         const y = s.y * H + s.vy * t * 40;
         const g = ctx.createLinearGradient(x, y, x - s.vx * 80, y - s.vy * 80);
-        g.addColorStop(0, 'rgba(107,192,247,' + (.45 * (1 - t)) + ')');
-        g.addColorStop(1, 'rgba(107,192,247,0)');
+        g.addColorStop(0, rgbaOf(PAL.accent, .45 * (1 - t)));
+        g.addColorStop(1, rgbaOf(PAL.accent, 0));
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - s.vx * 80, y - s.vy * 80);
         ctx.strokeStyle = g; ctx.lineWidth = .8; ctx.stroke();
       }
@@ -17318,20 +17353,20 @@ ATLAS._init = function(data) {
           ctx.drawImage(spriteFor(col), n.x - gs / 2, n.y - gs / 2, gs, gs);
         }
         ctx.beginPath(); ctx.arc(n.x, n.y, size, 0, TAU);
-        ctx.fillStyle = col; ctx.fill();
+        ctx.fillStyle = rgbCss(col); ctx.fill();
         if (n.it.won > 0 && state.mode === 'source') {
           ctx.beginPath(); ctx.arc(n.x, n.y, size + 2.2, 0, TAU);
-          ctx.strokeStyle = 'rgba(53,201,155,.25)'; ctx.lineWidth = .6; ctx.stroke();
+          ctx.strokeStyle = rgbaOf(PAL.ok, .28); ctx.lineWidth = .6; ctx.stroke();
         } else if (n.it.lost > n.it.won && state.mode === 'source') {
           ctx.beginPath(); ctx.arc(n.x, n.y, size + 2.2, 0, TAU);
-          ctx.strokeStyle = 'rgba(242,99,122,.3)'; ctx.lineWidth = .6; ctx.stroke();
+          ctx.strokeStyle = rgbaOf(PAL.bad, .3); ctx.lineWidth = .6; ctx.stroke();
         }
         if (hover || selected) {
           ctx.beginPath(); ctx.arc(n.x, n.y, size + 5 + (selected ? 2 * Math.sin(t * .004) : 0), 0, TAU);
-          ctx.strokeStyle = selected ? 'rgba(107,192,247,.75)' : 'rgba(107,192,247,.5)';
+          ctx.strokeStyle = rgbaOf(PAL.accent, selected ? .75 : .5);
           ctx.lineWidth = .8; ctx.stroke();
           ctx.beginPath(); ctx.arc(n.x, n.y, size + 9, 0, TAU);
-          ctx.strokeStyle = 'rgba(59,169,245,.14)';
+          ctx.strokeStyle = rgbaOf(PAL.accent, .14);
           ctx.setLineDash([1.5, 3.5]); ctx.stroke(); ctx.setLineDash([]);
         }
         ctx.globalAlpha = 1;
@@ -17376,6 +17411,7 @@ ATLAS._init = function(data) {
     }
 
     function frame(now) {
+      syncPalette();
       state.time = now;
       state.mouse.x += (state.mouse.tx - state.mouse.x) * .06;
       state.mouse.y += (state.mouse.ty - state.mouse.y) * .06;
@@ -17431,8 +17467,8 @@ ATLAS._init = function(data) {
       const el = $a('#atlas-legend');
       if (!el) return;
       const rows = state.mode === 'source'
-        ? [['#e7eefb', '经验包'], ['#3ba9f5', '经验/教训'], ['#35c99b', '知识'], ['#f0b429', '项目记忆']]
-        : [['#35c99b', '有效'], ['#f2637a', '失守'], ['#f0b429', '过期'], ['#6b6257', '未上场']];
+        ? [['var(--text)', '经验包'], ['var(--accent)', '经验/教训'], ['var(--ok)', '知识'], ['var(--warn)', '项目记忆']]
+        : [['var(--ok)', '有效'], ['var(--bad)', '失守'], ['var(--warn)', '过期'], ['var(--muted)', '未上场']];
       el.innerHTML = '<div class="a-lg-title">' + (state.mode === 'source' ? 'SOURCE' : 'HEALTH') + '</div>' +
         rows.map(([c, l]) => '<div class="a-lg-row"><i class="a-lg-dot" style="--c:' + c + '"></i><span>' + esc2(l) + '</span></div>').join('');
     }
