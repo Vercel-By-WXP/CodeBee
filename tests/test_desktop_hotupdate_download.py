@@ -7,6 +7,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -23,6 +24,9 @@ class DesktopHotUpdateDownloadTest(unittest.TestCase):
         fixtures = ROOT / 'tests' / 'fixtures'
         # 仅子进程内放宽 TLS 校验，本地自签证书夹具才能完成握手。
         env = dict(os.environ, NODE_TLS_REJECT_UNAUTHORIZED='0')
+        # 解包器契约由 node 再起一个 python 子进程执行：显式传当前解释器，
+        # 避免 CI 上只有 `python3` 或只有 `py` 时静默跳过安全用例。
+        env.setdefault('CODEBEE_TEST_PYTHON', sys.executable)
         proc = subprocess.run(
             [node, str(harness), str(backend), str(fixtures)],
             capture_output=True, text=True, env=env, timeout=120, cwd=str(ROOT))
@@ -30,6 +34,8 @@ class DesktopHotUpdateDownloadTest(unittest.TestCase):
             proc.returncode, 0,
             f'harness failed:\nstdout={proc.stdout}\nstderr={proc.stderr}')
         self.assertIn('OK desktop_hotupdate_harness', proc.stdout)
+        # 解包安全用例必须真跑：静默跳过会让「越界成员被拒绝」这条契约形同虚设。
+        self.assertNotIn('SKIP desktop_hotupdate_extract', proc.stdout)
 
 
 if __name__ == '__main__':

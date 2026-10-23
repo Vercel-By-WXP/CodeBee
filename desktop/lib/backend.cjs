@@ -2,14 +2,108 @@
 
 const { EventEmitter } = require('node:events');
 const { spawn, execFile } = require('node:child_process');
-const { randomBytes } = require('node:crypto');
+const { randomBytes, createHash } = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
 const path = require('node:path');
 
 const REGISTRY_TARBALL = version => `https://registry.npmjs.org/codebee/-/codebee-${version}.tgz`;
+const REGISTRY_PACKUMENT = version => `https://registry.npmjs.org/codebee/${version}`;
 const REGISTRY_HOSTS = new Set(['registry.npmjs.org']);
+
+/* npm 在 packument 的 dist.integrity 里给每个发布版本一个 sha512 摘要。
+ * 没有它就无法区分「registry 给的包」和「链路上换过的包」：host 白名单只锁
+ * 域名，锁不住镜像投毒、代理注入或发布账号被盗。缺失摘要一律拒绝更新。 */
+function fetchIntegrity(url, timeout = 15000, { allowedHosts = REGISTRY_HOSTS } = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try { parsed = new URL(url); } catch { reject(new Error('发布元数据地址无效')); return; }
+    if (parsed.protocol !== 'https:' || !allowedHosts.has(parsed.hostname)) {
+      reject(new Error('发布元数据地址不受信任'));
+      return;
+    }
+    const request = https.get(parsed, { timeout }, response => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`读取发布元数据失败 HTTP ${response.statusCode}`));
+        return;
+      }
+      let text = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => {
+        text += chunk;
+        if (text.length > 4194304) request.destroy(new Error('发布元数据过大'));
+      });
+      response.on('error', reject);
+      response.on('end', () => {
+        let integrity = '';
+        try { integrity = String(JSON.parse(text)?.dist?.integrity || ''); }
+        catch { reject(new Error('发布元数据不是合法 JSON')); return; }
+        if (!/^sha512-[A-Za-z0-9+/]+=*$/.test(integrity)) {
+          reject(new Error('发布元数据缺少 sha512 完整性摘要，拒绝更新'));
+          return;
+        }
+        resolve(integrity);
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('读取发布元数据超时')));
+    request.on('error', reject);
+  });
+}
+
+function fileIntegrity(file, algorithm) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash(algorithm);
+    fs.createReadStream(file)
+      .on('data', chunk => hash.update(chunk))
+      .on('error', reject)
+      .on('end', () => resolve(`${algorithm}-${hash.digest('base64')}`));
+  });
+}
+
+/* 解包器：逐成员校验，只允许 package/ 下的普通文件。
+ * 旧实现是 `tarfile.extract()` 一句话：成员名只要以 "package/" 开头就放行，
+ * `package/../../..` 能穿出 staging 写到用户目录，而且版本核对在解包之后，
+ * 事后报错也撤不回已经写出去的文件。 */
+const EXTRACT_SCRIPT = [
+  'import sys, tarfile',
+  'from pathlib import Path',
+  'root = Path(sys.argv[2]).resolve()',
+  'root.mkdir(parents=True, exist_ok=True)',
+  'with tarfile.open(sys.argv[1], "r:gz") as archive:',
+  '    members = archive.getmembers()',
+  '    if len(members) > 20000:',
+  '        raise SystemExit("too many archive members")',
+  '    total = 0',
+  '    for member in members:',
+  '        name = member.name',
+  '        if chr(92) in name:',
+  '            raise SystemExit("unsafe archive path: " + name)',
+  '        parts = name.split("/")',
+  '        if not parts or parts[0] != "package" or any(p in ("", ".", "..") for p in parts):',
+  '            raise SystemExit("unsafe archive path: " + name)',
+  '        if member.isdir():',
+  '            continue',
+  '        if not member.isfile():',
+  '            raise SystemExit("links and special files are not allowed: " + name)',
+  '        total += member.size',
+  '        if total > 536870912:',
+  '            raise SystemExit("archive too large")',
+  '        target = (root / name).resolve()',
+  '        if root not in target.parents:',
+  '            raise SystemExit("path escape: " + name)',
+  '        target.parent.mkdir(parents=True, exist_ok=True)',
+  '        source = archive.extractfile(member)',
+  '        if source is None:',
+  '            raise SystemExit("unreadable member: " + name)',
+  '        with source, open(target, "wb") as out:',
+  '            while True:',
+  '                chunk = source.read(1048576)',
+  '                if not chunk:',
+  '                    break',
+  '                out.write(chunk)',
+].join('\n');
 
 function downloadTo(url, dest, timeout, { allowedHosts = REGISTRY_HOSTS } = {}) {
   return new Promise((resolve, reject) => {
@@ -247,15 +341,22 @@ class Backend extends EventEmitter {
     fs.rmSync(staging, { recursive: true, force: true });
     fs.mkdirSync(staging, { recursive: true });
     const tgz = path.join(staging, `codebee-${version}.tgz`);
+    note(`读取 v${version} 发布摘要…`);
+    // 先拿摘要再下载：拿不到摘要（或没有 sha512）就直接拒绝更新，避免
+    // 「先下载 14MB、再解包、最后发现版本不对」这种已经写盘的失败。
+    const integrity = await fetchIntegrity(REGISTRY_PACKUMENT(version));
     note(`下载引擎 v${version}…`);
     await downloadTo(REGISTRY_TARBALL(version), tgz, 600000);
     if (fs.statSync(tgz).size < 100000) throw new Error('引擎包异常（过小），已取消更新');
+    const digest = await fileIntegrity(tgz, 'sha512');
+    if (digest !== integrity) {
+      throw new Error('引擎包完整性校验失败（与 registry 发布摘要不符），已取消更新');
+    }
     note('校验并解压引擎…');
     await new Promise((resolve, reject) => {
       // The bundled interpreter doubles as the extraction tool: tarfile is
       // stdlib on every supported runtime (3.8 embeddable included).
-      const extract = spawn(this.python, ['-E', '-s', '-X', 'utf8', '-c',
-        'import sys, tarfile; t = tarfile.open(sys.argv[1]); members = [m for m in t.getmembers() if m.name == "package" or m.name.startswith("package/")]; [t.extract(m, sys.argv[2]) for m in members]; t.close()',
+      const extract = spawn(this.python, ['-E', '-s', '-X', 'utf8', '-c', EXTRACT_SCRIPT,
         tgz, staging], { cwd: this.dataDir, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
       let err = '';
       extract.stderr.on('data', chunk => { err += chunk.toString('utf8'); });
@@ -337,4 +438,7 @@ class Backend extends EventEmitter {
   }
 }
 
-module.exports = { Backend, downloadTo, requestJSON, REGISTRY_HOSTS };
+module.exports = {
+  Backend, downloadTo, requestJSON, REGISTRY_HOSTS,
+  fetchIntegrity, fileIntegrity, EXTRACT_SCRIPT, REGISTRY_PACKUMENT,
+};
