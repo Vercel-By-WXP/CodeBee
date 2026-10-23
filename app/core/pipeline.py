@@ -6942,7 +6942,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                      "（起草为本地模板稿、评审为机测），未达发布标准；"
                      "恢复可用模型后重跑可得真实结果"),
             ended_at=_now())
-    elif _heuristic_reviewed and not review_degraded and not draft_degraded:
+    elif (_heuristic_reviewed and not verdict.get("review_degraded")
+          and not draft_degraded):
         # A completed deterministic review is a useful terminal result even if
         # it cannot clear the publication gate. Keep done separate from release.
         store.update_run(
@@ -6950,7 +6951,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             summary=("本地兜底完成：确定性评审/修订与报告已完成；"
                      "未达发布标准，需人工复核或恢复外部模型后重跑"),
             ended_at=_now())
-    elif history_rounds and history_rounds[-1].get("review_degraded"):
+    elif verdict.get("review_degraded"):
         store.update_run(
             run_id, expected_status="running", status="failed", verdict=verdict,
             error=("评审未完成，稿件质量未判定。有效评审人数不足、评审服务不可用"

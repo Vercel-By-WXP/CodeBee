@@ -275,7 +275,7 @@ class RenderEntryTests(unittest.TestCase):
                     self.assertEqual(result["status"], expect, result)
                     if mode == "fail1":
                         self.assertFalse(result["publishable"])
-                        self.assertIn("评审未达标", result["error"])
+                        self.assertIn("评审未完成", result["error"])
                         self.assertEqual(result["rounds_used"], 1)
                     elif mode == "pass2":
                         self.assertTrue(result["publishable"])

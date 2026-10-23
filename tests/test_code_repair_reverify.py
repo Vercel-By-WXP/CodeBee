@@ -144,7 +144,8 @@ class CodeRepairReverifyTests(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", CODE_PROBE, workspace, script,
              str(success_at), mode],
-            cwd=ROOT, env=env, timeout=180, capture_output=True, text=True)
+            cwd=ROOT, env=env, timeout=180, capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
         if proc.returncode != 0:
             raise AssertionError("probe failed: %s" % proc.stderr[-3000:])
         line = [row for row in proc.stdout.splitlines()

@@ -14,6 +14,7 @@ cadence 有一半白写。
 3. 预览仍走 atomic（读者看不到半个文件，目录里不留 .tmp），内容可读回。
 """
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -84,8 +85,11 @@ print("@@RESULT@@" + json.dumps({
 class StreamPersistBudgetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.run([sys.executable, "-c", PROBE], cwd=str(REPO),
-                              capture_output=True, text=True, encoding="utf-8",
+                              env=env, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
                               timeout=120)
         assert proc.returncode == 0, proc.stderr[-3000:]
         line = [ln for ln in proc.stdout.splitlines() if ln.startswith("@@RESULT@@")]
