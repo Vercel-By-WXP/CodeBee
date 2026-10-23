@@ -1,0 +1,25 @@
+{
+  "captured_at": "2026-10-23 16:27:29",
+  "codebee_version": "0.1.120",
+  "codebee_commit": "ce39150",
+  "os": "win32 AMD64",
+  "cli_id": "codex-cli",
+  "cli_version": "codex-cli 0.160.0",
+  "cli_source": "D:\\nvm4w\\nodejs\\codex.CMD",
+  "model_auth": "未记录",
+  "invocation": "由 CodeBee 路由决定",
+  "case": "在当前目录创建 hello.py，内容只有一行 print('hello')；创建后运行它，确认输出 hello。",
+  "result": "失败",
+  "task_call": "失败",
+  "timeout_exit": "未测",
+  "session_resume": "未测",
+  "duration_s": 66.4,
+  "steps": [
+    "codex-cli"
+  ],
+  "verify_ran": null,
+  "verify_pass": null,
+  "review_pass": null,
+  "evidence": "run r-20261023-162623-9565（隔离实例 port=64574，数据目录已删）",
+  "boundary": "运行终态 failed，错误：实现步骤失败（无其他真实 CLI 可换将）: 超时；stderr/stdout: Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error, url: https://<endpoint>/v1/responses)"
+}

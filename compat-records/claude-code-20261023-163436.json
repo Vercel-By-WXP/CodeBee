@@ -1,0 +1,25 @@
+{
+  "captured_at": "2026-10-23 16:34:34",
+  "codebee_version": "0.1.120",
+  "codebee_commit": "ce39150",
+  "os": "win32 AMD64",
+  "cli_id": "claude-code",
+  "cli_version": "2.1.288 (Claude Code)",
+  "cli_source": "D:\\nvm4w\\nodejs\\claude.CMD",
+  "model_auth": "未记录",
+  "invocation": "由 CodeBee 路由决定",
+  "case": "在当前目录创建 hello.py，内容只有一行 print('hello')；创建后运行它，确认输出 hello。",
+  "result": "失败",
+  "task_call": "失败",
+  "timeout_exit": "未测",
+  "session_resume": "未测",
+  "duration_s": 9.0,
+  "steps": [
+    "claude-code"
+  ],
+  "verify_ran": null,
+  "verify_pass": null,
+  "review_pass": null,
+  "evidence": "run r-20261023-163425-7947（隔离实例 port=61038，数据目录已删）",
+  "boundary": "运行终态 failed，错误：实现步骤失败（无其他真实 CLI 可换将）: claude 返回 is_error: There's an issue with the selected model (glm-5.3). It may not exist or you may not have access to it. Run --model to pick a different model.；日志错误行: There's "
+}

@@ -77,9 +77,13 @@ stdout/stderr 句柄，`communicate()` 会一直等它自己退出。改为 Pope
 不碰 8765）、只启用目标 CLI、最小用例「创建 hello.py 并运行确认输出 hello」、`verify_command`
 检查文件落地。**命中判定看 `run.steps[].agent`** —— 若执行者不是目标 CLI，整条记「未命中 / 未测」。
 
+原始记录落在 [`compat-records/`](compat-records/)（随仓库入库，可直接复核）。记录**不写运行
+数据、不写用户目录、不写私有网关主机名**：URL 只保留协议与路径（如 `/v1/responses`），
+公共站点（github/npm/官方文档）原样保留。要复跑一条就 `--cli <id>`，新记录自动进同一目录。
+
 | CLI | 命中 | 结果 | 耗时 | 失败原因（脱敏后原文） |
 | --- | --- | --- | --- | --- |
-| codex-cli | 是 | **失败** | 66.4s | `Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error, url: https://api.iamhc.cn/v1/responses)` |
+| codex-cli | 是 | **失败** | 66.4s | `Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error, url: https://<endpoint>/v1/responses)` |
 | claude-code | 是 | **失败** | 9.0s | `There's an issue with the selected model (glm-5.3). It may not exist or you may not have access to it.` |
 | opencode | 是 | **失败** | 229.2s | `Error: This model is not available in your country` |
 

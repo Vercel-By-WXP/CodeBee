@@ -4,16 +4,19 @@
 设计约束（写死在代码里，不靠使用者自觉）：
 
 - **只用隔离实例**：临时 ``TUTTI_DATA`` + 空闲端口，绝不碰 8765 上的生产服务。
-- **不落仓库**：工作目录与数据都在临时目录里，跑完删；记录写到 ``--out``。
+- **数据不落仓库**：工作目录与运行数据都在临时目录里，跑完即删。
+- **记录要入库**：记录写到 ``--out``，默认 ``compat-records/``。记录本身就是验收证据，
+  放在被 .gitignore 排除的 ``docs/`` 下等于只留本机，别人复核不到。
 - **不猜结论**：路由是否真的用了目标 CLI 由 ``run.steps[].agent`` 判定。如果
   实际执行的是别的 CLI 或 mock，记录标为「未命中目标 CLI」，任务调用一列
   记「未测」——不许把「跑过一次任务」当成「目标 CLI 通过」。
-- **脱敏**：输出前统一抹掉用户目录、令牌形态的串。
+- **脱敏**：输出前统一抹掉用户目录、令牌形态的串与 URL 主机名（保留路径，路径才是
+  诊断信息；主机名可能是内网网关，不该跟着仓库公开）。
 
 用法：
 
     python scripts/cli_compat_record.py --cli codex-cli
-    python scripts/cli_compat_record.py --cli claude-code --timeout 1200 --out docs/cli-compat-records
+    python scripts/cli_compat_record.py --cli claude-code --timeout 1200 --out compat-records
 
 退出码：0 已产出记录（结果见记录里的 result）；2 参数/环境错误；3 目标 CLI 未安装。
 """
@@ -47,15 +50,34 @@ _SECRET_PATTERNS = (
      r"\1=<redacted>"),
 )
 
+# URL 只留协议与路径：路径（如 /v1/responses）才是诊断信息，自建网关的主机名
+# 不该跟着公开仓库走。公共站点（github/npm/官方文档）保留原样，否则「证据指向
+# 哪份文档」也跟着丢了。2026-10-23 首轮记录确实把私有网关域名写进了公开文档。
+_PUBLIC_URL_HOSTS = (
+    "github.com", "githubusercontent.com", "npmjs.com", "npmjs.org",
+    "pypi.org", "nodejs.org", "python.org", "openai.com",
+    "anthropic.com", "googleapis.com", "deepseek.com",
+)
+_URL_HOST = re.compile(r"(?i)\b(https?)://([^\s/:'\"<>]+)(:\d+)?")
+
+
+def _mask_url(match):
+    host = match.group(2).lower()
+    if host in _PUBLIC_URL_HOSTS or host.endswith(
+            tuple("." + public for public in _PUBLIC_URL_HOSTS)):
+        return match.group(0)
+    return "%s://<endpoint>%s" % (match.group(1), match.group(3) or "")
+
 
 def sanitize(text):
-    """抹掉用户目录与令牌形态，保留可核对的信息（版本号、错误码、耗时）。"""
+    """抹掉用户目录、令牌形态与私有 URL 主机名，保留可核对的信息。"""
     text = str(text or "")
     home = os.path.expanduser("~")
     if home and len(home) > 3:
         text = text.replace(home, "<home>")
-    text = re.sub(r"(?i)[A-Z]:\\Users\\[^\\\s\"']+", r"<home>", text)
+    text = re.sub(r"(?i)[A-Z]:[\\/]+Users[\\/]+[^\\/\s\"']+", r"<home>", text)
     text = re.sub(r"/(?:home|Users)/[^/\s\"']+", r"<home>", text)
+    text = _URL_HOST.sub(_mask_url, text)
     for pattern, repl in _SECRET_PATTERNS:
         text = pattern.sub(repl, text)
     return text
@@ -374,8 +396,8 @@ def main(argv=None):
     parser.add_argument("--boot-timeout", type=int, default=90, help="实例启动等待（秒）")
     parser.add_argument("--case", default=DEFAULT_GOAL, help="验收用例的自然语言目标")
     parser.add_argument("--verify", default=DEFAULT_VERIFY, help="验证命令")
-    parser.add_argument("--out", default=os.path.join("docs", "cli-compat-records"),
-                        help="记录输出目录")
+    parser.add_argument("--out", default="compat-records",
+                        help="记录输出目录（默认 compat-records/，随仓库入库）")
     parser.add_argument("--self-check", action="store_true",
                         help="只验链路（实例/探测/编排开关），不建任务、不消耗额度")
     args = parser.parse_args(argv)

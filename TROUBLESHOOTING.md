@@ -128,7 +128,7 @@ trae-agent  探测异常
 
 ```
 Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error,
- url: https://api.iamhc.cn/v1/responses)
+ url: https://<endpoint>/v1/responses)
 ```
 
 `404` 曾不在分类表里，追死因追不到就回落 `TIMEOUT`，读者于是去查网络和超时预算。

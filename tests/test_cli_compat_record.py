@@ -142,5 +142,51 @@ class CatalogSpecTest(unittest.TestCase):
                         "旧手写集合应当只是兜底，条目数少于目录")
 
 
+class RecordLocationTest(unittest.TestCase):
+    """记录必须能入库，且入得了库的内容不能带隐私。
+
+    记录本身就是「某 CLI 验收过」的证据。放在被 .gitignore 排除的 docs/ 下，
+    等于只有跑过的那台机器看得到，复核的人拿不到 —— 这和「没记录」差别不大。
+    """
+
+    def test_default_out_dir_is_not_gitignored(self):
+        default = "compat-records"
+        # git check-ignore: 退出码 1 表示未被忽略
+        proc = subprocess.run(["git", "check-ignore", "-q", default], cwd=ROOT)
+        self.assertEqual(proc.returncode, 1,
+                         "默认记录目录被 .gitignore 排除，记录入不了库：%s" % default)
+
+    def test_records_exist_and_stay_public_safe(self):
+        folder = os.path.join(ROOT, "compat-records")
+        files = [f for f in os.listdir(folder) if f.endswith(".json")]
+        self.assertTrue(files, "compat-records/ 里应有已产出的记录")
+        for name in files:
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertNotRegex(text, r"(?i)[A-Z]:[\\/]+Users[\\/]",
+                                "%s 含本机用户目录" % name)
+            self.assertNotRegex(text, r"\bsk-[A-Za-z0-9_\-]{8,}", "%s 含令牌" % name)
+            # URL 主机必须全是公共站点；私有网关只能以 <endpoint> 出现。
+            for match in recorder._URL_HOST.finditer(text):
+                host = match.group(2).lower()
+                if host.startswith("<endpoint>"):
+                    continue
+                allowed = (host in recorder._PUBLIC_URL_HOSTS
+                           or host.endswith(tuple("." + p
+                                                  for p in recorder._PUBLIC_URL_HOSTS)))
+                self.assertTrue(allowed, "%s 含私有主机名：%s" % (name, host))
+
+
+class SanitizeUrlTest(unittest.TestCase):
+    def test_private_host_masked_but_path_kept(self):
+        out = recorder.sanitize("url: https://api.internal-gw.cn/v1/responses")
+        self.assertEqual(out, "url: https://<endpoint>/v1/responses")
+
+    def test_public_host_kept(self):
+        text = "see https://github.com/o/r and https://registry.npmjs.org/pkg"
+        self.assertEqual(recorder.sanitize(text), text,
+                         "公共站点被误遮，证据指向就丢了")
+
+
 if __name__ == "__main__":
     unittest.main()
