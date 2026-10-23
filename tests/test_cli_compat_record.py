@@ -190,3 +190,139 @@ class SanitizeUrlTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TimeoutEvidenceTest(unittest.TestCase):
+    """超时退出取证：预算要在墙钟上真的生效，且终态能解释成超时。"""
+
+    def _run(self, status="failed", code=None):
+        step = {"agent": "github-copilot-cli"}
+        if code:
+            step["error_code"] = code
+        return {"status": status, "steps": [step]}
+
+    def test_stopped_within_budget_is_pass(self):
+        out = recorder.classify_timeout(self._run(code="TIMEOUT"), 18.1, 15000, True)
+        self.assertTrue(out.startswith("通过"), out)
+
+    def test_overrunning_budget_is_failure(self):
+        """实测慢一倍才停，说明预算没真正生效——不能因为「最后也停了」就写过。"""
+        out = recorder.classify_timeout(self._run(code="TIMEOUT"), 90.0, 15000, True)
+        self.assertIn("未通过", out)
+        self.assertIn("墙钟上限没生效", out)
+
+    def test_completed_normally_is_not_timeout_evidence(self):
+        out = recorder.classify_timeout(self._run(status="done"), 12.0, 15000, True)
+        self.assertIn("未通过", out)
+
+    def test_unrelated_error_code_is_not_timeout_evidence(self):
+        out = recorder.classify_timeout(self._run(code="RATE_LIMIT"), 18.0, 15000, True)
+        self.assertIn("未通过", out)
+        self.assertIn("RATE_LIMIT", out)
+
+    def test_timeout_wording_counts_when_no_code(self):
+        # 2026-10-23 实测：运行记录没落错误码，终态文本是「[超时 15.0s，已终止进程树]」。
+        out = recorder.classify_timeout(self._run(), 18.1, 15000, True,
+                                        "[超时 15.0s，已终止进程树]")
+        self.assertTrue(out.startswith("通过"), out)
+        self.assertIn("终态文本含超时措辞", out)
+
+    def test_no_wording_and_no_code_is_failure(self):
+        out = recorder.classify_timeout(self._run(), 18.1, 15000, True, "失败了")
+        self.assertIn("未通过", out)
+
+    def test_uninvoked_cli_is_unmeasured(self):
+        out = recorder.classify_timeout(self._run(code="TIMEOUT"), 18.0, 15000, False)
+        self.assertTrue(out.startswith("未测"), out)
+
+
+class ResumeEvidenceTest(unittest.TestCase):
+    def test_secret_found_is_pass(self):
+        self.assertTrue(recorder.classify_resume(True, "42", True).startswith("通过"))
+
+    def test_secret_absent_is_failure(self):
+        self.assertIn("未通过", recorder.classify_resume(True, "42", False))
+
+    def test_without_secret_is_unmeasured(self):
+        """没有暗号就只能证明「跑过」，证不了「上下文接上了」，一律记未测。"""
+        self.assertIn("未测", recorder.classify_resume(True, "", True))
+
+    def test_uninvoked_cli_is_unmeasured(self):
+        self.assertIn("未测", recorder.classify_resume(False, "42", True))
+
+
+class PatchCatalogTimeoutTest(unittest.TestCase):
+    def _write(self, tmpdir, entries):
+        import json
+        path = os.path.join(tmpdir, "catalog.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(entries, fh)
+        return path
+
+    def test_only_target_entry_changes(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, [
+                {"id": "a", "orch": {"kind": "generic", "timeout_ms": 999}},
+                {"id": "b", "orch": {"kind": "generic", "timeout_ms": 999}},
+            ])
+            self.assertTrue(recorder.patch_catalog_timeout(tmp, "a", 15000))
+            with open(path, encoding="utf-8") as fh:
+                entries = json.load(fh)
+            self.assertEqual(entries[0]["orch"]["timeout_ms"], 15000)
+            self.assertEqual(entries[1]["orch"]["timeout_ms"], 999)
+
+    def test_entry_without_orch_is_refused(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, [{"id": "goose", "orch": None}])
+            self.assertFalse(recorder.patch_catalog_timeout(tmp, "goose", 15000))
+
+    def test_missing_catalog_file_is_refused(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(recorder.patch_catalog_timeout(tmp, "a", 15000))
+
+
+class CopilotCatalogContractTest(unittest.TestCase):
+    """GitHub Copilot CLI 从「只检测」升级为「可编排」时的契约。
+
+    这条锁两件事：没有可执行 command 的条目不能被当成可编排（历史上 orch 为 None
+    时探测拿条目 id 当可执行名，`github-copilot-cli` 永远「未检测到」）；无头模板
+    必须带 --allow-all-tools，否则非交互态所有工具调用都等确认、任务空转。
+    """
+
+    def test_entry_is_runnable_with_headless_flags(self):
+        from app.core import catalog
+        entry = catalog.by_id("github-copilot-cli")
+        orch = entry.get("orch") or {}
+        self.assertEqual(entry["detect"]["cli"], "copilot")
+        self.assertEqual(orch.get("command"), "copilot")
+        self.assertEqual(orch.get("kind"), "generic")
+        argv = orch.get("argv_template") or []
+        self.assertIn("{prompt}", argv)
+        self.assertIn("--allow-all-tools", argv)
+        self.assertIn("-p", argv)
+        self.assertGreater(int(orch.get("timeout_ms") or 0), 0)
+
+    def test_resume_template_uses_session(self):
+        from app.core import catalog
+        orch = catalog.by_id("github-copilot-cli")["orch"]
+        tmpl = orch.get("resume_argv_template") or []
+        self.assertIn("{session}", tmpl)
+        self.assertIn("-r", tmpl)
+
+    def test_discovery_probes_real_executable(self):
+        from app.core import cli_discovery
+        spec = {s["name"]: s for s in cli_discovery.default_specs()}["github-copilot-cli"]
+        self.assertEqual(spec["executable"], "copilot")
+
+    def test_entries_without_orch_have_no_guessed_command(self):
+        """没有 orch 的条目（如 goose）必须留空，不能拿条目 id 冒充可执行文件。"""
+        from app.core import catalog
+        for entry in catalog.DEFAULT_CATALOG:
+            if entry.get("orch") is None:
+                self.assertFalse(recorder.executable_of(entry) and
+                                 (entry.get("orch") or {}).get("command"),
+                                 entry.get("id"))

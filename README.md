@@ -225,6 +225,18 @@ npx codebee@latest
 也可以走源码模式（`git clone` 后 `python app/main.py --port 8765`），以及在安装前先确认前置条件、
 CLI 检测和第一个任务的完整步骤：见 [QUICKSTART.md](QUICKSTART.md)。
 
+### 版本与发布渠道
+
+| 版本号 | 渠道 | 兼容承诺 |
+| --- | --- | --- |
+| `0.y.z` | **预览版** | 次版本之间可能调整 CLI 参数、数据目录结构与 HTTP 接口形状；不承诺向后兼容，但会给出迁移或明确的不兼容说明 |
+| `1.0.0` 起 | **正式版** | 遵守语义化版本：破坏性变更只在主版本，次版本只增不改 |
+
+当前版本 `0.1.x` 属预览版。npm dist-tag：`latest` 始终指向当前推荐版本（预览期就是最新预览版，
+`npx codebee@latest` 始终可用）；预览期额外发布 `preview`，想钉住预览通道可 `npm i -g codebee@preview`。
+口径由 `app/core/release_channel.py` 统一判定（按主版本号），文档、dist-tag 与发版检查共用同一份定义，
+不靠人工记住。
+
 ## CLI 接入范围
 
 | CLI | CodeBee 接入情况 | 版本/系统验收记录 |
@@ -247,7 +259,7 @@ CLI 检测和第一个任务的完整步骤：见 [QUICKSTART.md](QUICKSTART.md)
 | Goose | 仅检测与交互启动 | 暂无自动任务派发入口 |
 | Mistral Vibe | 自动编排 | 目标版本和系统须随发布验收记录 |
 | Cline CLI | 自动编排 | 目标版本和系统须随发布验收记录 |
-| GitHub Copilot CLI | 仅检测与交互启动 | 暂无自动任务派发入口 |
+| GitHub Copilot CLI | 自动编排 | 见 [CLI_COMPATIBILITY.md](CLI_COMPATIBILITY.md) 的实测记录（Windows 已通过任务调用、超时退出、会话恢复） |
 
 “自动编排”表示 CodeBee 有对应的 CLI 调用模板，不代表所有版本、操作系统、模型与认证方式都通过了端到端验收。CodeBee 可在本机检测 CLI 版本；发布验收记录应写明 CLI 版本、操作系统、模型/认证方式、验证流程和结果。没有这类记录时，该组合视为未验证。本表只声明接入范围，不代替逐版本验收。记录格式见 [CLI_COMPATIBILITY.md](CLI_COMPATIBILITY.md)。我们借鉴 [ElyOffice 的兼容清单](https://github.com/ELY-Open-Source/ElyOffice/blob/main/docs/compatibility.md)，把已验证行为与未验证范围分开说明。
 

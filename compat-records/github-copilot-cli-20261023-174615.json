@@ -1,0 +1,25 @@
+{
+  "captured_at": "2026-10-23 17:46:15",
+  "codebee_version": "0.1.120",
+  "codebee_commit": "dc88905",
+  "os": "win32 AMD64",
+  "cli_id": "github-copilot-cli",
+  "cli_version": "GitHub Copilot CLI 1.0.98.",
+  "cli_source": "<home>\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.EXE",
+  "model_auth": "未记录",
+  "invocation": "由 CodeBee 路由决定",
+  "case": "在当前目录创建 hello.py，内容只有一行 print('hello')；创建后运行它，确认输出 hello。",
+  "result": "失败",
+  "task_call": "失败",
+  "timeout_exit": "通过（18.1s 内终止，预算 15.0s，错误码 —）",
+  "session_resume": "未测",
+  "duration_s": 18.1,
+  "steps": [
+    "github-copilot-cli"
+  ],
+  "verify_ran": null,
+  "verify_pass": null,
+  "review_pass": null,
+  "evidence": "run r-20261023-174557-5535（隔离实例 port=52407，数据目录已删）",
+  "boundary": "运行终态 failed，错误：实现步骤失败（无其他真实 CLI 可换将）: 超时；stderr/stdout: [超时 15.0s，已终止进程树]"
+}

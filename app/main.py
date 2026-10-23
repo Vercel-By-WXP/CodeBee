@@ -4633,7 +4633,12 @@ def main():
         _ver = str(json.loads(_pj.read_text(encoding="utf-8")).get("version") or "")
     except Exception:
         pass
-    print("[CodeBee] v%s" % (_ver or "?"), flush=True)
+    try:
+        from core import release_channel
+        _chan = release_channel.label_of(_ver)
+    except Exception:
+        _chan = ""
+    print("[CodeBee] v%s%s" % (_ver or "?", "（%s）" % _chan if _chan else ""), flush=True)
     _step("正在准备数据目录…")
     paths.ensure_dirs()
     from core import goal_service

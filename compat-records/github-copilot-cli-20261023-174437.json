@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-10-23 17:44:37",
+  "codebee_version": "0.1.120",
+  "codebee_commit": "dc88905",
+  "os": "win32 AMD64",
+  "cli_id": "github-copilot-cli",
+  "cli_version": "GitHub Copilot CLI 1.0.98.",
+  "cli_source": "<home>\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.EXE",
+  "model_auth": "未记录",
+  "invocation": "由 CodeBee 路由决定",
+  "case": "在当前目录创建 hello.py，内容只有一行 print('hello')；创建后运行它，确认输出 hello。",
+  "result": "通过",
+  "task_call": "通过",
+  "timeout_exit": "未测",
+  "session_resume": "未测",
+  "duration_s": 147.6,
+  "steps": [
+    "github-copilot-cli",
+    "builtin"
+  ],
+  "verify_ran": true,
+  "verify_pass": true,
+  "review_pass": null,
+  "evidence": "run r-20261023-174209-8728（隔离实例 port=52056，数据目录已删）",
+  "boundary": "运行到终态 done，目标 CLI 出现在执行步骤中"
+}

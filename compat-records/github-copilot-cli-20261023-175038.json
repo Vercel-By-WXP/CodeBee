@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-10-23 17:50:38",
+  "codebee_version": "0.1.120",
+  "codebee_commit": "dc88905",
+  "os": "win32 AMD64",
+  "cli_id": "github-copilot-cli",
+  "cli_version": "GitHub Copilot CLI 1.0.98.",
+  "cli_source": "<home>\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.EXE",
+  "model_auth": "未记录",
+  "invocation": "由 CodeBee 路由决定",
+  "case": "我刚才让你记住的数字是多少？只回答数字。",
+  "result": "通过",
+  "task_call": "通过",
+  "timeout_exit": "未测",
+  "session_resume": "通过（续会话后答出暗号「42」）",
+  "duration_s": 39.1,
+  "steps": [
+    "github-copilot-cli",
+    "builtin"
+  ],
+  "verify_ran": true,
+  "verify_pass": true,
+  "review_pass": null,
+  "evidence": "run r-20261023-174959-1617（隔离实例 port=59067，数据目录已删）；续会话 d3db8bb4-3c00-490b-9d25-40cd84dc3f24",
+  "boundary": "运行到终态 done，目标 CLI 出现在执行步骤中"
+}

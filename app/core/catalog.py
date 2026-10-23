@@ -294,10 +294,16 @@ DEFAULT_CATALOG = [
     },
     {
         "id": "github-copilot-cli", "name": "GitHub Copilot CLI", "cli_group": "installable",
-        "note": "GitHub 官方终端 CLI；官方支持 macOS/Linux/Windows，但当前文档只核验到"
-                "交互式 `copilot` 入口，暂不自动派发无头编排任务。",
+        "note": "GitHub 官方终端 CLI；无头调用是 copilot -p \"提示词\" -s（-s 只输出答复、"
+                "不带统计行）；非交互态必须显式 --allow-all-tools，否则工具调用一律等确认、"
+                "任务空转；会话恢复用 -r <session-id>（2026-10-23 实机验证：同一 session-id "
+                "两轮之间能取回上一轮给的暗号）。",
         "detect": {"cli": "copilot"},
-        "orch": None,
+        "orch": {"kind": "generic", "command": "copilot",
+                 "argv_template": ["-p", "{prompt}", "-s", "--allow-all-tools"],
+                 "resume_argv_template": ["-r", "{session}", "-p", "{prompt}", "-s",
+                                          "--allow-all-tools"],
+                 "timeout_ms": 900000},
         "config": {"path": "~/.copilot", "format": None, "model_key": None},
         "install": "npm install -g @github/copilot",
         "install_macos": "brew install copilot-cli",

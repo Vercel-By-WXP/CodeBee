@@ -1,0 +1,25 @@
+{
+  "captured_at": "2026-10-23 17:51:38",
+  "codebee_version": "0.1.120",
+  "codebee_commit": "dc88905",
+  "os": "win32 AMD64",
+  "cli_id": "codex-cli",
+  "cli_version": "codex-cli 0.160.0",
+  "cli_source": "D:\\nvm4w\\nodejs\\codex.CMD",
+  "model_auth": "未记录",
+  "invocation": "由 CodeBee 路由决定",
+  "case": "在当前目录创建 hello.py，内容只有一行 print('hello')；创建后运行它，确认输出 hello。",
+  "result": "失败",
+  "task_call": "失败",
+  "timeout_exit": "未测",
+  "session_resume": "未测",
+  "duration_s": 9.0,
+  "steps": [
+    "codex-cli"
+  ],
+  "verify_ran": null,
+  "verify_pass": null,
+  "review_pass": null,
+  "evidence": "run r-20261023-175129-1575（隔离实例 port=50103，数据目录已删）",
+  "boundary": "运行终态 failed，错误：实现步骤失败（无其他真实 CLI 可换将）: codex: {\"error\":{\"message\":\"Model DeepSeek-V4.1-Flash does not support native web search. Remove the web_search tool or use a model that supports it. See https://<endpoint>/***?"
+}

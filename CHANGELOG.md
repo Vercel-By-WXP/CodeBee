@@ -6,6 +6,12 @@ README 元数据带回，供老版本在「发现新版本」时展示新版更�
 
 ## 未发布
 
+- **GitHub Copilot CLI 可自动编排（P0 兼容性）**：此前 catalog 把该条目写成 `orch: null`（只检测、不派发），而探测在没有 `orch.command` 时拿条目 id `github-copilot-cli` 当可执行名，真实命令却是 `copilot`——面板上永远「未检测到」，等于连检测都没做成。现按 `copilot --help` 实测参数接入：`-p` 无头、`-s` 只输出答复、`--allow-all-tools`（非交互态不放行工具则任务空转）、`-r <session>` 续会话。验收记录见 `compat-records/`：任务调用通过、验证实跑且过、15s 预算下 18.1s 内终止、续会话答出暗号。
+
+- **兼容性验收脚本能直接取「超时退出 / 会话恢复」两列（P0 证据）**：新增 `--timeout-ms`（改隔离实例里该 CLI 的墙钟预算再重载目录，触发的是产品自己的超时逻辑，不是脚本从外面 cancel）与 `--session/--expect/--workdir`（带 `resume` 声明续跑并核对暗号）。判定写死：超时必须「到终态 + 目标 CLI 真被调用 + 耗时 ≤ 预算+30s + 终态有超时语义」，会话恢复没有暗号就记「未测」，不许拿「跑过一次」冒充。
+
+- **预览版/正式版口径落成代码（P1 发布）**：`app/core/release_channel.py` 按主版本号判定（0.y.z 为预览版、1.0.0 起为正式版、预发布后缀算预览版），启动日志带渠道，README/QUICKSTART 标注当前渠道与 dist-tag 分流（`latest` 恒指推荐版本，预览期另打 `preview`）；`tests/test_release_channel.py` 锁 VERSION 与 package.json 一致、文档必须写出当前渠道。
+
 - **桌面引擎热更新先验摘要、再按成员白名单解包（P0 安全）**：旧实现把 npm tarball 直接交给 `tarfile.extract()`，成员名只要以 `package/` 开头就放行，`package/../../..` 能穿出 staging 写到用户目录；下载后只校验体积，没有比对 registry 的 `dist.integrity`；版本核对还在解包之后，即便报错也撤不回已写入的文件。修法：`fetchIntegrity()` 读 packument 的 `dist.integrity`（缺失或非 sha512 一律拒绝更新，与 tarball 同一 host 白名单）+ `fileIntegrity()` 下载后 sha512 比对 + 逐成员校验解包（拒 `..`/反斜杠/链接/特殊文件/包外成员/超 512MB）。harness 增 8 例，含越界写与符号链接两个攻击样本。
 
 - **跨卷热更新不再留残缺引擎（P1 可靠性）**：`EXDEV` 分支原实现直接 `cpSync` 到正式目录，进程被杀/断电会留下「main.py 在、app/core 不全」的目录，而启动自愈的判据是「script 缺失」——判据不成立，引擎永久起不来只能重装。改为先复制到同卷 `app.incoming-*` 再原子改名（要么全新要么全旧），失败清半成品并由外层回滚；启动时顺带清理崩溃残留。

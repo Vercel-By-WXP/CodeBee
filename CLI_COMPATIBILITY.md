@@ -98,6 +98,7 @@ stdout/stderr 句柄，`communicate()` 会一直等它自己退出。改为 Pope
    「CodeBee 不支持」。
 3. **这轮拿不到「通过」样本**：本机三个代表性入口没有一个是可用配置。要产出真正的通过记录，
    需要一个能跑通任务的 CLI + 模型；命令已就绪，换台机器或换掉模型配置即可复跑。
+   （第二轮已用 GitHub Copilot CLI 拿到通过样本，见下节。）
 
 **已定性的归因偏差（2026-10-23 已修）**：codex 那条终态文案写「超时」，同一条 stderr 里
 却是 404。CLI 侧 `Reconnecting... 2/5` 重连耗尽后才到墙钟上限，两者都真，但**读者只会看到
@@ -109,9 +110,55 @@ stdout/stderr 句柄，`communicate()` 会一直等它自己退出。改为 Pope
 
 超时退出与会话恢复两列仍为「未测」：三个入口都在实现步骤就失败，没走到这两层。
 
+### 2026-10-23 · 真实任务调用（第二轮：拿到通过样本 + 补齐两列）
+
+**为什么换入口**：第一轮三个 CLAL 全部卡在「本机配置不可用」，再跑多少次也变不出通过样本。
+这轮先把本机能跑通的入口找出来——逐条用最小提示词试（`reply with exactly OK`），
+结果只有 **GitHub Copilot CLI** 有可用凭据；其余 8 个要么额度为 0（qwen 403 ¥0、
+deepseek-harness transport 失败）、要么锁区（opencode）、要么缺 key（mistral-vibe）、
+要么安装残缺（trae-cli 缺 `docker` 模块）。
+
+**Copilot 原先被产品标成「只检测、不派发」**（`orch: null`），探测还拿条目 id
+`github-copilot-cli` 当可执行名，实际命令是 `copilot` —— 等于永远「未检测到」。
+这轮把它接进编排，参数按帮助输出实测：`-p` 无头、`-s` 只要答复不要统计行、
+`--allow-all-tools`（非交互态不加则所有工具调用等确认）、`-r <session>` 续会话。
+
+三条记录（`compat-records/github-copilot-cli-20261023-*.json`）分别补齐三列：
+
+| 取证项 | 实测 | 记录值 |
+| --- | --- | --- |
+| 任务调用 | 创建 `hello.py` 并运行，147.6s 到终态 `done`，`verify_ran=true`/`verify_pass=true` | **通过** |
+| 超时退出 | 把隔离实例里该 CLI 的 `timeout_ms` 改成 15000，真实进程 **18.1s 内终止**，终态 `[超时 15.0s，已终止进程树]` | **通过** |
+| 会话恢复 | 先用同一 session-id 播下暗号「42」，再由 CodeBee 带 `resume` 续跑；回答里出现 42（提示词本身不含） | **通过（答出暗号）** |
+
+超时的判定写在脚本里，不靠肉眼：必须「到终态 + 目标 CLI 真被调用 + 耗时 ≤ 预算+30s +
+终态有超时语义」，四条缺一条就记未通过（`tests/test_cli_compat_record.py::TimeoutEvidenceTest`）。
+会话恢复同理：没有 `--expect` 暗号只能证明「跑过」，证不了「上下文接上了」，一律记未测。
+
+```bash
+# 任务调用
+python scripts/cli_compat_record.py --cli github-copilot-cli
+# 超时退出（把该 CLI 的墙钟预算压到 15s）
+python scripts/cli_compat_record.py --cli github-copilot-cli --timeout-ms 15000
+# 会话恢复（先在同目录播暗号，再让 CodeBee 续）
+python scripts/cli_compat_record.py --cli github-copilot-cli --workdir <同目录> \
+       --session <session-id> --expect 42
+```
+
+**codex 复跑（同一脚本，环境已变）**：这次不再是 404，而是
+`Model DeepSeek-V4.1-Flash does not support native web search. Remove the web_search tool`。
+同一个网关在 20 分钟内从「不支持 `/v1/responses`」变成「支持但拒绝 `web_search` 工具」，
+说明**自建网关的能力面会漂**，任何单次结论都有保质期——这也是记录里必须写时间与
+CLI 精确版本的原因。codex 仍记失败（环境原因），不记「CodeBee 不支持」。
+
+**剩下 2 个通过样本仍然缺**，且不是代码能补的：claude-code 的 bigmodel 账号 7 天额度用尽
+（HTTP 429 `code 1310`，2026-10-26 14:09 后恢复）；opencode 免费模型锁区、备用供应商同样撞
+额度。等凭据恢复，用同一条命令即可复跑，不需要改代码。
+
 | catalog CLI | CLI 版本 | 安装与版本识别 | 任务调用 | 超时/失败退出 | 会话恢复 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
-| codex-cli | codex-cli 0.160.0 | 通过 | 失败（环境：网关 404） | 未测 | 未测 | npm 全局 .CMD |
+| github-copilot-cli | GitHub Copilot CLI 1.0.98. | 通过 | **通过**（verify 实跑且过） | **通过**（15s 预算 / 18.1s 停止） | **通过**（续会话答出暗号） | 本轮新接入编排，见上表 |
+| codex-cli | codex-cli 0.160.0 | 通过 | 失败（环境：网关拒绝 `web_search`） | 未测 | 未测 | npm 全局 .CMD |
 | claude-code | 2.1.288 (Claude Code) | 通过 | 失败（环境：模型无权限） | 未测 | 未测 | npm 全局 .CMD |
 | opencode | 1.18.34 | 通过 | 失败（环境：地区限制） | 未测 | 未测 | npm 全局 .CMD |
 | qwencode | 0.24.7 | 通过 | 未测 | 未测 | 未测 | npm 全局 .CMD |
@@ -129,7 +176,7 @@ stdout/stderr 句柄，`communicate()` 会一直等它自己退出。改为 Pope
 | goose | — | 未安装 | 未测 | 未测 | 未测 | 不在 PATH |
 | mistral-vibe | python.exe C:\Users\HP\.local\bin\vibe.EXE 2.26.1 | 通过（版本需人工解析） | 未测 | 未测 | 未测 | CLI 自身把命令行与版本一并输出，CodeBee 不猜 |
 | cline-cli | 3.0.73 | 通过 | 未测 | 未测 | 未测 | |
-| github-copilot-cli | GitHub Copilot CLI 1.0.98. | 通过 | 未测 | 未测 | 未测 | |
+| github-copilot-cli | GitHub Copilot CLI 1.0.98. | 通过 | **通过** | **通过** | **通过** | 本轮接入编排；无头模板带 `--allow-all-tools` |
 
 合计：19 条中 16 条可检出、15 条版本可读、1 条检出但启动失败、3 条未安装。
 
@@ -164,9 +211,12 @@ CLI 的超时退出验收——真实 CLI 在超时时是否留下子进程、�
 ```bash
 python scripts/cli_compat_record.py --cli codex-cli --self-check   # 只验链路，不建任务、不耗额度
 python scripts/cli_compat_record.py --cli codex-cli                # 跑 1 个真实任务并产出记录
+python scripts/cli_compat_record.py --cli <id> --timeout-ms 15000  # 超时退出取证（压墙钟预算）
+python scripts/cli_compat_record.py --cli <id> --workdir <目录> \
+       --session <session-id> --expect <暗号>                       # 会话恢复取证
 ```
 
-脚本内置的约束（`tests/test_cli_compat_record.py` 13 项锁住）：
+脚本内置的约束（`tests/test_cli_compat_record.py` 35 项锁住）：
 
 - 临时 `TUTTI_DATA` + 空闲端口，**不碰 8765**；工作目录与数据跑完即删。
 - 显式按 `catalog.DEFAULT_CATALOG` 传 `specs`，不依赖服务端默认集（否则 14 条 CLI 探不到）。
