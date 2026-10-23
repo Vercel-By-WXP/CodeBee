@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 
 
 _BASH_CANDIDATES = [
@@ -14,7 +15,13 @@ _BASH_CANDIDATES = [
     r"C:\Program Files\Git\usr\bin\bash.exe",
     r"C:\Program Files (x86)\Git\usr\bin\bash.exe",
 ]
-_bash_cache = {"path": None, "done": False}
+_bash_cache = {"path": None, "checked_at": 0.0}
+# 只永久缓存正结果。负结果缓存 60s：服务是长驻进程，用户在服务起跑之后才装
+# Git Bash（或刚从 D:\Git 迁到 C:\Program Files\Git）时，进程级永久缓存会让
+# claude 一直起不来，只有重启服务才自愈——与 _fallback_probe_cli 里那个
+# 「PATH 是启动快照」是同一种病。60s 足够吸收「一次任务里反复 spawn」的探测，
+# 又不至于让刚装好的用户一直等下去。
+_BASH_NEGATIVE_TTL_S = 60.0
 
 
 def find_git_bash():
@@ -23,9 +30,12 @@ def find_git_bash():
     反而可能指错（/bin/bash 与 Git Bash 行为有差异），故非 Windows 一律 None。"""
     if os.name != "nt":
         return None
-    if _bash_cache["done"]:
+    if _bash_cache["path"]:
         return _bash_cache["path"]
-    _bash_cache["done"] = True
+    now = time.monotonic()
+    if _bash_cache["checked_at"] and now - _bash_cache["checked_at"] < _BASH_NEGATIVE_TTL_S:
+        return None
+    _bash_cache["checked_at"] = now
     p = shutil.which("bash.exe") or shutil.which("bash")
     if p:
         _bash_cache["path"] = p
