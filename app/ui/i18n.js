@@ -2521,6 +2521,8 @@
     "观察中": "Watching",
     "最近成功": "Last success",
     "最近失败": "Last failure",
+    "当前失败详情": "Current failure details",
+    "历史失败记录": "Previous failure",
     "账号失效": "Account invalid",
     "无降级链，按任务类型自动推荐厂商与模型": "No fallback chain — providers and models are auto-recommended per task type",
     "命令面板": "Command palette",

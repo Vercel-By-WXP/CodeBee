@@ -117,7 +117,12 @@ _LOCAL_STATE = ("database is locked", "database locked", "sqlite busy",
 _TOOL_LAUNCH = (
     "启动失败", "modulenotfounderror", "no module named", "command not found",
     "not recognized as an internal or external command", "no such file or directory",
-    "cannot find the path specified",
+    "cannot find the path specified", "不是内部或外部命令",
+    "无法将", "识别为 cmdlet",
+    # OpenCode 先写入部分任务文件、随后本机 ripgrep 子进程启动失败时会以
+    # `Error: ripgrep execution failed` 退出。它是 CLI 本地工具链故障，不能
+    # 记成模型/供应商故障（2026-10-23 通道体检实案）。
+    "ripgrep execution failed",
 )
 _TOOL_CONFIG = (
     "invalid configuration in", "invalid configuration for",

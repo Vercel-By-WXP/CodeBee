@@ -39,6 +39,51 @@ class ProviderHealthRegressionTests(unittest.TestCase):
 
         self.assertEqual(health.snapshot()["providers"], [])
 
+    def test_ripgrep_execution_failure_is_not_a_provider_failure(self):
+        from app.core.error_codes import classify_error_text
+
+        error = "退出码 1；stderr/stdout: Error: ripgrep execution failed"
+        code = classify_error_text(error)
+        self.assertEqual(code, "TOOL_LAUNCH")
+        health.report_failure(
+            "OpenCode 原生免费模型", error,
+            model="opencode/deepseek-v4.1-flash-free",
+            provider_id="opencode-native", error_code=code,
+        )
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_output_capture_limit_is_not_a_provider_failure(self):
+        health.report_failure(
+            "Claude CLI",
+            "退出码 1；stderr/stdout: [输出超过捕获上限：stdout/stderr 各最多 "
+            "262144 字节，结果不完整，已标记失败]",
+            model="model-a",
+            provider_id="provider-a",
+            error_code="PARSE_FAIL",
+        )
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
+    def test_init_removes_persisted_output_capture_limit_false_positive(self):
+        path = Path(self.tmp.name) / "provider_health.json"
+        path.write_text(json.dumps({"providers": {
+            "Claude CLI": {
+                "name": "Claude CLI",
+                "status": "down",
+                "consecutive_failures": 5,
+                "last_error_code": "PARSE_FAIL",
+                "last_error": (
+                    "退出码 1；stderr/stdout: [输出超过捕获上限：stdout/stderr "
+                    "各最多 262144 字节，结果不完整，已标记失败]"),
+            },
+        }}), encoding="utf-8")
+
+        with mock.patch.object(health, "_prune_missing"):
+            health.init(self.tmp.name, start_probe=False)
+
+        self.assertEqual(health.snapshot()["providers"], [])
+
     def test_sandbox_gate_rejection_is_not_a_provider_failure(self):
         health.report_failure(
             "MiMo Code 原生免费通道",

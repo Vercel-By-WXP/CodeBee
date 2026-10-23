@@ -60,6 +60,7 @@ print("@@RESULT@@" + json.dumps({
     "summary": (r.get("summary") or "")[:40],
     "publishable": v.get("publishable"),
     "rounds_used": v.get("rounds_used"),
+    "review_degraded": v.get("review_degraded"),
     "has_video": "video" in v,
 }, ensure_ascii=True))
 """
@@ -281,7 +282,9 @@ class RenderEntryTests(unittest.TestCase):
                         self.assertFalse(result["has_video"])
                     else:
                         self.assertFalse(result["publishable"])
-                        self.assertIn("评审环节失败", result["error"])
+                        self.assertTrue(result["review_degraded"])
+                        self.assertIn("评审服务不可用", result["error"])
+                        self.assertIn("发布门禁", result["error"])
 
 
 if __name__ == "__main__":

@@ -203,6 +203,86 @@ def _global_review_count(reviews, dimensions):
         reviews, dimensions, min_reviewers=1)["reviewer_count"]
 
 
+def _finalize_serial_review_evidence(chapter_scores, global_review,
+                                     degradation_reasons=()):
+    """Expose only consensus-backed scores for the final serial manuscript."""
+    chapters = [dict(row) for row in (chapter_scores or [])
+                if isinstance(row, dict)]
+    reasons = [str(reason) for reason in (degradation_reasons or []) if reason]
+
+    def _review_complete(row):
+        count = row.get("reviewer_count", 0)
+        return (row.get("consensus") is True
+                and isinstance(count, int) and not isinstance(count, bool)
+                and count >= quality_gate.MIN_REVIEWERS)
+
+    complete_chapters = set()
+    for chapter in chapters:
+        number = chapter.get("chapter")
+        complete = _review_complete({
+            "consensus": chapter.get("reviewer_consensus"),
+            "reviewer_count": chapter.get("reviewer_count"),
+        })
+        if complete:
+            complete_chapters.add(number)
+            chapter["review_status"] = "evaluated"
+            chapter["review_degraded"] = False
+            chapter["provisional_means"] = {}
+        else:
+            provisional = dict(chapter.get("provisional_means") or {})
+            provisional.update(chapter.get("means") or {})
+            chapter["provisional_means"] = provisional
+            chapter["means"] = {}
+            chapter["passed"] = False
+            chapter["review_degraded"] = True
+            chapter["review_status"] = (
+                "not_evaluated" if not chapter.get("reviewer_count") else
+                "insufficient_reviewers_or_consensus")
+            reasons.append("第 %s 章评审未形成有效人数/共识（%s/%d）；稿件质量未判定" % (
+                number or "?", chapter.get("reviewer_count", 0),
+                quality_gate.MIN_REVIEWERS))
+
+    global_review = global_review if isinstance(global_review, dict) else {}
+    global_complete = _review_complete(global_review)
+    raw_global_scores = global_review.get("means") or {}
+    global_scores = dict(raw_global_scores) if global_complete else {}
+    provisional_global_scores = ({} if global_complete else
+                                 dict(raw_global_scores))
+
+    # A later complete reassessment replaces failure notes about earlier text.
+    # Keep unrelated failures (for example an unavailable required signing
+    # checkpoint) visible and fail closed.
+    stale_markers = ("评审未完成", "评审未取得有效评分", "未形成有效人数/共识",
+                     "有效评审人数不足", "评审人数不足", "修订调用异常退出",
+                     "修订失败且稿件未变化", "打磨调用异常退出")
+    kept = []
+    for reason in reasons:
+        stale = False
+        for number in complete_chapters:
+            if ("第 %s 章" % number) in reason and any(
+                    marker in reason for marker in stale_markers):
+                stale = True
+                break
+        if global_complete and any(marker in reason for marker in (
+                "全局评审", "全书评审", "打磨后全局评审")):
+            stale = True
+        if not stale:
+            kept.append(reason)
+    if not global_complete:
+        kept.append("全局评审未形成有效人数/共识（%d/%d）；全书质量未判定" % (
+            global_review.get("reviewer_count", 0), quality_gate.MIN_REVIEWERS))
+    kept = list(dict.fromkeys(kept))
+    return {
+        "chapter_scores": chapters,
+        "global_scores": global_scores,
+        "provisional_global_scores": provisional_global_scores,
+        "review_degraded": bool(kept or not global_complete or any(
+            chapter.get("review_degraded") for chapter in chapters)),
+        "reasons": kept,
+        "global_complete": global_complete,
+    }
+
+
 def _signing_checkpoint_due(total_words, checkpoint, minimum_words):
     """A stale checkpoint remains due until current manuscript text is reviewed."""
     return (total_words >= minimum_words and
@@ -2523,9 +2603,23 @@ def _retry_content_draft_with_cli(run_id, task, agents, impl, difficulty, mode,
     return last_result, last_impl, last_note
 
 
+def _local_critique_fallback(dims, reason):
+    """Record review unavailability without inventing manuscript scores."""
+    del dims  # The fallback has no assessment, so it intentionally has no scores.
+    return {
+        "scores": {},
+        "issues": [],
+        "summary": "评审未完成，稿件质量未判定；评审服务不可用，流程按未评估继续：%s"
+                   % str(reason or "未知错误")[:180],
+        "review_degraded": True,
+        "review_fallback": "local",
+        "review_fallback_reason": str(reason or "未知错误")[:500],
+    }
+
+
 def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, agents,
                                      impl, difficulty, task_type, stats, mode,
-                                     is_selection):
+                                     is_selection, dims=None):
     """评审步失败时按换将语义补位（与起草共用同一份策略闸门）。
 
     评审原先固定在同一 CLI 上重试三次：上游死链/本地启动抖动时三次都撞
@@ -2547,6 +2641,7 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
     note = ""
     current = agent
     res = {}
+    parse_failed = False
     for attempt in range(1, 4):
         res = _run_step(
             run_id, role, modelhub.bind_agent(current, difficulty), prompt,
@@ -2558,6 +2653,14 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
         if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
                 and cj["scores"]):
             return cj, res, current, note
+        parse_failed = True
+        # A watchdog stall is a transport/process hang, not a formatting
+        # failure. Replaying the same CLI three times would burn three full
+        # 600-second windows before the local continuity fallback can run.
+        # Let the fallback/switch logic handle it immediately.
+        raw_res = res.get("raw") if isinstance(res, dict) else {}
+        if isinstance(raw_res, dict) and raw_res.get("stalled"):
+            break
         if attempt >= 3 or runner.attempt_cancelled(res):
             break
         try:
@@ -2566,7 +2669,8 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
         except Exception:
             may_swap = False
         if not may_swap:
-            time.sleep(2.0)
+            if attempt < 3:
+                time.sleep(2.0)
             continue
         ups = router.agent_upstreams(
             current.get("id"), difficulty=difficulty,
@@ -2597,6 +2701,67 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
             why or "自动路由", (res.get("error") or "评审失败")[:180]))
         note = (note + "；" if note else "") + switch
         current = candidate
+    if parse_failed and mode != "manual" and not runner.attempt_cancelled(res):
+        # Malformed output is usually a prompt/format problem, so keep the
+        # original CLI's three format retries first. If those are exhausted,
+        # one other configured reviewer still gets a chance before local
+        # degraded scoring is recorded.
+        candidate, why = router.pick_reviewer(
+            agents, impl, task_type, stats, exclude=tried,
+            dead_upstreams=dead_upstreams, difficulty=difficulty)
+        if (candidate is None or candidate.get("id") in tried
+                or candidate.get("mode") != "real"):
+            candidate, why = router.pick_switch_candidate(
+                agents, "review", task_type, stats, exclude=tried,
+                dead_upstreams=dead_upstreams, difficulty=difficulty,
+                blocked_upstreams=blocked_upstreams, failed_cli=current,
+                error=res)
+        if (candidate is not None and candidate.get("id") not in tried
+                and candidate.get("mode") == "real"):
+            tried.add(candidate.get("id"))
+            switch = ("评审解析失败后自动换 CLI：%s → %s（%s）" % (
+                current.get("id") or "CLI", candidate.get("id") or "CLI",
+                why or "格式重试耗尽"))
+            note = (note + "；" if note else "") + switch
+            current = candidate
+            for retry in range(1, 4):
+                res = _run_step(
+                    run_id, role, modelhub.bind_agent(current, difficulty), prompt,
+                    workdir, readonly=True, ev=ev, note=note,
+                    swap_guard={"exclude": tried,
+                                "blocked": blocked_upstreams})
+                cj = runner.extract_json(res.get("text") or "")
+                if (isinstance(cj, dict)
+                        and isinstance(cj.get("scores"), dict) and cj["scores"]
+                        and (not is_selection or res.get("ok"))):
+                    return cj, res, current, note
+                parse_failed = True
+                raw_res = res.get("raw") if isinstance(res, dict) else {}
+                if isinstance(raw_res, dict) and raw_res.get("stalled"):
+                    break
+                if runner.attempt_cancelled(res):
+                    break
+                if retry < 3:
+                    time.sleep(2.0)
+    # A single configured CLI/model must not strand the orchestration state
+    # machine.  Once retries and candidate selection are exhausted, record a
+    # conservative local review so revision/report/finalization still run.
+    # Manual mode keeps its explicit no-CLI-switch contract; local continuity
+    # still applies because it does not change the user's selected provider.
+    raw = (res.get("raw") if isinstance(res, dict) else {}) or {}
+    fallback_eligible = bool(res and (not res.get("ok")
+                                      or res.get("error_code")
+                                      or raw.get("output_truncated")
+                                      or parse_failed))
+    if fallback_eligible and not runner.attempt_cancelled(res):
+        reason = (res.get("error") or res.get("text") or "评审 CLI 重试后仍无有效输出")
+        fallback = _local_critique_fallback(dims, reason)
+        res = dict(res)
+        res.update({"review_degraded": True, "review_fallback": "local",
+                    "review_fallback_reason": str(reason)[:500]})
+        suffix = "评审本地兜底：未取得模型评分，按未评估继续流程"
+        note = (note + "；" if note else "") + suffix
+        return fallback, res, current, note
     return None, res, current, note
 
 
@@ -3482,6 +3647,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     issues_all = []
     deterministic_issue_keys = set()
     signing_review_meta = {}
+    review_degradation_reasons = []
 
     def clear_deterministic_issues(chapter=None):
         """Remove stale local findings before replacing them with current evidence."""
@@ -3813,18 +3979,23 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     "ledger": [], "continuity": [], "sid": None}
                     return
                 lens = _critic_lens(critics, agent)
-                res = _run_step(run_id, role, bound[idx],
-                                crit_prompt_for(
-                                    text,
-                                    note=("小说第 %d 章" % i) + (
-                                        "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
-                                        "请深挖你的镜头，但所有维度仍需打分）" % lens)
-                                    if lens else "",
-                                    event_check=event_check, chapter=i) + note_extra,
-                                workdir, readonly=True, ev=ev,
-                                resume=sids.get(agent["id"]))
+                cj, res, actual, swap_note = _critique_step_with_cli_fallback(
+                    run_id, role, agent,
+                    crit_prompt_for(
+                        text,
+                        note=("小说第 %d 章" % i) + (
+                            "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
+                            "请深挖你的镜头，但所有维度仍需打分）" % lens)
+                        if lens else "",
+                        event_check=event_check, chapter=i) + note_extra,
+                    workdir, ev, agents, impl, difficulty,
+                    task.get("type") or "serial_novel", stats, mode,
+                    False, dims=dims)
+                if not isinstance(cj, dict):
+                    cj = _critique_json(res, dims)
                 results[idx] = {
-                    "agent": agent, "cj": _critique_json(res, dims),
+                    "agent": actual or agent, "cj": cj,
+                    "swap_note": swap_note,
                     # 逐项目标审稿 + 资源账本：标记块先各存各的，join 后按序合并
                     "evl": _parse_tagged_lines(res.get("text"), "event_check"),
                     "ledger": _parse_tagged_lines(res.get("text"), "ledger"),
@@ -3854,8 +4025,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if "error" in r:
                     raise r["error"]     # 还原串行版的异常上抛语义
                 agent, cj = r["agent"], r["cj"]
-                if cj.get("scores"):
+                valid_scores, score_errors = quality_gate.normalize_scores(
+                    cj.get("scores"), dims)
+                if not score_errors and not cj.get("review_degraded"):
                     scored += 1
+                if cj.get("review_degraded"):
+                    review_degradation_reasons.append(
+                        "第 %d 章评审未完成：%s" % (
+                            i, cj.get("review_fallback_reason") or
+                            cj.get("summary") or "模型评审不可用"))
                 if r["evl"] and not ev_check_lines[0]:
                     ev_check_lines[0] = r["evl"]
                 ledger_lines.extend(r["ledger"])
@@ -3863,6 +4041,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if r["sid"]:
                     sids[agent["id"]] = r["sid"]
                 cj_map[agent["id"]] = cj
+                if r.get("swap_note") and agent.get("id") not in {
+                        a.get("id") for a in critics}:
+                    remember_agent(actual_critics, agent)
+                    refresh_actual_route(
+                        review_reason="章节评审换将：%s" %
+                        (agent.get("label") or agent.get("id")))
                 chapter_issues = [_tag_review_issue(it, i, "chapter")
                                   for it in (cj.get("issues") or [])[:6]]
                 _anchor_issues(chapter_issues, text)
@@ -3903,9 +4087,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         if scored >= quality_gate.MIN_REVIEWERS:
                             break
                     _check_cancel(ev)
-            # 全停收场：名单与补位池都掏空（且确实发生过账号级死错），继续跑
-            # 只会把剩余章节的起草白烧完——「该取消就取消」，说清原因再停，
-            # 不留僵尸步骤也不空转门禁。
+            # 评审全停时记录未评估原因，但不截断稿件流水线：后续章节、合并
+            # 和报告仍需完成；发布门禁会因有效评审不足而 fail closed。
             if not live and _bench.benched_ids(run_id):
                 real_left = [a for a in (agents or [])
                              if a.get("mode") == "real"
@@ -3914,10 +4097,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     _why = "；".join(
                         "%s：%s" % (aid, why)
                         for aid, why in sorted(_bench.benched_agents(run_id).items()))
-                    raise UpstreamExhausted(
-                        "全部可用评审已本场停用（额度耗尽/凭据缺失/权限封禁），"
-                        "继续只会白烧步骤，编排已中止。停用名单：%s。"
-                        "请充值或配置可用 CLI 后重试。" % _why)
+                    review_degradation_reasons.append(
+                        "第 %d 章评审未完成；全部评审 CLI 已停用：%s" % (i, _why))
             return cj_map, scored, sids, reviewed_continuity
 
         def means_of(cj_map):
@@ -3928,7 +4109,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     scores, errors = quality_gate.normalize_scores(cj.get("scores"), dims)
                     if not errors and d in scores:
                         xs.append(scores[d])
-                vals[d] = round(sum(xs) / len(xs), 1) if xs else 0.0
+                if xs:
+                    vals[d] = round(sum(xs) / len(xs), 1)
             return vals
 
         def review_stats(cj_map, threshold_value):
@@ -4462,15 +4644,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 continuity_rows[:] = current_continuity
                 critic_sids.update(sids_now)
             if not scored:
-                # 「评不上」≠「评了 0 分」：全部评审失败时中止本轮，
-                # 让自动续跑换个时机重试，而不是以 0 分误判章稿质量。
-                store.update_run(run_id, expected_status="running", status="failed",
-                                 error="第 %d 章评审全部失败（评审模型不可用或输出不可解析），"
-                                       "已中止以免以 0 分误判质量" % i, ended_at=_now())
-                return
+                # 「评不上」≠「评了 0 分」：保留空评分并继续修订、合并和报告，
+                # 最终明确标成未评估且禁止发布。
+                review_degradation_reasons.append(
+                    "第 %d 章评审未取得有效评分；稿件质量未判定" % i)
             means = means_of(cj_by_agent)
             chapter_review = review_stats(cj_by_agent, threshold_ch)
             passed = chapter_review.get("passed") is True
+            chapter_evaluated = bool(chapter_review.get("consensus"))
+            if (chapter_review.get("reviewer_count", 0) < quality_gate.MIN_REVIEWERS
+                    or not chapter_review.get("consensus")):
+                review_degradation_reasons.append(
+                    "第 %d 章评审未形成有效人数/共识（%d/%d）；稿件质量未判定" % (
+                        i, chapter_review.get("reviewer_count", 0),
+                        quality_gate.MIN_REVIEWERS))
             # The model still owns literary judgement, but these two local
             # audits are deterministic release evidence: semantic ledger
             # conflicts and repeated chapter templates must enter the same
@@ -4508,11 +4695,12 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     i, "（开篇闸门：核第 1 章能否抓住读者）",
                     issue_scope="opening-gate")
                 if s_means is None:
-                    _signing_record("opening_gate", dict(signing_review_meta, chapter=i, evaluated=False))
-                    store.update_run(run_id, expected_status="running", status="failed",
-                                     error="开篇闸门：未完成有效文本评估（模型失败、逐维原文证据缺失或评审分歧），"
-                                           "已保留稿件；恢复评审后重试，不据此判定稿件质量。", ended_at=_now())
-                    return
+                    reason = ("开篇评审未完成，稿件质量未判定：" +
+                              "；".join(signing_review_meta.get("evidence_errors") or [])[:300])
+                    _signing_record("opening_gate", dict(
+                        signing_review_meta, chapter=i, evaluated=False,
+                        review_degraded=True, review_fallback_reason=reason))
+                    review_degradation_reasons.append(reason)
                 if s_means is not None:
                     gate_opening_ok = (_all_ge(s_means, threshold_ch)
                                        and not signing_review_meta.get("blocking_issues"))
@@ -4545,7 +4733,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             majors = [x for x in issues_all if _issue_hits_chapter(x, i)
                       and x.get("severity") == "major"][:8]
             majors, _unanchored = _anchor_issues(majors, text)
-            crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, means[d], threshold_ch) for d in dims]
+            revision_means = means if chapter_evaluated else {}
+            crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, revision_means[d], threshold_ch)
+                          for d in dims if d in revision_means]
+            if not revision_means:
+                crit_lines.append(
+                    "- 评审未完成，稿件质量未判定；请只按章纲、连续性和明确的确定性问题修订，"
+                    "不要把缺失评审理解为稿件质量差。")
             crit_lines += _major_lines(majors)
             if gate_note:
                 crit_lines.insert(0, gate_note)
@@ -4604,9 +4798,20 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if cap:
                     prompt += "\n\n" + cap
                 prompt = attachments.append_task_context(prompt, task)
-                _run_step(run_id, "revise-c%d" % i, modelhub.bind_agent(impl, difficulty), prompt,
-                          step_wd, readonly=False, ev=ev, timeout=2400,
-                          resume=resume_ctx["session"] if resume_ctx else draft_sid)
+                before_revision = _read_chapter(workdir, i)
+                revise_result = _run_step(
+                    run_id, "revise-c%d" % i,
+                    modelhub.bind_agent(impl, difficulty), prompt,
+                    step_wd, readonly=False, ev=ev, timeout=2400,
+                    resume=resume_ctx["session"] if resume_ctx else draft_sid)
+                after_revision = _read_chapter(workdir, i)
+                if not revise_result.get("ok"):
+                    revision_note = (revise_result.get("error") or
+                                     "CLI 未确认修订成功")[:300]
+                    review_degradation_reasons.append(
+                        ("第 %d 章修订调用异常退出，但稿件有变化并已重新评审：%s"
+                         if after_revision != before_revision else
+                         "第 %d 章修订失败且稿件未变化：%s") % (i, revision_note))
             remember_agent(actual_implementers, impl)
             refresh_actual_route(
                 impl, implement_reason="章节修订：%s" %
@@ -4634,13 +4839,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 "chapter": i, "means": s_means2 or {},
                 "summary": (s_sum2 or "")[:200]})
             if s_means2 is None:
-                store.update_run(run_id, expected_status="running", status="failed",
-                                 error="开篇闸门终判：未完成有效文本评估，稿件已保留，恢复评审后重试。",
-                                 ended_at=_now())
-                return
-            shortfalls = ["%s %.1f" % (d, v) for d, v in s_means2.items() if v < threshold_ch]
-            blockers = signing_review_meta.get("blocking_issues") or []
-            if shortfalls or blockers:
+                reason = ("开篇闸门终评未完成，稿件质量未判定：" +
+                          "；".join(signing_review_meta.get("evidence_errors") or [])[:300])
+                review_degradation_reasons.append(reason)
+                _signing_record("opening_gate_final", dict(
+                    signing_review_meta, chapter=i, evaluated=False,
+                    review_degraded=True, review_fallback_reason=reason))
+            shortfalls = (["%s %.1f" % (d, v) for d, v in s_means2.items()
+                           if v < threshold_ch] if s_means2 is not None else [])
+            blockers = (signing_review_meta.get("blocking_issues") or []) \
+                if s_means2 is not None else []
+            if s_means2 is not None and (shortfalls or blockers):
                 store.update_run(run_id, expected_status="running", status="failed",
                                  error="开篇闸门：第 1 章内部文本评估 %s（项目阈值 %.1f）"
                                        "（已尝试重设计或修订仍不达标），暂停扩写；"
@@ -4649,11 +4858,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                           "；".join(str(it.get("note") or "")[:100] for it in blockers[:3]), threshold_ch),
                                  ended_at=_now())
                 return
-        cs_new = {"chapter": i, "title": ch["title"], "means": means,
+        cs_new = {"chapter": i, "title": ch["title"],
+                  "means": means if chapter_review.get("consensus") else {},
                   "passed": passed,
                   "reviewer_count": chapter_review.get("reviewer_count", 0),
                   "reviewer_consensus": chapter_review.get("consensus", False),
                   "reviewer_spreads": chapter_review.get("spreads", {}),
+                  "review_degraded": (chapter_review.get("reviewer_count", 0)
+                                      < quality_gate.MIN_REVIEWERS or
+                                      not chapter_review.get("consensus")),
+                  "review_status": (
+                      "evaluated" if chapter_review.get("consensus") else
+                      "not_evaluated" if not chapter_review.get("reviewer_count")
+                      else "insufficient_reviewers_or_consensus"),
+                  "provisional_means": (means if means and
+                                        not chapter_review.get("consensus") else {}),
                   "rounds": rounds_used,
                   "words": _wc(_read_chapter(workdir, i)),
                   "quality_signals": novel_quality.signal_summary(
@@ -4989,11 +5208,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
 
     gscored, global_review_results, _gi = run_global_round(critics)
     global_issues.extend(_gi)
-    # 「评不上」≠「评了低分」：全局评审全挂时先从其它真实智能体补位（对齐章级
-    # 评审者级 fallback）；补位后仍零分则判 run 失败——「无法评审」绝不能当成
-    # 「全局评审未通过」去盖「未达标」章（2026-09-18 假未达标案：codex 绑定链
-    # 全失效 + kimi 命令行超长，global_scores 为空被 _all_ge 判成不通过）。
-    # mock 评审总出分，不会误触；判失败不设 impl mock 例外（对齐章级中止）。
+    # 全局评审先从其它真实智能体补位。仍不足最低人数时保留稿件并继续
+    # 打磨（若有有效问题）、合并和报告；状态写为未评估，不据此判稿差。
     if _global_review_count(global_review_results, dims) < quality_gate.MIN_REVIEWERS:
         from . import bench as _bench
         tried = {a.get("id") for a in critics}
@@ -5026,22 +5242,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                         for aid, why in sorted(_bl.items())[:4])
             except Exception:
                 pass
-            store.update_run(run_id, expected_status="running", status="failed",
-                             error="全局一致性评审有效评审不足 %d 名（当前 %d 名；"
-                                   "评审模型不可用或输出不可解析），已中止以免把「无法评审」"
-                                   "误判为「未达标」。"
-                                   "各章稿件已全部落盘，修复评审链后续跑可直接收尾"
-                                   % (quality_gate.MIN_REVIEWERS,
-                                      _global_review_count(global_review_results, dims))
-                                   + _benched_why,
-                             ended_at=_now())
-            return
+            review_degradation_reasons.append(
+                "全局评审未完成，稿件质量未判定（有效评审 %d/%d）；%s" % (
+                    _global_review_count(global_review_results, dims),
+                    quality_gate.MIN_REVIEWERS,
+                    _benched_why.lstrip("；") or "评审模型不可用或输出不可解析"))
     global_review = quality_gate.aggregate_reviews(
         global_review_results, dims, threshold=threshold)
     global_means = global_review["means"]
     global_shortfalls = {d: global_means.get(d) for d in dims
                          if d not in global_means or global_means[d] < threshold}
     global_pass = global_review.get("passed") is True
+    if not global_review.get("consensus"):
+        review_degradation_reasons.append(
+            "全局评审未形成有效人数/共识（%d/%d）；全书质量未判定" % (
+                global_review.get("reviewer_count", 0), quality_gate.MIN_REVIEWERS))
 
     # ---- 3.5) 自驱打磨：全局评审不过或存在未消 major → 自动重改病灶章并重评
     # （至多 2 轮，无需人工）。2026-10-13 头七/神瞳实案：章分与全局分全过线
@@ -5135,11 +5350,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                     "__WORDS__": str(wpc),
                 })
                 prompt = attachments.append_task_context(prompt, task)
+                before_polish = _read_chapter(workdir, i)
                 res = _run_step(run_id, "polish-c%d" % i, modelhub.bind_agent(impl, difficulty),
                                 prompt, workdir, readonly=False, ev=ev, timeout=2400,
                                 resume=resume_ctx["session"] if resume_ctx else None)
-                if not res["ok"]:
+                after_polish = _read_chapter(workdir, i)
+                if not res["ok"] and after_polish == before_polish:
                     continue
+                if not res["ok"]:
+                    review_degradation_reasons.append(
+                        "第 %d 章打磨调用异常退出但稿件已变化，已对新稿重新评审：%s" %
+                        (i, (res.get("error") or "CLI 未确认打磨成功")[:240]))
             remember_agent(actual_implementers, impl)
             refresh_actual_route(
                 impl, implement_reason="全局打磨：%s" %
@@ -5164,10 +5385,18 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                 if agent.get("mode") == "mock":
                     cj = mocks.critique(agent["id"], 3, dims, threshold_ch)
                 else:
-                    res2 = _run_step(run_id, "critique-c%d" % i, modelhub.bind_agent(agent, difficulty),
-                                     crit_prompt_for(_read_chapter(workdir, i), note="小说第 %d 章（打磨后）" % i, chapter=i),
-                                     workdir, readonly=True, ev=ev)
-                    cj = runner.extract_json(res2.get("text") or "")
+                    cj, res2, actual, _review_note = _critique_step_with_cli_fallback(
+                        run_id, "critique-c%d" % i, agent,
+                        crit_prompt_for(_read_chapter(workdir, i),
+                                        note="小说第 %d 章（打磨后）" % i,
+                                        chapter=i),
+                        workdir, ev, agents, impl, difficulty,
+                        task.get("type") or "serial_novel", stats, mode,
+                        False, dims=dims)
+                    agent = actual or agent
+                    if cj and cj.get("review_degraded"):
+                        review_degradation_reasons.append(
+                            "第 %d 章打磨后评审未完成；稿件质量未判定" % i)
                     if not isinstance(cj, dict) or not isinstance(cj.get("scores"), dict):
                         cj = {"scores": {}, "issues": [], "summary": "评审输出无法解析"}
                 cj_by_agent[agent["id"]] = cj
@@ -5178,10 +5407,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             for c2 in chapter_scores:
                 if c2["chapter"] == i:
                     c2["means"] = polished_review["means"]
+                    if not polished_review.get("consensus"):
+                        c2["provisional_means"] = polished_review["means"]
+                        c2["means"] = {}
                     c2["passed"] = polished_review["passed"] is True
                     c2["reviewer_count"] = polished_review["reviewer_count"]
                     c2["reviewer_consensus"] = polished_review["consensus"] is True
                     c2["reviewer_spreads"] = polished_review["spreads"]
+                    c2["review_degraded"] = not polished_review.get("consensus")
+                    c2["review_status"] = (
+                        "evaluated" if polished_review.get("consensus") else
+                        "not_evaluated" if not polished_review.get("reviewer_count")
+                        else "insufficient_reviewers_or_consensus")
+                    if not polished_review.get("consensus"):
+                        review_degradation_reasons.append(
+                            "第 %d 章打磨后评审未形成有效人数/共识；稿件质量未判定" % i)
                     c2["rounds"] = int(c2.get("rounds") or 1) + 1
                     c2["polished"] = True
                     c2["words"] = _wc(_read_chapter(workdir, i))
@@ -5249,16 +5489,16 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                               summary="打磨后全书重评异常中止，已落盘章稿不受影响")
             raise
         if gscored2 < quality_gate.MIN_REVIEWERS:
-            store.finish_step(run_id, pstep["n"], "failed",
-                              summary="打磨后全局评审有效人数不足；当前稿件保留，等待评审链修复后重试")
-            store.update_run(
-                run_id, expected_status="running", status="failed",
-                error="打磨后全局一致性评审有效评审不足 %d 名（当前 %d 名；"
-                      "评审模型不可用或输出不可解析），已中止以免把「无法评审」"
-                      "误判为「未达标」。打磨稿件已落盘，修复评审链后续跑可重新评估"
-                      % (quality_gate.MIN_REVIEWERS, gscored2),
-                ended_at=_now())
-            return
+            review_degradation_reasons.append(
+                "打磨后全局评审未完成，当前稿件质量未判定（有效评审 %d/%d）" %
+                (gscored2, quality_gate.MIN_REVIEWERS))
+            global_means = {}
+            global_shortfalls = {d: None for d in dims}
+            global_review_results = global_review_results2
+            global_review = quality_gate.aggregate_reviews(
+                global_review_results, dims, threshold=threshold)
+            global_pass = False
+            global_issues[:] = gi2
         if gscored2:
             global_review_results = global_review_results2
             global_review = quality_gate.aggregate_reviews(
@@ -5270,6 +5510,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             # 旧账换新账：上一轮的 majors 是对打磨前稿件的评判，重评出了新分
             # 却不换 issues，重写修好了也永远 publishable=False（陈账死闸）
             global_issues[:] = gi2
+            if not global_review.get("consensus"):
+                review_degradation_reasons.append(
+                    "打磨后全局评审未形成有效人数/共识；全书质量未判定")
         else:
             global_means = {}
             global_shortfalls = {d: None for d in dims}
@@ -5323,6 +5566,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                           "，前文 1–%d 章取自归档" % arch_upto if arch_preface else ""),
                       duration_s=0.1)
 
+    final_review = _finalize_serial_review_evidence(
+        chapter_scores, global_review, review_degradation_reasons)
+    chapter_scores = final_review["chapter_scores"]
+    global_means = final_review["global_scores"]
+    review_degradation_reasons = final_review["reasons"]
+    global_pass = bool(global_pass and final_review["global_complete"])
+    if not final_review["global_complete"]:
+        global_shortfalls = {dimension: None for dimension in dims}
     chapters_pass = all(c["passed"] for c in chapter_scores)
     # 最终落盘稿的内部体例检查，与平台拒稿原因及文学文风判断分开。
     issues_all.extend(novel_quality.style_consistency_notes(
@@ -5331,7 +5582,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     add_deterministic_issues(_final_deterministic_quality_issues(workdir, start, end))
     major_issues = [x for x in _dedup_issues(list(issues_all) + list(global_issues))
                     if _is_blocking_major_issue(x)]
-    publishable = bool(chapters_pass and global_pass and not major_issues)
+    review_degraded = final_review["review_degraded"]
+    publishable = bool(chapters_pass and global_pass and not major_issues
+                       and not review_degraded)
     signing_checkpoint = (store.get_run(run_id) or {}).get("signing_checkpoint") or {}
     quality_status = "continue_only"
     if publishable and global_review.get("consensus") and all(
@@ -5339,14 +5592,21 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             c.get("reviewer_consensus") is True for c in chapter_scores):
         quality_status = ("signing_ready" if signing_checkpoint.get("passed") is True
                           else "publish_ready")
-    overall = round(sum(sum(c["means"].values()) / max(1, len(c["means"]))
-                        for c in chapter_scores) / max(1, len(chapter_scores)), 1)
+    scored_chapters = [c for c in chapter_scores if c.get("means")]
+    overall = (round(sum(sum(c["means"].values()) / len(c["means"])
+                         for c in scored_chapters) / len(scored_chapters), 1)
+               if not review_degraded and scored_chapters else None)
     verdict = {
         "type": task["type"], "engine": "review", "serial": True,
         "publishable": publishable, "overall": overall, "mode": mode,
+        "review_degraded": review_degraded,
+        "review_status": "not_evaluated" if review_degraded else "evaluated",
+        "review_degradation_reasons": list(dict.fromkeys(
+            review_degradation_reasons))[:30],
         "threshold": threshold, "chapters_used": n,
         "start_chapter": start, "end_chapter": end, "total_words": total_words,
         "chapter_scores": chapter_scores, "global_scores": global_means,
+        "provisional_global_scores": final_review["provisional_global_scores"],
         "manuscript_fingerprint": _serial_review_fingerprint(workdir, start, end),
         "global_shortfalls": global_shortfalls,
         "global_pass": global_pass, "route": route,
@@ -5376,7 +5636,8 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                  for v in vol_heads.values()) if vol_heads
                  else ("未分卷（可设置「每卷章数」，或在目标里写明卷结构）")),
              "- 结论：**%s**（各章门禁 %s / 全局评审 %s）" % (
-                 "✅ 达到发布标准" if publishable else "❌ 未达标",
+                 "✅ 达到发布标准" if publishable else
+                 "⚠ 评审未完成，稿件质量未判定" if review_degraded else "❌ 未达标",
                  "通过" if chapters_pass else "未通过",
                  "通过" if global_pass else "未通过"),
              "- 编排模式：%s　作者：%s　评审组：%s" % (
@@ -5387,11 +5648,17 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
              "| 章 | 标题 | " + " | ".join(dims) + " | 均分 | 达标 | 轮次 | 字数 |",
              "|" + "---|" * (len(dims) + 6)]
     for c in chapter_scores:
-        mean = round(sum(c["means"].values()) / max(1, len(c["means"])), 1) if c["means"] else 0
+        evaluated = c.get("review_status") == "evaluated"
+        shown_scores = c.get("means") or {}
+        mean = (round(sum(shown_scores.values()) / len(shown_scores), 1)
+                if evaluated and shown_scores else None)
         lines.append(("| %d | %s | " % (c["chapter"], c["title"]))
-                     + " | ".join("%.1f" % c["means"].get(d, 0.0) for d in dims)
-                     + " | %.1f | %s | %d | %d |" % (mean, "✓" if c["passed"] else "✗",
-                                                     c["rounds"], c["words"]))
+                     + " | ".join("%.1f" % shown_scores[d]
+                                 if evaluated and d in shown_scores else "未评估"
+                                 for d in dims)
+                     + " | %s | %s | %d | %d |" % (
+                         "%.1f" % mean if mean is not None else "未评估",
+                         "✓" if c["passed"] else "✗", c["rounds"], c["words"]))
     signal_hints = []
     for c in chapter_scores:
         for hint in (c.get("quality_signals") or {}).get("hints") or []:
@@ -5399,7 +5666,15 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     if signal_hints:
         lines += ["", "## 确定性文本信号复查", ""] + signal_hints[:20]
     lines += ["", "## 全局评审（阈值 %.1f）" % threshold, ""]
-    lines += ["- %s：%.1f" % (d, global_means.get(d, 0.0)) for d in dims]
+    lines += ["- %s：%s" % (
+        d, "%.1f" % global_means[d] if global_review.get("consensus")
+        and d in global_means else "未评估") for d in dims]
+    if review_degraded:
+        lines += ["", "## 评审状态", "",
+                  "评审未完成，稿件质量未判定。未评估不代表稿件质量差，"
+                  "当前结果不满足发布门禁。"]
+        lines.extend("- %s" % reason for reason in
+                     verdict.get("review_degradation_reasons") or [])
     if global_shortfalls:
         lines += ["", "### 全局未达标维度（重写依据）", ""]
         lines += ["- %s：%s（低于阈值 %.1f；章节分数全部达标也不能替代全局门禁）"
@@ -5417,9 +5692,11 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     store.write_report(run_id, "\n".join(lines))
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
-                     summary="连载任务%s（%s，约 %d 字，综合 %.1f）" % (
-                         "达标" if publishable else "未达标", scope_txt,
-                         total_words, overall),
+                     summary="连载任务%s（%s，约 %d 字，综合 %s）" % (
+                         "达标" if publishable else
+                         "评审未完成、质量未判定" if review_degraded else "未达标",
+                         scope_txt, total_words,
+                         "%.1f" % overall if overall is not None else "未评估"),
                      ended_at=_now())
 
 
@@ -5758,6 +6035,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     rounds = workflow["review_rounds"]
 
     # 1) 起草
+    draft_degraded = False
+    draft_degradation_reason = ""
     bestof_improvements = ""   # 赛马败者精华（真实路径由选择器填充；mock 路径恒空）
     if impl.get("mode") == "mock":
         step, log_abs = store.add_step(run_id, "draft", impl["id"], impl.get("label"), note=draft_note)
@@ -5866,10 +6145,25 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             if draft_res.get("raw", {}).get("cancelled"):
                 _check_cancel(ev)
         if not draft_res["ok"]:
-            store.update_run(run_id, expected_status="running", status="failed",
-                             error="起草失败: %s" % draft_res.get("error"),
-                             ended_at=_now())
-            return
+            draft_degradation_reason = str(
+                draft_res.get("error") or "起草 CLI 未返回成功状态")[:500]
+            # A CLI can stall after writing usable text to the manuscript file.
+            # Keep that artifact as continuity input and finish review, repair,
+            # and reporting; the explicit degradation flag still blocks release.
+            if read_ms().strip():
+                draft_degraded = True
+                draft_note = ((draft_note + "；") if draft_note else "") + (
+                    "起草 CLI 中断，沿用已落盘稿件继续评审和修订")
+                store.update_run(
+                    run_id, expected_status="running",
+                    summary="起草 CLI 中断，沿用已落盘稿件继续流程",
+                    draft_degraded=True,
+                    draft_degradation_reason=draft_degradation_reason)
+            else:
+                store.update_run(run_id, expected_status="running", status="failed",
+                                 error="起草失败: %s" % draft_degradation_reason,
+                                 ended_at=_now())
+                return
 
     # 1.5) 短篇字数闸（起草后、评审前）：不足自动扩写（≤2 轮）、超出压缩
     # （1 轮，尽力而为）。mock 执行没有字数意义；扩写步本身失败或仍欠下限
@@ -5933,7 +6227,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 cj, res, actual, swap_note = _critique_step_with_cli_fallback(
                     run_id, role, agent, crit_prompt, workdir, ev, agents,
                     impl, difficulty, task.get("type") or "novel", stats,
-                    mode, is_selection)
+                    mode, is_selection, dims=dims)
                 if actual.get("id") != agent.get("id"):
                     critics[idx] = actual
                     agent = actual
@@ -5952,14 +6246,29 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                         logging.getLogger(__name__).warning(
                             "评审换将后的路由回写失败 run=%s", run_id,
                             exc_info=True)
+                elif swap_note and "评审本地兜底" in swap_note:
+                    route["critics"] = ((route.get("critics") or "") +
+                                        ("；" if route.get("critics") else "") +
+                                        swap_note)
                 if not (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
                         and cj["scores"]):
                     round_critic_errors[agent.get("id") or "CLI"] = (
                         res.get("error") or res.get("text") or "输出无法解析")[:160]
-                    cj = {"scores": {}, "issues": [],
-                          "summary": "评审输出无法解析（重试后仍失败）：%s"
-                                     % ((res.get("error") or res.get("text")
-                                         or "")[:150])}
+                    # Preserve the explicit degraded/fallback markers. Losing
+                    # them here turns an unevaluated reviewer into an empty
+                    # ordinary review, allowing another reviewer's scores to
+                    # pass the release gate accidentally.
+                    prior = cj if isinstance(cj, dict) else {}
+                    cj = {
+                        "scores": {}, "issues": list(prior.get("issues") or []),
+                        "summary": prior.get("summary") or
+                                   "评审输出无法解析（重试后仍失败）：%s" % (
+                                       (res.get("error") or res.get("text") or "")[:150]),
+                    }
+                    for key in ("review_degraded", "review_fallback",
+                                "review_fallback_reason"):
+                        if prior.get(key):
+                            cj[key] = prior[key]
             per_agent[agent["id"]] = cj
             model_issues = [_tag_review_issue(
                 issue, issue.get("chapter", "全稿评审"), "selection-review")
@@ -5972,10 +6281,35 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         for d in dims:
             vals = [float(cj["scores"].get(d, 0)) for cj in per_agent.values()
                     if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
-            means[d] = round(sum(vals) / len(vals), 1) if vals else 0.0
+            if vals:
+                means[d] = round(sum(vals) / len(vals), 1)
         round_critic_failed = bool(per_agent) and not any(
             cj.get("scores") for cj in per_agent.values())
+        round_degraded = any(
+            bool(cj.get("review_degraded")) for cj in per_agent.values()
+            if isinstance(cj, dict))
+        round_review_count = quality_gate.aggregate_reviews(
+            [{"id": aid, "scores": cj.get("scores")}
+             for aid, cj in per_agent.items()], dims,
+            threshold=threshold)["reviewer_count"]
+        # The workflow is allowed to select one reviewer for standard tasks.
+        # Requiring the global serial/deep-review minimum here made those
+        # deliberately single-reviewer runs fail even when the reviewer
+        # returned a complete, valid assessment. Deep/expert workflows still
+        # request two reviewers and therefore keep the stronger gate.
+        required_reviewers = max(1, min(
+            quality_gate.MIN_REVIEWERS,
+            int(workflow.get("reviewers") or 1)))
+        round_degraded = (round_degraded or
+                          round_review_count < required_reviewers)
+        provisional_means = means if round_degraded else {}
+        if round_degraded:
+            # A lone reviewer can provide repair hints, but cannot establish a
+            # consensus score. Preserve it only as provisional evidence.
+            means = {}
         publishable = bool(means) and all(v >= threshold for v in means.values())
+        if round_degraded or draft_degraded:
+            publishable = False
         if is_selection:
             _, package_errors = selection.parse_report(manuscript)
             issues_all.extend({"dim": "交接完整", "severity": "major", "note": error}
@@ -5987,15 +6321,25 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             publishable = publishable and complete and not any(
                 _is_blocking_issue(issue) for issue in issues_all)
         history_rounds.append({"round": r, "means": means,
+                               "provisional_means": provisional_means,
                                "per_agent": {k: v.get("scores", {}) for k, v in per_agent.items()},
                                "issues": issues_all, "passed": publishable,
                                "critic_failed": round_critic_failed,
-                               "critic_errors": round_critic_errors})
+                               "critic_errors": round_critic_errors,
+                               "review_degraded": round_degraded,
+                               "review_fallbacks": [
+                                   cj.get("review_fallback") for cj in per_agent.values()
+                                   if isinstance(cj, dict) and cj.get("review_fallback")]})
         if publishable or r == rounds:
             break
 
         # 修订
-        crit_lines = ["- %s：%.1f（阈值 %.1f）" % (d, means[d], threshold) for d in dims]
+        crit_lines = ["- %s：%.1f（阈值 %.1f）" % (d, means[d], threshold)
+                      for d in dims if d in means]
+        if not means:
+            crit_lines.append(
+                "- 评审未完成，稿件质量未判定；请结合任务目标和确定性问题谨慎修订，"
+                "不要把缺失评分理解为稿件质量差。")
         majors = [i for i in issues_all if i.get("severity") == "major"][:8]
         majors, _unanchored = _anchor_issues(majors, manuscript)
         crit_lines += _major_lines(majors)
@@ -6034,13 +6378,27 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         _check_cancel(ev)
 
     final_means = history_rounds[-1]["means"] if history_rounds else {}
-    overall = round(sum(final_means.values()) / len(final_means), 1) if final_means else 0.0
+    overall = (round(sum(final_means.values()) / len(final_means), 1)
+               if final_means else None)
+    # Only the last review round describes the manuscript being reported.
+    # An earlier unavailable reviewer must not permanently taint a later,
+    # complete reassessment of the revised manuscript.
+    review_degraded = bool(history_rounds and
+                           history_rounds[-1].get("review_degraded"))
+    if review_degraded or draft_degraded:
+        publishable = False
     verdict = {
         "type": task["type"], "engine": "review", "publishable": publishable,
         "overall": overall, "mode": mode,
         "threshold": threshold, "rounds_used": history_rounds[-1]["round"] if history_rounds else 0,
         "scores": final_means, "history": history_rounds, "route": route,
         "workflow": workflow,
+        "review_degraded": review_degraded,
+        "draft_degraded": draft_degraded,
+        "draft_degradation_reason": draft_degradation_reason,
+        "review_degradation_reasons": ([
+            "评审服务不可用或输出无法解析；评审未完成，稿件质量未判定"
+        ] if review_degraded else []),
         "manuscript_fingerprint": quality_gate.local_version(
             workdir, ms_name)["fingerprint"],
     }
@@ -6115,10 +6473,14 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     # 3) 报告
     lines = ["# 评审报告：%s" % task["title"], "",
              "- 任务类型：%s" % task["type"],
-             "- 结论：**%s**（综合 %.1f / 阈值 %.1f，%d 轮评审）"
+             "- 结论：**%s**（综合 %s / 阈值 %.1f，%d 轮评审）"
              % (("✅ 立项审核通过，可进入试写（不代表平台签约）" if is_selection else "✅ 达到发布标准")
-                if publishable else "❌ 未达标，建议再修",
-                overall, threshold, verdict["rounds_used"]),
+                if publishable else ("⚠ 起草中断，已落盘稿件仅用于继续评审修订"
+                                     if draft_degraded else
+                                     "⚠ 评审未完成，稿件质量未判定" if review_degraded
+                                     else "❌ 未达标，建议再修"),
+                "%.1f" % overall if overall is not None else "未评估",
+                threshold, verdict["rounds_used"]),
              "- 编排模式：%s　起草/修订：%s　评审组：%s" % (
                  {"auto": "自动", "fast": "快速", "expert": "专家",
                   "manual": "手动"}.get(mode, mode),
@@ -6139,8 +6501,17 @@ def _run_content_review(run, task, agents, ev, stats, mode):
               "|" + "---|" * (len(dims) + 2)]
     for h in history_rounds:
         lines.append("| %d | " % h["round"]
-                     + " | ".join("%.1f" % h["means"].get(d, 0.0) for d in dims)
+                     + " | ".join("%.1f" % h["means"][d]
+                                 if d in h["means"] else "未评估" for d in dims)
                      + " | %s |" % ("✓" if h["passed"] else "✗"))
+    if review_degraded:
+        lines += ["", "## 评审状态", "",
+                  "评审未完成，稿件质量未判定。当前结果不代表稿件质量差，且不满足发布门禁。"]
+    if draft_degraded:
+        lines += ["", "## 起草状态", "",
+                  "起草 CLI 中断；已落盘稿件仅作为连续性输入完成后续评审与修订，"
+                  "本次交付仍未确认完整，不满足发布门禁。",
+                  "- 起草错误：%s" % draft_degradation_reason]
     lines += ["", "## 末轮主要问题", ""]
     last_issues = (history_rounds[-1].get("issues") if history_rounds else []) or []
     majors = [i for i in last_issues if i.get("severity") == "major"]
@@ -6183,6 +6554,21 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
                          error="稿件已过评审，但成片渲染失败：%s" % render_error,
                          summary="成片渲染失败", ended_at=_now())
+    elif history_rounds and history_rounds[-1].get("review_degraded"):
+        store.update_run(
+            run_id, expected_status="running", status="failed", verdict=verdict,
+            error=("评审未完成，稿件质量未判定。有效评审人数不足、评审服务不可用"
+                   "或输出无法解析；已完成修订和报告，未通过发布门禁。"),
+            summary="评审服务降级，质量未判定（流程已收尾）",
+            ended_at=_now())
+    elif draft_degraded:
+        store.update_run(
+            run_id, expected_status="running", status="failed", verdict=verdict,
+            error=("起草 CLI 中断，已落盘稿件仅用于继续评审和修订；"
+                   "稿件完整性未确认，未通过发布门禁。原因：%s"
+                   % draft_degradation_reason[:300]),
+            summary="起草中断，已完成后续评审、修订和报告（未发布）",
+            ended_at=_now())
     elif history_rounds and history_rounds[-1].get("critic_failed"):
         why = "；".join(
             "%s：%s" % (aid, text) for aid, text in
@@ -6601,7 +6987,7 @@ def _workdir_blocker(task, run_id):
     return None
 
 
-def _execute_run_impl(run_id):
+def _execute_run_impl_inner(run_id):
     run = store.get_run(run_id)
     if not run:
         return
@@ -6666,6 +7052,8 @@ def _execute_run_impl(run_id):
     try:
         _ensure_budget(run_id)
     except TaskTimeout:
+        store.update_run(run_id, expected_status="running", status="timeout",
+                         ended_at=_now(), error="任务总时限已到")
         return
     # 统一任务编译：旧字段继续供各引擎读取，规格作为运行级诊断与调度输入落盘。
     if task.get("type") == "rank_scan" and task.get("engine") == "direct":
@@ -7065,6 +7453,74 @@ def _execute_run_impl(run_id):
             knowledge.learn_async(run_id)
         except Exception:
             pass
+
+
+def _write_terminal_fallback_report(run_id):
+    """Ensure failed/aborted runs have a compact user-readable report."""
+    run = store.get_run(run_id) or {}
+    status = str(run.get("status") or "")
+    if status not in ("failed", "timeout", "cancelled"):
+        return
+    try:
+        report_path = store.run_dir(run_id) / "report.md"
+        if report_path.is_file():
+            return
+    except Exception:
+        report_path = None
+    task = store.get_task(run.get("task_id")) or {}
+    title = str(task.get("title") or run.get("title") or run.get("task_id") or run_id)
+    status_label = {"failed": "失败", "timeout": "超时", "cancelled": "已取消"}.get(
+        status, status)
+    error = str(run.get("error") or "未提供错误详情")[:1200]
+    lines = ["# 流程终止报告：%s" % title, "",
+             "- 终态：%s" % status_label,
+             "- 运行：%s" % run_id,
+             "- 结束时间：%s" % (run.get("ended_at") or "未知"),
+             "", "## 终止原因", "", error,
+             "", "## 已完成步骤", ""]
+    completed = [step for step in (run.get("steps") or [])
+                 if isinstance(step, dict) and step.get("status") == "done"]
+    if completed:
+        lines.extend("- %s：%s" % (step.get("role") or "步骤",
+                                    step.get("summary") or "已完成")
+                     for step in completed[-20:])
+    else:
+        lines.append("- 无已确认完成的步骤")
+    lines += ["", "## 评审与交付状态", "",
+              "本次未生成完整评审结果；未生成正式评分不代表稿件质量差。",
+              "已落盘的稿件与步骤日志保留在本次运行目录及任务工作目录。"]
+    try:
+        store.write_report(run_id, "\n".join(lines))
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "终态报告兜底写入失败 run=%s path=%s", run_id, report_path,
+            exc_info=True)
+
+
+def _execute_run_impl(run_id):
+    """Run the pipeline with a final safety net around every setup/dispatch stage."""
+    try:
+        _execute_run_impl_inner(run_id)
+    except TaskTimeout:
+        current = store.get_run(run_id) or {}
+        if current.get("status") in ("queued", "running"):
+            store.update_run(run_id, expected_status=current.get("status"),
+                             status="timeout", ended_at=_now(),
+                             error="任务总时限已到")
+    except Exception as exc:
+        logging.getLogger(__name__).exception(
+            "编排入口异常 run=%s", run_id)
+        current = store.get_run(run_id) or {}
+        if current.get("status") in ("queued", "running"):
+            store.update_run(
+                run_id, expected_status=current.get("status"), status="failed",
+                ended_at=_now(), error=(repr(exc) or str(exc))[:500])
+    finally:
+        try:
+            _write_terminal_fallback_report(run_id)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "终态报告兜底检查失败 run=%s", run_id, exc_info=True)
 
 
 # Serialize duplicate workers for one durable run. This prevents a retry from

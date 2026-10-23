@@ -2761,6 +2761,7 @@ function availProvRow(p, q) {
   const h = p.health || {};
   const models = p.models || [];
   const downN = models.filter((m) => m.down).length;
+  const activeFailure = h.status === "failing" || h.status === "down";
   const meta = [];
   if (p.model) meta.push(t("默认模型") + " <b>" + esc(p.model) + "</b>");
   if (p.keys_total) {
@@ -2782,7 +2783,9 @@ function availProvRow(p, q) {
           esc(availHost(p.base_url)) + (p.protocol ? " · " + esc(p.protocol) : "") + "</span>" +
       "</div>" +
       (meta.length ? '<div class="avail-row-meta">' + meta.map((s) => "<span>" + s + "</span>").join("") + "</div>" : "") +
-      (h.last_error ? '<div class="avail-row-err" title="' + esc(h.last_error) + '">' +
+      (h.last_error ? '<div class="avail-row-err' + (activeFailure ? "" : " is-history") +
+        '" title="' + esc(h.last_error) + '"><b class="avail-row-err-label">' +
+        esc(t(activeFailure ? "当前失败详情" : "历史失败记录")) + "：</b> " +
         esc(String(h.last_error).slice(0, 400)) + "</div>" : "") +
       (models.length ? '<div class="avail-row-foot"><button type="button" class="avail-models-toggle" aria-expanded="' +
         (open ? "true" : "false") + '" onclick="availToggle(\'' + esc(p.id) + '\')"><span>' +

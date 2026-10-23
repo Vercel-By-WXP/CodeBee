@@ -33,6 +33,7 @@ from pathlib import Path
 from . import atomic
 
 log = logging.getLogger(__name__)
+_OUTPUT_CAPTURE_LIMIT_MARKER = "输出超过捕获上限："
 
 FAILING_AFTER = 2            # 连续失败 ≥2 → failing（进入探测）
 DOWN_AFTER_FAILURES = 4      # 连续失败 ≥4 → down（告警）
@@ -183,6 +184,11 @@ def _is_local_false_positive(st):
     # The gate prefix is a fixed local marker, stronger than any generic
     # classification attached to the row; check it before the code gate.
     text = str(st.get("last_error") or "")
+    if _OUTPUT_CAPTURE_LIMIT_MARKER in text:
+        return True
+    if ("CLI 输出不是 UTF-8/GBK" in text
+            or "本地 CLI 输出编码已降级" in text):
+        return True
     if _is_sandbox_gate_rejection(text):
         return True
     code = str(st.get("last_error_code") or "").upper()
@@ -356,6 +362,7 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     误杀，后者远重——拿不准时宁可不记。"""
     if not provider:
         return
+    text = str(error or "")
     if _inactive_config(provider_id, provider, model):
         log.info("[health] 忽略已停用供应商/模型的失败：%s / %s",
                  provider, model or "默认模型")
@@ -364,7 +371,22 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
         log.warning("[health] 本地 CLI 启动失败（与供应商 %s 无关，不记健康故障）：%s",
                     provider, str(error or "")[:160])
         return
-    text = str(error or "")
+    # run_process appends this marker only when its bounded local stdout/stderr
+    # capture discarded bytes. The response is incomplete, so do not turn the
+    # local buffer limit (or an untrustworthy partial error fragment) into a
+    # provider circuit failure.
+    if _OUTPUT_CAPTURE_LIMIT_MARKER in text:
+        log.warning("[health] CLI 输出超过本地捕获上限（供应商 %s 未判故障）：%s",
+                    provider, text[:180])
+        return
+    # The runner marks mixed UTF-8/code-page output explicitly.  This is a
+    # local PowerShell/console decoding issue; recording it as a provider
+    # failure would open a false circuit and strand a single-CLI run.
+    if (text.startswith("本地 CLI 输出编码已降级")
+            or "CLI 输出不是 UTF-8/GBK" in text):
+        log.warning("[health] 本地 CLI 输出编码降级（供应商 %s 未判故障）：%s",
+                    provider, text[:180])
+        return
     if _is_sandbox_gate_rejection(text):
         log.warning("[health] 起跑前沙箱/权限闸拒绝（供应商 %s 未收到请求，"
                     "不记健康故障）：%s", provider, text[:160])
@@ -389,6 +411,16 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
     except Exception:
         code = getattr(error_code, "value", str(error_code or ""))
         evidence = EVIDENCE_OBSERVED if code else EVIDENCE_UNKNOWN
+    if code == "TOOL_LAUNCH":
+        # Some CLIs (notably OpenCode) report failures from bundled local tools
+        # after their process has started, so they do not carry the Popen
+        # "启动失败" prefix. The shared classifier recognizes those signatures
+        # as TOOL_LAUNCH; keep them out of provider health just like missing CLI
+        # executables, otherwise one local ripgrep crash can poison every model
+        # behind the provider.
+        log.warning("[health] 本地 CLI 工具链失败（供应商 %s 未判故障）：%s",
+                    provider, text[:180])
+        return
     lower_text = text.lower()
     if ("unknown model" in lower_text or "invalid model" in lower_text
             or "model not found" in lower_text or "unknown model id" in lower_text):

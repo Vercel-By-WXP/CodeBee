@@ -6,16 +6,73 @@ import json
 import re
 
 
+_FALLBACK_ENCODINGS = ("gb18030", "cp936", "mbcs", "cp1252", "latin-1")
+
+
+def _decode_invalid_utf8_runs(text):
+    """把 ``surrogateescape`` 保留的坏字节按连续片段转成可读文本。
+
+    Windows CLI 经常把 UTF-8 正文和系统代码页错误混在同一条输出流里。
+    先用 surrogateescape 解码可以保留所有合法 UTF-8；只把真正无法解码的
+    字节片段交给 GB18030/系统代码页处理，避免原来「整行回退 GBK」导致的
+    中文双重乱码。返回 ``(text, degraded, encodings)``。
+    """
+    if not text or not any(0xDC80 <= ord(ch) <= 0xDCFF for ch in text):
+        return text, False, ("utf-8",)
+    out = []
+    encodings = ["utf-8"]
+    run = []
+
+    def flush():
+        if not run:
+            return
+        blob = bytes(ord(ch) - 0xDC00 for ch in run)
+        run.clear()
+        chosen = None
+        for encoding in _FALLBACK_ENCODINGS:
+            try:
+                chosen = blob.decode(encoding)
+                encodings.append(encoding)
+                break
+            except (LookupError, UnicodeDecodeError):
+                continue
+        if chosen is None:
+            chosen = blob.decode("latin-1", "replace")
+            encodings.append("latin-1")
+        out.append(chosen)
+
+    for ch in text:
+        if 0xDC80 <= ord(ch) <= 0xDCFF:
+            run.append(ch)
+        else:
+            flush()
+            out.append(ch)
+    flush()
+    return "".join(out), True, tuple(dict.fromkeys(encodings))
+
+
+def decode_output_info(data):
+    """Decode bytes and report whether local code-page recovery was needed.
+
+    The text return value remains usable by existing callers. ``decode_degraded``
+    is diagnostic metadata only: it means the local process emitted bytes that
+    were not valid UTF-8, not that the upstream model failed.
+    """
+    if not data:
+        return {"text": "", "decode_degraded": False, "encodings": ("",)}
+    try:
+        text = data.decode("utf-8")
+        return {"text": text, "decode_degraded": False, "encodings": ("utf-8",)}
+    except UnicodeDecodeError:
+        text, degraded, encodings = _decode_invalid_utf8_runs(
+            data.decode("utf-8", "surrogateescape"))
+        return {"text": text, "decode_degraded": degraded,
+                "encodings": encodings}
+
+
 def _decode_line(blob):
-    """单行解码：UTF-8 → GBK → replace（与 decode_output 同一编码纪律）。"""
-    try:
-        return blob.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    try:
-        return blob.decode("gbk")
-    except UnicodeDecodeError:
-        return blob.decode("utf-8", "replace")
+    """单行解码，保留混合 UTF-8/Windows 代码页里的合法 UTF-8。"""
+    return decode_output_info(blob)["text"]
 
 
 def decode_output(data):
@@ -28,13 +85,7 @@ def decode_output(data):
     节序列都不含 0x0A，按行切不会切坏字符：行级 UTF-8 优先、GBK 兜底、
     replace 收尾，混合编码日志两边都保住（2026-09-20 aider 日志实证的
     场景不变）。"""
-    if not data:
-        return ""
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    return "\n".join(_decode_line(ln) for ln in data.split(b"\n"))
+    return decode_output_info(data)["text"]
 
 
 def read_text_any_enc(path):

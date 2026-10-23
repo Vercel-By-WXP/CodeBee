@@ -28,6 +28,13 @@ BIGMODEL_PLAN_429 = (
     "claude 返回 is_error: API Error: Request rejected (429) · "
     "[1311][当前订阅套餐暂未开放GLM-5.3-FlashX权限]")
 
+NEMOTRON_GATEWAY_502 = (
+    "claude 返回 is_error: API Error: 502 Sign up for free to continue and "
+    "explore 500 other models. Takes 2 minutes, no credit card required. "
+    "Or come back later. This is a server-side issue, usually temporary — "
+    "try again in a moment. If it persists, check your inference gateway "
+    "(127.0.0.1:61722).")
+
 GROK_UNKNOWN_MODEL = (
     "退出码 1；stderr/stdout: Error: Couldn't set model 'glm-5.3': "
     "Invalid params: \"unknown model id\". Run 'grok models' to see available models.")
@@ -43,6 +50,18 @@ def _res(**over):
 
 
 class ClassifierTriageTests(unittest.TestCase):
+    def test_nemotron_free_gateway_502_is_transient_server_failure_not_quota(self):
+        self.assertEqual(classify_error_text(NEMOTRON_GATEWAY_502),
+                         ErrorCode.UPSTREAM_SERVER)
+        self.assertFalse(runner._quota_error(NEMOTRON_GATEWAY_502))
+
+    def test_timeout_envelope_keeps_nemotron_502_root_cause(self):
+        code = runner._classify_failure(_res(
+            timed_out=True, exit_code=None,
+            stderr=("Reconnecting... 1/5 (stream disconnected before completion: "
+                    + NEMOTRON_GATEWAY_502)))
+        self.assertEqual(code, ErrorCode.UPSTREAM_SERVER)
+
     def test_subscription_plan_rejection_is_model_scoped(self):
         self.assertEqual(classify_error_text(BIGMODEL_PLAN_429),
                          ErrorCode.MODEL_UNAVAILABLE)
@@ -162,6 +181,23 @@ class HealthTriageTests(unittest.TestCase):
         self.assertTrue(health.is_model_down("Bigmodel - API Key",
                                              "glm-5.3-flashx"))
         self.assertFalse(health.is_model_down("Bigmodel - API Key", "glm-5.3"))
+
+    def test_repeated_gateway_502_does_not_permanently_disable_model(self):
+        for _ in range(3):
+            health.report_failure(
+                "Free Model", NEMOTRON_GATEWAY_502,
+                model="nvidia/nemotron-3.5-lightning:free",
+                provider_id="free-model-gateway",
+                error_code=ErrorCode.UPSTREAM_SERVER,
+            )
+
+        row = health.snapshot()["providers"][0]
+        self.assertEqual(row["consecutive_failures"], 3)
+        state = health._PROVIDERS["Free Model"]
+        self.assertEqual(state["last_error_code"], ErrorCode.UPSTREAM_SERVER.value)
+        self.assertNotIn("permanent_error_code", state)
+        self.assertFalse(health.is_model_down(
+            "Free Model", "nvidia/nemotron-3.5-lightning:free"))
 
     def test_model_scoped_failure_without_model_slot_uses_named_model(self):
         providers = [{"id": "glm-monthly", "name": "GLM包月", "enabled": True,

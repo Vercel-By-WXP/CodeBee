@@ -125,15 +125,19 @@ def assess(verdict, policy=None):
     """Mark a review as qualified or degraded according to policy."""
     policy = policy or load()
     verdict = dict(verdict or {})
+    explicitly_degraded = bool(verdict.get("review_degraded"))
+    explicit_reasons = [str(x) for x in
+                        (verdict.get("review_degradation_reasons") or []) if x]
     score = verdict.get("overall")
     if score is None:
         score = weighted_score(verdict.get("scores"), policy.get("dimensions"))
     reasons = []
-    try:
-        if score is None or float(score) < float(policy.get("min_score", 7.0)):
-            reasons.append("评分低于最低门槛")
-    except (TypeError, ValueError):
-        reasons.append("评分不可用")
+    if not explicitly_degraded:
+        try:
+            if score is None or float(score) < float(policy.get("min_score", 7.0)):
+                reasons.append("评分低于最低门槛")
+        except (TypeError, ValueError):
+            reasons.append("评分不可用")
     family = str(verdict.get("reviewer_model_family") or verdict.get("model_family") or "")
     minimum = str(policy.get("min_model_family") or "")
     if minimum and family and family != minimum:
@@ -146,6 +150,25 @@ def assess(verdict, policy=None):
         confidence = 0.0
     if confidence < float(policy.get("min_confidence", 0.0)):
         reasons.append("评审可信度低于最低门槛")
+    if explicitly_degraded:
+        # The caller explicitly reports incomplete/untrusted review evidence.
+        # Keep any single-reviewer number for diagnostics, but do not expose it
+        # as the manuscript's official score or overall result.
+        if score is not None:
+            verdict["provisional_overall"] = score
+        provisional_scores = verdict.get("scores")
+        existing_provisional = verdict.get("provisional_scores")
+        if isinstance(existing_provisional, dict) or isinstance(provisional_scores, dict):
+            merged = dict(existing_provisional or {})
+            merged.update(provisional_scores or {})
+            if merged:
+                verdict["provisional_scores"] = merged
+            verdict["scores"] = {}
+        score = None
+        reasons.extend(reason for reason in explicit_reasons
+                       if reason != "评分低于最低门槛")
+        if not explicit_reasons:
+            reasons.append("评审证据不完整")
     verdict["overall"] = score
     verdict["review_quality"] = "qualified" if not reasons else "degraded"
     verdict["review_degraded"] = bool(reasons)

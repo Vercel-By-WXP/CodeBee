@@ -61,6 +61,11 @@ class BuiltinStrategy(RoutingStrategy):
             if (error.get("cancelled") or
                     (isinstance(raw, dict) and raw.get("cancelled"))):
                 return False
+            # Captured output can be incomplete even when the error taxonomy is
+            # PARSE_FAIL.  A bounded retry/next candidate is safer than treating
+            # the truncated fragment as a definitive model failure.
+            if isinstance(raw, dict) and raw.get("output_truncated"):
+                return True
             code = error_code_value(error.get("error_code"))
             if code:
                 return code in fallback_codes

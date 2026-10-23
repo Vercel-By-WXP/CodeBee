@@ -30,6 +30,8 @@ class SourceLocationNoiseTests(unittest.TestCase):
                 error_codes.ErrorCode.FORBIDDEN,
             "dsh: TRANSPORT: DeepSeek Messages transport failed":
                 error_codes.ErrorCode.NETWORK,
+            "Error: ripgrep execution failed":
+                error_codes.ErrorCode.TOOL_LAUNCH,
         }
         for text, expected in cases.items():
             self.assertEqual(error_codes.classify_error_text(text), expected,

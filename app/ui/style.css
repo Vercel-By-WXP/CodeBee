@@ -9650,6 +9650,11 @@ html[data-theme="dark"] .panel {
   overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+.avail-row-err.is-history {
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  color: var(--muted);
+}
+.avail-row-err-label { font-weight: 600; }
 .avail-row-note { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .avail-row-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 .avail-models-toggle {

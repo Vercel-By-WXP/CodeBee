@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ntpath
 import os
 import re
 import signal
@@ -39,7 +40,8 @@ from .cli_text import (
     _decode_line as _decode_line, _fmt_codex_item as _fmt_codex_item,
     clean_cli_text as clean_cli_text,
     collapse_dup_lines as collapse_dup_lines,
-    decode_output as decode_output, pretty_cli_log as pretty_cli_log,
+    decode_output as decode_output, decode_output_info as decode_output_info,
+    pretty_cli_log as pretty_cli_log,
     read_text_any_enc as read_text_any_enc, strip_ansi as strip_ansi,
     tail_decoded as tail_decoded,
 )
@@ -790,6 +792,7 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
     if env:
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
         full_env.update({str(k): str(v) for k, v in env.items()})
+    full_env = _augment_windows_shell_path(full_env, is_windows=(os.name == "nt"))
     log_fh = None
     if log_path:
         try:
@@ -944,8 +947,12 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         t_out.join(timeout=5)
         t_err.join(timeout=5)
         exit_code = proc.returncode
-        stdout = decode_output(out_capture.getvalue())
-        stderr = decode_output(err_capture.getvalue())
+        stdout_info = decode_output_info(out_capture.getvalue())
+        stderr_info = decode_output_info(err_capture.getvalue())
+        stdout = stdout_info["text"]
+        stderr = stderr_info["text"]
+        decode_degraded = bool(stdout_info["decode_degraded"] or
+                               stderr_info["decode_degraded"])
         output_truncated = out_capture.truncated or err_capture.truncated
         # stdout/stderr 的 close 已归 _pipe_reader 自线程（EOF 后自关）：这里再
         # close 会抢 read1 手里的锁，孙进程漏杀攥着管道时就死等（见其 docstring）。
@@ -982,6 +989,13 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
             "duration": duration, "cancelled": cancelled, "timed_out": timed_out,
             "stalled": stalled, "deadline_exceeded": deadline_exceeded,
             "abort_marker": abort_marker, "output_truncated": output_truncated,
+            # A degraded decode is a local shell/code-page observation. Keep it
+            # structured so routing and health accounting do not mistake it for
+            # a provider outage.
+            "decode_degraded": decode_degraded,
+            "local_output_error": decode_degraded,
+            "stdout_encoding": "+".join(stdout_info["encodings"]),
+            "stderr_encoding": "+".join(stderr_info["encodings"]),
             "log_truncated": bool(log_fh and log_fh.truncated),
             "log_dropped_bytes": int(log_fh.dropped_bytes) if log_fh else 0,
             "activity_extended": bool(activity_timeout and stamp[1]
@@ -1266,10 +1280,13 @@ def _rate_limited(err):
 
 # 审计日志错误行探针：只认强信号，避免把回显提示词里的普通词当错误
 _LOG_ERR_HINT = re.compile(
-    r"(\b403\b|forbidden|request not allowed|permission denied|access denied"
-    r"|\b429\b|\b402\b|rate[_ ]?limit|quota|余额|欠费|insufficient|billing|arrears"
-    r"|\b401\b|unauthorized|unauthorised|invalid[_ ]api[_ ]key|authentication[_ ]error"
-    r"|ENOTFOUND|ECONNREFUSED|failed to run prompt|api_error|overloaded)",
+    r"^(?:error|fatal|panic|\w*Error):|"
+    r"^(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)"
+    r"(?:401|402|403|408|429|5\d\d)\b|"
+    r"^(?:api[_ ]error|unauthorized|unauthorised|forbidden|"
+    r"permission denied|access denied|request not allowed|"
+    r"rate[_ ]?limit|insufficient balance|insufficient quota|"
+    r"quota exhausted|欠费|余额不足|额度不足|不是内部或外部命令)",
     re.I)
 
 # 「路径:行号(:列号):内容」形态（grep -n / 编译器诊断 / ripgrep 命中行）。
@@ -1366,13 +1383,62 @@ def _cli_error_lines(text):
                 continue
             if line:
                 hits.append(line)
-        elif (_LOG_ERR_HINT.search(line)
-              or re.match(r"^(?:error|fatal|panic|\w*Error):", line, re.I)):
+        elif _LOG_ERR_HINT.search(line):
             if line.endswith("{"):
                 # 彩色「Error: 」+ 缩进 JSON 体多行信封，见 _absorb_error_envelope
                 line, i = _absorb_error_envelope(lines, i, line)
             hits.append(line)
     return hits
+
+
+def _augment_windows_shell_path(env, *, is_windows=None):
+    """Copy env and add Windows PowerShell's directory to PATH if present."""
+    result = dict(env or {})
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    if not is_windows:
+        return result
+    root = next((str(value) for key, value in result.items()
+                 if str(key).casefold() == "systemroot" and value), "")
+    if not root:
+        return result
+    powershell = ntpath.join(root, "System32", "WindowsPowerShell", "v1.0")
+    if not os.path.isdir(powershell):
+        return result
+    path_key = next((str(key) for key in result
+                     if str(key).casefold() == "path"), "Path")
+    entries = [part for part in str(result.get(path_key) or "").split(";") if part]
+
+    def normalized(value):
+        return ntpath.normcase(ntpath.normpath(str(value).strip().strip('"')))
+
+    if normalized(powershell) not in {normalized(part) for part in entries}:
+        entries.append(powershell)
+    result[path_key] = ";".join(entries)
+    return result
+
+
+def _failure_evidence(res, *, parsed=None, kind=""):
+    """Collect diagnostic evidence without classifying ordinary model output."""
+    evidence = []
+    stderr = clean_cli_text(res.get("stderr") or "").strip()
+    if stderr:
+        evidence.append(stderr)
+    stdout_errors = _cli_error_lines(res.get("stdout") or "")
+    evidence.extend(stdout_errors)
+    parsed = parsed if isinstance(parsed, dict) else {}
+    if parsed.get("is_error"):
+        detail = parsed.get("text") or parsed.get("error") or parsed.get("result")
+        if isinstance(detail, (dict, list)):
+            detail = json.dumps(detail, ensure_ascii=False)
+        if detail:
+            evidence.append(str(detail))
+    # Claude's login gate has shipped without a JSON result envelope.
+    if kind == "claude" and not parsed and not stdout_errors:
+        for line in clean_cli_text(res.get("stdout") or "").splitlines():
+            if re.match(r"^\s*(?:not logged in|please run /login)\b", line, re.I):
+                evidence.append(line.strip())
+    return "\n".join(evidence)
 
 
 def _failure_output_detail(res):
@@ -1506,28 +1572,25 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
     if res.get("timed_out"):
         # 超时只是死法不是死因：输出尾部若带账号级死错（codex 内部 Reconnecting
         # 一直重试到外部超时，真凶是 403 用户额度不足¥0——2026-10-22 vsllm 实案），
-        # 以死因为准：换将/健康熔断按终态处置，而不是当瞬态超时盲重试死号。
-        detail = "\n".join((str(res.get("stderr") or ""),
-                            str(res.get("stdout") or ""),
-                            str((parsed or {}).get("text") or "")))
+        # 以死因为准。保留所有可判定的根因（上游 5xx、网络断流、模型不可用），
+        # 否则 502 会被抹成 TIMEOUT，健康面板与换将策略都失去真实故障信息。
+        detail = _failure_evidence(res, parsed=parsed, kind=kind)
         dead = classify_error_text(detail)
         if dead is not None and is_account_dead_error(dead):
+            return dead
+        if dead is not None and dead != ErrorCode.TIMEOUT:
             return dead
         return ErrorCode.TIMEOUT
     if res.get("output_truncated"):
         return ErrorCode.PARSE_FAIL
     if not res.get("ok") or (parsed and parsed.get("is_error")):
-        detail = "\n".join((str(res.get("stderr") or ""),
-                            str(res.get("stdout") or ""),
-                            str((parsed or {}).get("text") or "")))
+        detail = _failure_evidence(res, parsed=parsed, kind=kind)
         if _permission_error(detail):
             return ErrorCode.FORBIDDEN
     # Preserve actionable upstream distinctions before collapsing non-zero exits
     # into VENDOR_ERROR. The shared classifier is also used by modelhub and routing.
     if not res.get("ok") or (parsed and parsed.get("is_error")):
-        detail = "\n".join((str(res.get("stderr") or ""),
-                            str(res.get("stdout") or ""),
-                            str((parsed or {}).get("text") or "")))
+        detail = _failure_evidence(res, parsed=parsed, kind=kind)
         classified = classify_error_text(detail)
         if classified is not None:
             return classified
@@ -1535,7 +1598,7 @@ def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_ou
     # 闸门只吐一行「Not logged in · Please run /login」就退出，认不出才是
     # 真正的解析失败
     if kind == "claude" and parsed is None:
-        return classify_error_text(res.get("stdout") or "") or ErrorCode.PARSE_FAIL
+        return classify_error_text(_failure_evidence(res, kind=kind)) or ErrorCode.PARSE_FAIL
     # claude 明确 is_error
     if parsed and parsed.get("is_error"):
         return ErrorCode.VENDOR_REFUSAL
@@ -2392,15 +2455,22 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if banner_only:
                     out["error"] += ("（仅启动横幅、无错误文本：疑似本地启动/"
                                      "配置抖动，可换 CLI 补位）")
+                # A Windows shell can emit a few bytes in its active code page
+                # while the model/CLI itself is otherwise healthy.  Preserve
+                # the decoded text for diagnosis, but classify a decode-only
+                # failure as local state so health cannot poison the provider.
+                decode_only = (bool(res.get("decode_degraded"))
+                               and not res.get("output_truncated")
+                               and not bool(classify_error_text(out["error"])))
+                if decode_only:
+                    out["error"] = ("本地 CLI 输出编码已降级（保留可读文本）；"
+                                     + (out["error"] or "进程输出包含非 UTF-8 字节"))
                 # 超时只是死法不是死因：尾部带账号级死错（vsllm 403 额度¥0 案）
                 # 时以死因为准，健康台账据此首观测即熔断，不再当瞬态盲重试。
-                timeout_code = ErrorCode.TIMEOUT
-                if res.get("timed_out"):
-                    dead = classify_error_text(out["error"])
-                    if dead is not None and is_account_dead_error(dead):
-                        timeout_code = dead
+                timeout_code = _classify_failure(res, kind=kind)
                 out["error_code"] = (ErrorCode.CANCELLED if res.get("cancelled")
                                       else timeout_code if res.get("timed_out")
+                                      else ErrorCode.LOCAL_STATE if decode_only
                                       else ErrorCode.PARSE_FAIL
                                       if res.get("output_truncated")
                                       else ErrorCode.FORBIDDEN
@@ -2693,7 +2763,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         local_state = (error_code_value(out.get("error_code"))
                        == ErrorCode.LOCAL_STATE.value)
         if (raw.get("cancelled")   # 取消是用户意志，绝不降级（尾段可能带瞬态字样）
-                or not (local_state
+                or not (raw.get("output_truncated")
+                        or local_state
                         or _transient_error(out.get("error"))
                         or _quota_error(out.get("error"))
                         or _refusal_error(out.get("error"))

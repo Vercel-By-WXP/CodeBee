@@ -59,11 +59,14 @@ review = plan.get("review") or {}
 route = (r.get("verdict") or {}).get("route") or {}
 print("@@RESULT@@" + json.dumps({
     "status": r.get("status"),
+    "ended_at": r.get("ended_at"),
     "calls": calls,
     "review_participants": review.get("participants"),
     "review_selected": review.get("selected"),
     "critic_reason": route.get("critics", ""),
     "error": (r.get("error") or "")[:100],
+    "verdict": r.get("verdict") or {},
+    "report": (store.run_dir(run["id"]) / "report.md").read_text(encoding="utf-8"),
 }, ensure_ascii=True))
 """
 
@@ -149,7 +152,7 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         self.assertEqual(seen, ["critic-a", "critic-b"])
         self.assertIn("评审自动换 CLI", note)
 
-    def test_parse_failure_retries_same_cli_three_times(self):
+    def test_parse_failure_retries_same_cli_then_uses_local_fallback(self):
         seen = []
 
         def run_step(bound):
@@ -158,12 +161,14 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
 
         (cj, res, actual, note), _ = self._call(_agents()[1], run_step)
 
-        self.assertIsNone(cj)
-        self.assertEqual(actual["id"], "critic-a")
-        self.assertEqual(seen, ["critic-a", "critic-a", "critic-a"])
-        self.assertEqual(note, "")
+        self.assertEqual(cj["scores"], {})
+        self.assertTrue(cj["review_degraded"])
+        self.assertEqual(res["review_fallback"], "local")
+        self.assertEqual(actual["id"], "critic-b")
+        self.assertEqual(seen, ["critic-a"] * 3 + ["critic-b"] * 3)
+        self.assertIn("评审本地兜底", note)
 
-    def test_manual_mode_never_swaps(self):
+    def test_manual_mode_never_swaps_but_keeps_flow_with_local_fallback(self):
         seen = []
 
         def run_step(bound):
@@ -173,9 +178,30 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         (cj, res, actual, note), _ = self._call(
             _agents()[1], run_step, mode="manual")
 
-        self.assertIsNone(cj)
+        self.assertTrue(cj["review_degraded"])
+        self.assertEqual(res["review_fallback"], "local")
         self.assertEqual(actual["id"], "critic-a")
         self.assertEqual(seen, ["critic-a", "critic-a", "critic-a"])
+
+    def test_stalled_cli_does_not_burn_three_full_watchdog_windows(self):
+        seen = []
+
+        def run_step(bound):
+            seen.append(bound["id"])
+            return {"ok": False, "text": "", "error":
+                    "输出停滞 600s（stall timed out，疑似卡死已提前终止）",
+                    "error_code": "TIMEOUT",
+                    "raw": {"timed_out": True, "stalled": True}}
+
+        with mock.patch.object(pipeline.time, "sleep", lambda *_a, **_k: None):
+            (cj, result, actual, note), _ = self._call(
+                _agents()[1], run_step)
+
+        self.assertEqual(seen, ["critic-a", "critic-b"])
+        self.assertEqual(actual["id"], "critic-b")
+        self.assertEqual(result["review_fallback"], "local")
+        self.assertTrue(cj["review_degraded"])
+        self.assertIn("停滞", result["review_fallback_reason"])
 
     def test_cancel_stops_without_swapping(self):
         seen = []
@@ -190,6 +216,22 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
 
         self.assertIsNone(cj)
         self.assertEqual(seen, ["critic-a"])
+
+    def test_parse_failure_tries_another_cli_after_same_cli_retries(self):
+        seen = []
+
+        def run_step(bound):
+            seen.append(bound["id"])
+            return (_success() if bound["id"] == "critic-b"
+                    else _success(text="not-json"))
+
+        (cj, _res, actual, note), _ = self._call(
+            _agents()[1], run_step)
+
+        self.assertEqual(cj["scores"], {"质量": 8})
+        self.assertEqual(actual["id"], "critic-b")
+        self.assertEqual(seen, ["critic-a"] * 3 + ["critic-b"])
+        self.assertIn("解析失败后自动换 CLI", note)
 
 
 class ContentReviewCliFallbackIntegrationTests(unittest.TestCase):
@@ -212,10 +254,15 @@ class ContentReviewCliFallbackIntegrationTests(unittest.TestCase):
             result = json.loads(line[len("@@RESULT@@"):])
 
         self.assertEqual(result["status"], "done", result)
+        self.assertTrue(result["ended_at"], result)
         self.assertEqual(result["calls"], ["critic-a", "critic-b"], result)
         self.assertEqual(result["review_participants"], ["critic-b"], result)
         self.assertEqual(result["review_selected"], "critic-b", result)
         self.assertIn("评审自动换 CLI", result["critic_reason"], result)
+        self.assertFalse(result["verdict"].get("review_degraded"), result)
+        self.assertEqual(result["verdict"].get("overall"), 8.0, result)
+        self.assertEqual(result["verdict"].get("scores"), {"质量": 8.0}, result)
+        self.assertIn("达到发布标准", result["report"], result)
 
 
 if __name__ == "__main__":
