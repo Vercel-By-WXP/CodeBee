@@ -2629,6 +2629,7 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
     """
     from . import bench as _bench
     from . import routing_strategy
+    from .error_codes import is_account_dead_error
 
     tried = {agent.get("id")}
     if isinstance(impl, dict) and impl.get("id"):
@@ -2668,7 +2669,19 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
                         and routing_strategy.get().should_fallback(res))
         except Exception:
             may_swap = False
+        # 账号级死错（欠费/未登录/凭据缺失/CLI 起不来）已经不可能是「这次输出
+        # 没解析好」：同一账号换提示词重放两次只会再撞两遍同一堵墙。本场台账
+        # 已把它停用，没有替补时直接退出重试循环交给降级评审。
+        # （2026-10-23 实案：13 个 CLI 多数无凭据，单个评审步连撞 39 次、
+        #  50 分钟仍未收场。）
+        account_dead = False
+        try:
+            account_dead = is_account_dead_error(res.get("error_code"))
+        except Exception:
+            account_dead = False
         if not may_swap:
+            if account_dead:
+                break
             if attempt < 3:
                 time.sleep(2.0)
             continue
@@ -2692,6 +2705,10 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
                 error=res)
         if (candidate is None or candidate.get("id") in tried
                 or candidate.get("mode") != "real"):
+            # 候选已耗尽：账号死错没有重放价值（重试只会再撞同一堵墙），
+            # 直接交给降级评审；只有解析/瞬时类失败才值得同 CLI 再试。
+            if account_dead:
+                break
             if attempt < 3:
                 time.sleep(2.0)
             continue
@@ -6784,13 +6801,18 @@ def _evidence_lines_from_run(run_id, task):
     """从 run 步骤与 verdict 提取证据行（确定性事实，不抄模型输出）。"""
     run = store.get_run(run_id) or {}
     lines = []
+    saw_verify = False
     for s in run.get("steps") or []:
         role = str(s.get("role") or "")
         if role == "verify":
+            saw_verify = True
             lines.append("验证命令 `%s` → %s%s" % (
                 task.get("verify_command") or "", s.get("status"),
                 "（%s）" % s.get("summary") if s.get("summary") else ""))
     verdict = run.get("verdict") or {}
+    # 代码任务没有验证步骤时必须明说「未执行」：静默省略会被读成「没有问题」。
+    if not saw_verify and str(verdict.get("type") or "") == "code":
+        lines.append("验证命令 `%s` → 未执行" % (task.get("verify_command") or "（未配置）"))
     if verdict:
         means = verdict.get("scores") or {}
         if means:

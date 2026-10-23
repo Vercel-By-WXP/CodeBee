@@ -152,6 +152,40 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         self.assertEqual(seen, ["critic-a", "critic-b"])
         self.assertIn("评审自动换 CLI", note)
 
+    def test_account_dead_failure_without_alternative_stops_retrying(self):
+        """2026-10-23 实案：13 个 CLI 多数无凭据，单个评审步连撞 39 次。
+
+        账号级死错（欠费/未登录/凭据缺失）换提示词重放不会改变结果：本场
+        台账已停用该账号，没有替补时应直接降级评审，而不是原地重试三次。
+        """
+        seen = []
+
+        def run_step(run_id, role, bound, prompt, workdir, readonly, ev, **kwargs):
+            seen.append(bound["id"])
+            return _failure(
+                code="QUOTA",
+                error="API Error: 403 用户额度不足, 剩余额度: ¥0.000000")
+
+        agents = _agents()
+        with mock.patch.object(pipeline, "_run_step", side_effect=run_step), \
+             mock.patch.object(pipeline.modelhub, "bind_agent",
+                               side_effect=lambda a, d="default": a), \
+             mock.patch.object(pipeline.router, "pick_reviewer",
+                               return_value=(None, "no reviewer")), \
+             mock.patch.object(pipeline.router, "pick_switch_candidate",
+                               return_value=(None, "no candidate")), \
+             mock.patch("app.core.bench.benched_ids", return_value=set()), \
+             mock.patch.object(pipeline.time, "sleep", lambda *_a, **_k: None):
+            cj, result, actual, note = pipeline._critique_step_with_cli_fallback(
+                "r-test", "critique-r1", agents[1], "prompt", "workdir", None,
+                agents, agents[0], "default", "novel", {}, "auto", False)
+
+        self.assertEqual(seen, ["critic-a"])
+        self.assertEqual(actual["id"], "critic-a")
+        self.assertTrue(cj["review_degraded"])
+        self.assertEqual(result["review_fallback"], "local")
+        self.assertIn("评审本地兜底", note)
+
     def test_parse_failure_retries_same_cli_then_uses_local_fallback(self):
         seen = []
 
@@ -181,7 +215,9 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         self.assertTrue(cj["review_degraded"])
         self.assertEqual(res["review_fallback"], "local")
         self.assertEqual(actual["id"], "critic-a")
-        self.assertEqual(seen, ["critic-a", "critic-a", "critic-a"])
+        # 手工模式仍然不换 CLI；但账号级死错（这里是 FORBIDDEN）重放两次
+        # 只会再撞同一堵墙，所以只跑一次就交给降级评审。
+        self.assertEqual(seen, ["critic-a"])
 
     def test_stalled_cli_does_not_burn_three_full_watchdog_windows(self):
         seen = []
