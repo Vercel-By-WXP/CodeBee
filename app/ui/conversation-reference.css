@@ -479,7 +479,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 @media (prefers-reduced-motion: reduce) {
   .rd-chat .chat-live-dot { animation: none; opacity: .7; }
 }
-.rd-chat .chat-live-text { min-width: 0; }
+.rd-chat .chat-live-label { min-width: 0; }
 .rd-chat .chat-live-tag {
   padding: 0 7px; border-radius: 999px;
   color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);

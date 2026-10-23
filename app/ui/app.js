@@ -13406,7 +13406,7 @@ function drawChatFlow(run, data, active) {
       : (liveText ? '<div class="chat-body chat-live-text">' + esc(liveText.slice(-4000)) + "</div>"
       : (it.status === "running"
         ? '<div class="chat-body chat-live-status"><span class="chat-live-dot"></span>' +
-          '<span class="chat-live-text">' + esc(t("CLI 已启动，等待首段输出…")) + "</span>" +
+          '<span class="chat-live-label">' + esc(t("CLI 已启动，等待首段输出…")) + "</span>" +
           '<span class="chat-live-tag">' + esc(t("执行中")) + "</span></div>"
         : ""));
     // 元信息只留 名字+时间（+用时+失败标记）：路由/供应商细节属于「步骤」页签，塞这里就是噪音

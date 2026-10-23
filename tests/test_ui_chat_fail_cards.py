@@ -94,6 +94,18 @@ class RunningStatusLineTests(unittest.TestCase):
         # 旧占位与答案正文同形，必须消失
         self.assertNotIn("chat-cli-wait", src)
 
+    def test_status_line_avoids_streaming_preview_class(self):
+        # style.css 的 .chat-live-text 是流式预览（文字压到 .75 + ::after 闪假光标），
+        # 状态行复用会把「等待首段输出」压暗并闪出一个光标。
+        src = draw_chat_flow_source()
+        self.assertIn('<span class="chat-live-label">', src)
+        status = src[src.index("chat-body chat-live-status"):]
+        status = status[:status.index("</div>")]
+        self.assertNotIn("chat-live-text", status)
+        css = _read(CSS)
+        self.assertIn(".rd-chat .chat-live-label {", css)
+        self.assertNotIn(".rd-chat .chat-live-text", css)
+
 
 class ChatCardStyleTests(unittest.TestCase):
     def test_cards_are_styled_and_reuse_skin_vars(self):
