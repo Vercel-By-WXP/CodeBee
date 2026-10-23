@@ -105,6 +105,29 @@ const EXTRACT_SCRIPT = [
   '                out.write(chunk)',
 ].join('\n');
 
+/* 把解包好的新引擎目录换到正式位置。同卷直接 rename；跨卷（EXDEV）必须先复制到
+ * 同卷临时目录再原子改名——直接 cpSync 到 appDir 时进程被杀/断电会留下
+ * 「main.py 在、其余不全」的目录，start() 的自愈判据（script 缺失）不成立，
+ * 引擎就永久起不来。写临时目录保证结果只有「全新」或「全旧」两种。 */
+function installAppTree(newApp, appDir) {
+  try {
+    fs.renameSync(newApp, appDir);
+    return;
+  } catch (renameError) {
+    if (renameError.code !== 'EXDEV') throw renameError;
+  }
+  const incoming = appDir + '.incoming-' + Date.now();
+  fs.rmSync(incoming, { recursive: true, force: true });
+  try {
+    fs.cpSync(newApp, incoming, { recursive: true });
+    fs.renameSync(incoming, appDir);
+  } catch (copyError) {
+    fs.rmSync(incoming, { recursive: true, force: true });
+    throw copyError;   // 外层 catch 回滚 appDir/backup
+  }
+  fs.rmSync(newApp, { recursive: true, force: true });
+}
+
 function downloadTo(url, dest, timeout, { allowedHosts = REGISTRY_HOSTS } = {}) {
   return new Promise((resolve, reject) => {
     // The registry is https-only; a plain http client would throw
@@ -194,6 +217,18 @@ class Backend extends EventEmitter {
 
   async start() {
     if (!fs.existsSync(this.python)) throw new Error('未找到随应用携带的 Python，请重新安装 CodeBee。');
+    // 跨卷热更的复制半成品（app.incoming-*）只可能是崩溃残留：成功路径会把它
+    // 改名成 app，失败路径会自己删掉。启动时一并清理，不然每次中断留 50MB 垃圾。
+    try {
+      const resources = path.dirname(path.dirname(this.script));
+      if (fs.existsSync(resources)) {
+        for (const entry of fs.readdirSync(resources)) {
+          if (entry.startsWith('app.incoming-')) {
+            fs.rmSync(path.join(resources, entry), { recursive: true, force: true });
+          }
+        }
+      }
+    } catch { /* 清理尽力而为 */ }
     if (!fs.existsSync(this.script)) {
       // 半更新崩溃自愈：热更在「旧目录已改名、新目录未落位」之间被杀时，
       // resources/codebee/app 缺失但 app.bak-* 完好——挑最新备份原地回滚，
@@ -387,15 +422,9 @@ class Backend extends EventEmitter {
     fs.renameSync(appDir, backup);
     try {
       // 数据目录（staging）与安装目录（resources）可能在不同卷：跨卷 rename
-      // 抛 EXDEV，降级为递归复制 + 删除，否则该类用户热更永远失败
+      // 抛 EXDEV，降级为递归复制 + 删除，否则该类用户热更永远失败。
       const newApp = path.join(pkg, 'app');
-      try {
-        fs.renameSync(newApp, appDir);
-      } catch (renameError) {
-        if (renameError.code !== 'EXDEV') throw renameError;
-        fs.cpSync(newApp, appDir, { recursive: true });
-        fs.rmSync(newApp, { recursive: true, force: true });
-      }
+      installAppTree(newApp, appDir);
       for (const name of ['package.json', 'CHANGELOG.md']) {
         const from = path.join(pkg, name);
         if (fs.existsSync(from)) fs.copyFileSync(from, path.join(rootDir, name));
@@ -440,5 +469,5 @@ class Backend extends EventEmitter {
 
 module.exports = {
   Backend, downloadTo, requestJSON, REGISTRY_HOSTS,
-  fetchIntegrity, fileIntegrity, EXTRACT_SCRIPT, REGISTRY_PACKUMENT,
+  fetchIntegrity, fileIntegrity, EXTRACT_SCRIPT, REGISTRY_PACKUMENT, installAppTree,
 };

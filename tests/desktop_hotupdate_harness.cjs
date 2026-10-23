@@ -15,7 +15,7 @@ const path = require('node:path');
 const [backendPath, fixturesDir] = process.argv.slice(2);
 const {
   downloadTo, REGISTRY_HOSTS, REGISTRY_PACKUMENT,
-  fetchIntegrity, fileIntegrity, EXTRACT_SCRIPT,
+  fetchIntegrity, fileIntegrity, EXTRACT_SCRIPT, installAppTree,
 } = require(backendPath);
 const tls = {
   key: fs.readFileSync(path.join(fixturesDir, 'desktop_hotupdate_localhost-key.pem')),
@@ -231,6 +231,65 @@ async function rejectsWith(promise, needle) {
       makeTar(tgz, [{ name: 'other/file.txt', data: 'x' }]);
       assert.notEqual(extract(tgz, path.join(root, 'out')), 0);
     }
+  }
+
+  // ---- 换装：同卷 rename / 跨卷临时目录 + 原子改名 --------------------------
+  {
+    // 同卷：直接改名，新目录整体就位。
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codebee-swap-same-'));
+    const newApp = path.join(root, 'package', 'app');
+    fs.mkdirSync(path.join(newApp, 'core'), { recursive: true });
+    fs.writeFileSync(path.join(newApp, 'main.py'), 'new');
+    const appDir = path.join(root, 'app');
+    installAppTree(newApp, appDir);
+    assert.equal(fs.readFileSync(path.join(appDir, 'main.py'), 'utf8'), 'new');
+    assert.equal(fs.existsSync(newApp), false);
+  }
+  {
+    // 跨卷：rename 抛 EXDEV 时不得直接往 appDir 里复制，必须先落临时目录再改名。
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codebee-swap-exdev-'));
+    const newApp = path.join(root, 'package', 'app');
+    fs.mkdirSync(path.join(newApp, 'core'), { recursive: true });
+    fs.writeFileSync(path.join(newApp, 'main.py'), 'new');
+    const appDir = path.join(root, 'app');
+    const realRename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      if (to === appDir && from === newApp) {
+        const error = new Error('EXDEV: cross-device link not permitted');
+        error.code = 'EXDEV';
+        throw error;
+      }
+      return realRename(from, to);
+    };
+    try { installAppTree(newApp, appDir); } finally { fs.renameSync = realRename; }
+    assert.equal(fs.readFileSync(path.join(appDir, 'main.py'), 'utf8'), 'new');
+    assert.equal(fs.existsSync(newApp), false);
+    // 不留 app.incoming-*：改名成功后临时目录已经不存在。
+    assert.deepEqual(fs.readdirSync(root).filter(n => n.startsWith('app.incoming-')), []);
+  }
+  {
+    // 跨卷且复制中途失败：appDir 必须仍然不存在（全旧），不能留半成品。
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codebee-swap-fail-'));
+    const newApp = path.join(root, 'package', 'app');
+    fs.mkdirSync(path.join(newApp, 'core'), { recursive: true });
+    fs.writeFileSync(path.join(newApp, 'main.py'), 'new');
+    const appDir = path.join(root, 'app');
+    const realRename = fs.renameSync;
+    const realCp = fs.cpSync;
+    fs.renameSync = (from, to) => {
+      if (to === appDir && from === newApp) {
+        const error = new Error('EXDEV');
+        error.code = 'EXDEV';
+        throw error;
+      }
+      return realRename(from, to);
+    };
+    fs.cpSync = () => { throw new Error('磁盘已满'); };
+    try {
+      assert.throws(() => installAppTree(newApp, appDir), /磁盘已满/);
+    } finally { fs.renameSync = realRename; fs.cpSync = realCp; }
+    assert.equal(fs.existsSync(appDir), false);
+    assert.deepEqual(fs.readdirSync(root).filter(n => n.startsWith('app.incoming-')), []);
   }
 
   console.log('OK desktop_hotupdate_harness');
