@@ -91,9 +91,15 @@ def _success(text=None):
 
 
 class CritiqueCliFallbackUnitTests(unittest.TestCase):
-    def _call(self, agent, run_step, mode="auto", pick_reviewer=None):
+    def _call(self, agent, run_step, mode="auto", pick_reviewer=None,
+              pick_switch=None, peers=()):
         agents = _agents()
         guards = []
+        switch_mock = (mock.patch.object(pipeline.router, "pick_switch_candidate",
+                                         side_effect=AssertionError("should not relax"))
+                       if pick_switch is None else
+                       mock.patch.object(pipeline.router, "pick_switch_candidate",
+                                         return_value=pick_switch))
 
         def step(run_id, role, bound, prompt, workdir, readonly, ev, **kwargs):
             guards.append(kwargs.get("swap_guard"))
@@ -105,13 +111,13 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
              mock.patch.object(pipeline.router, "pick_reviewer",
                                return_value=pick_reviewer
                                or (agents[2], "model-family isolated")), \
-             mock.patch.object(pipeline.router, "pick_switch_candidate",
-                               side_effect=AssertionError("should not relax")), \
+             switch_mock, \
              mock.patch("app.core.bench.benched_ids", return_value=set()), \
              mock.patch.object(pipeline.time, "sleep", lambda *_a, **_k: None):
             return pipeline._critique_step_with_cli_fallback(
                 "r-test", "critique-r1", agent, "prompt", "workdir", None,
-                agents, agents[0], "default", "novel", {}, mode, False), guards
+                agents, agents[0], "default", "novel", {}, mode, False,
+                peers=peers), guards
 
     def test_fallback_eligible_failure_swaps_to_isolated_reviewer(self):
         seen = []
@@ -130,6 +136,29 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         self.assertIn("critic-b", note)
         self.assertIn("critic-a", guards[1]["exclude"])
         self.assertIn("author", guards[1]["exclude"])
+
+    def test_fallback_never_swaps_to_a_peer_of_the_same_group(self):
+        """换将不能挑本轮已经在评的另一个人：两席会塌成一席。
+
+        2026-10-23 实案：评审组 [claude-code, aider]，claude 撞智谱「七天上限」
+        429，换将正好挑中 aider——它本来就是另一位评审。聚合时 per_agent 只剩
+        一个 key，人数归零，整轮判「评审未完成」。
+        """
+        seen = []
+
+        def run_step(bound):
+            seen.append(bound["id"])
+            return _failure(code="QUOTA",
+                            error="429 已达到 7 天使用上限，2026-10-26 后可使用")
+
+        (cj, _res, actual, _note), _guards = self._call(
+            _agents()[1], run_step, pick_switch=(None, "no candidate"),
+            peers=[_agents()[2]])
+
+        self.assertEqual(seen, ["critic-a"], "不得换成同组的 critic-b")
+        self.assertEqual(actual["id"], "critic-a")
+        self.assertEqual(cj["scores"], {})
+        self.assertTrue(cj["review_degraded"])
 
     def test_auth_failure_swaps_cli(self):
         """cline-cli Unauthorized 案（2026-10-22）：凭据死错必须换人，不原地撞死号。"""

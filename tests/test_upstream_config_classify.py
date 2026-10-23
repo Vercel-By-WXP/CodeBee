@@ -31,7 +31,7 @@ mode = sys.argv[1] if len(sys.argv) > 1 else "quiet"
 if mode == "notfound":
     sys.stderr.write(
         "Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error,"
-        " url: https://api.iamhc.cn/v1/responses)\\n")
+        " url: https://gateway.example.invalid/v1/responses)\\n")
     sys.stderr.flush()
 time.sleep(120)
 '''
@@ -40,7 +40,7 @@ time.sleep(120)
 class ClassifyFourXxTest(unittest.TestCase):
     def test_codex_reconnect_line_maps_to_upstream_config(self):
         text = ("Reconnecting... 2/5 (unexpected status 404 Not Found: "
-                "openai_error, url: https://api.iamhc.cn/v1/responses)")
+                "openai_error, url: https://gateway.example.invalid/v1/responses)")
         self.assertEqual(classify_error_text(text), ErrorCode.UPSTREAM_CONFIG)
 
     def test_status_and_http_forms(self):
@@ -111,6 +111,44 @@ class RealProcessAttributionTest(unittest.TestCase):
         self.assertTrue(res["timed_out"])
         self.assertEqual(code, ErrorCode.TIMEOUT,
                          "没有 4xx 证据的卡死应仍是 TIMEOUT，不能一律归配置错：%s" % code)
+
+
+class PeriodicQuotaTest(unittest.TestCase):
+    """周期额度打满（七天上限）是账号级死错，不是瞬时限流。
+
+    2026-10-23 实案：claude-code 撞智谱
+    「[1310][已达到 7 天使用上限，2026-10-26 14:09 后可继续使用]」。
+    措辞带 429，被归成 RATE_LIMIT 后按瞬时错误退避重试——每一步重撞一次，
+    单个任务拖到 54 分钟，最终评审人数不足、稿件判为未评估。
+    它下一次能用是三天后，重试与换 KEY 都无意义，必须停用该 CLI 换通道。
+    """
+
+    PERIODIC = ("claude 返回 is_error: API Error: Request rejected (429) · "
+                "[1310][已达到 7 天使用上限，2026-10-26 14:09:00 后可继续使用。"
+                "如需超限额按量付费使用，可联系管理员开启超额按量付费。]"
+                "[20261023174729bb71547765e64d47]")
+
+    def test_periodic_limit_is_account_dead_quota(self):
+        code = classify_error_text(self.PERIODIC)
+        self.assertEqual(code, ErrorCode.QUOTA)
+        self.assertTrue(is_account_dead_error(code),
+                        "七天上限要停用该 CLI，否则每步重撞一次")
+
+    def test_transient_429_stays_rate_limited(self):
+        # 普通限流仍按瞬时处理：退避重试有意义，不能把整个账号停掉
+        for text in ("API Error: Request rejected (429) rate limit exceeded",
+                     "Error: 429 Too Many Requests",
+                     "HTTP 429: too many requests"):
+            with self.subTest(text=text):
+                code = classify_error_text(text)
+                self.assertEqual(code, ErrorCode.RATE_LIMIT)
+                self.assertFalse(is_account_dead_error(code))
+
+    def test_quota_word_without_recovery_time_is_not_periodic(self):
+        # 只有「达到…使用上限」但没有「后可继续使用」的措辞不外推成周期额度，
+        # 仍按原分类走（此处带 429 → 瞬时限流）。
+        code = classify_error_text("Request rejected (429) 达到并发使用上限")
+        self.assertEqual(code, ErrorCode.RATE_LIMIT)
 
 
 if __name__ == "__main__":

@@ -1809,6 +1809,13 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
         argv = resolve_command(agent["command"]) + [
             "--yes-always", "--no-auto-commits", "--no-check-update",
             "--no-gitignore", "--no-pretty", "--no-stream",
+            # 编排提示词里常有参考链接（经验库、文档、注册页）。aider 默认
+            # detect-urls=True，会把它们当"待读资源"塞进 chat 并尝试抓取；
+            # 无头环境没有浏览器 → 卡在 "Scraping https://…" 直到墙钟上限。
+            # 2026-10-23 实案：起草与评审都卡在这句，单步 20 分钟不返回，
+            # 换将链因此把所有通道轮着撞一遍。禁用 URL 识别与 Playwright 安装
+            # 提示，aider 只处理本目录文件。
+            "--no-detect-urls", "--disable-playwright",
             # 无头执行没有 Windows 控制台，aider 建 PromptSession 抛错并打一行
             # "Can't initialize prompt toolkit: No Windows console found..."
             # （非致命，但它排在输出最前，UI 失败摘要只取头部 → 真错误被顶掉，
@@ -2170,12 +2177,39 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 "sid": "", "raw": None, "kind": kind, "model": None, "attempts": []}
 
     attempts = _resolve_attempts(agent)
+    # 本场模型格熔断：同一条链上已被证明「模型名不存在/该订阅不含此模型」的
+    # (供应商, 模型)，后续步骤不必再试一遍。2026-10-23 实案：grok-build 未配
+    # 绑定被推荐了 6 个它不认的模型名，每个步骤重试整条链，单任务拖到 54 分钟。
+    # 只跳格子、不停 CLI——同一条 CLI 的其余模型照常可用（模型级 ≠ 账号级）。
+    dead_model_keys = set()
+    try:
+        from . import bench as _bench_mod
+        _bench_run_id = ((command_context or {}).get("run_id")
+                         or checkpoint_run_id)
+        if _bench_run_id:
+            dead_model_keys = _bench_mod.model_benched_keys(_bench_run_id)
+    except Exception:
+        dead_model_keys = set()
     # 启动前过滤明显的占位模型名。它们常由某个 CLI 的会话标题/默认配置
     # 泄漏进编排链；让子进程自己等待网关返回会把一个确定性配置错拖满
     # 多轮超时。非法项不消耗模型调用预算，后面的真实候选仍可接手。
     filtered_attempts = []
     preflight_failures = []
     for att in attempts:
+        if dead_model_keys and (str(att.get("provider_id") or ""),
+                                str(att.get("model") or "").strip()) in dead_model_keys:
+            preflight_failures.append({
+                "model": att.get("model") or "",
+                "provider_id": att.get("provider_id") or "",
+                "provider": (att.get("provider") or {}).get("name", "")
+                            if isinstance(att.get("provider"), dict) else "",
+                "key_id": att.get("key_id") or "",
+                "protocol": _attempt_protocol(att),
+                "ok": False, "skipped": True,
+                "error_code": ErrorCode.MODEL_UNAVAILABLE,
+                "error": "本场已确认该模型不可用，跳过重复候选",
+            })
+            continue
         if _invalid_model(att.get("model")):
             preflight_failures.append({
                 "model": att.get("model"),

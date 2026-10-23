@@ -1012,5 +1012,14 @@ def pick_critics(agents, ttype, stats=None, impl=None):
         if impl and all(a.get("kind") == impl.get("kind") for a in chosen):
             note += "；评审组与作者同为 %s，建议启用其他厂商 CLI 交叉评审" % impl.get("kind")
         return chosen, note
-    mocks = [a for a in agents if a.get("mode") == "mock"] or agents[:2]
-    return mocks, "（无真实智能体，用内置 mock 演示）"
+    mocks = [a for a in agents if a.get("mode") == "mock"]
+    if mocks:
+        return mocks[:2], "（无真实智能体，用内置 mock 演示）"
+    if impl and impl.get("mode") == "real":
+        # 只有一条 CLI 时，旧逻辑返回 agents[:2]，也就是把作者本人当评审——
+        # 自评既拿不到独立意见，还会以「作者 id」计入评审人数，把一份自我确认
+        # 记成两个人的共识。宁可返回空组，由 review_roster 派生独立复核席
+        # （同源双会话），也不伪装成有评审。
+        return [], ("（仅 %s 一条可用 CLI：不启用作者自评，改由单通道独立复核席评审）"
+                    % (impl.get("label") or impl.get("id") or "CLI"))
+    return agents[:2], "（无真实智能体）"

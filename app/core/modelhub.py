@@ -2074,7 +2074,10 @@ def bind_agent(agent, difficulty="default", task_type="", role=""):
         sync_ok = False
     task_type = task_type or agent.get("_dispatch_task_type") or ""
     role = role or agent.get("_dispatch_role") or ""
-    rid = agent.get("id")
+    # 单通道复核席（review_roster 派生）是同一 CLI 的第二个会话：模型链必须跟着
+    # 源 CLI 走。用影子 id 查绑定会查不到，落到下面的 recommend_binding「智能推荐」
+    # 换上另一个供应商——那就不再是同通道复核，而是偷换评审人。
+    rid = agent.get("_binding_source") or agent.get("id")
     b = _binding_for(rid)
     # provider_id 即使没有显式模型链也代表用户锁定了供应商；空 bindings
     # 才是“完全交给系统推荐”的默认模式。

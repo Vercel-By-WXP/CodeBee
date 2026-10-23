@@ -21,7 +21,7 @@ import threading
 import time
 import weakref
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, router, runner, skills, store, task_compile, task_graph, usage, volumes
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, review_roster, router, runner, skills, store, task_compile, task_graph, usage, volumes
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -593,6 +593,62 @@ def _pick_critics_manual(agents, task):
     if real:
         return real
     return [a for a in agents if a.get("mode") == "mock"] or agents[:2]
+
+
+def _account_ids(agent):
+    """该 agent 占用的账号级 id 集合：复核席与其源 CLI 是同一条账号。
+
+    停用/恢复都按这一组记——账号级死错在会话之间是共享的，只记会话 id 会让
+    另一半继续送死，只恢复会话 id 又会让账号长期停在隔离状态。
+    """
+    if not isinstance(agent, dict):
+        return ()
+    ids = []
+    own = str(agent.get("id") or "")
+    if own:
+        ids.append(own)
+    source = review_roster.solo_source(agent)
+    if source and source not in ids:
+        ids.append(source)
+    return tuple(ids)
+
+
+_SOLO_NOTIFIED = set()
+
+
+def _assemble_review_seats(critics, agents, impl, workflow=None, route=None,
+                           needed=None, run_id=""):
+    """评审组装配（含单通道兜底），返回 ``(seats, independence)``。
+
+    两席以上真实 CLI 时本函数是恒等变换——路由结论不变，只是多走一次判空。
+    只有一条 CLI 时由 ``review_roster`` 派生独立复核席，否则「排除作者后没有
+    候选」会让每个任务都固定判成未评估，稿件永不可发布。
+
+    ``needed`` 缺省取工作流要求的评审人数（快速 1、专家/连载 2），下限 1：
+    连一席都没有的组不该被判成「评审缺席」，那只是没装配。
+    """
+    if needed is None:
+        try:
+            requested = int((workflow or {}).get("reviewers") or 1)
+        except (TypeError, ValueError):
+            requested = 1
+        needed = max(1, min(quality_gate.MIN_REVIEWERS, requested))
+    seats, note, independence = review_roster.ensure_review_seats(
+        critics, agents, impl, needed)
+    if note and isinstance(route, dict):
+        route["critics"] = ((route.get("critics") or "") +
+                            ("；" if route.get("critics") else "") + note)
+    if independence and run_id and run_id not in _SOLO_NOTIFIED:
+        # 只播报一次：这是环境说明（只有一条 CLI），不是每轮评审的失败告警。
+        _SOLO_NOTIFIED.add(run_id)
+        try:
+            store.add_message(run_id, (
+                "评审兜底：仅检测到一条可用 CLI，已为该 CLI 增设独立复核席"
+                "（不同人格、互不可见的独立会话）。评审人数达标，但各席同源同盲区；"
+                "安装第二条 CLI 可获得真正的跨厂商交叉评审。"))
+        except Exception:
+            pass
+    return seats, independence
 
 
 def _valid_resume(task, agents):
@@ -1550,9 +1606,29 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
         try:
             from . import bench as _bench
             if agent.get("id") and agent.get("mode") == "real":
-                _bench.bench(run_id, agent["id"], res.get("error_code"))
-                _bench.record_failure(agent["id"], res.get("error_code"),
-                                      res.get("error") or "")
+                # 单通道复核席是同一 CLI 的第二个会话：账号级死错（欠费/未登录/
+                # 凭据缺失）是**账号级**，不是会话级。只停用复核席的 id 会让原席
+                # 继续送死、下一章再撞一次；两个 id 一起记，整条 CLI 本场绕开。
+                for _aid in _account_ids(agent):
+                    _bench.bench(run_id, _aid, res.get("error_code"))
+                    _bench.record_failure(_aid, res.get("error_code"),
+                                          res.get("error") or "")
+        except Exception:
+            pass
+        # 模型格台账：模型名不存在/该订阅不含此模型（MODEL_UNAVAILABLE）只证明
+        # 这一格不可用，不能停用整条 CLI（同 CLI 换模型照常能干活）；但同一 run
+        # 内没有理由再试一次。2026-10-23 实案：grok-build 未配绑定被推荐了 6 个
+        # 它不认的模型名，每个步骤重试整条链，单个任务拖到 54 分钟。
+        try:
+            from . import bench as _bench
+            if error_code_value(res.get("error_code")) == "MODEL_UNAVAILABLE":
+                _prov = res.get("provider") or agent.get("provider") or {}
+                _pid = (res.get("provider_id") or
+                        (_prov.get("id") if isinstance(_prov, dict) else "") or "")
+                _bench.bench_model(
+                    run_id, _pid,
+                    res.get("model") or agent.get("model") or "",
+                    res.get("error_code"))
         except Exception:
             pass
     # A real successful call is stronger evidence than a stale persisted dead
@@ -1561,7 +1637,8 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
         try:
             from . import bench as _bench
             if agent.get("id") and agent.get("mode") == "real":
-                _bench.record_success(agent["id"])
+                for _aid in _account_ids(agent):
+                    _bench.record_success(_aid)
         except Exception:
             pass
     # A failed step with an entirely failed candidate history is a routing
@@ -2619,12 +2696,17 @@ def _local_critique_fallback(dims, reason):
 
 def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, agents,
                                      impl, difficulty, task_type, stats, mode,
-                                     is_selection, dims=None):
+                                     is_selection, dims=None, peers=()):
     """评审步失败时按换将语义补位（与起草共用同一份策略闸门）。
 
     评审原先固定在同一 CLI 上重试三次：上游死链/本地启动抖动时三次都撞
     同一堵墙，最终整轮判「评审环节失败」。这里保留解析失败的同 CLI 重试，
     仅在 should_fallback 允许时换 CLI；作者本人、本场停用与已试候选都排除。
+
+    ``peers`` 是本轮评审组的其他成员：换将候选必须避开他们。少了这一条，
+    一位评审死在 429 上会被"换"成同组另一位评审，两人塌成一个，聚合人数
+    只剩 1 而判成未评估（2026-10-23 实案：claude 429 后换到 aider，正好也
+    是另一位评审）。
     返回 (评分 JSON 或 None, 最后一次结果, 实际评审 CLI, 换将备注)。
     """
     from . import bench as _bench
@@ -2634,6 +2716,9 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
     tried = {agent.get("id")}
     if isinstance(impl, dict) and impl.get("id"):
         tried.add(impl.get("id"))
+    for peer in peers or ():
+        if isinstance(peer, dict) and peer.get("id"):
+            tried.add(peer.get("id"))
     try:
         tried |= _bench.benched_ids(run_id)
     except Exception:
@@ -3385,6 +3470,13 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     import json as _json
     run_id = run["id"]
     actual_implementers = [impl]
+    # 评审席装配：连载逐章与全局评审都硬要求 MIN_REVIEWERS 有效评审，只有一条
+    # CLI 时不补席就是「每章都未评估、全书永不达标」。手动指定评审组时不替用户
+    # 加人，仅在组为空时补一席。
+    _needed = (max(1, len(critics)) if mode == "manual"
+               else quality_gate.MIN_REVIEWERS)
+    critics, review_independence = _assemble_review_seats(
+        critics, agents, impl, needed=_needed, route=route, run_id=run_id)
     actual_critics = list(critics)
     # 评审停用降级的已播报名单（每 run 一次，不逐章刷屏）
     _bench_noted = set()
@@ -3984,18 +4076,25 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     "ledger": [], "continuity": [], "sid": None}
                     return
                 lens = _critic_lens(critics, agent)
-                cj, res, actual, swap_note = _critique_step_with_cli_fallback(
-                    run_id, role, agent,
-                    crit_prompt_for(
-                        text,
-                        note=("小说第 %d 章" % i) + (
-                            "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
-                            "请深挖你的镜头，但所有维度仍需打分）" % lens)
-                        if lens else "",
-                        event_check=event_check, chapter=i) + note_extra,
-                    workdir, ev, agents, impl, difficulty,
-                    task.get("type") or "serial_novel", stats, mode,
-                    False, dims=dims)
+                # 同源两席（原席 + 复核席）必须串行：一条 CLI 的两个并发会话会
+                # 抢同一份 CLI 自家配置与运行状态。不同 CLI 各持一把锁，交叉评审
+                # 的并发收益不变。
+                with review_roster.execution_lock(agent):
+                    cj, res, actual, swap_note = _critique_step_with_cli_fallback(
+                        run_id, role, agent,
+                        crit_prompt_for(
+                            text,
+                            note=("小说第 %d 章" % i) + (
+                                "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
+                                "请深挖你的镜头，但所有维度仍需打分）" % lens)
+                            if lens else "",
+                            event_check=event_check, chapter=i) + note_extra
+                        + review_roster.prompt_suffix(agent),
+                        workdir, ev, agents, impl, difficulty,
+                        task.get("type") or "serial_novel", stats, mode,
+                        False, dims=dims,
+                        peers=[a for a in critics
+                               if a.get("id") != agent.get("id")])
                 if not isinstance(cj, dict):
                     cj = _critique_json(res, dims)
                 results[idx] = {
@@ -5174,13 +5273,14 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                     capability_block + "\n\n## 全书目标", 1)
             if bible:
                 gtpl = gtpl.replace("## 全书目标", bible + "\n\n## 全书目标", 1)
-            res = _run_step(run_id, "global-critique", bound[idx],
-                            _render_template_values(gtpl, {
-                                "__DIMKEYS__": dimkey,
-                                "__GOAL__": task["goal"],
-                                "__MANUSCRIPT__": full_text[:60000],
-                            }),
-                            workdir, readonly=True, ev=ev, timeout=2400)
+            with review_roster.execution_lock(agent):
+                res = _run_step(run_id, "global-critique", bound[idx],
+                                _render_template_values(gtpl, {
+                                    "__DIMKEYS__": dimkey,
+                                    "__GOAL__": task["goal"],
+                                    "__MANUSCRIPT__": full_text[:60000],
+                                }) + review_roster.prompt_suffix(agent),
+                                workdir, readonly=True, ev=ev, timeout=2400)
             results[idx] = _critique_json(res, dims)
 
         threads = []
@@ -5397,7 +5497,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
                                         chapter=i),
                         workdir, ev, agents, impl, difficulty,
                         task.get("type") or "serial_novel", stats, mode,
-                        False, dims=dims)
+                        False, dims=dims,
+                        peers=[a for a in critics
+                               if a.get("id") != agent.get("id")])
                     agent = actual or agent
                     if cj and cj.get("review_degraded"):
                         review_degradation_reasons.append(
@@ -5605,6 +5707,7 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
         "type": task["type"], "engine": "review", "serial": True,
         "publishable": publishable, "overall": overall, "mode": mode,
         "review_degraded": review_degraded,
+        "review_independence": review_independence,
         "review_status": "not_evaluated" if review_degraded else "evaluated",
         "review_degradation_reasons": list(dict.fromkeys(
             review_degradation_reasons))[:30],
@@ -5674,6 +5777,9 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     lines += ["- %s：%s" % (
         d, "%.1f" % global_means[d] if global_review.get("consensus")
         and d in global_means else "未评估") for d in dims]
+    _solo_note = review_roster.describe(review_independence, critics)
+    if _solo_note:
+        lines += ["", "## 评审独立性", "", _solo_note]
     if review_degraded:
         lines += ["", "## 评审状态", "",
                   "评审未完成，稿件质量未判定。未评估不代表稿件质量差，"
@@ -5995,8 +6101,26 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             critics = _pick_critics_manual(agents, task)
 
     critic_pool = list(critics)
-    if mode != "manual":
-        critics = critic_pool[:workflow["reviewers"]]
+    review_independence = ""
+
+    def _reseat_reviewers(seats):
+        """按当前工作流重截评审组，并做单通道兜底（多通道时恒等变换）。
+
+        起草换将、大纲重排都会重新挑评审组，每一处都必须走这里：漏一处就会
+        在「新组只剩一席」时退回旧的未评估终局。
+        """
+        nonlocal review_independence
+        seats = list(seats or [])
+        if mode != "manual":
+            seats = seats[:workflow["reviewers"]]
+        # 手动模式不替用户加人：只在组为空时补一席，避免「点了评审却没人评」。
+        needed = max(1, len(seats)) if mode == "manual" else None
+        seats, review_independence = _assemble_review_seats(
+            seats, agents, impl, workflow=workflow, route=route, needed=needed,
+            run_id=run_id)
+        return seats
+
+    critics = _reseat_reviewers(critics)
 
     _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
                          implement_reason=route.get("author", ""),
@@ -6031,8 +6155,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     if outline:
         workflow = task_compile.content_workflow(
             task, difficulty, plan=outline, mode=mode)
-        if mode != "manual":
-            critics = critic_pool[:workflow["reviewers"]]
+        critics = _reseat_reviewers(critic_pool)
         store.update_run(run_id, outline=outline, workflow=workflow)
         _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
                              implement_reason=route.get("author", ""),
@@ -6140,7 +6263,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 if mode != "manual":
                     critic_pool, route["critics"] = router.pick_critics(
                         agents, task.get("type") or "novel", stats, impl=impl)
-                    critics = critic_pool[:workflow["reviewers"]]
+                    critics = _reseat_reviewers(critic_pool)
                 plan = planner.make_novel_plan(_steered_task(run_id, task), impl, critics)
                 store.update_run(run_id, route=route, plan=plan)
                 _record_actual_route(
@@ -6230,9 +6353,12 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 # 六维全 0 被当合法评审轮吞掉；2026-10-22 实案：codex 默认
                 # 上游 403 死链固定重试三次，整轮评审直接判失败）。
                 cj, res, actual, swap_note = _critique_step_with_cli_fallback(
-                    run_id, role, agent, crit_prompt, workdir, ev, agents,
+                    run_id, role, agent,
+                    crit_prompt + review_roster.prompt_suffix(agent),
+                    workdir, ev, agents,
                     impl, difficulty, task.get("type") or "novel", stats,
-                    mode, is_selection, dims=dims)
+                    mode, is_selection, dims=dims,
+                    peers=[a for a in critics if a.get("id") != agent.get("id")])
                 if actual.get("id") != agent.get("id"):
                     critics[idx] = actual
                     agent = actual
@@ -6282,6 +6408,56 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             issues_all.extend(model_issues)
             _check_cancel(ev)
 
+        # 组内减员兜底：某位评审死在本场不可恢复的错误上（欠费、七天上限、
+        # 无凭据）之后，本轮可能只剩一席。此时补一个同源复核席再评一遍——
+        # 「少一个人」不等于「没法评」，把减员直接判成未评估，会让任务在一条
+        # 已死的通道上反复失败（2026-10-23 实案：claude 七天上限 + grok 无凭据，
+        # 评审组减到 1 人，稿件判未评估）。手动模式不补：用户点名谁评就是谁评。
+        required_reviewers = max(1, min(
+            quality_gate.MIN_REVIEWERS,
+            int(workflow.get("reviewers") or 1)))
+        _scored = [aid for aid, cj in per_agent.items()
+                   if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                   and cj.get("scores")]
+        if (len(_scored) < required_reviewers and mode != "manual"
+                and impl.get("mode") == "real"
+                and not any(review_roster.is_solo_seat(a) for a in critics)):
+            _seat = review_roster.make_solo_seat(impl, 1)
+            if _seat and _seat.get("id") not in per_agent:
+                cj, res, actual, _seat_note = _critique_step_with_cli_fallback(
+                    run_id, role, _seat,
+                    crit_prompt + review_roster.prompt_suffix(_seat),
+                    workdir, ev, agents, impl, difficulty,
+                    task.get("type") or "novel", stats, mode, is_selection,
+                    dims=dims,
+                    peers=[a for a in critics if a.get("id") != _seat.get("id")])
+                if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                        and cj["scores"]):
+                    _key = (actual or _seat).get("id") or _seat["id"]
+                    per_agent[_key] = cj
+                    if not any(a.get("id") == _key for a in critics):
+                        critics.append(actual or _seat)
+                    if review_roster.is_solo_seat(actual or _seat):
+                        review_independence = review_roster.SOLO_MODE
+                        _solo_note = review_roster.describe(
+                            review_independence, critics)
+                        route["critics"] = (
+                            (route.get("critics") or "") +
+                            ("；" if route.get("critics") else "") +
+                            "评审减员后补位（%s）" % (_solo_note or "独立复核席"))
+                    try:
+                        plan = planner.make_novel_plan(
+                            _steered_task(run_id, task), impl, critics)
+                        store.update_run(run_id, route=route, plan=plan)
+                        _record_actual_route(
+                            run_id, task, agents, stats, impl, critics=critics,
+                            implement_reason=route.get("author", ""),
+                            review_reason=route.get("critics", ""))
+                    except Exception:
+                        logging.getLogger(__name__).warning(
+                            "评审减员补位后的路由回写失败 run=%s", run_id,
+                            exc_info=True)
+
         means = {}
         for d in dims:
             vals = [float(cj["scores"].get(d, 0)) for cj in per_agent.values()
@@ -6290,9 +6466,15 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 means[d] = round(sum(vals) / len(vals), 1)
         round_critic_failed = bool(per_agent) and not any(
             cj.get("scores") for cj in per_agent.values())
-        round_degraded = any(
-            bool(cj.get("review_degraded")) for cj in per_agent.values()
-            if isinstance(cj, dict))
+        # 共识看「有效评分数」，不是「有没有人失败过」：三个人里死一个、另外两个
+        # 给出完整评分，本轮已经有共识。坚持 any(review_degraded) 会让完全健康的
+        # 两席被一条已停用通道的失败记录连坐（2026-10-23 实案：claude 七天上限
+        # 与 grok 无凭据各留一条失败，把 aider+codex 的完整评分整轮作废）。
+        _valid_scored = [
+            cj for cj in per_agent.values()
+            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+            and cj.get("scores") and not cj.get("review_degraded")]
+        round_degraded = len(_valid_scored) < required_reviewers
         round_review_count = quality_gate.aggregate_reviews(
             [{"id": aid, "scores": cj.get("scores")}
              for aid, cj in per_agent.items()], dims,
@@ -6302,9 +6484,6 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         # deliberately single-reviewer runs fail even when the reviewer
         # returned a complete, valid assessment. Deep/expert workflows still
         # request two reviewers and therefore keep the stronger gate.
-        required_reviewers = max(1, min(
-            quality_gate.MIN_REVIEWERS,
-            int(workflow.get("reviewers") or 1)))
         round_degraded = (round_degraded or
                           round_review_count < required_reviewers)
         provisional_means = means if round_degraded else {}
@@ -6399,10 +6578,13 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         "scores": final_means, "history": history_rounds, "route": route,
         "workflow": workflow,
         "review_degraded": review_degraded,
+        "review_independence": review_independence,
         "draft_degraded": draft_degraded,
         "draft_degradation_reason": draft_degradation_reason,
         "review_degradation_reasons": ([
             "评审服务不可用或输出无法解析；评审未完成，稿件质量未判定"
+            + ("（已启用单通道独立复核席，两遍均未取得有效评分）"
+               if review_independence else "")
         ] if review_degraded else []),
         "manuscript_fingerprint": quality_gate.local_version(
             workdir, ms_name)["fingerprint"],
@@ -6520,6 +6702,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                      + " | ".join("%.1f" % h["means"][d]
                                  if d in h["means"] else "未评估" for d in dims)
                      + " | %s |" % ("✓" if h["passed"] else "✗"))
+    _solo_note = review_roster.describe(review_independence, critics)
+    if _solo_note:
+        lines += ["", "## 评审独立性", "", _solo_note]
     if review_degraded:
         lines += ["", "## 评审状态", "",
                   "评审未完成，稿件质量未判定。当前结果不代表稿件质量差，且不满足发布门禁。"]

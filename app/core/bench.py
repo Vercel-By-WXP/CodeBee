@@ -30,6 +30,8 @@ from .error_codes import (ErrorCode, error_code_value, is_account_dead_error,
 _LOCK = threading.Lock()
 # run_id -> {agent_id: {"code": str, "summary": str, "at": float}}
 _BENCHED = {}
+# run_id -> {"provider_id|model": {...}}：本场模型格熔断（见 bench_model）
+_BENCHED_MODELS = {}
 _MAX_RUNS = 256   # 长驻服务的内存护栏：超限丢最老条目（run 已终态，台账自然失效）
 
 # agent_id -> persistent account health state.  This is deliberately separate
@@ -331,6 +333,77 @@ def benched_ids(run_id):
         return local | global_ids
     except Exception:
         return set()
+
+
+def model_key(provider_id, model):
+    """模型格的稳定键：同一 (供应商, 模型) 才互认。"""
+    return "%s|%s" % (str(provider_id or "").strip(),
+                      str(model or "").strip())
+
+
+def bench_model(run_id, provider_id, model, code, at=None):
+    """把 (供应商, 模型) 记入本场模型级停用名单。
+
+    模型级死错（MODEL_UNAVAILABLE：模型名不存在、该订阅不含此模型）只证明
+    「这一格」不可用，同一条 CLI 换个模型照常能干活，所以绝不能停用整条 CLI
+    （``test_bench_model_unavailable_scope`` 锁死这条边界）。
+
+    但**同一 run 内**更不该重复撞：2026-10-23 实案 grok-build 没配绑定、被推荐
+    了 6 个它不认的模型名，每个步骤重新把整条链试一遍，单个任务拖到 54 分钟
+    才收场。模型级死错按 (供应商, 模型) 在本场记住，后续步骤直接跳过。
+    """
+    if not run_id:
+        return False
+    provider = str(provider_id or "").strip()
+    name = str(model or "").strip()
+    if not name:
+        return False
+    value = error_code_value(code)
+    if value != ErrorCode.MODEL_UNAVAILABLE.value:
+        return False
+    row = {"code": value, "summary": safe_error_summary(value),
+           "provider_id": provider, "model": name,
+           "at": float(at if at is not None else time.time())}
+    with _LOCK:
+        entries = _BENCHED_MODELS.setdefault(str(run_id), {})
+        key = model_key(provider, name)
+        if key in entries:
+            return False   # 已停用，保留首报现场
+        entries[key] = row
+        if len(_BENCHED_MODELS) > _MAX_RUNS:
+            oldest = min(_BENCHED_MODELS, key=lambda k: max(
+                (v.get("at") or 0) for v in _BENCHED_MODELS[k].values()) or 0)
+            _BENCHED_MODELS.pop(oldest, None)
+    return True
+
+
+def model_benched_keys(run_id):
+    """本场已确认不可用的 ``(provider_id, model)`` 集合。"""
+    try:
+        with _LOCK:
+            entries = dict(_BENCHED_MODELS.get(str(run_id), {}))
+        out = set()
+        for row in entries.values():
+            out.add((str(row.get("provider_id") or ""),
+                     str(row.get("model") or "")))
+        return out
+    except Exception:
+        return set()
+
+
+def model_benched_agents(run_id):
+    """本场因模型全死而整体不可用的 CLI id（供报告与告警展示）。"""
+    try:
+        with _LOCK:
+            entries = dict(_BENCHED_MODELS.get(str(run_id), {}))
+        out = {}
+        for row in entries.values():
+            aid = str(row.get("agent_id") or "")
+            if aid:
+                out.setdefault(aid, []).append(str(row.get("model") or ""))
+        return out
+    except Exception:
+        return {}
 
 
 def _probe_account(agent_id, state):

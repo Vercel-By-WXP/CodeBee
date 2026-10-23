@@ -209,6 +209,15 @@ def classify_error_text(error):
     # 降级策略依赖这个区分（2026-10-15 qwen 欠费连撞 31 次案）。
     if any(marker in text for marker in _QUOTA_STRONG):
         return ErrorCode.QUOTA
+    # 周期性额度打满：「[1310][已达到 7 天使用上限，2026-10-26 14:09:00 后可继续
+    # 使用]」——措辞里带 429，但下一次能用是几天后，重试、换 KEY、换模型都无意义，
+    # 属于**账号级**死错：本场停用该 CLI，把评审席让给活着的通道。
+    # 不能落进 RATE_LIMIT（瞬时限流，会按退避反复重试）。2026-10-23 实案：
+    # 这条 429 被当瞬时限流，claude-code 每一步重撞一次，单个任务拖到 54 分钟，
+    # 最终评审人数不足、稿件判为未评估。
+    if (re.search(r"达到[^\n]{0,12}(?:使用|用量)上限", text)
+            and "后可继续使用" in text):
+        return ErrorCode.QUOTA
     if re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)401\b", text):
         return ErrorCode.AUTH
     # An explicit HTTP 403 is authoritative even when the provider describes the
