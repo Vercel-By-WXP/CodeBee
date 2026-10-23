@@ -584,6 +584,106 @@ def _unbound_default_upstream_down(agent_id, role="", ttype="direct"):
         return ""
 
 
+def _switch_identity(agent, ttype, difficulty):
+    """换将隔离用的身份：模型族集合 + 上游 host 集合，任一取不到即为空集。
+
+    口径与评审隔离共用 `_review_identity`（含绑定链上每一行）：只看主绑定会
+    漏掉「主模型挂了自动落到同网关备用模型」这种同故障域，而那正是换将要
+    避开的东西。
+    """
+    try:
+        ident = _review_identity(agent or {}, ttype, difficulty)
+    except Exception:
+        return set(), set()
+    families = {str(x).casefold() for x in (ident.get("families") or ()) if x}
+    upstreams = {str(x) for x in (ident.get("upstreams") or ()) if x}
+    return families, upstreams
+
+
+def _ranked_candidates(agents, role, ttype, stats, exclude):
+    """按评分从高到低给候选，不写影子台账、不触发策略选路副作用。
+
+    换将隔离只是在「本来就会被选中的那批人」里挪顺序，所以这里不调用
+    `pick()`——它每次都会追加挑战者影子记录，逐候选枚举会把台账写花。
+    """
+    rows = []
+    seen = set()
+    for agent in agents or ():
+        if not isinstance(agent, dict):
+            continue
+        ident = str(agent.get("id") or "")
+        if not ident or ident in exclude or ident in seen:
+            continue
+        seen.add(ident)
+        try:
+            total, _ = score(agent, role, ttype, stats)
+        except Exception:
+            total = 0.0
+        try:
+            total = float(total or 0.0)
+        except (TypeError, ValueError):
+            total = 0.0
+        rows.append((-total, ident, agent))
+    rows.sort(key=lambda row: (row[0], row[1]))
+    return [row[2] for row in rows]
+
+
+def _prefer_disjoint_candidate(agents, role, ttype, stats, exclude, difficulty,
+                               failed_cli, best, reason):
+    """瞬态失败后尽量换到异上游/异族，别换壳不换命（2026-10-23 审查 C1）。
+
+    配额与 403 会进 health/dead 台账，由 `pick_switch_candidate` 主循环按
+    上游去重；但 5xx、超时、解析失败不记账，这些情况原来只看分数：分数最高
+    的备份往往就是同一个网关（同厂商不同 CLI 壳尤其常见），换过去仍然是同一
+    个故障域，白烧一轮并把真正的跨族降级往后拖。
+
+    只做「重排」不做「扩池」：候选仍来自调用方给的 agents，排除仍是 exclude；
+    死者身份未知（取不到上游也取不到族）时原样返回——宁白试不误杀。
+    """
+    failed_id = str((failed_cli or {}).get("id") or "") if isinstance(failed_cli, dict) else ""
+    if not failed_id or not isinstance(best, dict) or best.get("id") == failed_id:
+        return best, reason
+    failed_fams, failed_ups = _switch_identity(failed_cli, ttype, difficulty)
+    if not failed_fams and not failed_ups:
+        return best, reason      # 没有可比的身份：不重排
+    best_fams, best_ups = _switch_identity(best, ttype, difficulty)
+    if not ((best_ups and failed_ups and (best_ups & failed_ups))
+            or (best_fams and failed_fams and (best_fams & failed_fams))):
+        return best, reason      # 首选本就不在同一故障域
+
+    same_gateway = bool(best_ups & failed_ups)
+    upstream_only = None
+    for candidate in _ranked_candidates(agents, role, ttype, stats, exclude):
+        if candidate.get("id") == best.get("id"):
+            continue
+        if str(candidate.get("mode") or "") == "mock":
+            continue
+        fams, ups = _switch_identity(candidate, ttype, difficulty)
+        up_ok = bool(failed_ups and ups and not (ups & failed_ups))
+        fam_ok = bool(failed_fams and fams and not (fams & failed_fams))
+        if up_ok and fam_ok:
+            return candidate, (
+                "瞬态失败后换到异上游异族候选 %s（原首选 %s 与死者%s，跳过）"
+                % (candidate.get("id"), best.get("id"),
+                   "同上游" if same_gateway else "同族"))
+        if up_ok and upstream_only is None:
+            upstream_only = candidate
+    if upstream_only is not None:
+        return upstream_only, (
+            "瞬态失败后换到异上游候选 %s（原首选 %s 与死者%s，跳过）"
+            % (upstream_only.get("id"), best.get("id"),
+               "同上游" if same_gateway else "同族"))
+    # 隔离候选耗尽：保留原选择（分数最高、且策略允许），reason 不动——这时
+    # 选路结果与旧行为完全一致，往每条 reason 后面挂一句「无满足隔离的候选」
+    # 只会在「全公司共用一个网关」这种常见部署里把换将说明刷成噪音。事实
+    # 本身进日志，审计要看时能查。
+    logging.getLogger(__name__).warning(
+        "换将无满足隔离的候选：%s 与失败者 %s %s（role=%s type=%s）",
+        best.get("id"), failed_id, "同上游" if same_gateway else "同族",
+        role, ttype)
+    return best, reason
+
+
 def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
                           dead_upstreams=(), difficulty="default",
                           blocked_upstreams=(), failed_cli=None, error=None):
@@ -637,6 +737,12 @@ def pick_switch_candidate(agents, role, ttype, stats, exclude=(),
         return pick(agents, role, ttype, stats, exclude=omitted)
 
     best, reason = _choose(exclude)
+    if best is not None and not dead_upstreams and not blocked_sets:
+        # 有 dead/blocked 台账时下面的主循环已按上游去重，这层不叠加——两条
+        # 路径各自负责「已知死上游」和「未知的瞬态失败」，避免 reason 互撞。
+        best, reason = _prefer_disjoint_candidate(
+            agents, role, ttype, stats, exclude, difficulty,
+            failed_cli, best, reason)
     if best is None or (not dead_upstreams and not blocked_sets):
         if best is not None:
             _sticky_remember(role, ttype, best.get("id"))
