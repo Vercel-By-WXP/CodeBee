@@ -1482,10 +1482,16 @@ async function api(path, opts) {
   delete fetchOpts.operation;
   delete fetchOpts._ctrlRetry;
   delete fetchOpts.onResponse;
+  // Keep the phone pairing identity even when a caller adds conditional or
+  // content headers. Headers.set is case-insensitive, unlike Object.assign on
+  // plain objects, so a caller can intentionally override a default safely.
+  const requestHeaders = new Headers(authHeaders());
+  new Headers(fetchOpts.headers || {}).forEach((value, key) => requestHeaders.set(key, value));
+  fetchOpts.headers = requestHeaders;
   try {
     let res;
     try {
-      res = await fetch(path, Object.assign({ headers: authHeaders() }, fetchOpts,
+      res = await fetch(path, Object.assign({}, fetchOpts,
         ctrl ? { signal: ctrl.signal } : {}));
     } catch (e) {
       if (ctrl && e.name === "AbortError") throw new Error(t("请求超时，请重试或检查网络"));
@@ -2365,6 +2371,7 @@ function saveBrowserNotifyPreference() {
 /* 应用 /api/state 或 SSE 推送的状态载荷 */
 function applyState(d) {
   if (!d || typeof d !== "object") return;
+  clearStateRetry();
   // A slower /api/state response can finish after a newer SSE frame. The
   // version is monotonic on the desktop and prevents that stale snapshot from
   // rolling the phone workbench back to an older state.
@@ -3238,15 +3245,52 @@ async function refreshState() {
       },
     });
     if (state) applyState(state);
-    if (state) break;
+    if (state) {
+      clearStateRetry();
+      return true;
+    }
+    if (notModified && S.state) {
+      // A conditional 304 is a successful state check once a cached snapshot
+      // exists; do not keep an old mobile backoff alive forever.
+      clearStateRetry();
+      return true;
+    }
     // Never let an unexpected first-frame 304 strand a mobile page with no
     // state. One unconditional retry is enough; subsequent 304s are kept as a
     // valid cached response once a snapshot exists.
     // !S.state is the first-frame condition that needs recovery.
-    if (!notModified || S.state || _retried304) break;
+    if (!notModified || S.state || _retried304) return false;
     _retried304 = true;
     S._stateEtag = "";
   }
+}
+
+let _stateRetryTimer = null;
+let _stateRetryFailures = 0;
+let _nextStateRetryAt = 0;
+let _stateRetryPending = false;
+
+function stateRetryDelay() {
+  // Mobile links commonly recover within a few seconds, but a relay outage
+  // should not turn every open phone tab into a 2s request storm.
+  return Math.min(15000, 2000 * Math.pow(2, Math.max(0, _stateRetryFailures - 1)));
+}
+
+function clearStateRetry() {
+  clearTimeout(_stateRetryTimer);
+  _stateRetryTimer = null;
+  _stateRetryFailures = 0;
+  _nextStateRetryAt = 0;
+  _stateRetryPending = false;
+}
+
+function scheduleStateRetry() {
+  if (_stateRetryTimer || document.hidden) return;
+  const delay = Math.max(0, _nextStateRetryAt - Date.now());
+  _stateRetryTimer = setTimeout(() => {
+    _stateRetryTimer = null;
+    if (!document.hidden) poll();
+  }, delay);
 }
 
 let _lookupRefresh = null;
@@ -3359,6 +3403,10 @@ async function poll() {
   // ——整个界面（左栏+右栏）一起假死（2026-09-22 用户实测）。在飞保护 +
   // 15s 超时保证任何时刻最多占两条连接，卡完即自愈。
   if (_pollBusy) return;
+  if ((_stateRetryPending || !S.sseLive || !S.state) && _nextStateRetryAt && Date.now() < _nextStateRetryAt) {
+    scheduleStateRetry();
+    return;
+  }
   _pollBusy = true;
   try {
     // State is the only startup-critical request. Catalog/model lookups are
@@ -3369,7 +3417,7 @@ async function poll() {
     // the connection stays open; keep the ordinary state request alive until
     // at least one state payload has actually been applied, otherwise the UI
     // remains stuck on "Connecting…" forever.
-    if (!S.sseLive || !S.state) await refreshState();
+    if (_stateRetryPending || !S.sseLive || !S.state) await refreshState();
     else if (S._lastStateSseAt && Date.now() - S._lastStateSseAt > 30000 && !document.hidden) {
       // SSE 静默看门狗：连接半死时 EventSource 不报错、sseLive 恒真、上面
       // 的拉取被跳过——侧栏会冻在几分钟前的快照，而详情卡自拉自新，两头
@@ -3388,6 +3436,10 @@ async function poll() {
     // only available slot and /api/state is reported as "连接失败".
     if (S.state && !S.es && !document.hidden) startSSE();
   } catch (e) {
+    _stateRetryFailures++;
+    _stateRetryPending = true;
+    _nextStateRetryAt = Date.now() + stateRetryDelay();
+    scheduleStateRetry();
     if (!S.state || !S.sseLive || !S.es) {
       // Keep the relay/API's HTTP status or message visible; the generic
       // badge made mobile failures impossible to distinguish from offline.
@@ -3421,7 +3473,6 @@ function startSSE() {
       // Keep short polling until the first actual state payload arrives.
       S.sseLive = false;
       schedulePolling();
-      poll();
     };
     // 命名事件：台账有新记账（event: usage）。不进 onmessage、不触发
     // applyState——只刷新左下角用量条，3s 节流在 sideUsageLoad 里。
@@ -3481,16 +3532,32 @@ function startSSE() {
  * 立即重开 SSE 并拉一次全量。轮询在隐藏态本就被跳过，后台零连接占用。 */
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    clearStateRetry();
     clearTimeout(_sseRetryTimer);
     _sseRetryTimer = null;
     ++_sseEpoch;
     if (S.es) { try { S.es.close(); } catch (e) {} S.es = null; S.sseLive = false; schedulePolling(); }
-  } else if (!S.es) {
-    startSSE();
+  } else {
+    clearStateRetry();
+    _nextStateRetryAt = 0;
+    _stateRetryPending = true;
+    // Let poll() obtain/validate the finite state snapshot first. It opens
+    // SSE itself after a successful response, avoiding a foreground resume
+    // race where EventSource occupies the relay connection before /api/state.
     poll();
     sideUsageLoad(true);  // 隐藏期落下的记账立刻补上（SSE 断开期间收不到 usage 事件）
   }
   if (!document.hidden) scheduleStartupEnhancements();
+});
+
+// A phone can regain connectivity without a visibility change. Cancel any
+// backoff and make one immediate state request; the normal guards still keep
+// concurrent requests bounded.
+window.addEventListener("online", () => {
+  clearStateRetry();
+  _nextStateRetryAt = 0;
+  _stateRetryPending = true;
+  poll();
 });
 
 /* ---------------------------------------------------------- 多端控制权 */

@@ -73,6 +73,9 @@ class StartupConnectivityTests(unittest.TestCase):
         onopen = sse[sse.index("es.onopen") : sse.index("// 命名事件")]
         self.assertIn("S.sseLive = false", onopen)
         self.assertNotIn("S.sseLive = true", onopen)
+        # The timer is already the fallback while waiting for the first frame;
+        # an immediate poll here duplicates a relay request on every reconnect.
+        self.assertNotIn("poll();", onopen)
         self.assertIn("S.sseLive = true", sse[sse.index("es.onmessage") :])
 
     def test_state_poll_continues_until_first_state_frame_and_recovers_silent_sse(self):
@@ -80,7 +83,7 @@ class StartupConnectivityTests(unittest.TestCase):
         start = source.index("async function poll()")
         end = source.index("function schedulePolling()", start)
         poll = source[start:end]
-        self.assertIn("if (!S.sseLive || !S.state) await refreshState();", poll)
+        self.assertIn("if (_stateRetryPending || !S.sseLive || !S.state) await refreshState();", poll)
         self.assertIn("_lastStateSseAt", poll)
         self.assertIn("await refreshState();", poll)
 
@@ -94,6 +97,45 @@ class StartupConnectivityTests(unittest.TestCase):
         poll = source[start:end]
         self.assertIn('if (!S.state || !S.sseLive || !S.es)', poll)
         self.assertIn('t("连接失败：") + String((e && e.message) || e).slice(0, 100)', poll)
+
+    def test_state_failures_use_bounded_backoff_instead_of_hammering_mobile_relay(self):
+        source = self.source
+        refresh_start = source.index("async function refreshState()")
+        poll_start = source.index("async function poll()")
+        self.assertIn("let _stateRetryTimer = null", source[refresh_start:poll_start])
+        self.assertIn("let _stateRetryFailures = 0", source[refresh_start:poll_start])
+        self.assertIn("function stateRetryDelay()", source[refresh_start:poll_start])
+        self.assertIn("Math.min(15000", source[refresh_start:poll_start])
+        poll = source[poll_start:source.index("function schedulePolling()", poll_start)]
+        self.assertIn("_nextStateRetryAt", poll)
+        self.assertIn("(_stateRetryPending || !S.sseLive || !S.state) && _nextStateRetryAt", poll)
+        self.assertIn("scheduleStateRetry()", poll)
+        self.assertIn("_stateRetryFailures++", poll)
+        self.assertIn("_stateRetryPending || !S.sseLive || !S.state", poll)
+        self.assertIn("_stateRetryPending = true", poll)
+
+    def test_online_and_foreground_events_trigger_immediate_state_recovery(self):
+        source = self.source
+        self.assertIn('window.addEventListener("online", () => {', source)
+        online = source[source.index('window.addEventListener("online", () => {'):
+                       source.index('window.addEventListener("online", () => {') + 500]
+        self.assertIn("clearStateRetry", online)
+        self.assertIn("_stateRetryPending = true", online)
+        self.assertIn("poll()", online)
+        visibility = source[source.index('document.addEventListener("visibilitychange"'):
+                            source.index("/* ---------------------------------------------------------- 多端控制权")]
+        self.assertIn("clearStateRetry();", visibility)
+        self.assertIn("_nextStateRetryAt = 0", visibility)
+        self.assertIn("poll();", visibility)
+        self.assertIn("poll() obtain/validate", visibility)
+        self.assertNotIn("startSSE();\n    poll();", visibility)
+
+    def test_successful_state_snapshot_resets_retry_backoff(self):
+        source = self.source
+        refresh = source[source.index("async function refreshState()"):
+                        source.index("let _lookupRefresh", source.index("async function refreshState()"))]
+        self.assertIn("clearStateRetry()", refresh)
+        self.assertIn("return", refresh)
 
     def test_mobile_state_poll_uses_conditional_requests_and_keeps_cached_snapshot(self):
         source = self.source
@@ -150,6 +192,19 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertNotIn('const isRelayAuthError', api)
         self.assertIn('showTokenGate(t("令牌不正确或已更换，请重新输入"))', api)
         self.assertIn('const failure = new Error(authError)', api)
+
+    def test_api_merges_call_site_headers_without_dropping_mobile_identity(self):
+        source = self.source
+        start = source.index("async function api(path, opts)")
+        end = source.index("/* 质量门禁", start)
+        api = source[start:end]
+        # Conditional state requests and future callers may pass only one
+        # header.  That must extend the default auth headers rather than
+        # replacing X-CodeBee-Token/Client/Name on the phone relay.
+        self.assertIn("const requestHeaders = new Headers(authHeaders());", api)
+        self.assertIn("new Headers(fetchOpts.headers || {}).forEach((value, key) => requestHeaders.set(key, value));", api)
+        self.assertIn("fetchOpts.headers = requestHeaders;", api)
+        self.assertIn("fetch(path, Object.assign({}, fetchOpts,", api)
 
     def test_phone_edge_assets_match_the_current_mobile_workbench_sources(self):
         for name in ("app.js", "mobile-workbench.js", "index.html"):
