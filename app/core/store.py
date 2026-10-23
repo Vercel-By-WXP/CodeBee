@@ -20,7 +20,7 @@ import time
 from concurrent import futures
 from pathlib import Path
 
-from . import artifacts, atomic, audit, cli_text, paths, tracing, volumes
+from . import artifacts, atomic, audit, cli_text, paths, redact, tracing, volumes
 
 from .store_serial import (  # noqa: F401 - 旧调用面再导出
     _CH_FILE_RE, early_finish_existing_task, early_finish_info, early_finish_task, serial_book_chapter_numbers,
@@ -2876,7 +2876,16 @@ def _builtin_live_log_text(run, rel_path):
     return "\n".join(parts)
 
 
-def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
+def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False,
+                  raw=False):
+    """读步骤日志：洗终端噪声 + 折叠遥测 + 可选翻译事件流。
+
+    raw=False（默认）返回前过 redact.mask_secrets：同一条上游 CLI 输出，进模型
+    前在 builtin_agent_tools 已被遮罩，进 UI/导出也必须遮罩——脱敏策略不能只
+    保护一个消费方（2026-10-23 二轮审查 M1）。raw=True 是显式出口（下载完整
+    日志、排查上游报错偶尔要原文），调用方需自行承担暴露面；遮罩与模型侧同一
+    口径，占位符不含引号/反斜杠，codex JSONL 翻译与工具活动解析不受影响。
+    """
     p = (paths.RUNS_DIR / run_id / rel_path).resolve()
     text = ""
     try:
@@ -2910,4 +2919,8 @@ def read_step_log(run_id, rel_path, tail=paths.LOG_TAIL_CHARS, pretty=False):
         if live:
             text = live if len(live) <= tail else \
                 "...(已截断)...\n" + live[-int(tail):]
+    if not raw:
+        # 兜底文本（run.json 实时流）与日志文件同口径遮罩；默认脱敏，
+        # raw=True 才给原文（见函数 docstring）
+        text = redact.mask_secrets(text)
     return text

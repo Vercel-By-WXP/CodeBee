@@ -1175,9 +1175,14 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 if not run:
                     return self._json(404, {"error": "not found"})
                 # pretty=1：日志抽屉等人类视图，把 codex JSONL 事件流翻译成可读行；
-                # 蜂巢卡片等机器视图可不带，只享受重复行折叠
+                # 蜂巢卡片等机器视图可不带，只享受重复行折叠。
+                # raw=1：下载完整日志（排查上游报错偶尔要原文）；默认脱敏，
+                # 与模型侧同一口径（二轮审查 M1）——接口本身已要访问令牌，
+                # 显式要原文的人才拿得到。
                 pretty = (q.get("pretty") or [""])[0] in ("1", "true")
-                raw = store.read_step_log(m.group(1), rel, tail=tail)
+                want_raw = (q.get("raw") or [""])[0] in ("1", "true")
+                raw = store.read_step_log(m.group(1), rel, tail=tail,
+                                          raw=want_raw)
                 text = runner.pretty_cli_log(raw) if pretty else raw
                 # 带上步骤/运行状态：日志面板靠它区分「实时刷新中」和「已结束」，
                 # 结束即停轮询（否则用户盯着不动的日志以为刷新坏了）
