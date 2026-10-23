@@ -1818,6 +1818,13 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             # 网关自定义模型名（glm-5.1 等）litellm 全都不认识，警告页+建议列表
             # 纯属刷屏（2026-09-20 实测占满步骤日志头部）
             "--no-show-model-warnings", "--message", prompt]
+        if readonly:
+            # 评审是只读场景，但 aider 默认仍会在工作目录初始化 git 仓库并写
+            # .gitignore（0.86 实测：v0.86.2 → "Git repository created in …"
+            # "Added .aider* to .gitignore"）。稿件目录被塞进 .git 会污染交付物，
+            # 也让后续人工 git 操作踩坑。--no-git 实测不创建任何 git 产物且
+            # 不影响评审出分；写模式保留 git 交给作者位使用。
+            argv += ["--no-git"]
         if model:
             # litellm 靠 provider 前缀路由，裸模型名直接报
             # "LLM Provider NOT provided"。前缀按本条尝试实际注入的端点协议定：
