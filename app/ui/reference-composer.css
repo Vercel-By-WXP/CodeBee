@@ -4,8 +4,8 @@
     position: relative;
     width: auto;
     min-height: 38px;
-    margin: 0 -12px;
-    padding: 5px 12px;
+    margin: 0 -14px;
+    padding: 5px 14px;
     border: 0;
     border-bottom: 1px solid var(--cb-card-border, var(--border));
     border-radius: 17px 17px 0 0;
@@ -21,7 +21,7 @@
     position: relative;
     z-index: 1;
     margin: 0;
-    padding: 0 12px 6px;
+    padding: 0 14px 6px;
     border: 1px solid var(--cb-card-border, var(--border));
     border-radius: 18px;
     background: var(--panel);
@@ -147,4 +147,22 @@
     background: transparent;
   }
   :is(#sub-tasks, #rd-input-slot) .cmp-add-menu { position: fixed; left: 16px; bottom: 76px; }
+}
+
+/* 专家模板原生 select 收进 pill 语言：去 UA 框与黑色箭头，跟分支胶囊同一配方
+ * （自绘 chevron + 透明描边 + panel2 底），否则它在工具栏里比邻居重一档。 */
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .expert-pick {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  border-color: transparent;
+  background-color: var(--panel2);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888a8f' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  transition: border-color .15s, background-color .15s;
+}
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .expert-pick:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 80%, transparent);
+  background-color: var(--panel2);
 }

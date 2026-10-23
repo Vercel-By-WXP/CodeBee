@@ -1108,6 +1108,8 @@ html[data-layout="workbench"] body.settings-mode #page-settings textarea {
 html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create {
   background: linear-gradient(110deg, var(--accent), color-mix(in srgb, var(--accent2) 82%, var(--accent)));
   color: #fff;
+  /* 渐变接管了 button-reference 的近黑主钮后，那圈同色描边变成脏环；按钮自身色透明化 */
+  border-color: transparent;
 }
 
 /* 待你处理：「去确认 →」文字按钮 */
@@ -1199,7 +1201,7 @@ html[data-layout="workbench"] #page-home #rd-input-slot .cmp-box {
   z-index: 1;
   width: 100%;
   margin: 0;
-  padding: 0 12px 6px;
+  padding: 0 14px 6px;
   border: 1px solid var(--cb-card-border, var(--border));
   border-radius: 18px;
   background: var(--panel);

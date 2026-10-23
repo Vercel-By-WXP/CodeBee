@@ -1207,7 +1207,7 @@
     justify-content: center;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 16px 0 0;
+    margin: 16px 0 10px;
   }
   :is(#sub-tasks, #rd-input-slot) .cmp-chip {
     min-height: 32px;
@@ -1239,9 +1239,13 @@
     width: fit-content;
     margin-left: auto;
     padding: 5px 9px;
-    border: 1px solid var(--cb-card-border);
     border-radius: 999px;
-    background: var(--panel);
+    /* 静音：去框去底，悬停才给胶囊底——画布上不再浮一块白药丸 */
+    border-color: transparent;
+    background: transparent;
+  }
+  :is(#sub-tasks, #rd-input-slot) details#f-advanced summary:hover {
+    background: var(--panel2);
   }
 
   :is(#sub-tasks, #rd-input-slot) details#f-advanced[open] .adv-body {

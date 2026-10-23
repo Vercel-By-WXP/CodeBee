@@ -14,9 +14,11 @@
 #brand-menu .brand-menu-item.selected { background: color-mix(in srgb, var(--panel2) 65%, transparent); }
 #sub-tasks .workspace-hint { color: var(--muted); font-size: 13px; text-align: center; }
 #sub-tasks .hero-row { margin-bottom: 8px; }
-#sub-tasks .cmp-quick { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+#sub-tasks .cmp-quick { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 16px 0 10px; }
 #sub-tasks .cmp-chip { min-height: 32px; padding: 6px 12px; font-size: 12px; border-color: var(--border); background: transparent; box-shadow: none; }
-#sub-tasks .cmp-chip:hover, #sub-tasks .cmp-chip.on { color: var(--text); background: var(--panel2); }
+#sub-tasks .cmp-chip:hover { color: var(--text); background: var(--panel2); border-color: var(--border); }
+/* 选中态跟 accent 走完整一档（文字+底+描边同源），只剩描边来自 desktop-workbench 的同值规则 */
+#sub-tasks .cmp-chip.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 @media (max-width: 900px) {
   #sub-tasks .workspace-hint { text-align: left; font-size: 13px; margin-bottom: 16px; }
   #sub-tasks .cmp-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
