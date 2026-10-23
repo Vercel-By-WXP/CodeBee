@@ -98,6 +98,9 @@ def _qimao_set_declaration(page, want):
         _DIALOG_SEL, want, timeout=12) or {}
     if r.get("ok") or r.get("already"):
         return True
+    if r.get("err") == "no-select":
+        # 弹层没有声明下拉（短故事的声明在建书时已定，真机实案）→ 放行
+        return True
     return False
 
 
