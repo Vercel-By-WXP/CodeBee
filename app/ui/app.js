@@ -1785,12 +1785,16 @@ document.addEventListener("click", (e) => {
 
 /* 内联 onclick 里的字符串字面量转义。esc 不够用：它把 ' 编成 &#39;，浏览器
  * 解码属性值后 JS 仍看到一个裸引号，用户自建标签含撇号就会截断字面量
- * （语法错误或参数错位）。这里先做 HTML 属性转义再叠 JS 反斜杠转义。 */
+ * （语法错误或参数错位）。这里先做 HTML 属性转义再叠 JS 转义。
+ * 换行与 U+2028/U+2029 也要转：它们在 JS 字符串字面量里是硬性行终止符，
+ * 上游返回的模型名一旦带换行，整个 handler 会变成语法错误（点了没反应）。 */
 function jsq(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
     .replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    .replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    .replace(/\r/g, "\\r").replace(/\n/g, "\\n")
+    .replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
 
 function statusChip(st) {

