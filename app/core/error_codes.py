@@ -60,6 +60,12 @@ _MISSING_CREDENTIAL = (
     # claude CLI 登录闸门：无 OAuth/Key 时 -p 模式只吐一行提示即退出（exit 0/1
     # 都见过），不产生 result 事件——绑定链 env 未注入或本机未登录时必现
     "not logged in", "please run /login",
+    # 未登录闸门的其它常见措辞：「Authentication required. Please use /login
+    # command to sign in」(codebuddy)、"Please sign in to continue"。
+    # 漏掉它们时分类为 None：既不换通道也不停用，同一死号被反复重撞。
+    "authentication required", "not authenticated", "please log in",
+    "please login", "please sign in", "sign in to your account",
+    "please use /login",
 )
 _AUTH = (
     "invalid api key", "invalid_api_key", "api key is invalid", "incorrect api key",
@@ -211,7 +217,18 @@ def classify_error_text(error):
                   r"code\s*[:=]?\s*)403\b", text)
             or re.search(r"(?:^|:\s*)403(?=$|[\s:{])", text)):
         return ErrorCode.FORBIDDEN
-    if any(marker in text for marker in _MISSING_CREDENTIAL):
+    # 各家 CLI 报缺凭据的写法不统一：marker 表只能覆盖固定短语，实际日志里
+    # 更常见的是变量名内嵌形式（"Missing MISTRAL_API_KEY"、
+    # "GEMINI_API_KEY is not set"、"DEEPSEEK_API_KEY environment variable
+    # not set"）。漏掉这一族时分类为 None，既不进本场停用台账也不触发换
+    # 通道，同一死号会被每个维度、每一轮反复重撞（2026-10-23 实案：
+    # mistral-vibe 单轮被撞 20 次，全是 MISSING_CREDENTIAL 却记成未知）。
+    if (any(marker in text for marker in _MISSING_CREDENTIAL)
+            or re.search(r"missing\s+[a-z0-9_\-]*(?:api[\s_\-]?key|access[\s_\-]?key"
+                         r"|token|secret|credential)", text)
+            or re.search(r"\b[a-z0-9_\-]*(?:api[\s_\-]?key|token|secret)\b"
+                         r"[^.\n]{0,60}?not\s+(?:set|configured|provided|found|defined)",
+                         text)):
         return ErrorCode.MISSING_CREDENTIAL
     if (any(marker in text for marker in _AUTH)
             or re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)401\b", text)):
