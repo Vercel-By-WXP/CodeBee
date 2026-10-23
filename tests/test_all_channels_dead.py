@@ -189,6 +189,10 @@ class AllChannelsDeadTests(unittest.TestCase):
         self.assertEqual(result["draft_source"],
                          local_fallback.TEMPLATE, result)
         self.assertIsNotNone(result["overall"], result)
+        # 回归锁：本地模板稿 + 机测评审绝不能冒充「可发布」。占位稿不是成品，
+        # 纯机测评审也不构成真实共识——publishable 必须为 False（2026-10-23
+        # 曾因中性分 7.0 误判 publishable=True，给用户一个假「成功」）。
+        self.assertFalse(result["publishable"], result)
         # 起草失败一次就走本地模板；两席评审各试一次即被账号死错拦停，
         # 不再重放、不再换将——没有 39 连撞。
         self.assertEqual(result["calls"],

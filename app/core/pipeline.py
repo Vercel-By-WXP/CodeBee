@@ -6597,6 +6597,18 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         publishable = bool(means) and all(v >= threshold for v in means.values())
         if round_degraded or draft_degraded:
             publishable = False
+        # 本地兜底产物不能开发布门禁：本地模板稿不是成品，纯机测评审也不构成真实
+        # 共识。就算机测给到中性分也绝不放行——"成功"不能靠占位稿冒充。
+        # 2026-10-23 实案：全通道死亡时若稿件是本地模板、评审全是本地启发式，
+        # 原来会因中性分 7.0 误判 publishable=True，给用户一个假"成功"。
+        if publishable:
+            _real_reviews = [
+                cj for cj in per_agent.values()
+                if isinstance(cj, dict)
+                and isinstance(cj.get("scores"), dict) and cj.get("scores")
+                and cj.get("review_fallback") != local_fallback.HEURISTIC]
+            if draft_source == local_fallback.TEMPLATE or not _real_reviews:
+                publishable = False
         if is_selection:
             _, package_errors = selection.parse_report(manuscript)
             issues_all.extend({"dim": "交接完整", "severity": "major", "note": error}
@@ -6900,6 +6912,17 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     elif publishable:
         store.update_run(run_id, expected_status="running", status="done", verdict=verdict,
                          summary="评审任务达标（综合 %.1f）" % overall, ended_at=_now())
+    elif draft_source == local_fallback.TEMPLATE:
+        # 全通道死亡且起草也无活通道：本地模板稿已是当前环境下能给出的最佳产物，
+        # 流程完整走完（起草→评审→修订→报告），不该算 failed（那会让用户以为
+        # 出了错）。publishable 仍为 False——占位稿不是成品，但终态是「已完成」，
+        # 恢复可用模型后重跑可覆盖。重试入口在 done+publishable=false 时仍开放。
+        store.update_run(
+            run_id, expected_status="running", status="done", verdict=verdict,
+            summary=("外部模型全部不可用，已用本地兜底走完流程"
+                     "（起草为本地模板稿、评审为机测），未达发布标准；"
+                     "恢复可用模型后重跑可得真实结果"),
+            ended_at=_now())
     elif history_rounds and history_rounds[-1].get("review_degraded"):
         store.update_run(
             run_id, expected_status="running", status="failed", verdict=verdict,
