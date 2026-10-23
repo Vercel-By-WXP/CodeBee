@@ -6254,6 +6254,18 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             log_abs.write_text("[mock] 已写入草稿\n", encoding="utf-8")
         except Exception:
             pass
+    elif read_ms().strip():
+        # Existing manuscript means this run is reviewing supplied work, not
+        # authoring from scratch. Preserve it and proceed to review/revision.
+        draft_source = "provided-manuscript"
+        step, log_abs = store.add_step(
+            run_id, "draft", "provided-manuscript", "沿用预置稿件")
+        store.finish_step(run_id, step["n"], "done",
+                          summary="沿用已有稿件作为本次评审输入")
+        try:
+            log_abs.write_text("沿用已有稿件，未覆盖。\n", encoding="utf-8")
+        except Exception:
+            pass
     else:
         is_research = task.get("type") == "research"
         # 经验库/知识库注入（review 引擎 13 类型补全，serial 起草同款）：
@@ -6576,7 +6588,9 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         _valid_scored = [
             cj for cj in per_agent.values()
             if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-            and cj.get("scores") and not cj.get("review_degraded")]
+            and cj.get("scores") and not cj.get("review_degraded")
+            and not (task.get("type") == "handdraw_video"
+                     and cj.get("review_fallback") == local_fallback.HEURISTIC)]
         round_degraded = len(_valid_scored) < required_reviewers
         round_review_count = quality_gate.aggregate_reviews(
             [{"id": aid, "scores": cj.get("scores")}
@@ -6708,6 +6722,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                            history_rounds[-1].get("review_degraded"))
     if review_degraded or draft_degraded:
         publishable = False
+    _heuristic_reviewed = bool(
+        history_rounds and
+        any(f == local_fallback.HEURISTIC
+            for f in (history_rounds[-1].get("review_fallbacks") or [])))
     verdict = {
         "type": task["type"], "engine": "review", "publishable": publishable,
         "overall": overall, "mode": mode,
@@ -6809,6 +6827,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         conclusion = "⚠ 起草中断，已落盘稿件仅用于继续评审修订"
     elif review_degraded:
         conclusion = "⚠ 评审未完成，稿件质量未判定"
+    elif _heuristic_reviewed:
+        conclusion = "⚠ 本地兜底完成，发布标准未通过"
     else:
         conclusion = "❌ 未达标，建议再修"
     lines = ["# 评审报告：%s" % task["title"], "",
@@ -6843,10 +6863,6 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     _solo_note = review_roster.describe(review_independence, critics)
     if _solo_note:
         lines += ["", "## 评审独立性", "", _solo_note]
-    _heuristic_reviewed = bool(
-        history_rounds and
-        any(f == local_fallback.HEURISTIC
-            for f in (history_rounds[-1].get("review_fallbacks") or [])))
     if review_degraded:
         lines += ["", "## 评审状态", "",
                   "评审未完成，稿件质量未判定。当前结果不代表稿件质量差，且不满足发布门禁。"]
@@ -6855,12 +6871,15 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                   "起草 CLI 中断；已落盘稿件仅作为连续性输入完成后续评审与修订，"
                   "本次交付仍未确认完整，不满足发布门禁。",
                   "- 起草错误：%s" % draft_degradation_reason]
-    if draft_source:
+    if draft_source == local_fallback.TEMPLATE:
         lines += ["", "## 起草来源", "",
                   "本文稿由**本地模板引擎**生成，未调用任何外部模型。"
                   "它是可编辑的执行起点，不是成品：带「待补充」的段落就是待办，"
                   "事实性内容需要人工补齐或恢复可用模型后重跑覆盖。",
                   "- 外部模型不可用的原因：%s" % draft_degradation_reason]
+    elif draft_source == "provided-manuscript":
+        lines += ["", "## 起草来源", "",
+                  "沿用任务开始前已存在的稿件作为评审输入，未覆盖原稿。"]
     if _heuristic_reviewed:
         lines += ["", "## 评审来源", "",
                   "本轮评审由**本地确定性算法**完成（整句/整段重复、跨段重复、"
@@ -6922,6 +6941,14 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             summary=("外部模型全部不可用，已用本地兜底走完流程"
                      "（起草为本地模板稿、评审为机测），未达发布标准；"
                      "恢复可用模型后重跑可得真实结果"),
+            ended_at=_now())
+    elif _heuristic_reviewed and not review_degraded and not draft_degraded:
+        # A completed deterministic review is a useful terminal result even if
+        # it cannot clear the publication gate. Keep done separate from release.
+        store.update_run(
+            run_id, expected_status="running", status="done", verdict=verdict,
+            summary=("本地兜底完成：确定性评审/修订与报告已完成；"
+                     "未达发布标准，需人工复核或恢复外部模型后重跑"),
             ended_at=_now())
     elif history_rounds and history_rounds[-1].get("review_degraded"):
         store.update_run(

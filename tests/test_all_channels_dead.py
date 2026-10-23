@@ -118,7 +118,8 @@ from app.core import pipeline, store
 workdir = sys.argv[1]
 task = {"type": "doc", "title": "全通道死亡", "goal": "写一份部署说明",
         "workdir": workdir, "manuscript": "manuscript.md",
-        "rubric": ["质量"], "threshold": 7.0, "rounds": 1}
+        "rubric": ["质量"], "threshold": 7.0,
+        "rounds": int(os.environ.get("DEAD_PROBE_ROUNDS", "1"))}
 author = {"id": "claude-cli", "mode": "real", "kind": "claude", "label": "Claude"}
 calls = []
 
@@ -151,10 +152,21 @@ r = store.get_run(run["id"])
 v = r.get("verdict") or {}
 print("@@RESULT@@" + json.dumps({
     "status": r.get("status"),
+    "run_id": run["id"],
     "publishable": v.get("publishable"),
     "review_degraded": v.get("review_degraded"),
     "draft_source": v.get("draft_source"),
     "overall": v.get("overall"),
+    "review_fallbacks": [
+        fallback
+        for history in (v.get("history") or [])
+        for fallback in (history.get("review_fallbacks") or [])
+    ],
+    "steps": [
+        {"role": step.get("role"), "status": step.get("status")}
+        for step in (r.get("steps") or [])
+    ],
+    "report": (store.run_dir(run["id"]) / "report.md").read_text(encoding="utf-8"),
     "calls": calls,
 }, ensure_ascii=True))
 """
@@ -162,6 +174,38 @@ print("@@RESULT@@" + json.dumps({
 
 class AllChannelsDeadTests(unittest.TestCase):
     """起草、评审、修订三条路全灭——任务仍然要走到 done。"""
+
+    def test_existing_manuscript_completes_with_local_review_and_revise(self):
+        """预置稿件由本地机测评审/修订收尾，不应因低于发布阈值而失败。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "workspace")
+            os.makedirs(workdir)
+            with open(os.path.join(workdir, "manuscript.md"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(BAD_TEXT)
+            env = dict(os.environ)
+            env["TUTTI_DATA"] = os.path.join(tmp, "data")
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["DEAD_PROBE_ROUNDS"] = "2"
+            proc = subprocess.run(
+                [sys.executable, "-c", DEAD_ALL_PROBE, workdir],
+                cwd=APP_ROOT, env=env, timeout=180,
+                capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise AssertionError("probe failed: %s" % proc.stderr[-2000:])
+            line = [x for x in proc.stdout.splitlines()
+                    if x.startswith("@@RESULT@@")][-1]
+            result = json.loads(line[len("@@RESULT@@"):])
+
+        self.assertEqual(result["status"], "done", result)
+        self.assertFalse(result["publishable"], result)
+        self.assertEqual(result["draft_source"], "provided-manuscript", result)
+        self.assertFalse(result["review_degraded"], result)
+        self.assertIn("local-heuristic", result["review_fallbacks"])
+        self.assertIn("revise-r1", result["calls"], result)
+        self.assertIn("本地兜底完成", result["report"])
+        self.assertIn("本地确定性算法", result["report"])
+        self.assertIn("发布标准未通过", result["report"])
 
     def test_run_completes_with_local_draft_and_local_review(self):
         with tempfile.TemporaryDirectory() as tmp:
