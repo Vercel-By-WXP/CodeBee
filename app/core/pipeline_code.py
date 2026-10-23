@@ -181,11 +181,13 @@ def _run_code(run, task, agents, ev, stats, mode):
     if not workflow["review_required"]:
         reviewer = None
         route["reviewer"] = workflow["reason"]
-    elif mode in ("auto", "expert"):
+    else:
+        # 手动模式此前走 v1 选择器（只排除作者 id）：作者与下一个候选绑定同族模型
+        # 时，「跨厂商对抗评审」退化成同族互评，报告里也没有任何提示。
+        # pick_reviewer 自带同族/同上游隔离，隔离候选耗尽时如实回退并写进 reason，
+        # 行为不劣化，只是把「同族互评」从静默变成看得见。
         reviewer, route["reviewer"] = _pl().router.pick_reviewer(
             agents, impl, "code", stats, difficulty=difficulty)
-    else:
-        reviewer, route["reviewer"] = _pl()._pick_reviewer_legacy(agents, impl)
     _pl()._record_actual_route(run_id, task, agents, stats, impl, reviewer=reviewer,
                          implement_reason=route.get("implementer", ""),
                          review_reason=route.get("reviewer", ""),

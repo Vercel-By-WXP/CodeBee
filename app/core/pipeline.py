@@ -3213,18 +3213,6 @@ def _run_direct(run, task, agents, ev, stats, mode):
                      ended_at=_now())
 
 
-def _pick_reviewer_legacy(agents, impl):
-    """手动模式评审者选择（v1 逻辑：跨厂商 > mock-b > 自评）。"""
-    real = _real(agents)
-    for a in real:
-        if a["id"] != impl["id"]:
-            return a, ""
-    mb = _pick(agents, "mock-b")
-    if mb and impl.get("mode") != "mock":
-        return mb, "（无第二个真实智能体，用 mock 评审）"
-    return impl, "（自评：仅有实现者一个智能体可用）"
-
-
 # ---------------------------------------------------------------- review 引擎（小说/文档/翻译/调研…通用）
 
 NOVEL_DRAFT_PROMPT = """你是__ROLE__。请在当前工作目录中撰写/修订稿件文件：`__FILE__`（直接写入该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
