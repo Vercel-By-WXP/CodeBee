@@ -2307,6 +2307,9 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = re.match(r"^/api/publish/task/([^/]+)/short-story-draft$", path)
         if m:
             return self._api_publish_short_story_draft(m.group(1))
+        m = re.match(r"^/api/publish/task/([^/]+)/short-story-publish$", path)
+        if m:
+            return self._api_publish_short_story_publish(m.group(1))
         m = re.match(r"^/api/publish/task/([^/]+)/unbind-book$", path)
         if m:
             return self._api_publish_unbind_book(m.group(1))

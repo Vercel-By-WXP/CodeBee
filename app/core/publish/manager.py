@@ -399,6 +399,30 @@ def chapter_fill_values(ch_no, title, body, book_name) -> Dict[str, Any]:
             "book_name": str(book_name or "")}
 
 
+def short_cover_path(task):
+    """短故事封面本地文件：优先封面生成结果，其次任务目录里的 cover.*。
+
+    生成器把图落在 RUNS_DIR/<run_id>/cover.png，任务里只存
+    {status, file, run_id}。发布时封面是必填项，所以这里按同一口径解析；
+    都没有返回空串（流程表按 if_key 跳过封面步骤，由平台报错兜底）。"""
+    cg = (task or {}).get("cover_gen") or {}
+    if str(cg.get("status") or "") == "done":
+        run_id = str(cg.get("run_id") or "").strip()
+        name = str(cg.get("file") or "").strip()
+        if run_id and name:
+            fp = paths.RUNS_DIR / run_id / name
+            if fp.is_file():
+                return str(fp)
+    wd = str((task or {}).get("workdir") or "").strip()
+    workdir = Path(wd) if wd else None
+    if workdir and workdir.is_dir():
+        for name in ("cover.png", "cover.jpg", "cover.jpeg"):
+            fp = workdir / name
+            if fp.is_file():
+                return str(fp)
+    return ""
+
+
 def read_chapter(fp):
     """读章节文件 → (章号, 标题, 正文, 错误)。UTF-8→GBK 回退（章稿乱码教训）。
 
@@ -480,8 +504,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     重复存草稿会攒一箱重复稿。as_draft=True 走「存草稿」流程表
     （upload_chapter_draft）：内容落平台草稿箱不上线，不构成发布动作，
     质量闸不拦（发布时照拦）；存稿动作无需人工确认，适合批量连跑。
-    short_story=True 走短故事单文档链（无章节标题/序号，正文 4000-70000），
-    仅支持 as_draft，发布在草稿箱人工提交。"""
+    short_story=True 走短故事单文档链（无章节标题/序号，正文 4000-70000）：
+    as_draft=True 只进平台草稿箱；as_draft=False 走 publish_short_story
+    流程表完成设置区、封面、协议与发布确认，并以短故事管理页状态为凭据。"""
     from .. import contracts, store
     if plat not in PLATFORMS:
         return False, "未知平台"
@@ -498,9 +523,16 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     book = ledger.book_for(task_id, plat)
     if not book:
         return False, "该任务尚未在此平台建书，请先「创建作品」"
-    if short_story and (scheduled or not as_draft):
-        return False, ("短故事仅支持存草稿：正文按单文档整篇上（4000-70000 字），"
-                       "发布请到平台草稿箱人工提交")
+    if short_story and scheduled:
+        return False, "短故事不支持定时发布"
+    if short_story and not as_draft:
+        # 发布链按平台是否提供 publish_short_story 流程表决定（番茄已有
+        # 实机校准表；七猫当前只到草稿，平台未跑通前不冒充支持）。
+        try:
+            load_flow(plat, "publish_short_story")
+        except Exception:
+            return False, ("该平台未配置短故事发布流程：请先存草稿，"
+                           "发布到平台草稿箱后人工提交")
     if not book.get("book_id") and book.get("source") != "manual":
         return False, "该平台建书结果未确认（缺少作品 ID），请重试创建作品或登记已有作品"
     # 多账号路由：书在哪个账号建的（books entry.account），这章就发到
@@ -595,6 +627,15 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     if as_draft and ch_no and ch_no in ledger.drafted_chapters(task_id, plat):
         return False, ("第 %d 章已存过草稿（台账幂等拦截）；请到平台草稿箱检查后"
                        "提交发布，确需重存请先在平台删旧稿" % ch_no)
+    if short_story and not as_draft:
+        # 短篇是单文档、章号恒 0，章节幂等拦不住；按动作查台账防重复提交。
+        already = next((r for r in ledger.recent(task_id=task_id, platform=plat,
+                                                 limit=100)
+                        if r.get("action") == "publish_short_story"
+                        and r.get("ok")), None)
+        if already:
+            return False, ("该短故事已提交过发布（台账幂等拦截）；"
+                           "确需重新提交请到平台作品页处理")
     # Reserve the account profile before the login recheck and keep the lock
     # until the worker finishes.  A persisted ``busy`` flag alone is subject
     # to a check-then-set race when two works share one account.
@@ -606,7 +647,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         return False, "该平台有操作正在进行中"
     ok_login, why = _login_guard(slot)
     if not ok_login:
-        if not _batch and _upload_retryable_error(plat, why):
+        # 短故事不排登录恢复：单文档没有章号，恢复链的凭据/对账都按章号
+        # 判定，重放会走回连载流程，且重复发表不可撤——交给用户重试。
+        if not _batch and not short_story and _upload_retryable_error(plat, why):
             try:
                 queued = _queue_upload_recovery(
                     task_id, plat, chapter_file, acc,
@@ -624,8 +667,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         action_lock.release()
         return False, why
     flow_key = "upload_chapter_draft" if as_draft else "upload_chapter"
-    if short_story and as_draft:
-        flow_key = "upload_short_story_draft"
+    if short_story:
+        flow_key = ("upload_short_story_draft" if as_draft
+                    else "publish_short_story")
     # A scheduled fallback uses the same editor fill chain unless a platform
     # ships a dedicated calibrated flow.  The action is still recorded as
     # scheduled so idempotency and progress accounting advance correctly.
@@ -691,9 +735,23 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
         # 短故事流程的列表验证页占位（verify 步只吃 values 不吃 config）
         values["short_book_manage"] = str(mod.CONFIG.get("short_book_manage") or "")
         values["short_manage_url"] = str(mod.CONFIG.get("short_manage") or "")
+        if not as_draft:
+            # 发布需要设置区取值：封面来自封面生成结果，分类按作品信息
+            # 语义映射到短故事主分类，AI 声明按作者口径默认「是」。
+            meta = (store.inherited_book_meta(task, plat) or {}).get("data") or {}
+            mapper = getattr(mod, "short_story_categories", None)
+            values["_categories"] = (list(mapper(meta) or [])
+                                     if callable(mapper) else [])
+            values["_cover_path"] = short_cover_path(task)
+            values["ai_use"] = str(meta.get("ai_use") or "是")
+            values["short_category"] = str(meta.get("short_category")
+                                           or meta.get("category") or "")
     logs = []
     pending_key = ""
-    if not _batch:
+    # 短故事不落 pending_uploads：恢复队列按章号对账、重启后还会按连载
+    # 口径重放（as_draft 已处理时走 upload_chapter），对单文档短篇只会
+    # 制造重复提交。短篇失败交给用户重试。
+    if not _batch and not short_story:
         pending_key = _remember_pending_upload(
             slot,
             {"task_id": task_id, "platform": plat, "account": acc,
@@ -711,7 +769,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     except Exception as exc:
         _set(slot, status="error", error="发章操作登记失败：%s" % exc)
         action_lock.release()
-        if not _batch and _upload_retryable_error(plat, exc):
+        if not _batch and not short_story and _upload_retryable_error(plat, exc):
             try:
                 _queue_upload_recovery(
                     task_id, plat, chapter_file, acc,
@@ -792,7 +850,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                           quality_forced=quality_forced,
                           quality_reason=quality_reason, account=acc,
                           duration_s=elapsed_s())
-            if not _batch and _upload_retryable_error(plat, e):
+            if not _batch and not short_story and _upload_retryable_error(plat, e):
                 try:
                     _queue_upload_recovery(
                         task_id, plat, chapter_file, acc,
@@ -825,7 +883,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                       quality_reason=quality_reason, account=acc)
         _save()
         action_lock.release()
-        if not _batch and _upload_retryable_error(plat, exc):
+        if not _batch and not short_story and _upload_retryable_error(plat, exc):
             try:
                 _queue_upload_recovery(
                     task_id, plat, chapter_file, acc,

@@ -356,11 +356,12 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
             return self._json(400, {"error": err or "登记失败"})
         return self._json(200, {"ok": True})
 
-    def _api_publish_short_story_draft(self, task_id):
-        """短故事正文整篇存草稿（POST /api/publish/task/<id>/short-story-draft，
+    def _api_publish_short_story(self, task_id, as_draft=True):
+        """短故事整篇上传（POST /api/publish/task/<id>/short-story-{draft,publish}，
         body: {platform, account?}）。短篇没有章节语义：稿件取任务工作目录的
         成品文件（manuscript，默认 story.md），走 upload_chapter_async 的
-        short_story 分支——只到平台草稿箱，发布由作者人工提交。"""
+        short_story 分支。as_draft=True 只到平台草稿箱；False 走平台发布链
+        （设置区/封面/协议/确认提交），以平台管理页状态为凭据。"""
         from pathlib import Path as _P
         from core.publish import manager as pub
         task = _main().store.get_task(task_id)
@@ -376,8 +377,14 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
             return self._json(400, {"error": "短故事稿件缺失：%s" % fp.name})
         ok, err = pub.upload_chapter_async(
             task_id, platform, str(fp),
-            as_draft=True, short_story=True)
+            as_draft=as_draft, short_story=True)
         return self._json((200 if ok else 409), {"ok": ok, "error": err or ""})
+
+    def _api_publish_short_story_draft(self, task_id):
+        return self._api_publish_short_story(task_id, as_draft=True)
+
+    def _api_publish_short_story_publish(self, task_id):
+        return self._api_publish_short_story(task_id, as_draft=False)
 
     def _api_book_meta_set(self, task_id):
         """手工设置作品信息（POST /api/tasks/<id>/book-meta/set，

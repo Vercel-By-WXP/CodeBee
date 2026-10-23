@@ -623,6 +623,29 @@ class Page:
             raise BrowserError("点击失败：%s" % ((r or {}).get("err") or sel))
         return True
 
+    def set_file(self, sel, path):
+        """给隐藏的 file input 挂文件（CDP 域命令，不依赖元素可见/可点）。
+
+        番茄封面抽屉的 `<input type=file>` 零尺寸且由平台上传组件托管，
+        `Input` 系列事件点不到它——只能走 DOM.setFileInputFiles 直接赋文件
+        列表，平台的上传组件随后自行读取 FileList 发起上传。"""
+        p = Path(path)
+        if not p.is_file():
+            raise BrowserError("文件不存在：%s" % str(path)[:120])
+        self.send("DOM.enable", timeout=8.0)
+        doc = self.send("DOM.getDocument", {"depth": -1}, timeout=20.0)
+        root = int(((doc or {}).get("root") or {}).get("nodeId") or 0)
+        if not root:
+            raise BrowserError("DOM 根节点不可用")
+        q = self.send("DOM.querySelector", {"nodeId": root, "selector": sel},
+                      timeout=10.0)
+        node = int((q or {}).get("nodeId") or 0)
+        if not node:
+            raise BrowserError("找不到文件上传控件：%s" % sel)
+        self.send("DOM.setFileInputFiles", {"files": [str(p.resolve())],
+                                            "nodeId": node}, timeout=30.0)
+        return True
+
     def real_click_text(self, text, scope="", contains=True, exact_fallback=True,
                         y_min=None, y_max=None):
         """按文本真实点击：JS 定位元素中心坐标 → CDP Input 派发鼠标事件序列。

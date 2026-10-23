@@ -445,9 +445,9 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
 
     Review tasks require a quality verdict. Serial tasks additionally require
     global/chapter evidence; single manuscripts use their content-review result.
-    short_story 不吃本闸：自动化只到草稿箱（draft 在调用方已放行），平台发布
-    由作者人工把关；新任务无 verdict 时不得反向拦建书（2026-10-22 端到端
-    实案：fresh 任务被"最近评审未达标"卡死建书）。
+    short_story 不吃本闸：短篇是一次成稿，字数闸在发布入口已先行，且草稿/发布
+    都由作者显式触发，不存在「自动连发」场景；新任务无 verdict 时不得反向拦
+    建书（2026-10-22 端到端实案：fresh 任务被"最近评审未达标"卡死建书）。
     """
     if str(task.get("type") or "").lower() == "short_story":
         return {"allowed": True, "status": "not_applicable", "blockers": [],

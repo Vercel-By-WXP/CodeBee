@@ -15,6 +15,181 @@ from .flow_helpers import (
     _fanqie_submission_limit_changed, _has_new_feedback,
 )
 
+# 短故事发布确认链的弹层：成功弹窗挂在 .byte-modal-wrapper（不是
+# .arco-modal），只查 Arco 会把"发布成功"漏掉并误判为提交失败。
+_SHORT_MODAL_SEL = ("[role=dialog],.arco-modal,.arco-dialog,.byte-modal-wrapper,"
+                    "[class*=modal-wrapper]")
+_SHORT_MODAL_BTN_SEL = (
+    "[role=dialog] button,[role=dialog] [role=button],"
+    ".arco-modal button,.arco-dialog button,"
+    ".byte-modal-wrapper button,.byte-modal-wrapper [role=button],"
+    "[class*=modal-wrapper] button")
+
+
+def _short_visible_dialogs(page):
+    """Return visible modal texts (deduped, shortest first)."""
+    texts = page.call(
+        "(sel)=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+        "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+        "const ds=[...document.querySelectorAll(sel)].filter(vis)"
+        ".filter(e=>e.querySelector('button,[role=button],a'));"
+        "const out=[];for(const d of ds){"
+        "const t=(d.innerText||'').trim();if(t&&!out.includes(t))out.push(t);}"
+        "out.sort((a,b)=>a.length-b.length);return out.slice(0,8);}",
+        _SHORT_MODAL_SEL, timeout=15) or []
+    return [str(t) for t in texts]
+
+
+def _short_click_label(page, label, timeout=8.0):
+    """Click a button inside the visible modal by its text."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            r = page.real_click_text(label, scope=_SHORT_MODAL_BTN_SEL,
+                                     contains=True)
+            if (r or {}).get("ok"):
+                return True
+        except Exception:
+            pass
+        # DOM click fallback: the real pointer path can be rejected while a
+        # modal transition is still running, and Fanqie's own buttons accept
+        # a bubbling click.
+        try:
+            r2 = page.call(
+                "(sel,t)=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
+                "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
+                "const ds=[...document.querySelectorAll(sel)].filter(vis)"
+                ".filter(e=>e.querySelector('button,[role=button]'));"
+                "ds.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+                "for(const d of ds){"
+                "const b=[...d.querySelectorAll('button,[role=button],a')]"
+                ".find(e=>vis(e)&&norm(e.innerText).includes(norm(t)));"
+                "if(b){b.click();return{ok:true};}}return{ok:false};}",
+                _SHORT_MODAL_SEL, label, timeout=10) or {}
+            if r2.get("ok"):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def _short_pay_button_text(page):
+    try:
+        return str(page.call(
+            "()=>{const b=document.querySelector('.publish-short-config-pay button');"
+            "return b?(b.innerText||'').replace(/\\s+/g,'').trim():'';}",
+            timeout=8) or "")
+    except Exception:
+        return ""
+
+
+def run_fanqie_short_trial(page, st, i, note, values):
+    """试读比例：未设置时点「去设置」，并把 30% 档选上。
+
+    番茄短故事正文要求先设置试读位；未设置时「下一步」只弹 toast
+    「未设置试读比例，请设置后再提交发布」，不产生任何发布请求。
+    实机（2026-10-23）点「去设置」后平台即落到 30% 默认档，正文插入
+    「试读30%」标记；这里点完回读按钮文案，仍未变成比例就再在弹层里
+    点 30% 并确认，仍失败则报错——绝不带着未设比例去点「下一步」。
+    """
+    text = _short_pay_button_text(page)
+    if "%" in text:
+        note(i, "试读比例已设置（%s）" % text)
+        return
+    note(i, "试读比例未设置（%s），点「去设置」" % (text or "空"))
+    r = page.real_click_text("去设置",
+                             scope=".publish-short-config-pay button",
+                             contains=False)
+    if not (r or {}).get("ok"):
+        r = page.real_click_text("去设置", scope="button,[role=button]",
+                                 contains=True)
+    if not (r or {}).get("ok"):
+        raise FlowError("番茄短故事试读比例未设置，且找不到「去设置」按钮")
+    time.sleep(1.5)
+    text = _short_pay_button_text(page)
+    if "%" in text:
+        note(i, "试读比例已设置（%s）" % text)
+        return
+    # 弹层里选 30%（实机默认档）
+    picked = page.real_click_text(
+        "30%", scope=".arco-dropdown-popup-visible button,"
+        ".arco-dropdown-popup-visible li,.arco-dropdown-popup-visible div,"
+        "[class*=popup] button,[class*=popup] li,"
+        "[class*=popper] button,[class*=popper] li,"
+        "[role=dialog] button,.byte-modal-wrapper button", contains=False)
+    if (picked or {}).get("ok"):
+        note(i, "已点 30% 试读档")
+        time.sleep(1.0)
+    for label in ("确定", "确认", "完成"):
+        r2 = page.real_click_text(
+            label, scope="[role=dialog] button,.byte-modal-wrapper button,"
+            ".arco-modal button", contains=False)
+        if (r2 or {}).get("ok"):
+            time.sleep(1.0)
+            break
+    text = _short_pay_button_text(page)
+    if "%" in text:
+        note(i, "试读比例已设置（%s）" % text)
+        return
+    raise FlowError("试读比例设置未生效（按钮仍为「%s」）："
+                    "点「下一步」必然被平台拦下" % (text or "空"))
+
+
+def run_fanqie_short_publish(page, st, i, note, values):
+    """短故事发布确认链：下一步 → 发布提示「继续发布」→ 提交确认「确定」→ 发布成功。
+
+    短故事没有章节形态，平台在「下一步」后弹的是发布提示与提交确认两层
+    弹窗，成功后是 .byte-modal-wrapper 里的「发布成功／已提交，预计1天内
+    审核完成」。这里循环推进直到成功文案出现，超时/文案不支持即失败——
+    绝不把「停在确认页」当发布成功（2026-10-23 番茄短篇实案）。"""
+    note(i, "处理番茄短故事发布确认链")
+    deadline = time.time() + float(st.get("timeout") or 150)
+    clicks = {"continue": 0, "submit": 0}
+    while time.time() < deadline:
+        try:
+            body = str(page.call("()=>(document.body.innerText||'')",
+                                 timeout=15) or "")
+            joined = "\n".join(_short_visible_dialogs(page))
+        except Exception:
+            time.sleep(0.6)
+            continue
+        if "发布成功" in joined and ("已提交" in joined or "审核" in joined):
+            note(i, "平台提示发布成功")
+            return
+        if "提交确认" in joined or "确认提交" in joined:
+            if clicks["submit"] >= 5:
+                raise FlowError("番茄提交确认点「确定」后仍未提交成功：%s"
+                                % joined[:160])
+            if not _short_click_label(page, "确定"):
+                raise FlowError("番茄提交确认弹窗没有「确定」按钮：%s"
+                                % joined[:160])
+            clicks["submit"] += 1
+            note(i, "点「确定」提交")
+            time.sleep(2.0)
+            continue
+        if "发布提示" in joined or "继续发布" in joined:
+            if clicks["continue"] >= 5:
+                raise FlowError("番茄发布提示点「继续发布」后仍未推进：%s"
+                                % joined[:160])
+            if not _short_click_label(page, "继续发布"):
+                raise FlowError("番茄发布提示弹窗没有「继续发布」按钮：%s"
+                                % joined[:160])
+            clicks["continue"] += 1
+            note(i, "点「继续发布」")
+            time.sleep(2.0)
+            continue
+        if "未设置试读比例" in body:
+            raise FlowError("番茄提示「未设置试读比例」：正文试读位没设上，"
+                            "先点「去设置」再提交发布")
+        if "正文至少输入" in body:
+            raise FlowError("番茄提示正文不完整：编辑器正文没有进平台数据模型")
+        time.sleep(0.6)
+    raise FlowError("等待番茄短故事发布确认链超时（%ds）"
+                    % int(float(st.get("timeout") or 150)))
+
 
 def run_fanqie_publish(page, st, i, note, values):
     # Fanqie inserts typo, content-check, and publish-settings

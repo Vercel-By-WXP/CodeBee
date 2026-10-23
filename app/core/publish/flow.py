@@ -22,6 +22,16 @@
             confirm_sel, settle}  发章带卷：选平台已有卷，缺则新建（自动分卷）
   verify   {url, any, settle}     上线验证：导航后断言标记在场
   url_any  {any: [..]}            断言当前 URL 含任一标记（登录跳转检测）
+  set_file {sel, key}             给隐藏的 file input 挂本地文件（封面上传）
+  select_item {open_sel, item_sel, any|any_key, settle}
+                                  开自绘下拉，再按候选文本点选一项
+  check    {sel, checked_sel, confirm, name}
+                                  勾选协议复选框；授权说明弹窗自动点确认
+  dismiss_stale                   关掉番茄「有刚刚更新的草稿」恢复提示
+  fanqie_short_trial              短故事试读比例：去设置→30%（未设会拦下一步）
+  fanqie_short_publish            短故事发布确认链：继续发布→确定→发布成功
+
+所有步骤都支持 if_key：values[if_key] 为空时整步跳过（可缺省的封面等）。
 """
 from __future__ import annotations
 
@@ -31,7 +41,8 @@ import time
 
 from .browser import BrowserError
 
-from .flow_fanqie import run_fanqie_publish
+from .flow_fanqie import (run_fanqie_publish, run_fanqie_short_publish,
+                          run_fanqie_short_trial)
 from .flow_helpers import (  # noqa: F401 - 旧调用面再导出
     DUP_HINT_WORDS, FlowError, TitleDupError, _checked_js, _click_match_js,
     _click_text_js, _dup_probe_js, _fail_shot, _fanqie_active_dialog,
@@ -39,6 +50,66 @@ from .flow_helpers import (  # noqa: F401 - 旧调用面再导出
     _has_new_feedback, _page_error_text_js, _tag_click_js, _tag_sections_js,
     _tags_select_grouped, dup_hint,
 )
+
+_STALE_DRAFT_MARK = "有刚刚更新的草稿"
+
+
+def _dismiss_fanqie_stale_draft(page, timeout=6.0):
+    """关掉番茄「有刚刚更新的草稿」恢复提示（点放弃），返回是否出现过。
+
+    这条提示与本次要填的稿无关；点「继续编辑」会把旧稿恢复成当前内容，
+    随后提交的就是旧稿。必须在填表前放弃。
+    """
+    seen = False
+    last_error = ""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            r = page.call(
+                "(mark,label)=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
+                "const ds=[...document.querySelectorAll('body *')].filter(e=>vis(e)&&"
+                "norm(e.innerText).includes(mark));"
+                "ds.sort((a,b)=>norm(a.innerText).length-norm(b.innerText).length);"
+                "const d=ds[0];if(!d)return{ok:false,absent:true};"
+                "const b=[...d.querySelectorAll('button,[role=button],a')].find(e=>"
+                "vis(e)&&norm(e.innerText)===norm(label));"
+                "if(!b)return{ok:false,err:'button'};"
+                "const r=b.getBoundingClientRect(),x=Math.round(r.x+r.width/2),"
+                "y=Math.round(r.y+r.height/2),hit=document.elementFromPoint(x,y);"
+                "if(!hit||(hit!==b&&!b.contains(hit)&&!hit.contains(b)))"
+                "return{ok:false,err:'blocked'};"
+                "return{ok:true,x:x,y:y};}", _STALE_DRAFT_MARK, "放弃",
+                timeout=10) or {}
+        except BrowserError as exc:
+            last_error = str(exc)[:160]
+            time.sleep(0.25)
+            continue
+        if r.get("absent"):
+            return seen
+        seen = True
+        if r.get("ok"):
+            for kind in ("mousePressed", "mouseReleased"):
+                page.send("Input.dispatchMouseEvent",
+                          {"type": kind, "x": r["x"], "y": r["y"],
+                           "button": "left", "clickCount": 1}, timeout=8.0)
+        else:
+            try:
+                fallback = page.real_click_text(
+                    "放弃", "button,[role=button],a", contains=False)
+                if not (fallback or {}).get("ok"):
+                    last_error = str(r.get("err") or "放弃按钮不可点击")
+            except BrowserError as exc:
+                last_error = str(exc)[:160]
+        time.sleep(0.8)
+    if seen:
+        raise FlowError("番茄旧草稿恢复提示仍未关闭，停止填稿以免旧稿覆盖本次内容：%s"
+                        % (last_error or "点击「放弃」后提示仍存在"))
+    if last_error:
+        raise FlowError("无法确认番茄旧草稿恢复提示状态，停止填稿：%s" % last_error)
+    return False
 
 
 
@@ -67,6 +138,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
     for i, st in enumerate(steps):
         act = (st.get("do") or "").strip()
         try:
+            # 条件步：缺省值（无封面/无分类）时整步跳过，流程表不写两套分支
+            if st.get("if_key") and values.get(str(st["if_key"])) in (
+                    None, "", [], {}):
+                note(i, "缺 %s，跳过 %s" % (st["if_key"], act))
+                continue
             if act == "navigate":
                 url = st["url"]
                 for k, v in config.items():
@@ -106,7 +182,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     continue
                 note(i, "点击「%s」" % text)
                 r = None
-                for _try in range(3):               # SPA 渲染慢：找不到先等再试
+                for _try in range(int(st.get("tries") or 3)):   # SPA 渲染慢：找不到先等再试
                     r = page.call(_click_text_js(), text, st.get("scope") or "",
                                   bool(st.get("contains")))
                     if (r or {}).get("ok"):
@@ -346,8 +422,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 # 同值假阳性骗过）。scope_text 先定位含该文本的表单行
                 # （.el-form-item 等），组内再找 value——找不到容器才退全局。
                 scope_text = str(st.get("scope_text") or "").strip()
-                base_js = ("(v,sc)=>{let root=null;"
-                           "if(sc){const els=[...document.querySelectorAll"
+                scope_sel = str(st.get("scope_sel") or "").strip()
+                base_js = ("(v,sc,ss)=>{let root=null;"
+                           "if(ss){root=document.querySelector(ss);"
+                           "if(!root||!root.querySelector('input[type=radio]'))"
+                           "return{ok:false,err:'scope'};}"
+                           "else if(sc){const els=[...document.querySelectorAll"
                            "('[class*=form-item],[class*=form_row],fieldset')]"
                            ".filter(e=>e.getBoundingClientRect().width>0"
                            "&&e.querySelector('input[type=radio]'));"
@@ -369,10 +449,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 verified = False
                 idx = -1
                 for _try in range(8):
-                    r = page.call(base_js, str(val), scope_text)
+                    r = page.call(base_js, str(val), scope_text, scope_sel)
                     if not (r or {}).get("ok"):
-                        raise FlowError("单选 %s=%s 目标未找到（scope_text=%s）"
-                                        % (key, want, scope_text or "无"))
+                        raise FlowError("单选 %s=%s 目标未找到（scope_text=%s，"
+                                        "scope_sel=%s）"
+                                        % (key, want, scope_text or "无",
+                                           scope_sel or "无"))
                     idx = r["idx"]
                     # 策略1：隐藏 input 原生 click（Element UI 的 input 未
                     # display:none，编程点击可直接翻转受控状态）
@@ -616,6 +698,204 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 else:
                     raise FlowError("等待 %s 消失超时" % sel)
                 note(i, "已消失")
+            elif act == "set_file":
+                # 隐藏 file input 挂文件：封面/图片上传控件由平台组件托管，
+                # 零尺寸、点不到——DOM.setFileInputFiles 直接赋 FileList。
+                key = str(st.get("key") or "")
+                path = str(st.get("path") or (values.get(key) if key else "") or "")
+                if not path:
+                    if st.get("optional"):
+                        note(i, "无文件（%s），跳过" % (key or "path"))
+                        continue
+                    raise FlowError("set_file 缺少文件路径（key=%s）" % (key or "无"))
+                note(i, "挂载文件 %s" % path.replace("\\", "/").rsplit("/", 1)[-1])
+                page.wait_for(st["sel"], timeout=float(st.get("timeout") or 20))
+                page.set_file(st["sel"], path)
+                time.sleep(float(st.get("settle") or 0.8))
+            elif act == "select_item":
+                # 自绘下拉：先开触发器，再在弹层里按候选文本点一项。
+                # 候选来自 any（静态）与 any_key（values 里的列表，如
+                # _categories）；都匹配不上时落首个可见项（分类"其他"兜底）。
+                open_sel = str(st.get("open_sel") or "")
+                item_sel = str(st.get("item_sel") or "")
+                cands = [str(c) for c in (st.get("any") or [])]
+                if st.get("any_key"):
+                    cands += [str(c) for c in (values.get(st["any_key"]) or [])]
+                for k, v in (values or {}).items():
+                    cands = [c.replace("{%s}" % k, str(v)) for c in cands]
+                cands = [c.strip() for c in cands if str(c).strip()]
+                note(i, "选择「%s」：候选 %s"
+                     % (st.get("name") or item_sel, "／".join(cands[:6]) or "首个可见项"))
+
+                def _current():
+                    return str(page.call(
+                        "(s)=>{const e=document.querySelector(s);"
+                        "return e?(e.innerText||'').trim():'';}", open_sel,
+                        timeout=8) or "")
+
+                cur = _current()
+                hit_cur = next((c for c in cands if c and c in cur), "")
+                if hit_cur and st.get("skip_if_selected", True):
+                    note(i, "已选中「%s」，跳过" % hit_cur)
+                    continue
+                page.wait_for(open_sel, timeout=8)
+                pos = page.call(
+                    "(s)=>{const e=document.querySelector(s);if(!e)return null;"
+                    "e.scrollIntoView({block:'center'});"
+                    "const rc=e.getBoundingClientRect();"
+                    "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
+                    "const px=document.elementFromPoint(x,y);"
+                    "if(!px||(px!==e&&!e.contains(px)&&!px.contains(e)))return null;"
+                    "return{x:x,y:y};}", open_sel, timeout=8) or {}
+                if pos.get("x") is not None:        # Arco 触发器认真实指针
+                    for kind in ("mousePressed", "mouseReleased"):
+                        page.send("Input.dispatchMouseEvent",
+                                  {"type": kind, "x": pos["x"], "y": pos["y"],
+                                   "button": "left", "clickCount": 1}, timeout=8.0)
+                else:
+                    page.click(open_sel)             # 触发器被遮挡时退合成点击
+                time.sleep(float(st.get("settle") or 1.0))
+                picked = ""
+                for _try in range(int(st.get("tries") or 6)):
+                    r = page.call(
+                        "(sel,cands)=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                        "&&parseFloat(s.opacity||'1')>0;};"
+                        "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
+                        "const items=[...document.querySelectorAll(sel)].filter(vis);"
+                        "if(!items.length)return{ok:false,err:'nf'};"
+                        "let hit=null;"
+                        "for(const c of cands){const t=norm(c);"
+                        "hit=items.find(e=>norm(e.innerText)===t);if(hit)break;}"
+                        "if(!hit)for(const c of cands){const t=norm(c);"
+                        "hit=items.find(e=>norm(e.innerText).includes(t));if(hit)break;}"
+                        "if(!hit&&cands.length)return{ok:false,err:'no-match',"
+                        "ts:items.slice(0,8).map(e=>norm(e.innerText))};"
+                        "if(!hit)hit=items[0];"
+                        "hit.scrollIntoView({block:'center'});"
+                        "const rc=hit.getBoundingClientRect();"
+                        "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
+                        "const px=document.elementFromPoint(x,y);"
+                        "if(!px||(px!==hit&&!hit.contains(px)&&!px.contains(hit)))"
+                        "return{ok:false,err:'blocked'};"
+                        "return{ok:true,x:x,y:y,t:norm(hit.innerText)};}",
+                        item_sel, cands, timeout=12) or {}
+                    if not (r or {}).get("ok"):
+                        time.sleep(0.8)
+                        try:                       # 弹层被点关：重开再找
+                            if not page.exists(item_sel, timeout=0.5):
+                                page.click(open_sel)
+                                time.sleep(0.8)
+                        except BrowserError:
+                            pass
+                        continue
+                    for kind in ("mousePressed", "mouseReleased"):
+                        page.send("Input.dispatchMouseEvent",
+                                  {"type": kind, "x": r["x"], "y": r["y"],
+                                   "button": "left", "clickCount": 1}, timeout=8.0)
+                    picked = str(r.get("t") or "")
+                    break
+                if not picked:
+                    if st.get("optional"):
+                        note(i, "候选都未出现，跳过（optional）")
+                        continue
+                    raise FlowError("下拉里找不到可选项（候选 %s）"
+                                    % "／".join(cands[:6]))
+                time.sleep(float(st.get("after") or 0.8))
+                cur = _current()
+                for _w in range(3):                    # 芯片渲染慢：再读两次
+                    if picked in cur:
+                        break
+                    time.sleep(0.6)
+                    cur = _current()
+                if picked and picked not in cur:
+                    if st.get("optional"):
+                        note(i, "选中态未回显「%s」，继续（optional）" % picked)
+                        continue
+                    raise FlowError("选择未生效：期望「%s」，当前显示「%s」"
+                                    % (picked, cur[:40] or "（空）"))
+                note(i, "已选「%s」" % picked)
+                if st.get("close", True):        # 关掉弹层，免得挡住后续点击
+                    try:
+                        for kind in ("keyDown", "keyUp"):
+                            page.send("Input.dispatchKeyEvent", {
+                                "type": kind, "key": "Escape", "code": "Escape",
+                                "windowsVirtualKeyCode": 27,
+                                "nativeVirtualKeyCode": 27}, timeout=8.0)
+                        time.sleep(0.4)
+                    except BrowserError:
+                        pass
+            elif act == "check":
+                # 协议勾选：ARCO 复选框的真实命中面是 .arco-checkbox-mask；
+                # 首次勾选会先弹授权说明，点「我已阅读并同意」后才落 checked。
+                sel = str(st.get("sel") or "")
+                checked_sel = str(st.get("checked_sel") or "")
+                confirm = str(st.get("confirm") or "")
+                note(i, "勾选协议「%s」" % (st.get("name") or sel))
+
+                def _is_checked():
+                    if not checked_sel:
+                        return False
+                    try:
+                        return bool(page.call("(s)=>!!document.querySelector(s)",
+                                              checked_sel, timeout=6))
+                    except BrowserError:
+                        return False
+
+                ok = False
+                for _try in range(int(st.get("tries") or 5)):
+                    if _is_checked():
+                        ok = True
+                        break
+                    pos = page.call(
+                        "(s)=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                        "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
+                        "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
+                        "const l=document.querySelector(s);"
+                        "if(!l||!vis(l))return{ok:false,err:'nf'};"
+                        "const m=l.querySelector('.arco-checkbox-mask')||l;"
+                        "m.scrollIntoView({block:'center'});"
+                        "const rc=m.getBoundingClientRect();"
+                        "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
+                        "const px=document.elementFromPoint(x,y);"
+                        "if(!px||(px!==m&&!m.contains(px)&&!px.contains(m)))"
+                        "return{ok:false,err:'blocked'};"
+                        "return{ok:true,x:x,y:y};}", sel, timeout=10) or {}
+                    if pos.get("ok"):
+                        for kind in ("mousePressed", "mouseReleased"):
+                            page.send("Input.dispatchMouseEvent",
+                                      {"type": kind, "x": pos["x"],
+                                       "y": pos["y"], "button": "left",
+                                       "clickCount": 1}, timeout=8.0)
+                        time.sleep(0.8)
+                    if _is_checked():
+                        ok = True
+                        break
+                    if confirm:
+                        r = page.real_click_text(
+                            confirm, st.get("scope")
+                            or "button,[role=button],a,span", contains=True)
+                        if (r or {}).get("ok"):
+                            time.sleep(1.0)
+                            if _is_checked():
+                                ok = True
+                                break
+                    time.sleep(0.4)
+                if not ok:
+                    if st.get("optional"):
+                        note(i, "协议勾选未生效，继续（optional）")
+                        continue
+                    raise FlowError("协议勾选失败（%s）：复选框或授权说明弹窗未响应"
+                                    % sel)
+                note(i, "协议已勾选")
+            elif act == "dismiss_stale":
+                seen = _dismiss_fanqie_stale_draft(
+                    page, timeout=float(st.get("timeout") or 6))
+                note(i, "旧草稿恢复提示已处理" if seen else "无旧草稿恢复提示")
+            elif act == "fanqie_short_trial":
+                run_fanqie_short_trial(page, st, i, note, values)
+            elif act == "fanqie_short_publish":
+                run_fanqie_short_publish(page, st, i, note, values)
             elif act == "js_click":
                 # JS el.click()：headless/后台页签下 CDP 真实鼠标事件不触发
                 # 平台处理器（番茄编辑器实测：real mouse 点「下一步」无响应，

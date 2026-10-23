@@ -404,6 +404,15 @@ def _flow_contract_ok(plat, action, steps):
                         and s.get("do") == "fanqie_publish"
                         and s.get("force_schedule") is True for s in steps)
                     and has("verify_chapter_status"))
+        if action == "publish_short_story":
+            # 短篇发布必须真走发布确认链，并以短故事管理页的状态为凭据；
+            # 只填表+截图不算发布（草稿流 stop 在「存草稿」）。
+            return (has("check") and any(
+                isinstance(s, dict) and s.get("do") == "fanqie_short_publish"
+                for s in steps) and any(
+                isinstance(s, dict) and s.get("do") == "verify"
+                and "short_manage_url" in str(s.get("url") or "")
+                for s in steps))
         return True
     if plat != "qimao":
         return True

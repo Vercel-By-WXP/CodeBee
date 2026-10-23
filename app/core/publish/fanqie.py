@@ -215,10 +215,72 @@ UPLOAD_SHORT_STORY_DRAFT = [
     {"do": "expect_text", "any": ["{book_name}"], "timeout": 15},
 ]
 
+# 短故事发布（2026-10-23 实机校准的桌面链路）：
+# 编辑器同页右侧设置区 → 封面（隐藏 file input 走 DOM.setFileInputFiles）
+# → 是否使用AI=是 → 作品分类（自绘下拉，主分类）→ 试读比例 30% → 发布协议
+# （ARCO 复选框，首次勾选弹授权说明）→ 下一步 → 发布提示「继续发布」→
+# 提交确认「确定」→ 「发布成功／已提交，预计1天内审核完成」→ 短故事管理页
+# 核验「审核中」。缺封面/分类时对应步骤按 if_key 整体跳过。
+PUBLISH_SHORT_STORY = [
+    {"do": "navigate", "url": "{short_editor_url}"},
+    {"do": "url_any", "any": ["fanqienovel.com"]},
+    {"do": "wait", "sel": ".ProseMirror", "timeout": 25},
+    # 旧稿恢复提示必须在填表前放弃：点「继续编辑」会拿旧稿顶掉本次正文
+    {"do": "dismiss_stale"},
+    {"do": "fill", "sel": "textarea[placeholder*='短故事名称']", "key": "chapter_title"},
+    {"do": "fill", "sel": ".ProseMirror", "key": "chapter_body"},
+    {"do": "shot", "name": "fanqie-short-publish-filled"},
+    # 封面：配置块 → 抽屉 → 本地上传 → file input → 确认上传 → 预览确定
+    {"do": "click", "sel": ".publish-short-config-book-cover-content",
+     "if_key": "_cover_path"},
+    {"do": "sleep", "s": 1.5, "if_key": "_cover_path"},
+    {"do": "click_text", "text": "本地上传", "contains": True, "tries": 8,
+     "scope": ".byte-drawer-content button,.byte-drawer-content [class*=tab],"
+              ".arco-tabs-header-title",
+     "if_key": "_cover_path"},
+    {"do": "wait", "sel": ".byte-drawer-content input[type=file]",
+     "timeout": 15, "if_key": "_cover_path"},
+    {"do": "set_file", "sel": ".byte-drawer-content input[type=file]",
+     "key": "_cover_path", "if_key": "_cover_path"},
+    {"do": "click_real", "text": "确认上传", "tries": 20,
+     "scope": ".byte-drawer-content button,[class*=drawer] button",
+     "if_key": "_cover_path"},
+    {"do": "click_real", "text": "确定", "tries": 20,
+     "scope": ".byte-modal-wrapper button,.arco-modal button,"
+              "[role=dialog] button",
+     "if_key": "_cover_path"},
+    {"do": "sleep", "s": 1.2, "if_key": "_cover_path"},
+    {"do": "shot", "name": "fanqie-short-cover-uploaded", "if_key": "_cover_path"},
+    # 是否使用AI：作者口径一律选「是」（value 1）
+    {"do": "radio", "key": "ai_use", "map": {"是": "1", "否": "2"},
+     "scope_sel": ".publish_short_config_use_ai"},
+    # 作品分类：主分类下拉（102 项里当前 Tab 可见的 24 个主分类）
+    {"do": "select_item", "name": "作品分类",
+     "open_sel": ".publish-short-category-select",
+     "item_sel": ".publish-short-category-select-item",
+     "any_key": "_categories"},
+    # 试读比例：未设置时按钮是「去设置」，不设会拦下「下一步」
+    {"do": "fanqie_short_trial"},
+    # 发布协议：首次勾选会弹授权说明，点「我已阅读并同意」后才落 checked
+    {"do": "check", "name": "发布协议",
+     "sel": ".publish-short-config-signLicense .arco-checkbox",
+     "checked_sel": ".publish-short-config-signLicense .arco-checkbox-checked",
+     "confirm": "我已阅读并同意"},
+    {"do": "shot", "name": "fanqie-short-config-done"},
+    {"do": "js_click", "text": "下一步", "scope": "button", "tries": 10},
+    {"do": "fanqie_short_publish", "timeout": 150},
+    {"do": "shot", "name": "fanqie-short-published"},
+    # 发布后的硬凭据：短故事管理页里该书名带「审核中」
+    {"do": "verify", "url": "{short_manage_url}",
+     "any": ["{book_name}", "审核中"], "settle": 6, "new_tab": True,
+     "tries": 3},
+]
+
 FLOWS = {"create_book": CREATE_BOOK, "upload_chapter": UPLOAD_CHAPTER,
          "upload_chapter_draft": UPLOAD_CHAPTER_DRAFT,
          "create_short_story": CREATE_SHORT_STORY,
          "upload_short_story_draft": UPLOAD_SHORT_STORY_DRAFT,
+         "publish_short_story": PUBLISH_SHORT_STORY,
          "check_login": CHECK_LOGIN, "probe_form": PROBE_FORM}
 
 
@@ -255,6 +317,60 @@ def values_create_book(meta):
         "tag_content_character": _first(meta, "content_character"),
         "tag_content_world": _first(meta, "content_world"),
     }
+
+
+# 番茄短故事「主分类」实机清单（2026-10-23 编辑器下拉实抓 24 项）。
+_SHORT_CATEGORY_NAMES = (
+    "婚姻家庭", "女生生活", "男生生活", "现言甜宠", "虐心婚恋", "青春虐恋",
+    "男生情感", "女性成长", "悬疑惊悚", "玄幻仙侠", "宫斗宅斗", "男频衍生",
+    "女频衍生", "年代", "纯爱", "其他", "古言甜宠", "古风世情", "都市日常",
+    "男频脑洞", "女频脑洞", "民国旧影", "古言虐恋", "历史古代",
+)
+
+# 作品信息关键词 → 主分类候选（按优先级）。meta 里的分类是平台/模型口径，
+# 与短故事分类名不同名（如「女频悬疑」→「悬疑惊悚」），按语义映射；
+# 全部不中时落「其他」——平台主分类必选，不能空着提交。
+_SHORT_CATEGORY_RULES = (
+    (("悬疑", "推理", "惊悚", "灵异", "怪谈", "恐怖"), ("悬疑惊悚",)),
+    (("婚姻", "婚恋", "婆媳"), ("婚姻家庭", "虐心婚恋")),
+    (("青春",), ("青春虐恋",)),
+    (("虐",), ("古言虐恋", "虐心婚恋")),
+    (("女性成长", "成长", "逆袭"), ("女性成长",)),
+    (("宫斗", "宅斗"), ("宫斗宅斗",)),
+    (("玄幻", "仙侠", "修真", "奇幻"), ("玄幻仙侠",)),
+    (("民国",), ("民国旧影",)),
+    (("历史", "古代", "古装"), ("历史古代",)),
+    (("年代",), ("年代",)),
+    (("纯爱",), ("纯爱",)),
+    (("世情",), ("古风世情",)),
+    (("古言", "古风"), ("古言甜宠",)),
+    (("都市", "职场", "现实"), ("都市日常",)),
+    (("脑洞",), ("女频脑洞", "男频脑洞")),
+    (("现言", "言情", "甜宠", "感情", "爱情"), ("现言甜宠",)),
+    (("女生", "女频"), ("女生生活", "女性成长")),
+    (("男生", "男频"), ("男生生活", "男频脑洞")),
+    (("衍生",), ("女频衍生", "男频衍生")),
+)
+
+
+def short_story_categories(meta):
+    """作品信息 → 短故事主分类候选（有序；流程按序匹配，落不到就取首项）。"""
+    meta = meta or {}
+    raw = []
+    for key in ("short_category", "category", "category_main", "tags_theme",
+                "tags_plot", "theme"):
+        value = meta.get(key)
+        if isinstance(value, (list, tuple)):
+            raw.extend(str(v) for v in value)
+        elif value:
+            raw.append(str(value))
+    text = "／".join(raw)
+    out = [name for name in _SHORT_CATEGORY_NAMES if name in text]
+    for keys, opts in _SHORT_CATEGORY_RULES:
+        if any(k in text for k in keys):
+            out.extend(opts)
+    out.append("其他")
+    return list(dict.fromkeys(out))
 
 
 def tag_groups(meta):
