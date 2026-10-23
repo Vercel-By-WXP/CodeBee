@@ -4113,6 +4113,7 @@
     "暂无待确认介入": "No interventions awaiting confirmation",
     "暂无评审维度": "No review dimensions yet",
     "未检测到": "Not detected",
+    "探测异常": "Probe failed",
     "模板保存失败：": "Failed to save template: ",
     "模板名称": "Template name",
     "模板已保存": "Template saved",

@@ -2033,8 +2033,9 @@ function renderCliDiscovery() {
   if (!box) return;
   const rows = UI_FEATURES.cliDiscovery || [];
   box.innerHTML = rows.length ? rows.map((row) =>
-    '<div class="cli-discovery-row"><strong>' + esc(row.name || row.executable || "CLI") + '</strong><span class="chip ' + (row.available ? "done" : "failed") + '">' + esc(row.available ? t("可用") : t("未检测到")) + '</span>' +
+    '<div class="cli-discovery-row"><strong>' + esc(row.name || row.executable || "CLI") + '</strong><span class="chip ' + (row.error ? "failed" : (row.available ? "done" : "failed")) + '">' + esc(row.error ? t("探测异常") : (row.available ? t("可用") : t("未检测到"))) + '</span>' +
     '<span class="mono">' + esc(row.version || row.path || "") + '</span><span class="hint">' + esc((row.supports_stdin ? "stdin · " : "") + (row.output_format || "text")) + '</span>' +
+    (row.error ? '<small class="hint bad">' + esc(row.error) + '</small>' : '') +
     (!row.available && row.install_hint ? '<small class="hint">' + esc(row.install_hint) + '</small>' : '') + '</div>').join("") : '<p class="hint">' + esc(t("尚无能力探测结果")) + '</p>';
 }
 
