@@ -10,7 +10,8 @@ import re
 # （"Codex is ignoring N unrecognized configuration settings ... is ignored."）。
 # 这是启动噪音，既不是本轮失败原因，也不该参与错误分类。
 _CODEX_CONFIG_NOISE = re.compile(
-    r"unrecognized configuration settings|is ignored\.?|ignoring \d+ unrecognized",
+    r"unrecognized configuration settings|is ignored\.?|ignoring \d+ unrecognized"
+    r"|model metadata for .{0,80}? not found",
     re.I)
 
 

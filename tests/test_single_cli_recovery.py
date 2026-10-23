@@ -225,6 +225,18 @@ class TrustedFailureEvidenceTests(unittest.TestCase):
         self.assertIn("用户额度不足",
                       runner._codex_fail_msg(noise + "\n" + quota))
 
+        # 自建 provider 的模型不在 codex 内置元数据表里也会播报一条 error
+        # item（"Model metadata for `x` not found. Defaulting to fallback"）。
+        # 它是性能提示，不是失败原因；当失败处理会把整步判死。
+        meta = json.dumps({
+            "type": "item.completed",
+            "item": {"type": "error", "message":
+                     "codex: Model metadata for `u2-flash` not found. "
+                     "Defaulting to fallback metadata; this can degrade "
+                     "performance and cause unexpected behavior."},
+        }, ensure_ascii=False)
+        self.assertEqual(runner._codex_fail_msg(meta), "")
+
     def test_codex_error_event_with_nested_message_is_extracted(self):
         event = {"type": "error", "error": {"message": "API Error: 502 bad gateway"}}
         self.assertIn("502", runner._codex_fail_msg(json.dumps(event)))
