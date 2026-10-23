@@ -69,6 +69,8 @@ def _qimao_set_declaration(page, want):
 
     已发布作品的声明改不了——认错声明发布比发布失败更糟，这里宁可不发。
     """
+    # 选项只做精确匹配：「不含AI生成内容」也含 "AI"，模糊匹配会选错；
+    # 声明发布后不可改，宁可不发。
     r = page.call(
         "(root,want)=>{const vis=e=>{const r=e.getBoundingClientRect(),"
         "s=getComputedStyle(e);return r.width>0&&r.height>0"
@@ -78,18 +80,19 @@ def _qimao_set_declaration(page, want):
         "const d=ds[ds.length-1];if(!d)return{ok:false,err:'no-dialog'};"
         "const decl=e=>{const v=e.querySelector('.el-input__inner')||e;"
         "const t=norm(v.innerText||v.value||'');"
-        "return t===''||t==='本人原创'||t==='含AI生成内容'||t.includes('声明');};"
+        "return t==='本人原创'||t==='含AI生成内容'||t.includes('声明');};"
         "const selEl=[...d.querySelectorAll('.el-select')].find(decl);"
         "if(!selEl)return{ok:false,err:'no-select'};"
         "const box=selEl.querySelector('.el-input__inner')||selEl;"
         "const cur=norm(box.innerText||box.value||'');"
         "if(cur===want)return{ok:true,already:true};"
         "box.click();"
+        "let it=null;const t0=Date.now();"
+        "while(Date.now()-t0<1500){"
         "const items=[...document.querySelectorAll('.el-select-dropdown__item')]"
         ".filter(vis);"
-        # Never fuzzy-match AI text here: "不含AI生成内容" also contains AI,
-        # and the declaration is irreversible after publishing.
-        "const it=items.find(e=>norm(e.innerText)===norm(want));"
+        "it=items.find(e=>norm(e.innerText)===norm(want));"
+        "if(it)break;}"
         "if(!it)return{ok:false,err:'no-option',cur:cur};"
         "it.click();return{ok:true,picked:norm(it.innerText)};}",
         _DIALOG_SEL, want, timeout=12) or {}
