@@ -1015,19 +1015,26 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     r = page.call(
                         "(payload)=>{const j=JSON.parse(payload);"
                         "const body=document.querySelector('.q-contenteditable');"
-                        "if(!body)return JSON.stringify({ok:false,err:'no-editor'});"
+                        "if(!body)return{ok:false,err:'no-editor'};"
+                        "const norm=x=>String(x||'').replace(/\\s+/g,'');"
                         "const p=[...body.querySelectorAll('p,div')]"
-                        ".find(e=>(e.innerText||'').includes(j.text));"
-                        "if(!p)return JSON.stringify({ok:false,err:'no-para'});"
+                        ".find(e=>norm(e.innerText)===norm(j.text));"
+                        "if(!p)return{ok:false,err:'no-para'};"
                         "const sel=window.getSelection();"
                         "const range=document.createRange();"
                         "range.selectNodeContents(p);"
                         "sel.removeAllRanges();sel.addRange(range);"
                         "document.execCommand('formatBlock', false, j.block);"
                         "const made=body.querySelector(j.block);"
-                        "return JSON.stringify({ok:!!made});"
+                        "return{ok:!!made};"
                         "}", json.dumps({"text": text, "block": block},
                                         ensure_ascii=False), 15)
+                    # 兼容旧校准表里 JSON.stringify 版本（返回字符串）
+                    if isinstance(r, str):
+                        try:
+                            r = json.loads(r)
+                        except ValueError:
+                            r = {}
                     if (r or {}).get("ok"):
                         break
                     time.sleep(0.9)

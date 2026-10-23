@@ -44,7 +44,7 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
            title="", ok=True, error="", shot="", operation_id="",
            operation_status="", remote_receipt="", quality_forced=False,
            quality_reason="", scheduled_date="", scheduled_time="",
-           account="", duration_s=0.0):
+           account="", duration_s=0.0, log=None):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
     try:
         rec = {
@@ -75,6 +75,9 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             # 多账号：这单落在哪台账号（空=默认账号）
             "account": str(account or "")[:16],
         }
+        if log:
+            # 失败排查要能看到流程走到哪一步；步骤日志截断存底
+            rec["log"] = [str(x)[:200] for x in list(log)[:40]]
         with LOCK:
             paths.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
             with open(_month_file(rec["day"]), "a", encoding="utf-8") as f:

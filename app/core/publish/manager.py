@@ -812,11 +812,12 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
             if as_draft:
                 # 草稿已落平台草稿箱（流程含验证步，走到这=验证过）。发布确认权
                 # 仍在用户：到平台草稿箱逐章检查后手工提交，质量闸在「发布」时
-                # 照常把关。
+                # 照常把关。动作名用 flow_key：短篇草稿是 upload_short_story_
+                # draft，写死成章稿动作会污染台账口径（真机校准实案）。
                 operations.confirm(operation_id, metadata={"platform": plat,
-                                                           "action": "upload_chapter_draft",
+                                                           "action": flow_key,
                                                            "chapter_no": ch_no})
-                ledger.record(plat, "upload_chapter_draft", task_id=task_id,
+                ledger.record(plat, flow_key, task_id=task_id,
                               chapter_no=ch_no, book_id=book_ref.get("book_id") or "",
                               title=title, ok=True, operation_id=operation_id,
                               operation_status="confirmed",
@@ -852,7 +853,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                           operation_status=operation_status,
                           quality_forced=quality_forced,
                           quality_reason=quality_reason, account=acc,
-                          duration_s=elapsed_s())
+                          duration_s=elapsed_s(), log=logs)
             if not _batch and not short_story and _upload_retryable_error(plat, e):
                 try:
                     _queue_upload_recovery(
