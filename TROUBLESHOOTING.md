@@ -105,12 +105,12 @@ trae-agent  探测异常
 
 判定是按顺序走的，看懂顺序就知道为什么没换：
 
-1. **归类**：错误被映射到 20 类错误码之一（`app/core/error_codes.py`）。
+1. **归类**：错误被映射到 21 类错误码之一（`app/core/error_codes.py`）。
 2. **是否可换将**：只有可恢复错误才换下一个 CLI（`app/core/routing_strategy.py` 的
    `should_fallback`），当前白名单：
-   `NETWORK`、`UPSTREAM_SERVER`、`TIMEOUT`、`QUOTA`、`RATE_LIMIT`、`LOCAL_STATE`、
-   `FORBIDDEN`、`MODEL_UNAVAILABLE`、`VENDOR_REFUSAL`、`AUTH`、`MISSING_CREDENTIAL`、
-   `VENDOR_ERROR`。
+   `NETWORK`、`UPSTREAM_SERVER`、`UPSTREAM_CONFIG`、`TIMEOUT`、`QUOTA`、`RATE_LIMIT`、
+   `LOCAL_STATE`、`FORBIDDEN`、`MODEL_UNAVAILABLE`、`VENDOR_REFUSAL`、`AUTH`、
+   `MISSING_CREDENTIAL`、`VENDOR_ERROR`。
 3. **账号级死错熔断**：`QUOTA`、`AUTH`、`MISSING_CREDENTIAL`、`FORBIDDEN`、`TOOL_LAUNCH`
    属于账号级死错（`ACCOUNT_DEAD_CODES`），该 CLI **在本次运行内停用**，不会原地重试同一个死号。
 
@@ -120,6 +120,27 @@ trae-agent  探测异常
 
 - 用户取消（`CANCELLED`）—— 取消不触发换将。
 - 捕获输出被截断（`output_truncated`）—— 反而允许多试一次，因为截断更像采集问题而非模型失败。
+
+### 报告写「超时」，但真凶是上游 4xx（404 / 400 / 422）
+
+有些 CLI 碰到网关不认的端点不会立刻失败，而是内部 `Reconnecting... 1/5` 一路重试，
+直到把外部墙钟预算耗完——终态于是只能写「超时」，真话只在原始 stderr 里：
+
+```
+Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error,
+ url: https://api.iamhc.cn/v1/responses)
+```
+
+`404` 曾不在分类表里，追死因追不到就回落 `TIMEOUT`，读者于是去查网络和超时预算。
+现在 400/404/422 归 `UPSTREAM_CONFIG`（上游拒绝请求路径或格式），含义是
+**base_url / 端点 / 请求格式与供应商不匹配**：
+
+- 先核对 CLI 指向的 base_url 是否支持该端点。自建网关没实现 `/v1/responses`
+  时，codex 类 CLI 必然 404，**改超时时间没用**；
+- 这类错**允许换将**：换一个走别的协议的 CLI 往往立刻就能通，所以它不像账号
+  死错那样停用整个 CLI 本场的使用权；
+- 「404 + model not found」不属此类，仍按 `MODEL_UNAVAILABLE` 走模型级熔断。
+
 
 ## 5. 报告怎么读
 

@@ -50,6 +50,10 @@ class BuiltinStrategy(RoutingStrategy):
             ErrorCode.RATE_LIMIT.value, ErrorCode.LOCAL_STATE.value,
             ErrorCode.FORBIDDEN.value, ErrorCode.MODEL_UNAVAILABLE.value,
             ErrorCode.VENDOR_REFUSAL.value,
+            # 端点/请求格式被上游拒绝（400/404/422）：换 CLI 往往立刻能通
+            # （2026-10-23 codex 实案：网关不支持 /v1/responses，404 被抹成
+            # 超时后既不换将，用户还去查网络）。配置错不等于 CodeBee 不能跑。
+            ErrorCode.UPSTREAM_CONFIG.value,
             # 凭据类账号死错同样要换 CLI（2026-10-22 cline-cli 案：账号
             # Unauthorized 判 AUTH 不在白名单 → 评审步原地重试同一死号 3 次
             # ×2 轮全撞 401。绑定链内的 Key 走查在 runner 已先耗尽，走到

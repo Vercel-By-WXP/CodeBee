@@ -30,6 +30,7 @@ class ErrorCode(str, Enum):
     EMPTY = "EMPTY"                        # 空输出
     NETWORK = "NETWORK"                    # 连接失败
     UPSTREAM_SERVER = "UPSTREAM_SERVER"    # 上游 5xx / 服务端异常
+    UPSTREAM_CONFIG = "UPSTREAM_CONFIG"    # 上游拒绝请求路径/格式（400/404/422）
     MISSING_CREDENTIAL = "MISSING_CREDENTIAL"  # 当前路由没有可用 API key
     AUTH = "AUTH"                          # 凭据认证失败（401）
     FORBIDDEN = "FORBIDDEN"                # 上游拒绝当前账号/模型/请求（403）
@@ -243,6 +244,20 @@ def classify_error_text(error):
         return ErrorCode.QUOTA
     if any(marker in text for marker in _LOCAL_STATE):
         return ErrorCode.LOCAL_STATE
+    # 上游明确拒绝「请求路径或格式」：4xx 里的 400/404/422。
+    # 典型形态（2026-10-23 codex-cli 实案）：网关不支持 /v1/responses，CLI 在
+    # 内部反复 Reconnecting 直到外部墙钟上限，stderr 只剩
+    # 「Reconnecting... 2/5 (unexpected status 404 Not Found: openai_error)」。
+    # 此前 404 不被识别，_classify_failure 追死因追不到就回落 TIMEOUT，于是
+    # 用户看到「超时」去查网络和超时预算，真凶却是 base_url/端点配错。
+    # 归 UPSTREAM_CONFIG 而不是 TIMEOUT：换 CLI 或改网关可能立刻通，属可换将的
+    # 配置错。注意「404 + model not found」已在上面按 MODEL_UNAVAILABLE 判掉，
+    # 429/402 也在前面各自认领，不会落到这里。
+    if (re.search(r"(?:http(?:/\d(?:\.\d)?)?\s*|status(?:\s+code)?\s*[:=]?\s*)"
+                  r"(?:400|404|422)\b", text)
+            or re.search(r"\b(?:400|404|422)\b[^.\n]{0,20}"
+                         r"(?:bad request|not found|unprocessable)", text)):
+        return ErrorCode.UPSTREAM_CONFIG
     if (re.search(r"(?<!\d)5\d\d(?!\d)", text)
             or any(marker in text for marker in _SERVER)):
         return ErrorCode.UPSTREAM_SERVER
@@ -333,6 +348,7 @@ BLOCKED_CODES = frozenset({
     ErrorCode.TIMEOUT.value,
     ErrorCode.NETWORK.value,
     ErrorCode.UPSTREAM_SERVER.value,
+    ErrorCode.UPSTREAM_CONFIG.value,
     ErrorCode.MISSING_CREDENTIAL.value,
     ErrorCode.AUTH.value,
     ErrorCode.FORBIDDEN.value,
@@ -369,6 +385,7 @@ _SAFE_ERROR_SUMMARIES = {
     ErrorCode.EMPTY: "模型未返回内容",
     ErrorCode.NETWORK: "网络连接或数据流中断",
     ErrorCode.UPSTREAM_SERVER: "上游服务端异常",
+    ErrorCode.UPSTREAM_CONFIG: "上游拒绝请求路径或格式（多为 base_url/端点配置不匹配）",
     ErrorCode.MISSING_CREDENTIAL: "未找到可用凭据（CLI 未登录或未配置 API Key）",
     ErrorCode.AUTH: "API 凭据认证失败",
     ErrorCode.FORBIDDEN: "上游拒绝账号、模型或请求权限",
