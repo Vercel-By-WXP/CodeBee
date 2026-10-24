@@ -75,5 +75,35 @@ class ShouldExtendReviewTests(unittest.TestCase):
             0, False, False, False, self._history()))
 
 
+class ReviseFallbackAgentTests(unittest.TestCase):
+    def _agents(self):
+        return [
+            {"id": "codex-cli", "mode": "real"},
+            {"id": "claude-code", "mode": "real"},
+            {"id": "mock-helper", "mode": "mock"},
+        ]
+
+    def test_sick_impl_is_replaced_by_other_real_cli(self):
+        from app.core.pipeline import _revise_fallback_agent
+        alt = _revise_fallback_agent(
+            self._agents(), {"id": "codex-cli", "mode": "real"}, "w")
+        self.assertEqual(alt.get("id"), "claude-code")
+
+    def test_mock_agents_never_take_over_revision(self):
+        from app.core.pipeline import _revise_fallback_agent
+        alt = _revise_fallback_agent(
+            [{"id": "codex-cli", "mode": "real"},
+             {"id": "mock-helper", "mode": "mock"}],
+            {"id": "codex-cli", "mode": "real"}, "w")
+        self.assertIsNone(alt)
+
+    def test_benched_agent_is_skipped(self):
+        from app.core.pipeline import _revise_fallback_agent
+        alt = _revise_fallback_agent(
+            self._agents(), {"id": "codex-cli", "mode": "real"}, "w",
+            benched=["claude-code"])
+        self.assertIsNone(alt)
+
+
 if __name__ == "__main__":
     unittest.main()

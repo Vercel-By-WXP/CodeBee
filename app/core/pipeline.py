@@ -6176,6 +6176,25 @@ def should_extend_review(extra_used, round_degraded, draft_degraded,
             and review_round_improved(history))
 
 
+def _revise_fallback_agent(agents, impl, workdir, benched=None):
+    """修订执行者自动换将：主执行者病了（exit1/网络死连撞）时挑一个不同的
+    可写真实 CLI 接手本轮修订。2026-10-24 实案：Codex 六中四败、本地兜底
+    无确定性可修，两轮评审看的是同一份没动过的稿——「通道状态差」不该由
+    客户任务陪葬。无可换人选时返回 None（照旧落本地兜底）。"""
+    try:
+        from . import router as _router
+        pool, _notes, _cap = _router.writable_agents(agents, workdir)
+        skip = {str(impl.get("id") or "")}
+        skip.update(str(b) for b in (benched or []))
+        for a in pool or []:
+            if str(a.get("id") or "") in skip or a.get("mode") != "real":
+                continue
+            return a
+        return None
+    except Exception:
+        return None
+
+
 def _run_content_review(run, task, agents, ev, stats, mode):
     is_selection = task.get("type") == "rank_scan"
     if is_selection:
@@ -6475,6 +6494,32 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     while r < rounds:
         r += 1
         manuscript = read_ms()
+        # 视频任务渲染前置（2026-10-24 拍板）：交付完整性评的是成片本身，
+        # 「评审达标才渲染」让该维度永远看到「成片未产出」，文字修订永远
+        # 填不上——结构死锁。每轮评审前按当前稿件试渲染一次（本地链、零
+        # 模型成本、best-effort 不拦流程），评审员看得到真实产物；终审
+        # 通过后仍有正式渲染收口。
+        if (task.get("type") == "handdraw_video"
+                and impl.get("mode") != "mock"):
+            try:
+                from . import handdraw_render
+                _pv_step, _pv_log = store.add_step(
+                    run_id, "render-preview-r%d" % r, "local-render",
+                    "试渲染（评审前）")
+                _t0 = time.time()
+                _pv_ok, _pv_path, _pv_note = handdraw_render.render_for_run(
+                    task, workdir)
+                store.finish_step(
+                    run_id, _pv_step["n"], "done" if _pv_ok else "failed",
+                    summary=_pv_note, duration_s=time.time() - _t0)
+                try:
+                    _pv_log.write_text("[preview] %s" % _pv_note,
+                                       encoding="utf-8")
+                except Exception:
+                    pass
+            except Exception:
+                logging.getLogger(__name__).debug(
+                    "试渲染失败 run=%s", run_id, exc_info=True)
         per_agent, issues_all = {}, []
         round_critic_errors = {}
         dimkey = ", ".join('"%s": 0' % d for d in dims)
@@ -6806,6 +6851,21 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                     workdir, readonly=False, ev=ev,
                     resume=resume_ctx["session"] if resume_ctx else None)
                 after_revise = _read_manuscript(workdir, ms_name)
+                # 修订换将：主执行者本轮失败时先换一个不同的可写 CLI 接手，
+                # 仍无产出才落本地兜底（见 _revise_fallback_agent 注释）。
+                if not revise_result.get("ok"):
+                    alt_impl = _revise_fallback_agent(
+                        agents, impl, workdir, _rev_benched)
+                    if alt_impl is not None:
+                        alt_result = _run_step(
+                            run_id, "revise-alt-r%d" % r,
+                            modelhub.bind_agent(alt_impl, difficulty), prompt,
+                            workdir, readonly=False, ev=ev)
+                        after_alt = _read_manuscript(workdir, ms_name)
+                        if (alt_result.get("ok")
+                                and after_alt != after_revise):
+                            revise_result = alt_result
+                            after_revise = after_alt
                 # CLI 返回失败（包括 checkpoint/session-sync-pending）或声称成功
                 # 但稿件未变化，都不应空等下一轮评审；立即做本地确定性修订。
                 if not revise_result.get("ok") or after_revise == before_revise:
