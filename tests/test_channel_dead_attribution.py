@@ -110,6 +110,34 @@ class GenericDeadBannerTests(unittest.TestCase):
             _res(cancelled=True, stderr=MIMO_SERVICE_ENDED)))
 
 
+class PureNoticeResultTests(unittest.TestCase):
+    """整段答复只是模型下线提示/拒答＝假成功（2026-10-24 头七实案）。"""
+
+    def test_model_deprecation_notice_is_model_unavailable(self):
+        code, _ = runner._result_is_pure_notice(
+            "Claude Sonnet 4.6 is no longer available. "
+            "Please switch to Claude Sonnet 5.5.")
+        self.assertEqual(code, ErrorCode.MODEL_UNAVAILABLE)
+
+    def test_safety_refusal_is_vendor_refusal(self):
+        code, _ = runner._result_is_pure_notice(
+            "**I'm sorry, but I must decline this request.** If you'd like "
+            "help with a version that complies with the guidelines, "
+            "I'm happy to help — let me know how else I can support you!")
+        self.assertEqual(code, ErrorCode.VENDOR_REFUSAL)
+
+    def test_real_delivery_is_untouched(self):
+        review = ("评审意见：本章开场钩子明确，情节推进节奏良好，"
+                  "建议第二幕增加冲突升级。" * 5)
+        self.assertEqual(runner._result_is_pure_notice(review), ("", ""))
+
+    def test_long_text_with_marker_words_is_untouched(self):
+        # 正文里顺带提到 refuse/decline 不会误杀：长度闸顶住
+        long_text = ("章节正文持续输出。" * 60
+                     + " 有一处角色对话提到 I must decline the offer。")
+        self.assertEqual(runner._result_is_pure_notice(long_text), ("", ""))
+
+
 class GenericFatalTranscriptTests(unittest.TestCase):
     def test_litellm_retry_wall_is_detected(self):
         line = runner._generic_fatal_transcript(AIDER_LITELLM_WALL)

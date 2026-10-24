@@ -1610,6 +1610,36 @@ def _generic_fatal_transcript(text):
     return fatal[0][:300]
 
 
+# 整段答复只有「模型已下线/请换模型」提示或安全拒答——上游把通知当正常
+# result 下发（subtype success、is_error false），CLI 层零异常、步骤被记
+# done，稿子纹丝不动直到字数闸拦下（2026-10-24 头七实案：两轮扩写各烧
+# 5 分钟）。判定从窄：剥离 markdown 强调符后整段 ≤600 字符且命中固定短语
+# ——真实创作/评审交付不可能整段只有这两类话。
+_NOTICE_MAX_CHARS = 600
+
+
+def _result_is_pure_notice(text):
+    """整段答复只是模型下线提示或拒答时返回 (ErrorCode, 原文)，否则 ("", "")。"""
+    import re as _re
+    t = _re.sub(r"[*_`#>]+", "", str(text or "")).strip()
+    if not t or len(t) > _NOTICE_MAX_CHARS:
+        return "", ""
+    # 中文含量闸：真实创作/评审交付以中文为主，正文顺带英文短语（对话里
+    # 提到 decline/refuse）不会误杀；这两类通知是纯英文（书名等杂散 CJK
+    # ≤5 字放行）。
+    if len(_re.findall(r"[一-鿿]", t)) > 5:
+        return "", ""
+    low = t.lower()
+    if "is no longer available" in low and "please switch to" in low:
+        return ErrorCode.MODEL_UNAVAILABLE, t[:200]
+    if (("must decline" in low or "cannot assist" in low or "can't assist" in low
+         or "cannot help with" in low or "can't help with" in low)
+            or ("i'm sorry" in low and ("decline" in low or "refuse" in low
+                                        or "not able to" in low))):
+        return ErrorCode.VENDOR_REFUSAL, t[:200]
+    return "", ""
+
+
 def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_output=False):
     """根据 run_process 结果 + 解析结果，返回 ErrorCode 字符串。
 
@@ -2729,6 +2759,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if not out["text"] and attempt == 1:
                     out["error_code"] = _classify_failure(
                         res, kind="claude", parsed=parsed, attempt_done=True)
+                if out["ok"] and out["text"]:
+                    notice, notice_text = _result_is_pure_notice(out["text"])
+                    if notice:
+                        out["ok"] = False
+                        out["text"] = ""
+                        out["error"] = "CLI 整段返回%s（exit 0）：%s" % (
+                            "模型下线提示" if notice == ErrorCode.MODEL_UNAVAILABLE
+                            else "拒答", notice_text)
+                        out["error_code"] = notice
                     if readonly:
                         out["ok"] = False
                         out["error"] = "claude 只读步骤连续返回空输出"
@@ -2767,6 +2806,15 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             # 可能立刻通；fatal 码会把换将闸当终态收工。
                             out["error_code"] = (classify_error_text(fatal)
                                                  or ErrorCode.NETWORK)
+                    if out["ok"] and out["text"]:
+                        notice, notice_text = _result_is_pure_notice(out["text"])
+                        if notice:
+                            out["ok"] = False
+                            out["text"] = ""
+                            out["error"] = "CLI 整段返回%s（exit 0）：%s" % (
+                            "模型下线提示" if notice == ErrorCode.MODEL_UNAVAILABLE
+                            else "拒答", notice_text)
+                            out["error_code"] = notice
             retryable_stream = (not out.get("ok")
                                 and stream_retries < STREAM_RETRY_N
                                 and _stream_retryable_failure(
