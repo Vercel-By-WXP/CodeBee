@@ -1624,18 +1624,14 @@ def _result_is_pure_notice(text):
     t = re.sub(r"[*_`#>]+", "", str(text or "")).strip()
     if not t:
         return "", ""
-    # 中文含量闸：真实创作/评审交付以中文为主，正文顺带英文短语（对话里
-    # 提到 decline/refuse）不会误杀；这两类通知是纯英文（书名等杂散 CJK
-    # ≤5 字放行）。
-    if len(re.findall(r"[\u4e00-\u9fff]", t)) > 5:
-        return "", ""
-    low = t.lower()
-    if "is no longer available" in low and "please switch to" in low:
+    head = t[:_NOTICE_HEAD_CHARS].lower()
+    if "is no longer available" in head and "please switch to" in head:
         return ErrorCode.MODEL_UNAVAILABLE, t[:200]
-    if (("must decline" in low or "cannot assist" in low or "can't assist" in low
-         or "cannot help with" in low or "can't help with" in low)
-            or ("i'm sorry" in low and ("decline" in low or "refuse" in low
-                                        or "not able to" in low))):
+    if ("must decline" in head or "cannot assist" in head
+            or "can't assist" in head or "cannot help with" in head
+            or "can't help with" in head or "cannot fulfill" in head
+            or "cannot complete this request" in head
+            or "i'm sorry" in head and ("decline" in head or "refuse" in head)):
         return ErrorCode.VENDOR_REFUSAL, t[:200]
     return "", ""
 

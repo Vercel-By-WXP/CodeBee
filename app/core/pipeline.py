@@ -6084,10 +6084,7 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
     步骤时间线留痕，不挡交付——上限是体验问题，下限才是废稿线）。"""
     wd = step_wd or workdir
     count = _story_word_count(workdir, ms_name)
-    # 扩写轮上限 5（2026-10-24 头七实案：单轮约 +1200 字，5415 字缺口 3600
-    # 就被判废稿——「模型不听指挥」是冤案，是闸收太早）。循环条件自带进度
-    # 保险丝：字数不再涨即退出（零增量分支换链/判死）。
-    for attempt in range(1, 6):
+    for attempt in (1, 2):
         if count >= spec["min_words"]:
             break
         prompt = _render_template_values(_STORY_EXPAND_PROMPT, {
@@ -6108,8 +6105,8 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
         if count <= prev:
             # 零增量先换写作链再判死：aider 对非代码请求会回「请重新表述一个
             # 仅涉及代码的请求」拒写小说正文（2026-10-24 头七实案：起草能写、
-            # 扩写被拒原地踏步后把「换写作链」甩给用户）——自动换一个可写
-            # 真实 CLI 补一轮，仍零增量才如实收场。
+            # 扩写被拒，4214 字原地踏步后把「换写作链」甩给用户）——状态差是
+            # 代码的问题：自动换一个可写真实 CLI 补一轮，仍零增量才如实收场。
             alt = _revise_fallback_agent(agents or [], impl, workdir)
             if alt is not None:
                 _ = _run_step(run_id, "length-expand-alt-%d" % attempt,
@@ -6128,9 +6125,9 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
                     "请检查供应商健康面板或换写作链后重试"
                     % (attempt, count, spec["min_words"]))
     if count < spec["min_words"]:
-        return ("字数闸未过：扩写 %d 轮后全文仍只有约 %d 字，低于下限 %d 字（目标约 %d 字）——"
+        return ("字数闸未过：扩写 2 轮后全文仍只有约 %d 字，低于下限 %d 字（目标约 %d 字）——"
                 "目标字数可能超出单稿可达篇幅，请调低目标或换更强的写作链后重试"
-                % (attempt, count, spec["min_words"], spec["words"]))
+                % (count, spec["min_words"], spec["words"]))
     if count > spec["max_words"]:
         prompt = _render_template_values(_STORY_TRIM_PROMPT, {
             "__ROLE__": _content_role(task),
