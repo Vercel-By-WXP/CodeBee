@@ -7097,6 +7097,14 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     _write_task_evidence(run_id, task, workdir, _evidence_lines_from_run(run_id, task))
     # 未达标/评审失败不再是 done：质量门禁没过就是没完成（评审报告、verdict
     # 与步骤日志照常落盘，重试入口由 runNeedsRetry 的 failed 分支放行）。
+    # 评审服务实际完成了（席位齐、评分在），只是综合分没过线：assess 仍会打
+    # 「评分低于最低门槛」的 degraded 标。这不是服务故障——继续套「评审服务
+    # 不可用/人数不足」模板会把内容问题谎报成基础设施问题（2026-10-24 实案：
+    # 双席 cross-vendor 全部出分、综合 6.6<7.0，错误文案却说「评审服务不可用」，
+    # 用户照着排查通道白白绕路）。服务侧降级理由为空时改走未达标文案。
+    _service_degrade_reasons = [
+        r for r in (verdict.get("review_degradation_reasons") or [])
+        if r != "评分低于最低门槛"]
     if story_gate_error:
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
                          error=story_gate_error, summary="字数闸未过（评审已达标）",
@@ -7128,7 +7136,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             summary=("本地兜底完成：确定性评审/修订与报告已完成；"
                      "未达发布标准，需人工复核或恢复外部模型后重跑"),
             ended_at=_now())
-    elif verdict.get("review_degraded"):
+    elif verdict.get("review_degraded") and _service_degrade_reasons:
         store.update_run(
             run_id, expected_status="running", status="failed", verdict=verdict,
             error=("评审未完成，稿件质量未判定。有效评审人数不足、评审服务不可用"
