@@ -175,7 +175,9 @@ class Connector:
                     # Advertise transport capabilities. Older clouds ignore the
                     # unknown type and keep the plain lockstep protocol; newer
                     # clouds persist it and start requesting gzip responses.
-                    self._send({"type": "hello", "gzip": True}, socket)
+                    # 见下方 gzip_requested 注释：不再向 worker 申报压缩能力，
+                    # 旧 worker 走 identity 全兼容。
+                    self._send({"type": "hello", "gzip": False}, socket)
                 delay = 1
                 heartbeat = threading.Thread(target=self._heartbeat, args=(socket,), daemon=True)
                 heartbeat.start()
@@ -299,8 +301,13 @@ class Connector:
                                 ("content-type", "content-disposition", "content-length", "content-range",
                                  "accept-ranges", "etag", "last-modified", "location")}
             eligible_body = method != "HEAD" and response.status not in (204, 205, 304)
-            gzip_requested = (message.get("gzip") is True and
-                              not response_headers.get("content-type", "").lower().startswith("text/event-stream"))
+            # 2026-10-24 双重 gzip 事故：本层压出的 gzip 体在 DO→Worker 边界
+            # 丢失编码标记（x-codebee-content-encoding 被内部 fetch 吃掉），
+            # Cloudflare 边缘见「无编码声明的大 JSON」再压一层——手机解一层
+            # 剩一层二进制，/api/state 全量 JSON.parse 失败（「服务器响应
+            # 格式异常」）。中继层彻底不压：线上体走 identity，由 CF 边缘做
+            # 单层透明压缩（对手机 fetch 恒正确）；旧 worker 不认 enc 也兼容。
+            gzip_requested = False
             source = 512 * 1024 if gzip_requested else 128 * 1024
             # Only gzip needs a look-ahead to distinguish an empty response;
             # plain/SSE responses must announce headers before blocking on data.
