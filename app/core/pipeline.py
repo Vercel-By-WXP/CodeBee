@@ -2769,14 +2769,18 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
             workdir, readonly=True, ev=ev, note=note,
             swap_guard={"exclude": tried, "blocked": blocked_upstreams})
         cj = runner.extract_json(res.get("text") or "")
-        # JSON 可能是断线前的残留输出；评审席只在传输明确成功且有正文时
-        # 才能计入有效席位，避免把网络失败的半截分数当成真实评审。
+        # 交付即成功（2026-10-24 c51 实案）：裁定 JSON 带分数＝评审已交付，
+        # 席位必须计入。此前还要求 res.ok——多供应商换将链上偶发「正文在、
+        # ok 位丢了」（$0.40 完整裁定被本地兜底替掉、步骤标红、席位不计，
+        # 用户看到满屏假失败）。ok 位只影响健康记账，不再影响交付认定。
+        # 防断线残留半截分数：要求分数之外还有 summary/issues 之一（完整
+        # 裁定形状），半截 JSON 罕见能凑齐。
         response_text = str(res.get("text") or "").strip()
-        response_valid = bool(res.get("ok") and response_text)
-        if not response_valid:
+        if not response_text:
             cj = None
         if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-                and cj["scores"]):
+                and cj["scores"]
+                and ("summary" in cj or "issues" in cj)):
             return cj, res, current, note
         parse_failed = True
         # A watchdog stall is a transport/process hang, not a formatting
@@ -2873,10 +2877,11 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
                                 "blocked": blocked_upstreams})
                 cj = runner.extract_json(res.get("text") or "")
                 response_text = str(res.get("text") or "").strip()
-                if (res.get("ok") and response_text
+                # 同上（交付即成功）：ok 位不参与交付认定
+                if (response_text
                         and isinstance(cj, dict)
                         and isinstance(cj.get("scores"), dict) and cj["scores"]
-                        ):
+                        and ("summary" in cj or "issues" in cj)):
                     return cj, res, current, note
                 parse_failed = True
                 raw_res = res.get("raw") if isinstance(res, dict) else {}

@@ -283,5 +283,44 @@ class GeminiConfigSchemaTests(unittest.TestCase):
                              "gemini-3-flash-preview")
 
 
+class DeliveredReviewCountsTests(unittest.TestCase):
+    """交付即成功（2026-10-24 c51 实案）：正文带完整裁定即计入席位。"""
+
+    def test_delivered_verdict_counts_despite_lost_ok_flag(self):
+        from app.core import pipeline
+        verdict = json.dumps({
+            "scores": {"情节": 7.4, "人物": 8.1}, "issues": [],
+            "summary": "完整评审交付"}, ensure_ascii=False)
+        agent = {"id": "claude-code", "mode": "real", "label": "Claude"}
+        res = {"ok": False, "text": "```json\n%s\n```" % verdict,
+               "error": "换将簿记丢位", "error_code": ""}
+        with mock.patch.object(pipeline, "_run_step", return_value=res), \
+             mock.patch.object(pipeline.modelhub, "bind_agent",
+                               side_effect=lambda a, d=None: a):
+            cj, out_res, actual, note = pipeline._critique_step_with_cli_fallback(
+                "run-x", "critique-c1", agent, "prompt", "wd", None,
+                [agent], agent, "default", "serial_novel", {}, "auto",
+                False, dims=["情节", "人物"], peers=[], ms_name="chapter-01.md")
+        self.assertIsInstance(cj, dict)
+        self.assertTrue(cj.get("scores"))
+        self.assertNotIn("本地兜底", note or "")
+
+    def test_half_delivered_json_without_verdict_shape_still_falls_back(self):
+        from app.core import pipeline
+        res = {"ok": False, "text": '{"scores": {"情节": 5.0}}', "error": ""}
+        agent = {"id": "claude-code", "mode": "real", "label": "Claude"}
+        with mock.patch.object(pipeline, "_run_step", return_value=res), \
+             mock.patch.object(pipeline.modelhub, "bind_agent",
+                               side_effect=lambda a, d=None: a), \
+             mock.patch.object(pipeline, "_local_critique_fallback",
+                               return_value={"scores": {}, "review_fallback":
+                                             "local"}):
+            cj, out_res, actual, note = pipeline._critique_step_with_cli_fallback(
+                "run-y", "critique-c1", agent, "prompt", "wd", None,
+                [agent], agent, "default", "serial_novel", {}, "auto",
+                False, dims=["情节"], peers=[], ms_name="chapter-01.md")
+        self.assertFalse((cj or {}).get("scores"))
+
+
 if __name__ == "__main__":
     unittest.main()
