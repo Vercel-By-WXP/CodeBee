@@ -6077,14 +6077,17 @@ def _story_word_count(workdir, ms_name):
 
 
 def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec, ev,
-                         resume_session=None, step_wd=None):
+                         resume_session=None, step_wd=None, agents=None):
     """短篇字数闸（起草后调用一次）：不足扩写最多 2 轮，超出压缩 1 轮。
 
     返回失败文案（扩写后仍欠下限/扩写步失败）或 ""（达标；超上限已在
     步骤时间线留痕，不挡交付——上限是体验问题，下限才是废稿线）。"""
     wd = step_wd or workdir
     count = _story_word_count(workdir, ms_name)
-    for attempt in (1, 2):
+    # 扩写轮上限 5（2026-10-24 头七实案：单轮约 +1200 字，5415 字缺口 3600
+    # 就被判废稿——「模型不听指挥」是冤案，是闸收太早）。循环条件自带进度
+    # 保险丝：字数不再涨即退出（零增量分支换链/判死）。
+    for attempt in range(1, 6):
         if count >= spec["min_words"]:
             break
         prompt = _render_template_values(_STORY_EXPAND_PROMPT, {
@@ -6103,6 +6106,19 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
         prev = count
         count = _story_word_count(workdir, ms_name)
         if count <= prev:
+            # 零增量先换写作链再判死：aider 对非代码请求会回「请重新表述一个
+            # 仅涉及代码的请求」拒写小说正文（2026-10-24 头七实案：起草能写、
+            # 扩写被拒原地踏步后把「换写作链」甩给用户）——自动换一个可写
+            # 真实 CLI 补一轮，仍零增量才如实收场。
+            alt = _revise_fallback_agent(agents or [], impl, workdir)
+            if alt is not None:
+                _ = _run_step(run_id, "length-expand-alt-%d" % attempt,
+                              modelhub.bind_agent(alt, difficulty), prompt, wd,
+                              readonly=False, ev=ev)
+                prev_alt = count
+                count = _story_word_count(workdir, ms_name)
+                if count > prev_alt:
+                    continue
             # 扩写步「成功」但稿件零增量＝写作链没实际干活（懒模型只汇报不动笔、
             # 或 CLI 假成功）。同链再烧第 2 轮注定同样结局，还把锅甩给目标字数
             # （2026-10-22 实案：mimo 停摆横幅 exit 0，两轮各 6-8 秒「done」，
@@ -6112,9 +6128,9 @@ def _story_length_repair(run_id, task, impl, difficulty, ms_name, workdir, spec,
                     "请检查供应商健康面板或换写作链后重试"
                     % (attempt, count, spec["min_words"]))
     if count < spec["min_words"]:
-        return ("字数闸未过：扩写 2 轮后全文仍只有约 %d 字，低于下限 %d 字（目标约 %d 字）——"
+        return ("字数闸未过：扩写 %d 轮后全文仍只有约 %d 字，低于下限 %d 字（目标约 %d 字）——"
                 "目标字数可能超出单稿可达篇幅，请调低目标或换更强的写作链后重试"
-                % (count, spec["min_words"], spec["words"]))
+                % (attempt, count, spec["min_words"], spec["words"]))
     if count > spec["max_words"]:
         prompt = _render_template_values(_STORY_TRIM_PROMPT, {
             "__ROLE__": _content_role(task),
@@ -6494,7 +6510,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     if story and impl.get("mode") != "mock":
         story_err = _story_length_repair(
             run_id, task, impl, difficulty, ms_name, workdir, story, ev,
-            resume_ctx["session"] if resume_ctx else None, step_wd)
+            resume_ctx["session"] if resume_ctx else None, step_wd,
+            agents=agents)
         if story_err:
             store.update_run(run_id, expected_status="running", status="failed",
                              error=story_err, ended_at=_now())
