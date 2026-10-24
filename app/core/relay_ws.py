@@ -21,7 +21,36 @@ class RelaySocket:
         if parsed.scheme == "ws" and parsed.hostname not in ("localhost", "127.0.0.1"):
             raise ValueError("TLS required")
         port = parsed.port or (443 if parsed.scheme == "wss" else 80)
-        self.sock = socket.create_connection((parsed.hostname, port), timeout=15)
+        # IPv4 优先拨号：部分网络/本机的 IPv6 出口常坏（SYN_SENT 挂死），
+        # socket.create_connection 按 getaddrinfo 顺序 AAAA 在前，会把 15s
+        # 预算先烧在死 v6 上；网络再劣化一点 v4 握手也轮不上，手机桥就陷
+        # 入「一直连接中，请求超时」（2026-10-24 实案）。先试全部 IPv4，
+        # 全败再退回其余族。
+        try:
+            infos = socket.getaddrinfo(parsed.hostname, port,
+                                       type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            infos = []
+        self.sock = None
+        last_err = None
+        for family in (socket.AF_INET, socket.AF_INET6):
+            for af, _ty, _pr, _cn, sa in [i for i in infos if i[0] == family]:
+                try:
+                    cand = socket.socket(af, socket.SOCK_STREAM)
+                    cand.settimeout(15)
+                    cand.connect(sa)
+                    self.sock = cand
+                    break
+                except OSError as exc:
+                    last_err = exc
+                    try:
+                        cand.close()
+                    except OSError:
+                        pass
+            if self.sock is not None:
+                break
+        if self.sock is None:
+            raise last_err or OSError("relay dial failed")
         self.lock = threading.Lock()
         self.buffer = b""
         try:
