@@ -3428,6 +3428,15 @@ async function poll() {
       await refreshState();
     }
     render();
+    // 供应商/目录保底加载（2026-10-24 实案）：启动增强队列没有排进
+    // refreshPollLookups，新开页面 S.providers/S.catalog 恒 null——模型接入/
+    // 模型调度/编排设置三页全空且无重试，只有碰巧触发健康操作才会意外补上。
+    // 这里只在数据缺失时补一发：成功即短路（_modelsLoaded），失败下轮轮询
+    // 再试（_modelsAt 已被 catch 归零）；首屏节流设计不受影响——该请求仍
+    // 排在首个 state 快照之后。
+    if ((!S._modelsLoaded || !S.catalog) && !_lookupRefresh) {
+      refreshPollLookups().catch(() => {});
+    }
     scheduleStartupEnhancements();
     // Do not let the long-lived SSE request compete with the very first
     // state snapshot on the phone relay.  The initial snapshot is the
