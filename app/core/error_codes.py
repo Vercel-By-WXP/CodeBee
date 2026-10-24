@@ -109,6 +109,16 @@ _NETWORK = ("stream disconnected", "stream closed", "connection reset", "connect
             "error sending request for url", "no route to host", "connection error",
             "reset by peer", "channel is closed", "name or service not known",
             "transport failed",
+            # Windows 拒连家族（litellm/httpx 打满重试梯后以 exit 0 收场的实案，
+            # 2026-10-24）：「[WinError 10061] 由于目标计算机积极拒绝，无法连接」
+            # 旧签名表一个都不命中——连 9 次全部 None，退出码兜底成 fatal 的
+            # VENDOR_ERROR，换将闸当终态收工，评审人数凑不齐整轮判败。
+            # reqwest 家族还有不带 "for url" 后缀的裸 "error sending request"
+            # （codex Reconnecting 横幅），短形态必须单独收录。裸 "reconnecting"
+            # 计数不是死因（超时包裹下须保持 TIMEOUT 契约），不收录。
+            "winerror 10061", "积极拒绝", "connection refused", "actively refused",
+            "no connection could be made", "error sending request",
+            "connection failed", "waiting for network",
             "输出停滞")
 _LOCAL_STATE = ("database is locked", "database locked", "sqlite busy",
                 "unable to open database file")

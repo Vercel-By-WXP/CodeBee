@@ -1573,6 +1573,43 @@ def _generic_dead_banner(res):
     return None
 
 
+# exit 0 假完成的第二家族：转录非空，但正文全是上游致命报错。aider/litellm
+# 打满重试梯（0.2s→32s 共 9 次）后以退出码 0 正常收场，转录只剩
+# 「litellm.InternalServerError: AnthropicException - [WinError 10061]…」+
+# 「Retrying in …」墙——空输出闸抓不到（文本非空）、停摆横幅也抓不到
+# （签名不同），步骤被记成 done、报错墙被当评审成果往下游传（2026-10-24
+# 每日巡检实案：本机 python 解析链分钟级抖动，aider 三席九连拒全部假
+# done，有效评审凑不齐两人整轮判败）。判法从窄：≥2 行命中致命标记，且
+# 除横幅/报错行外没有任何实质内容行——回显的提示词里偶现标记词时，正文
+# 行会把误杀闸顶住。
+_GENERIC_FATAL_MARKERS = (
+    "litellm.internalservererror",
+    "litellm.authenticationerror",
+    "litellm.badrequesterror",
+    "litellm.ratelimiterror",
+    "the api provider's servers are down",
+    "giving up after",
+)
+
+
+def _generic_fatal_transcript(text):
+    """转录被致命报错行主导（≥2 行命中且无实质正文）时返回首条报错行，否则 None。"""
+    lines = [clean_cli_text(l).strip() for l in str(text or "").splitlines()]
+    lines = [l for l in lines if l]
+    if not lines:
+        return None
+    fatal = [l for l in lines
+             if any(m in l.lower() for m in _GENERIC_FATAL_MARKERS)]
+    if len(fatal) < 2:
+        return None
+    substantive = [l for l in lines
+                   if len(l) >= 80
+                   and not any(m in l.lower() for m in _GENERIC_FATAL_MARKERS)]
+    if substantive:
+        return None
+    return fatal[0][:300]
+
+
 def _classify_failure(res, *, parsed=None, kind="", attempt_done=False, empty_output=False):
     """根据 run_process 结果 + 解析结果，返回 ErrorCode 字符串。
 
@@ -2709,6 +2746,18 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                         out["error"] = "CLI 通道停摆（exit 0）：%s" % dead
                         out["error_code"] = (classify_error_text(dead)
                                              or ErrorCode.VENDOR_ERROR)
+                    else:
+                        fatal = _generic_fatal_transcript(out["text"])
+                        if fatal:
+                            out["ok"] = False
+                            out["text"] = ""
+                            out["error"] = ("CLI 转录全是上游报错"
+                                            "（exit 0 假完成）：%s" % fatal)
+                            # 兜底 NETWORK 而非 fatal 的 VENDOR_ERROR：这族死因
+                            # 是传输/上游层，链上其它候选（不同上游/协议）换将
+                            # 可能立刻通；fatal 码会把换将闸当终态收工。
+                            out["error_code"] = (classify_error_text(fatal)
+                                                 or ErrorCode.NETWORK)
             retryable_stream = (not out.get("ok")
                                 and stream_retries < STREAM_RETRY_N
                                 and _stream_retryable_failure(

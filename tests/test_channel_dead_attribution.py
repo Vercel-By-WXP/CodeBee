@@ -31,6 +31,28 @@ MIMO_SERVICE_ENDED = (
     "error: MiMo free API service has ended. "
     "Sign in or configure a third-party API.")
 
+# aider/litellm 打满重试梯后 exit 0 收场的报错墙（2026-10-24 每日巡检实案：
+# 本机 python 解析链分钟级抖动，九连 10061 全被记成 done）
+LITELLM_10061_LINE = (
+    "litellm.InternalServerError: AnthropicException - [WinError 10061] ")
+
+AIDER_LITELLM_WALL = (
+    "Aider v0.86.2\n"
+    "Model: anthropic/claude-opus-5-5 with whole edit format\n"
+    "Git repo: none\n"
+    "Repo-map: disabled\n"
+    "Added tutti_prompt_mjdlnfsq.md to the chat (read-only).\n"
+    "\n"
+    + (LITELLM_10061_LINE + "\n"
+       "由于目标计算机积极拒绝，无法连接。. Handle with "
+       "`litellm.InternalServerError`.\n"
+       "The API provider's servers are down or overloaded.\n"
+       "Retrying in 0.2 seconds...\n") * 2)
+
+CODEX_RECONNECT = (
+    "Reconnecting... waiting for network "
+    "(Connection failed: error sending request)")
+
 
 def _res(**over):
     base = {"ok": True, "exit_code": 0, "stdout": "", "stderr": "",
@@ -54,6 +76,18 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual(classify_error_text(MIMO_SERVICE_ENDED),
                          ErrorCode.MODEL_UNAVAILABLE)
 
+    def test_winerror_10061_maps_to_network(self):
+        # 旧签名表一个都不命中：连 9 次全 None → 退出码兜底 fatal VENDOR_ERROR
+        # → 换将闸当终态收工。必须归可重试的 NETWORK。
+        self.assertEqual(classify_error_text(
+            LITELLM_10061_LINE + "\n由于目标计算机积极拒绝，无法连接。"),
+            ErrorCode.NETWORK)
+
+    def test_codex_reconnect_banner_maps_to_network(self):
+        # reqwest 裸短形态（不带 "for url" 后缀）也要命中，不能 fatal 收场
+        self.assertEqual(classify_error_text(CODEX_RECONNECT),
+                         ErrorCode.NETWORK)
+
 
 class GenericDeadBannerTests(unittest.TestCase):
     def test_banner_in_stderr_is_caught(self):
@@ -74,6 +108,33 @@ class GenericDeadBannerTests(unittest.TestCase):
             _res(ok=False, exit_code=1, stderr=MIMO_SERVICE_ENDED)))
         self.assertIsNone(runner._generic_dead_banner(
             _res(cancelled=True, stderr=MIMO_SERVICE_ENDED)))
+
+
+class GenericFatalTranscriptTests(unittest.TestCase):
+    def test_litellm_retry_wall_is_detected(self):
+        line = runner._generic_fatal_transcript(AIDER_LITELLM_WALL)
+        self.assertIsNotNone(line)
+        self.assertIn("litellm.InternalServerError", line)
+
+    def test_single_transient_error_is_not_fatal(self):
+        # 偶发一次报错后继续出正文：不是报错墙
+        text = ("Aider v0.86.2\n"
+                + LITELLM_10061_LINE + "\nRetrying in 0.2 seconds...\n"
+                + "评审完成，以下为意见：" + "正文内容持续输出。" * 12)
+        self.assertIsNone(runner._generic_fatal_transcript(text))
+
+    def test_substantive_answer_beats_error_wall(self):
+        # ≥2 行报错但后面跟着 ≥80 字符的实质正文行：回显污染闸顶住，不判死
+        answer = ("本章评审意见如下：情节推进节奏良好，人物弧线完整，"
+                  "建议在第二幕增加一次冲突升级以强化张力，结尾悬念收束自然，"
+                  "对话语言可再口语化以贴近人设。" * 2)
+        self.assertGreaterEqual(len(answer), 80)
+        text = AIDER_LITELLM_WALL + "\n" + answer
+        self.assertIsNone(runner._generic_fatal_transcript(text))
+
+    def test_healthy_transcript_is_untouched(self):
+        self.assertIsNone(runner._generic_fatal_transcript(
+            "正文写完了，共 9123 字。"))
 
 
 class RunnerChainWalkTests(unittest.TestCase):
@@ -117,13 +178,42 @@ class RunnerChainWalkTests(unittest.TestCase):
                          ErrorCode.MODEL_UNAVAILABLE)
 
     def test_exit0_dead_banner_at_chain_tail_fails_honestly(self):
+        # 横幅放 stdout：并行引入的只读空输出闸会在 stdout 为空时先接管，
+        # stderr-only 横幅走不到停摆检测；本用例验的是链尾诚实失败
         chain = [{"model": "mimo/mimo-auto",
                   "provider": {"id": "p1", "name": "P1"}, "provider_id": "p1"}]
-        result, rep = self._run([_res(stderr=MIMO_SERVICE_ENDED)], chain)
+        result, rep = self._run(
+            [_res(stdout="> build · mimo-auto\n" + MIMO_SERVICE_ENDED)], chain)
         self.assertFalse(result["ok"])
         self.assertIn("free API service has ended", result["error"])
         self.assertEqual(result["error_code"], ErrorCode.MODEL_UNAVAILABLE.value)
         self.assertEqual(rep.call_count, 1)
+
+    def test_exit0_litellm_wall_fails_step_and_walks_chain(self):
+        """aider 九连 10061 后 exit 0 假完成：转录全是报错墙必须判失败并
+        换将（2026-10-24 实案：三席全被记成 done，评审人数不足整轮判败）。
+        NETWORK 类失败的健康记账在 pipeline 层（run_agent 内只有
+        MODEL_UNAVAILABLE 分支直接上报），这里只验换将行为。"""
+        chain = [
+            {"model": "claude-opus-5-5", "provider": {"id": "p1", "name": "P1"},
+             "provider_id": "p1"},
+            {"model": "m2", "provider": {"id": "p2", "name": "P2"},
+             "provider_id": "p2"},
+        ]
+        result, _rep = self._run(
+            [_res(stdout=AIDER_LITELLM_WALL),
+             _res(stdout="评审完成：均分 7.4，意见 6 条。")], chain)
+        self.assertTrue(result["ok"])
+        self.assertIn("7.4", result["text"])
+
+    def test_exit0_litellm_wall_at_chain_tail_fails_with_network(self):
+        chain = [{"model": "claude-opus-5-5",
+                  "provider": {"id": "p1", "name": "P1"}, "provider_id": "p1"}]
+        result, _rep = self._run([_res(stdout=AIDER_LITELLM_WALL)], chain)
+        self.assertFalse(result["ok"])
+        self.assertIn("假完成", result["error"])
+        # 兜底必须是可换将的 NETWORK，不能是 fatal 的 VENDOR_ERROR
+        self.assertEqual(result["error_code"], ErrorCode.NETWORK.value)
 
 
 class GeminiConfigSchemaTests(unittest.TestCase):

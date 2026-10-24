@@ -45,7 +45,13 @@ CLI_COOLDOWN_SECONDS = 300
 _PERMANENT_FAILURE_CODES = frozenset({
     "QUOTA", "AUTH", "MISSING_CREDENTIAL", "FORBIDDEN", "MODEL_UNAVAILABLE",
 })
-_MODEL_FAILURE_CODES = frozenset({"FORBIDDEN", "MODEL_UNAVAILABLE"})
+# EMPTY 也按模型级记账（2026-10-24 stepaudio 实案）：音频系/能力不匹配的模型
+# 对纯文本任务恒空答——HTTP 层全程成功、input 照扣费、output 恒 0，文本空
+# 输出闸在步内判 EMPTY 后若无模型级熔断，同一模型每一步每一轮都被重新选
+# 上，评审人数永远凑不齐。空答是「该模型对该用途不可用」，不是供应商级
+# 故障——进模型熔断（首次观测即 300s 短路、真实成功即清、独苗兜底放行），
+# 不进 consecutive_failures，免得同供应商其它健康模型连坐。
+_MODEL_FAILURE_CODES = frozenset({"FORBIDDEN", "MODEL_UNAVAILABLE", "EMPTY"})
 # 证据分级（LayerTrace 借鉴，2026-10-22）：健康处置必须区分「观测到的事实」与
 # 「从文本推断的嫌疑」——健康误报复发家族（误记雪崩/快照闸假告警/剪行掩盖成功）
 # 的共性真凶都是推断被当成观测进了处置。推断级只告警送检（探针），观测级才够格

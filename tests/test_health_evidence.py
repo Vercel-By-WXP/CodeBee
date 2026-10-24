@@ -91,6 +91,33 @@ class HealthEvidenceTests(unittest.TestCase):
             float(row["model_circuits"]["ghost"]["open_until"] or 0), 0)
         self.assertTrue(health.is_model_down("API provider", "ghost"))
 
+    def test_empty_answer_opens_model_circuit_not_provider(self):
+        """恒空答模型（2026-10-24 stepaudio 实案：HTTP 200、input 照扣、
+        output 恒 0）首次观测 EMPTY 即模型级熔断 300s；不进供应商计数，
+        同供应商其它健康模型不连坐；真实成功调用即清。"""
+        health.report_failure(
+            "幻城", "claude 只读步骤连续返回空输出",
+            model="stepaudio-2.5-chat", provider_id="p9",
+            error_code="EMPTY")
+        row = self._row("幻城")
+
+        self.assertTrue(
+            health.is_model_down("幻城", "stepaudio-2.5-chat"))
+        self.assertGreater(
+            float(row["model_circuits"]["stepaudio-2.5-chat"]
+                  .get("open_until") or 0), 0)
+        # 模型级死错不污染供应商级计数
+        self.assertEqual(row.get("consecutive_failures") or 0, 0)
+        self.assertNotIn("down", (row.get("status") or ""))
+
+        # 同供应商其它模型不受影响
+        self.assertFalse(health.is_model_down("幻城", "glm-5.3"))
+
+        # 真实成功调用清模型熔断
+        health.report_success("幻城", model="stepaudio-2.5-chat")
+        self.assertFalse(
+            health.is_model_down("幻城", "stepaudio-2.5-chat"))
+
     def test_alert_log_carries_evidence_label(self):
         with self.assertLogs("app.core.health", level="WARNING") as captured:
             for _ in range(3):
