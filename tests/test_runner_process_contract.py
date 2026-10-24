@@ -3,11 +3,27 @@ import tempfile
 import unittest
 from pathlib import Path
 import os
+from unittest import mock
 
 from app.core import runner
 
 
 class RunnerProcessContractTests(unittest.TestCase):
+    def test_readonly_review_with_exit_zero_and_empty_output_is_failure(self):
+        agent = {"id": "fake", "kind": "generic", "mode": "real",
+                 "command": "fake"}
+        with mock.patch.object(runner, "_build_call",
+                               return_value=(["fake"], None, "prompt", [])), \
+             mock.patch.object(runner, "run_process", return_value={
+                 "ok": True, "exit_code": 0, "stdout": "", "stderr": "",
+                 "cancelled": False, "timed_out": False,
+                 "output_truncated": False}):
+            result = runner.run_agent(agent, "prompt", readonly=True,
+                                      timeout=2)
+
+        self.assertFalse(result["ok"], result)
+        self.assertEqual(result["error_code"], "EMPTY")
+
     def test_generic_adapter_template_keeps_prompt_as_one_argv_value(self):
         with tempfile.TemporaryDirectory() as tmp:
             script = Path(tmp) / "fake_generic_cli.py"

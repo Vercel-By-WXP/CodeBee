@@ -88,6 +88,70 @@ print("@@RESULT@@" + json.dumps({
 """
 
 
+SOLO_FALLBACK_PROBE = r"""
+import json, os, sys
+from unittest import mock
+from app.core import pipeline, store
+
+workdir = sys.argv[1]
+task = {"type": "doc", "title": "fallback seat recovery",
+        "goal": "写一份可直接交付的说明", "workdir": workdir,
+        "manuscript": "manuscript.md", "rubric": ["质量"],
+        "threshold": 7.0, "rounds": 1}
+agent = {"id": "claude-cli", "mode": "real", "kind": "claude",
+         "label": "Only CLI", "model": "only-model",
+         "review_models": ["only-model", "alternate-model", "backfill-model"]}
+seen = []
+
+def fake_step(run_id, role, bound, prompt, wd, readonly, ev, **kwargs):
+    if role == "draft":
+        with open(os.path.join(workdir, "manuscript.md"), "w", encoding="utf-8") as f:
+            f.write("初稿正文，可供评审。包含充分内容与清晰结构。\n")
+        return {"ok": True, "text": "draft", "raw": {"exit_code": 0}}
+    if role.startswith("critique"):
+        seen.append({"agent": bound.get("id"), "prompt": prompt})
+        # 第一评审席触发本地机测，其余真实复核席返回完整模型评审。
+        if bound.get("id") == "claude-cli#recheck":
+            return {"ok": False, "text": "", "error": "temporary reviewer failure",
+                    "error_code": "UNKNOWN", "raw": {"exit_code": 1}}
+        return {"ok": True,
+                "text": json.dumps({"scores": {"质量": 8},
+                                    "issues": [], "summary": "reviewed"},
+                                   ensure_ascii=False),
+                "raw": {"exit_code": 0}}
+    if role.startswith("revise"):
+        return {"ok": True, "text": "revised", "raw": {"exit_code": 0}}
+    raise AssertionError("unexpected pipeline step: " + role)
+
+t = store.create_task(task)
+run = store.create_run("orchestration", "fallback seat recovery", task_id=t["id"])
+store.update_run(run["id"], status="running")
+with mock.patch.object(pipeline, "_run_step", side_effect=fake_step), \
+     mock.patch.object(pipeline.modelhub, "bind_agent", side_effect=lambda a, d="default": a), \
+     mock.patch.object(pipeline.router, "pick", return_value=(agent, "only CLI")), \
+     mock.patch.object(pipeline.router, "pick_critics", return_value=([], "only CLI")), \
+     mock.patch.object(pipeline.router, "pick_reviewer", return_value=(None, "no alternate CLI")), \
+     mock.patch.object(pipeline.router, "pick_switch_candidate", return_value=(None, "no alternate CLI")), \
+     mock.patch.object(pipeline.planner, "make_novel_plan", return_value={"steps": []}), \
+     mock.patch.object(pipeline.planner, "make_review_outline",
+                       return_value={"items": [], "workflow": {"reviewers": 2}}), \
+     mock.patch("app.core.bench.benched_ids", return_value=set()), \
+     mock.patch.object(pipeline.time, "sleep", lambda *_a, **_k: None):
+    pipeline._run_content_review(
+        {"id": run["id"]}, task, [agent], None, {}, "expert")
+r = store.get_run(run["id"])
+v = r.get("verdict") or {}
+print("@@RESULT@@" + json.dumps({
+    "status": r.get("status"),
+    "publishable": v.get("publishable"),
+    "review_degraded": v.get("review_degraded"),
+    "review_independence": v.get("review_independence"),
+    "overall": v.get("overall"),
+    "seen": seen,
+}, ensure_ascii=True))
+"""
+
+
 PROBE_DROP = r"""
 import json, os, sys
 from unittest import mock
@@ -321,6 +385,38 @@ class SoloReviewPipelineTests(unittest.TestCase):
         self.assertIn("评审独立性", result["report"])
         self.assertIn("claude-cli", result["report"])
 
+    def test_local_heuristic_score_does_not_block_real_solo_reviewer_backfill(self):
+        """机测评审不是模型席，不能阻止单 CLI 追加另一人格的真实复核。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "workspace")
+            os.makedirs(workdir)
+            env = dict(os.environ)
+            env["TUTTI_DATA"] = os.path.join(tmp, "data")
+            env["PYTHONIOENCODING"] = "utf-8"
+            proc = subprocess.run(
+                [sys.executable, "-c", SOLO_FALLBACK_PROBE, workdir],
+                cwd=os.path.dirname(os.path.dirname(__file__)), env=env,
+                timeout=180, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise AssertionError("probe failed: %s" % proc.stderr[-2000:])
+            line = [x for x in proc.stdout.splitlines()
+                    if x.startswith("@@RESULT@@")][-1]
+            result = json.loads(line[len("@@RESULT@@"):])
+
+        self.assertEqual(result["status"], "done", result)
+        self.assertTrue(result["publishable"], result)
+        self.assertFalse(result["review_degraded"], result)
+        self.assertEqual(result["review_independence"],
+                         review_roster.CROSS_MODEL_SAME_CLI, result)
+        reviewers = [row["agent"] for row in result["seen"]]
+        self.assertTrue(any("backfill-model" in reviewer
+                            for reviewer in reviewers), result["seen"])
+        self.assertTrue(any("alternate-model" in reviewer
+                            for reviewer in reviewers), result["seen"])
+        # 减员补位应先使用源 CLI 配置的其他模型，而不是直接复制同模型人格。
+        self.assertFalse(any("#recheck3" in reviewer for reviewer in reviewers),
+                         result["seen"])
+
 
 class ReviewerDropTests(unittest.TestCase):
     def test_dead_reviewer_is_replaced_by_an_independent_recheck(self):
@@ -345,18 +441,14 @@ class ReviewerDropTests(unittest.TestCase):
                     if x.startswith("@@RESULT@@")][-1]
             result = json.loads(line[len("@@RESULT@@"):])
 
-        # 一席死在账号级错误上、另一席健康：流程必须走完并给出**真实**结论，
-        # 不能停摆在"评审未完成"。这里探针只写了 3 个字的稿件，本地确定性兜底
-        # 按"信息量不足"一票否决给 3.0（而不是送中性分），与 live-cli 的 8.0
-        # 均值 5.5，低于阈值 → publishable=False。
-        # 注意 review_degraded 这里是"评分低于门槛"的语义（review_config.assess
-        # 所置），不是"评审未完成"——区别就在 overall 有没有真实分数。
-        self.assertEqual(result["status"], "failed", result)
-        self.assertFalse(result["publishable"], result)
-        self.assertEqual(result["overall"], 5.5, result)
+        # 一席死于账号级错误时，不把本地机测当真实席；同源 CLI 追加不同人格
+        # 的复核席后，两个有效模型意见可形成共识并独立通过发布门禁。
+        self.assertEqual(result["status"], "done", result)
+        self.assertTrue(result["publishable"], result)
+        self.assertEqual(result["overall"], 8.0, result)
         self.assertIn("dead-cli", result["calls"], result)
         self.assertIn("live-cli", result["calls"], result)
-        self.assertIn("评审本地兜底", result["critics"], result)
+        self.assertIn("author-cli#recheck", result["calls"], result)
 
 
 if __name__ == "__main__":

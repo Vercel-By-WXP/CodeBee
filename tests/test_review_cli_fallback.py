@@ -231,6 +231,28 @@ class CritiqueCliFallbackUnitTests(unittest.TestCase):
         self.assertEqual(seen, ["critic-a"] * 3 + ["critic-b"] * 3)
         self.assertIn("评审本地兜底", note)
 
+    def test_failed_transport_with_scores_json_is_not_accepted(self):
+        """传输失败即使残留评分 JSON，也不能伪装成有效评审。"""
+        body = json.dumps({"scores": {"质量": 9}, "issues": [],
+                           "summary": "残留输出"})
+        seen = []
+
+        def run_step(bound):
+            seen.append(bound["id"])
+            return {"ok": False, "text": body, "error": "Connection failed",
+                    "error_code": "NETWORK", "raw": {"exit_code": 0}}
+
+        (cj, result, _actual, note), _ = self._call(
+            _agents()[1], run_step, pick_switch=(None, "no candidate"))
+
+        self.assertEqual(cj["scores"], {})
+        self.assertTrue(cj["review_degraded"])
+        self.assertEqual(result["review_fallback"], "local")
+        # NETWORK 属于可换将错误：残留 JSON 不接受，系统切至备用 CLI，
+        # 备用也失败后才走本地评分兜底。
+        self.assertEqual(seen, ["critic-a", "critic-b", "critic-b"])
+        self.assertIn("评审本地兜底", note)
+
     def test_manual_mode_never_swaps_but_keeps_flow_with_local_fallback(self):
         seen = []
 

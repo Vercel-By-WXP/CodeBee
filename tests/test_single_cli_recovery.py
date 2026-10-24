@@ -27,6 +27,7 @@ agent = {"id": "claude", "mode": "real", "kind": "claude",
 calls = []
 review_calls = 0
 stall_draft = bool(os.environ.get("STALL_DRAFT"))
+fail_revise = bool(os.environ.get("FAIL_REVISE"))
 
 def fake_step(run_id, role, bound, prompt, wd, readonly, ev, **kwargs):
     global review_calls
@@ -56,6 +57,10 @@ def fake_step(run_id, role, bound, prompt, wd, readonly, ev, **kwargs):
                 "server-side issue, usually temporary — try again in a moment.",
                 "error_code": "UPSTREAM_SERVER", "raw": {"exit_code": 1}}
     if role.startswith("revise"):
+        if fail_revise:
+            return {"ok": False, "text": "", "error":
+                    "session-sync-pending: 已有改动无法完整快照",
+                    "error_code": "LOCAL_STATE", "raw": {"exit_code": 1}}
         with open(os.path.join(workdir, "manuscript.md"), "a", encoding="utf-8") as f:
             f.write("修订记录。\n")
         return {"ok": True, "text": "revised", "raw": {"exit_code": 0}}
@@ -85,6 +90,8 @@ print("@@RESULT@@" + json.dumps({
     "error": r.get("error") or "",
     "overall": v.get("overall"),
     "scores": v.get("scores"),
+    "steps": [{"role": s.get("role"), "status": s.get("status")}
+              for s in (r.get("steps") or [])],
     "report": (store.run_dir(run["id"]) / "report.md").read_text(encoding="utf-8"),
 }, ensure_ascii=True))
 """
@@ -393,6 +400,31 @@ class SingleCliReviewFallbackTests(unittest.TestCase):
         self.assertIn("评审本地兜底", result["report"], result)
         self.assertIn("确定性算法", result["report"], result)
         self.assertIn("评审来源", result["report"], result)
+
+    def test_failed_revision_immediately_runs_local_fallback_and_finishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "workspace")
+            os.makedirs(workdir)
+            env = dict(os.environ)
+            env["TUTTI_DATA"] = os.path.join(tmp, "data")
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["FAIL_REVISE"] = "1"
+            proc = subprocess.run(
+                [sys.executable, "-c", SINGLE_CLI_PROBE, workdir],
+                cwd=os.path.dirname(os.path.dirname(__file__)), env=env,
+                timeout=120, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise AssertionError("probe failed: %s" % proc.stderr[-2000:])
+            result_line = [line for line in proc.stdout.splitlines()
+                           if line.startswith("@@RESULT@@")][-1]
+            result = json.loads(result_line[len("@@RESULT@@"):])
+
+        self.assertEqual(result["status"], "failed", result)
+        self.assertIn("revise-r1", result["calls"], result)
+        self.assertTrue(any(s["role"] == "revise-local-r1"
+                            and s["status"] == "done"
+                            for s in result["steps"]), result["steps"])
+        self.assertIn("critique-r2", result["calls"], result)
 
     def test_stalled_draft_with_saved_text_continues_review_and_revision(self):
         with tempfile.TemporaryDirectory() as tmp:

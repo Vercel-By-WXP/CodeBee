@@ -2769,7 +2769,11 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
             workdir, readonly=True, ev=ev, note=note,
             swap_guard={"exclude": tried, "blocked": blocked_upstreams})
         cj = runner.extract_json(res.get("text") or "")
-        if is_selection and not res.get("ok"):
+        # JSON 可能是断线前的残留输出；评审席只在传输明确成功且有正文时
+        # 才能计入有效席位，避免把网络失败的半截分数当成真实评审。
+        response_text = str(res.get("text") or "").strip()
+        response_valid = bool(res.get("ok") and response_text)
+        if not response_valid:
             cj = None
         if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
                 and cj["scores"]):
@@ -2868,9 +2872,11 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
                     swap_guard={"exclude": tried,
                                 "blocked": blocked_upstreams})
                 cj = runner.extract_json(res.get("text") or "")
-                if (isinstance(cj, dict)
+                response_text = str(res.get("text") or "").strip()
+                if (res.get("ok") and response_text
+                        and isinstance(cj, dict)
                         and isinstance(cj.get("scores"), dict) and cj["scores"]
-                        and (not is_selection or res.get("ok"))):
+                        ):
                     return cj, res, current, note
                 parse_failed = True
                 raw_res = res.get("raw") if isinstance(res, dict) else {}
@@ -6528,13 +6534,31 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         required_reviewers = max(1, min(
             quality_gate.MIN_REVIEWERS,
             int(workflow.get("reviewers") or 1)))
-        _scored = [aid for aid, cj in per_agent.items()
-                   if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-                   and cj.get("scores")]
-        if (len(_scored) < required_reviewers and mode != "manual"
-                and impl.get("mode") == "real"
-                and not any(review_roster.is_solo_seat(a) for a in critics)):
-            _seat = review_roster.make_solo_seat(impl, 1)
+        _real_scored = [
+            (aid, cj) for aid, cj in per_agent.items()
+            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+            and cj.get("scores")
+            and cj.get("review_fallback") not in
+                (local_fallback.HEURISTIC, "local")
+        ]
+        if (_real_scored and len(_real_scored) < required_reviewers
+                and mode != "manual"
+                and impl.get("mode") == "real"):
+            # 机测结果可作为保守证据，但不是模型评审席；不能用它凑满席位，
+            # 也不能因当前 roster 已有 solo 席就放弃补位。复用初始装配策略，
+            # 先尝试未入席的真实 CLI / 同 CLI 其他配置模型，再退化到新人格会话。
+            _expanded, _note, _independence = review_roster.ensure_review_seats(
+                critics, agents, impl, len(critics) + 1)
+            _occupied_ids = {str(a.get("id") or "") for a in critics}
+            _seat = next((a for a in _expanded
+                          if str(a.get("id") or "") not in _occupied_ids), None)
+            if _seat is None:
+                used_solo_indexes = [
+                    int(a.get("_solo_index") or 0) for a in critics
+                    if review_roster.is_solo_seat(a)
+                ]
+                next_solo_index = max(used_solo_indexes or [0]) + 1
+                _seat = review_roster.make_solo_seat(impl, next_solo_index)
             if _seat and _seat.get("id") not in per_agent:
                 cj, res, actual, _seat_note = _critique_step_with_cli_fallback(
                     run_id, role, _seat,
@@ -6550,8 +6574,8 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                     per_agent[_key] = cj
                     if not any(a.get("id") == _key for a in critics):
                         critics.append(actual or _seat)
+                    review_independence = review_roster.independence_of(critics)
                     if review_roster.is_solo_seat(actual or _seat):
-                        review_independence = review_roster.SOLO_MODE
                         _solo_note = review_roster.describe(
                             review_independence, critics)
                         route["critics"] = (
@@ -6571,10 +6595,24 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                             "评审减员补位后的路由回写失败 run=%s", run_id,
                             exc_info=True)
 
+        # 有模型评审时，本地机测只保留为兜底证据，不参与模型共识均值；否则
+        # 低置信度的规则分会压低真实评审，并造成“有两个模型席仍未达标”的错判。
+        _consensus_reviews = [
+            cj for cj in per_agent.values()
+            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+            and cj.get("scores")
+            and cj.get("review_fallback") not in
+                (local_fallback.HEURISTIC, "local")
+        ]
+        _mean_reviews = _consensus_reviews or [
+            cj for cj in per_agent.values()
+            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+            and cj.get("scores")
+        ]
         means = {}
         for d in dims:
-            vals = [float(cj["scores"].get(d, 0)) for cj in per_agent.values()
-                    if isinstance(cj.get("scores"), dict) and d in cj["scores"]]
+            vals = [float(cj["scores"].get(d, 0)) for cj in _mean_reviews
+                    if d in cj["scores"]]
             if vals:
                 means[d] = round(sum(vals) / len(vals), 1)
         round_critic_failed = bool(per_agent) and not any(
@@ -6584,11 +6622,18 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         # 两席被一条已停用通道的失败记录连坐（2026-10-23 实案：claude 七天上限
         # 与 grok 无凭据各留一条失败，把 aider+codex 的完整评分整轮作废）。
         _valid_scored = [
-            cj for cj in per_agent.values()
-            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-            and cj.get("scores") and not cj.get("review_degraded")
+            cj for cj in _consensus_reviews
+            if not cj.get("review_degraded")
         ]
-        round_degraded = len(_valid_scored) < required_reviewers
+        _heuristic_only_assessment = (
+            not _consensus_reviews and any(
+                isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                and cj.get("scores")
+                and cj.get("review_fallback") in
+                    (local_fallback.HEURISTIC, "local")
+                for cj in per_agent.values()))
+        round_degraded = (len(_valid_scored) < required_reviewers
+                          and not _heuristic_only_assessment)
         round_review_count = quality_gate.aggregate_reviews(
             [{"id": aid, "scores": cj.get("scores")}
              for aid, cj in per_agent.items()], dims,
@@ -6599,12 +6644,13 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         # returned a complete, valid assessment. Deep/expert workflows still
         # request two reviewers and therefore keep the stronger gate.
         round_degraded = (round_degraded or
-                          round_review_count < required_reviewers)
+                          (round_review_count < required_reviewers
+                           and not _heuristic_only_assessment))
         provisional_means = means if round_degraded else {}
-        if round_degraded:
-            # A lone reviewer can provide repair hints, but cannot establish a
-            # consensus score. Preserve it only as provisional evidence.
-            means = {}
+        # Keep available scores for the final report even when consensus is
+        # incomplete. `review_degraded` still closes the publish gate; hiding
+        # deterministic/local evidence would incorrectly turn a completed
+        # fallback assessment into "no assessment".
         publishable = bool(means) and all(v >= threshold for v in means.values())
         if round_degraded or draft_degraded:
             publishable = False
@@ -6688,9 +6734,35 @@ def _run_content_review(run, task, agents, ev, stats, mode):
             except Exception:
                 _rev_benched = None
             if local_fallback.any_live_channel(agents, _rev_benched):
-                _run_step(run_id, "revise-r%d" % r, modelhub.bind_agent(impl, difficulty), prompt,
-                          workdir, readonly=False, ev=ev,
-                          resume=resume_ctx["session"] if resume_ctx else None)
+                before_revise = _read_manuscript(workdir, ms_name)
+                revise_result = _run_step(
+                    run_id, "revise-r%d" % r,
+                    modelhub.bind_agent(impl, difficulty), prompt,
+                    workdir, readonly=False, ev=ev,
+                    resume=resume_ctx["session"] if resume_ctx else None)
+                after_revise = _read_manuscript(workdir, ms_name)
+                # CLI 返回失败（包括 checkpoint/session-sync-pending）或声称成功
+                # 但稿件未变化，都不应空等下一轮评审；立即做本地确定性修订。
+                if not revise_result.get("ok") or after_revise == before_revise:
+                    reason = (revise_result.get("error") or
+                              "修订步骤未产生稿件变更")[:300]
+                    step, log_abs = store.add_step(
+                        run_id, "revise-local-r%d" % r,
+                        "local-fallback", "本地修订兜底",
+                        note="外部修订失败或无有效产出：%s" % reason)
+                    _lok, _new, _changes, _note = local_fallback.write_local_revise(
+                        workdir, ms_name, after_revise)
+                    store.finish_step(
+                        run_id, step["n"], "done" if _lok else "failed",
+                        summary=_note)
+                    try:
+                        log_abs.write_text(
+                            ("外部修订未生效：%s\n%s\n" % (reason, _note)
+                             + "\n".join("- " + c for c in _changes)),
+                            encoding="utf-8")
+                    except Exception:
+                        pass
+                    store.add_message(run_id, "修订兜底：%s" % _note)
             else:
                 # 外部模型全部不可用：不再烧超时。能机测的问题（重复段、超长段）
                 # 本地确定性修掉，语义级问题留给人工——修订循环继续往下走，
@@ -6761,7 +6833,27 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     review_policy["min_score"] = threshold
     review_policy["dimensions"] = [{"id": str(d), "name": str(d), "weight": 1.0}
                                     for d in (task.get("rubric") or DEFAULT_RUBRIC)]
+    # A deterministic local review is complete machine evidence, even though
+    # it cannot open the publication gate. Keep its score visible in the
+    # terminal verdict; an existing manuscript can therefore finish cleanly
+    # with publishable=false instead of being reported as unevaluated.
+    _pre_assess_scores = dict(verdict.get("scores") or {})
+    _pre_assess_overall = verdict.get("overall")
     verdict = review_config.assess(verdict, review_policy)
+    _has_completed_model_review = any(
+        isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+        and cj.get("scores")
+        and not cj.get("review_degraded")
+        and cj.get("review_fallback") != local_fallback.HEURISTIC
+        for cj in per_agent.values())
+    if (_heuristic_reviewed and not _has_completed_model_review
+            and _pre_assess_scores):
+        verdict["scores"] = _pre_assess_scores
+        verdict["overall"] = _pre_assess_overall
+        if draft_source == "provided-manuscript":
+            verdict["review_degraded"] = False
+            verdict["review_quality"] = "assessed"
+            verdict["review_degradation_reasons"] = []
 
     # 2.4) 短篇终稿字数闸：修订循环可能把篇幅改塌，评审分数过线不豁免——
     # 自动扩写一轮后仍欠下限按 failed 收口（评审已达标的语境写进错误，

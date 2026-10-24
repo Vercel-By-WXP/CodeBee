@@ -2629,6 +2629,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                     out["error_code"] = ErrorCode.VENDOR_REFUSAL
                 if not out["text"] and out["ok"]:
                     out["error_code"] = _classify_failure(res, kind="codex", empty_output=True)
+                    if readonly:
+                        out["ok"] = False
+                        out["error"] = "CLI 退出码为 0，但只读步骤没有输出"
                 if (out["ok"] and not require_tools
                         and not res.get("cancelled") and not res.get("timed_out")):
                     # 轮次静默空答闸（2026-10-16 神瞳实案）：qa/评审等以回答为交付物
@@ -2726,6 +2729,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if not out["text"] and attempt == 1:
                     out["error_code"] = _classify_failure(
                         res, kind="claude", parsed=parsed, attempt_done=True)
+                    if readonly:
+                        out["ok"] = False
+                        out["error"] = "claude 只读步骤连续返回空输出"
             else:
                 # generic（aider/opencode/kimi…）的 stdout 就是终端转录：ANSI 颜色、
                 # \r 进度条、画线框全在里面。不清洗的话它同时污染两处——步骤摘要
@@ -2733,6 +2739,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 out["text"] = clean_cli_text(res["stdout"]).strip()
                 if not out["text"]:
                     out["error_code"] = _classify_failure(res, kind=kind, empty_output=True)
+                    if readonly:
+                        out["ok"] = False
+                        out["error"] = "CLI 退出码为 0，但只读步骤没有输出"
                 if out["ok"]:
                     # 退出码 0 不代表成功（同 codex 的 turn.failed 家族）：CLI 免费通道
                     # 停摆时打一行 error 横幅就正常退出，转录里全是横幅垃圾而没有回答
