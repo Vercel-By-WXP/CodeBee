@@ -120,7 +120,15 @@ def rescue_click(page, targets, note=None):
     """兜底点击。targets：目标文字列表（主文案+等价文案，用于提示词）。
 
     成功（已派发点击）返回 {ok, via, text, x, y, conf, provider, model}；
-    任何环节不行都返回 None，调用方继续抛原错误。"""
+    任何环节不行都返回 None，调用方继续抛原错误。外层兜底 try 是契约的
+    一部分：救援代码自身的任何意外也不许顶掉流程的原错误。"""
+    try:
+        return _rescue_impl(page, targets, note)
+    except Exception:
+        return None
+
+
+def _rescue_impl(page, targets, note):
     cands = _candidates()
     if not cands:
         return None
@@ -140,8 +148,11 @@ def rescue_click(page, targets, note=None):
     from .. import modelhub
     last_err = ""
     for pid, model in cands:
+        # timeout 60s：慢速视觉通道（实测有 40s+ 档）45s 会白瞎一次救援；
+        # 最坏 3 候选×60s 也远小于发布步预算。max_tokens 1024 给思考型
+        # 模型留 headroom，512 会被思考烧穿回空文误判失败。
         r = modelhub.generate_once(pid, model, _PROMPT_TMPL % desc,
-                                   max_tokens=512, timeout_s=45,
+                                   max_tokens=1024, timeout_s=60,
                                    image_b64=img_b64)
         if not r.get("ok"):
             last_err = "%s/%s：%s" % (pid, model, str(r.get("error") or "")[:60])

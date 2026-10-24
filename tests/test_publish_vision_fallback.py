@@ -195,6 +195,15 @@ class RescueClickTests(unittest.TestCase):
         self.assertIsNone(r)
         self.assertEqual(page.sent, [])
 
+    def test_internal_type_error_never_escapes(self):
+        # 契约：救援代码自身的意外也返回 None，绝不能顶掉流程的原错误
+        page = _FakePage()
+        page.png = "NOT-BYTES"      # b64encode(str) 会 TypeError
+        gen = self._gen('{"found": true, "x": 1, "y": 1, "confidence": 0.9}')
+        r, _ = self._run(page, gen)
+        self.assertIsNone(r)
+        self.assertEqual(page.sent, [])
+
     def test_no_candidates_short_circuits(self):
         page = _FakePage()
         with mock.patch.object(vf, "_candidates", return_value=[]):
