@@ -1620,14 +1620,13 @@ _NOTICE_MAX_CHARS = 600
 
 def _result_is_pure_notice(text):
     """整段答复只是模型下线提示或拒答时返回 (ErrorCode, 原文)，否则 ("", "")。"""
-    import re as _re
-    t = _re.sub(r"[*_`#>]+", "", str(text or "")).strip()
+    t = re.sub(r"[*_`#>]+", "", str(text or "")).strip()
     if not t or len(t) > _NOTICE_MAX_CHARS:
         return "", ""
     # 中文含量闸：真实创作/评审交付以中文为主，正文顺带英文短语（对话里
     # 提到 decline/refuse）不会误杀；这两类通知是纯英文（书名等杂散 CJK
     # ≤5 字放行）。
-    if len(_re.findall(r"[一-鿿]", t)) > 5:
+    if len(re.findall(r"[\u4e00-\u9fff]", t)) > 5:
         return "", ""
     low = t.lower()
     if "is no longer available" in low and "please switch to" in low:
@@ -2759,6 +2758,9 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                 if not out["text"] and attempt == 1:
                     out["error_code"] = _classify_failure(
                         res, kind="claude", parsed=parsed, attempt_done=True)
+                    if readonly:
+                        out["ok"] = False
+                        out["error"] = "claude 只读步骤连续返回空输出"
                 if out["ok"] and out["text"]:
                     notice, notice_text = _result_is_pure_notice(out["text"])
                     if notice:
@@ -2768,9 +2770,6 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             "模型下线提示" if notice == ErrorCode.MODEL_UNAVAILABLE
                             else "拒答", notice_text)
                         out["error_code"] = notice
-                    if readonly:
-                        out["ok"] = False
-                        out["error"] = "claude 只读步骤连续返回空输出"
             else:
                 # generic（aider/opencode/kimi…）的 stdout 就是终端转录：ANSI 颜色、
                 # \r 进度条、画线框全在里面。不清洗的话它同时污染两处——步骤摘要
@@ -2812,8 +2811,8 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
                             out["ok"] = False
                             out["text"] = ""
                             out["error"] = "CLI 整段返回%s（exit 0）：%s" % (
-                            "模型下线提示" if notice == ErrorCode.MODEL_UNAVAILABLE
-                            else "拒答", notice_text)
+                                "模型下线提示" if notice == ErrorCode.MODEL_UNAVAILABLE
+                                else "拒答", notice_text)
                             out["error_code"] = notice
             retryable_stream = (not out.get("ok")
                                 and stream_retries < STREAM_RETRY_N
