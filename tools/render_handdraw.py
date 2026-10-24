@@ -398,8 +398,12 @@ def main():
                 sents = split_sentences(narration)
                 char_tot = sum(len(s) for s in sents)
                 silent = os.path.join(tmp, "s%02d_silent.mp4" % idx)
+                # macro_block_size=1：竖屏 1080 宽不是 16 的倍数，默认 16 会走
+                # 1080→1088 自动缩放链并导致编码退出码 3（2026-10-24 实案）；
+                # 1080×1920 均为偶数，yuv420p 直编码无兼容问题。
                 wr = imageio.get_writer(silent, fps=fps, codec="libx264",
-                                        quality=6, pixelformat="yuv420p")
+                                        quality=6, pixelformat="yuv420p",
+                                        macro_block_size=1)
                 last_arr = None
                 for fi in range(n_frames):
                     if fi < draw_frames:
