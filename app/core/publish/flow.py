@@ -243,7 +243,14 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     if (r or {}).get("ok") and st.get("expect_checked"):
                         raise FlowError("「%s」连点 %d 次仍未见选中态"
                                         "（radio 被遮罩/改版拦下）" % (text, tries))
-                    raise FlowError((r or {}).get("err") or text)
+                    # 视觉兜底：文本定位链全灭（平台改版/文案漂移/弹层判断
+                    # 失效）时，截图问视觉模型要坐标再真实点一次；模型侧
+                    # 不中才认输抛原错误（vision_fallback 纪律：绝不包装成功）
+                    from .vision_fallback import rescue_click
+                    if rescue_click(page, click_texts, note=lambda s: note(i, s)):
+                        verified = True
+                    else:
+                        raise FlowError((r or {}).get("err") or text)
             elif act == "click_in":
                 # 先按 scope_text 定位容器（如书卡），再在容器内点 text 按钮。
                 # 解决「按钮与书名同卡片但不在彼此祖先链」的组合定位。
@@ -682,7 +689,12 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                             break
                         time.sleep(0.9)
                     if not (r or {}).get("ok"):
-                        raise FlowError((r or {}).get("err") or "提交按钮未找到")
+                        # 视觉兜底：提交按钮文案漂移/页面改版时的最后救援；
+                        # 不中维持原失败口径（publish/vision_fallback.py）
+                        from .vision_fallback import rescue_click
+                        if not rescue_click(page, [text],
+                                            note=lambda s: note(i, s)):
+                            raise FlowError((r or {}).get("err") or "提交按钮未找到")
                 else:
                     note(i, "提交 %s" % st.get("sel") or "")
                     page.wait_for(st["sel"], timeout=8)

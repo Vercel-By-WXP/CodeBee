@@ -3328,13 +3328,16 @@ def test_model(provider_id, model_name, key_id=""):
     return finish(last)
 
 
-def generate_once(provider_id, model_name, prompt, max_tokens=2048, timeout_s=120):
+def generate_once(provider_id, model_name, prompt, max_tokens=2048, timeout_s=120,
+                  image_b64=""):
     """单轮真实生成（评测基准台等需要「自定义 prompt 实答」的场景）。
 
     与 test_model 同一套 wire 解析（auto 探测/多 KEY 回退/KEY 健康记账），
     但发的是真实生成请求并取回正文。返回
     {ok, text, usage{input,output}, protocol, key_id, latency_ms, error}；
     任何失败折叠进 ok=False + error，绝不抛出。
+    image_b64：可选 PNG 的 base64（视觉模型看图答题用，发布链视觉兜底）。
+    三族 wire 各自拼多模态消息体；纯文本调用方不传，wire 与旧版完全一致。
     """
     import time as _t
     with _LOCK:
@@ -3369,17 +3372,34 @@ def generate_once(provider_id, model_name, prompt, max_tokens=2048, timeout_s=12
                               if base.endswith("/v1beta")
                               else "/v1beta/models/%s:generateContent" % model_name)
                 headers = {"x-goog-api-key": kk["key"]}
-                body = {"contents": [{"parts": [{"text": prompt}]}],
+                parts = [{"text": prompt}]
+                if image_b64:
+                    parts.append({"inline_data": {"mime_type": "image/png",
+                                                  "data": image_b64}})
+                body = {"contents": [{"parts": parts}],
                         "generationConfig": {"maxOutputTokens": max_tokens}}
             else:
                 path = "/messages" if proto == "anthropic" else "/chat/completions"
                 url = (base + path) if base.endswith("/v1") else (base + "/v1" + path)
                 if proto == "anthropic":
                     headers = {"x-api-key": kk["key"], "anthropic-version": "2023-06-01"}
+                    if image_b64:
+                        content = [{"type": "image", "source": {
+                                        "type": "base64", "media_type": "image/png",
+                                        "data": image_b64}},
+                                   {"type": "text", "text": prompt}]
+                    else:
+                        content = prompt
                 else:
                     headers = {"Authorization": "Bearer " + kk["key"]}
+                    if image_b64:
+                        content = [{"type": "text", "text": prompt},
+                                   {"type": "image_url", "image_url": {
+                                       "url": "data:image/png;base64," + image_b64}}]
+                    else:
+                        content = prompt
                 body = {"model": model_name, "max_tokens": max_tokens,
-                        "messages": [{"role": "user", "content": prompt}]}
+                        "messages": [{"role": "user", "content": content}]}
             status, data, err = _post_json_http(url, headers, body, allow_private,
                                                 timeout=timeout_s)
             if status == 0:

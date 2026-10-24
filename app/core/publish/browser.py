@@ -751,6 +751,17 @@ class Page:
         fp.write_bytes(base64.b64decode(r.get("data") or ""))
         return str(fp)
 
+    def screenshot_bytes(self):
+        """当前视口截图的 PNG 字节（视觉兜底用，不落盘）。
+
+        只截视口不截整页：视觉兜底发生在 real_click_text 失败之后，页面
+        已被 scrollIntoView 滚到目标附近，视口内必有目标；整页超长图反而
+        稀释坐标精度。"""
+        import base64
+        r = self.send("Page.captureScreenshot",
+                      {"format": "png", "fromSurface": True}, timeout=15.0)
+        return base64.b64decode(r.get("data") or "")
+
     def close(self):
         try:
             self.send("Page.close", timeout=3.0)

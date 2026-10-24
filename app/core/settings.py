@@ -51,7 +51,12 @@ DEFAULTS = {"max_concurrent_jobs": 12, "default_workdir": "", "hooks_token": "",
             # claude_config_sync：打开/运行前防线是否直写 ~/.claude/settings.json。
             # 关闭后交互 claude 配置归用户手动管理（cc-switch 等），编排步骤经
             # runner 一次性 --settings 注入绑定链，路由不受影响（manager 读取）
-            "claude_config_sync": True}
+            "claude_config_sync": True,
+            # 视觉兜底点击（publish/vision_fallback.py）：发布流程 click_real/
+            # submit 定位链全灭时截图问视觉模型给坐标再真实点击。enabled=一键
+            # 停；model="provider_id/model_name" 钉死用哪个视觉模型（空=从启用
+            # 供应商启发式挑，最多 3 个候选轮询；无视觉模型时自动等于关闭）
+            "vision_fallback_enabled": True, "vision_fallback_model": ""}
 # 桌宠形象白名单（与 app/pet.py 的 SKINS 对齐；这里不 import pet 模块，避免
 # core 反向依赖 app 根目录脚本）
 PET_SKINS = ("plush", "robot")
@@ -200,6 +205,10 @@ def save(patch):
             cur["cleanup_enabled"] = bool(patch.get("cleanup_enabled"))
         if "claude_config_sync" in patch:
             cur["claude_config_sync"] = bool(patch.get("claude_config_sync"))
+        if "vision_fallback_enabled" in patch:
+            cur["vision_fallback_enabled"] = bool(patch.get("vision_fallback_enabled"))
+        if "vision_fallback_model" in patch:
+            cur["vision_fallback_model"] = str(patch.get("vision_fallback_model") or "").strip()[:120]
         if "cleanup_retention_days" in patch:
             try:
                 cur["cleanup_retention_days"] = int(patch.get("cleanup_retention_days"))
