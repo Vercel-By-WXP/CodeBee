@@ -1716,7 +1716,13 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
             except Exception:
                 prov_name = ""
         if prov_name and not runner.attempt_cancelled(res):
-            if res.get("ok"):
+            # ok=True 但带 EMPTY 码＝空答假成功（非只读步不翻 ok 位——
+            # 2026-10-24 头七实案：stepaudio 两连空答被记成功，反而把空答
+            # 熔断清了，下一席又选它）。健康按失败记账，模型熔断才能立住。
+            _empty_fake_ok = (res.get("ok")
+                              and error_code_value(res.get("error_code"))
+                              == ErrorCode.EMPTY.value)
+            if res.get("ok") and not _empty_fake_ok:
                 health.report_success(prov_name, model=res.get("model") or "")
             else:
                 health.report_failure(prov_name, res.get("error") or "",
@@ -2769,14 +2775,14 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
             workdir, readonly=True, ev=ev, note=note,
             swap_guard={"exclude": tried, "blocked": blocked_upstreams})
         cj = runner.extract_json(res.get("text") or "")
-        # 交付即成功（2026-10-24 c51 实案）：裁定 JSON 带分数＝评审已交付，
-        # 席位必须计入。此前还要求 res.ok——多供应商换将链上偶发「正文在、
-        # ok 位丢了」（$0.40 完整裁定被本地兜底替掉、步骤标红、席位不计，
-        # 用户看到满屏假失败）。ok 位只影响健康记账，不再影响交付认定。
-        # 防断线残留半截分数：要求分数之外还有 summary/issues 之一（完整
-        # 裁定形状），半截 JSON 罕见能凑齐。
+        # 交付即成功（2026-10-24 c51 实案）：多供应商换将链上偶发「正文在、
+        # ok 位静默丢失」（无任何 error/error_code）——$0.40 完整裁定被本地
+        # 兜底替掉、步骤标红、席位不计。显式传输失败（带 error/code）的
+        # 残留 JSON 仍不信任（存量契约：断线残留不得伪装成有效评审）。
         response_text = str(res.get("text") or "").strip()
-        if not response_text:
+        _silent_flag_loss = (not str(res.get("error") or "").strip()
+                             and not error_code_value(res.get("error_code")))
+        if not response_text or not (res.get("ok") or _silent_flag_loss):
             cj = None
         if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
                 and cj["scores"]
@@ -2877,8 +2883,11 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
                                 "blocked": blocked_upstreams})
                 cj = runner.extract_json(res.get("text") or "")
                 response_text = str(res.get("text") or "").strip()
-                # 同上（交付即成功）：ok 位不参与交付认定
+                # 同上（交付即成功，显式报错的残留除外）
+                _silent2 = (not str(res.get("error") or "").strip()
+                            and not error_code_value(res.get("error_code")))
                 if (response_text
+                        and (res.get("ok") or _silent2)
                         and isinstance(cj, dict)
                         and isinstance(cj.get("scores"), dict) and cj["scores"]
                         and ("summary" in cj or "issues" in cj)):

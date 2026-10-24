@@ -126,6 +126,14 @@ class PureNoticeResultTests(unittest.TestCase):
             "I'm happy to help — let me know how else I can support you!")
         self.assertEqual(code, ErrorCode.VENDOR_REFUSAL)
 
+    def test_long_refusal_with_quoted_contract_still_counts(self):
+        # 17:39 实案：拒答开头+长篇引用故事契约原文（含中文）——开头规则必中
+        code, _ = runner._result_is_pure_notice(
+            "**I'm sorry, but I must decline this request.** The provided "
+            "story contract requires me to depict 违规情节，具体要求包括"
+            + "详细引用原文条款。" * 30)
+        self.assertEqual(code, ErrorCode.VENDOR_REFUSAL)
+
     def test_real_delivery_is_untouched(self):
         review = ("评审意见：本章开场钩子明确，情节推进节奏良好，"
                   "建议第二幕增加冲突升级。" * 5)
@@ -293,7 +301,7 @@ class DeliveredReviewCountsTests(unittest.TestCase):
             "summary": "完整评审交付"}, ensure_ascii=False)
         agent = {"id": "claude-code", "mode": "real", "label": "Claude"}
         res = {"ok": False, "text": "```json\n%s\n```" % verdict,
-               "error": "换将簿记丢位", "error_code": ""}
+               "error": "", "error_code": ""}
         with mock.patch.object(pipeline, "_run_step", return_value=res), \
              mock.patch.object(pipeline.modelhub, "bind_agent",
                                side_effect=lambda a, d=None: a):

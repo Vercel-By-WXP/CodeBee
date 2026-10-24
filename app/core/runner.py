@@ -1613,15 +1613,16 @@ def _generic_fatal_transcript(text):
 # 整段答复只有「模型已下线/请换模型」提示或安全拒答——上游把通知当正常
 # result 下发（subtype success、is_error false），CLI 层零异常、步骤被记
 # done，稿子纹丝不动直到字数闸拦下（2026-10-24 头七实案：两轮扩写各烧
-# 5 分钟）。判定从窄：剥离 markdown 强调符后整段 ≤600 字符且命中固定短语
-# ——真实创作/评审交付不可能整段只有这两类话。
-_NOTICE_MAX_CHARS = 600
+# 5 分钟）。判定=开头规则：真实交付（创作/评审/报告）绝不会以这两类话
+# **开头**；拒答信即使后面长篇引用契约原文（>600 字、含中文书名）也算拒答
+# ——初版「长度+中文含量」闸把 17:39 的真实拒答放跑了（引用越详细越漏）。
+_NOTICE_HEAD_CHARS = 160
 
 
 def _result_is_pure_notice(text):
-    """整段答复只是模型下线提示或拒答时返回 (ErrorCode, 原文)，否则 ("", "")。"""
+    """答复以模型下线提示/拒答开头时返回 (ErrorCode, 原文)，否则 ("", "")。"""
     t = re.sub(r"[*_`#>]+", "", str(text or "")).strip()
-    if not t or len(t) > _NOTICE_MAX_CHARS:
+    if not t:
         return "", ""
     # 中文含量闸：真实创作/评审交付以中文为主，正文顺带英文短语（对话里
     # 提到 decline/refuse）不会误杀；这两类通知是纯英文（书名等杂散 CJK
