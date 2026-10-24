@@ -2382,13 +2382,15 @@
   </div>
 </div>
 
-<script src="qrcode.js"></script>
-<script src="i18n.js"></script>
-<script src="artdiff.js"></script>
-<script src="hive3d.js"></script>
-<script src="activity.js"></script>
-<script src="app.js"></script>
-<script src="project-overview.js"></script>
-<script src="mobile-workbench.js"></script>
+<!-- Keep the dependency order, but do not block HTML parsing on mobile. Classic
+     deferred scripts execute in document order before DOMContentLoaded. -->
+<script defer src="qrcode.js"></script>
+<script defer src="i18n.js"></script>
+<script defer src="artdiff.js"></script>
+<script defer src="hive3d.js"></script>
+<script defer src="activity.js"></script>
+<script defer src="app.js"></script>
+<script defer src="project-overview.js"></script>
+<script defer src="mobile-workbench.js"></script>
 </body>
 </html>

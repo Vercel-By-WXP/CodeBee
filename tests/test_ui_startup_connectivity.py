@@ -4,6 +4,7 @@ import unittest
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "app" / "ui" / "app.js"
+INDEX_HTML = APP_JS.parent / "index.html"
 MOBILE_JS = Path(__file__).resolve().parents[1] / "app" / "ui" / "mobile-workbench.js"
 PHONE_UI = Path(__file__).resolve().parents[1] / "cloud" / "phone-relay" / "public" / "ui"
 
@@ -26,6 +27,17 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertIn("scheduleStartupEnhancements();", source)
         self.assertIn("if (!S.state || document.hidden || _startupEnhancementTimer || _startupEnhancementActive >= 2) return;", source)
         self.assertNotIn("loadTaskTemplates();", startup_tail)
+
+    def test_workbench_scripts_are_deferred_without_reordering_dependencies(self):
+        html = INDEX_HTML.read_text(encoding="utf-8")
+        expected = [
+            "qrcode.js", "i18n.js", "artdiff.js", "hive3d.js", "activity.js",
+            "app.js", "project-overview.js", "mobile-workbench.js",
+        ]
+        tags = [line.strip() for line in html.splitlines()
+                if "<script" in line and "src=" in line]
+        self.assertEqual([name for tag in tags for name in expected if f'src="{name}"' in tag], expected)
+        self.assertTrue(all(" defer " in f" {tag} " for tag in tags))
 
     def test_hidden_tab_does_not_drop_pending_startup_enhancements(self):
         source = self.source
