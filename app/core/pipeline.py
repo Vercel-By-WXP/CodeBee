@@ -6132,6 +6132,50 @@ def _critic_fail_hint(critic_errors):
     return "——不是稿件质量问题，直接重试即可"
 
 
+# ------------------------------------------------- 评审自动追加轮
+# 2026-10-24 拍板「评审不过应打回重修再评审，直到全部过审」：规划轮数烧完
+# 但评审服务健康（非降级轮）且分数还在进步时，自动追加修订轮，直到过线 /
+# 停止进步 / 硬上限收口。进步检测是烧钱保险丝——无限打回曾有「打磨 N 轮
+# 分数纹丝不动」连烧真金的实案（2026-10-03 六修案）；服务降级轮（通道
+# 故障）不追加：那是换将/兜底该管的事，修订救不了。
+REVIEW_EXTRA_ROUNDS_MAX = 2
+
+
+def _review_round_mean(hround):
+    vals = [float(v) for v in (hround.get("means") or {}).values()]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def review_round_improved(history):
+    """末轮评审相对上轮是否有进步（均分更高，或 major 意见更少）。"""
+    if len(history) < 2:
+        return False
+    prev, last = history[-2], history[-1]
+    if _review_round_mean(last) > _review_round_mean(prev):
+        return True
+
+    def _majors(hr):
+        return sum(1 for i in (hr.get("issues") or [])
+                   if i.get("severity") == "major")
+    return _majors(last) < _majors(prev)
+
+
+def should_extend_review(extra_used, round_degraded, draft_degraded,
+                         has_means, history, mock_mode=False):
+    """规划评审轮烧完时，是否自动追加一轮修订+评审。
+
+    draft_degraded（起草中断/完整性未确认）会把发布门禁硬锁死：分数再高
+    也过不了线，追加轮永远不可能转正，纯烧钱——与 round_degraded 同样
+    不追加。
+    """
+    return (not mock_mode
+            and extra_used < REVIEW_EXTRA_ROUNDS_MAX
+            and not round_degraded
+            and not draft_degraded
+            and bool(has_means)
+            and review_round_improved(history))
+
+
 def _run_content_review(run, task, agents, ev, stats, mode):
     is_selection = task.get("type") == "rank_scan"
     if is_selection:
@@ -6423,10 +6467,13 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                              error=story_err, ended_at=_now())
             return
 
-    # 2) 评审-修订循环
+    # 2) 评审-修订循环（轮数可在末尾按进步检测自动追加，见 break 处）
     history_rounds = []
     publishable = False
-    for r in range(1, rounds + 1):
+    r = 0
+    extra_review_rounds = 0
+    while r < rounds:
+        r += 1
         manuscript = read_ms()
         per_agent, issues_all = {}, []
         round_critic_errors = {}
@@ -6686,8 +6733,26 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                                "review_fallbacks": [
                                    cj.get("review_fallback") for cj in per_agent.values()
                                    if isinstance(cj, dict) and cj.get("review_fallback")]})
-        if publishable or r == rounds:
+        if publishable:
             break
+        if r >= rounds:
+            # 规划轮烧完：评审健康且还在进步 → 自动追加修订轮继续打回；
+            # 停止进步 / 硬上限 / 服务降级 / mock → 收口交终审。
+            if should_extend_review(extra_review_rounds, round_degraded,
+                                    draft_degraded, bool(means),
+                                    history_rounds,
+                                    mock_mode=impl.get("mode") == "mock"):
+                extra_review_rounds += 1
+                rounds += 1
+                workflow["review_rounds"] = rounds
+                try:
+                    store.update_run(run_id, workflow=workflow)
+                except Exception:
+                    logging.getLogger(__name__).debug(
+                        "追加修订轮的 workflow 回写失败 run=%s", run_id,
+                        exc_info=True)
+            else:
+                break
 
         # 修订
         crit_lines = ["- %s：%.1f（阈值 %.1f）" % (d, means[d], threshold)
@@ -7090,10 +7155,13 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                          summary="评审失败（综合 %.1f）" % overall, ended_at=_now())
     else:
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
-                         error="评审未达标：%s，需回炉修订"
-                               % _verdict_fail_reason(overall, threshold,
-                                                      history_rounds[-1] if history_rounds else {},
-                                                      is_selection),
+                         error="评审未达标：%s，需回炉修订%s"
+                               % (_verdict_fail_reason(overall, threshold,
+                                                       history_rounds[-1] if history_rounds else {},
+                                                       is_selection),
+                                  ("（已自动追加 %d 轮修订仍未过线，停止追加防烧钱）"
+                                   % extra_review_rounds)
+                                  if extra_review_rounds else ""),
                          summary="评审任务未达标（综合 %.1f）" % overall, ended_at=_now())
 
 
