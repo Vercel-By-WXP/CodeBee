@@ -118,6 +118,30 @@ class HealthEvidenceTests(unittest.TestCase):
         self.assertFalse(
             health.is_model_down("幻城", "stepaudio-2.5-chat"))
 
+    def test_transient_timeout_benches_model_but_keeps_provider_counting(self):
+        """中转站按模型分快慢（2026-10-24 拍板）：超时/网络类失败给该模型
+        开熔断让兄弟模型顶位；同时双记账继续供应商级计数，供应商整体断流
+        时供应商熔断照常开闸（维云 claude-opus-5-5 五连撞无记账实案）。"""
+        health.report_failure(
+            "维云模型开放平台",
+            "超时；stderr/stdout: Reconnecting... waiting for network "
+            "(Connection failed: error sending request)",
+            model="claude-opus-5-5", provider_id="p0",
+            error_code="TIMEOUT")
+        row = self._row("维云模型开放平台")
+
+        self.assertTrue(
+            health.is_model_down("维云模型开放平台", "claude-opus-5-5"))
+        # 双记账：供应商级计数也在涨
+        self.assertEqual(row.get("consecutive_failures") or 0, 1)
+        # 兄弟模型不受影响，绑定解析可换它顶位
+        self.assertFalse(
+            health.is_model_down("维云模型开放平台", "gpt-6.1-sol"))
+        # 成功即清
+        health.report_success("维云模型开放平台", model="claude-opus-5-5")
+        self.assertFalse(
+            health.is_model_down("维云模型开放平台", "claude-opus-5-5"))
+
     def test_alert_log_carries_evidence_label(self):
         with self.assertLogs("app.core.health", level="WARNING") as captured:
             for _ in range(3):

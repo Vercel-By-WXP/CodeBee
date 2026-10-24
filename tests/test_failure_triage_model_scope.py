@@ -196,6 +196,15 @@ class HealthTriageTests(unittest.TestCase):
         state = health._PROVIDERS["Free Model"]
         self.assertEqual(state["last_error_code"], ErrorCode.UPSTREAM_SERVER.value)
         self.assertNotIn("permanent_error_code", state)
+        # 2026-10-24 拍板「中转站按模型分快慢」：网关 502 给该模型开**有界**
+        # 300s 熔断（兄弟模型顶位、成功即清），不是永久禁用——冷却到点或
+        # 真实成功调用后模型自动回队。
+        circuit = state["model_circuits"]["nvidia/nemotron-3.5-lightning:free"]
+        self.assertGreater(float(circuit.get("open_until") or 0), 0.0)
+        self.assertTrue(health.is_model_down(
+            "Free Model", "nvidia/nemotron-3.5-lightning:free"))
+        health.report_success("Free Model",
+                              model="nvidia/nemotron-3.5-lightning:free")
         self.assertFalse(health.is_model_down(
             "Free Model", "nvidia/nemotron-3.5-lightning:free"))
 

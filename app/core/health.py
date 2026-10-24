@@ -51,7 +51,18 @@ _PERMANENT_FAILURE_CODES = frozenset({
 # 上，评审人数永远凑不齐。空答是「该模型对该用途不可用」，不是供应商级
 # 故障——进模型熔断（首次观测即 300s 短路、真实成功即清、独苗兜底放行），
 # 不进 consecutive_failures，免得同供应商其它健康模型连坐。
-_MODEL_FAILURE_CODES = frozenset({"FORBIDDEN", "MODEL_UNAVAILABLE", "EMPTY"})
+# 瞬态码（2026-10-24 用户拍板「中转站按模型分快慢：一个模型慢，换一个
+# 模型可能很快」）：超时/网络/上游异常/限流后先把该模型按板凳 300s，绑定
+# 解析立即换同站健康模型顶位；同时双记账继续供应商级计数——供应商整体
+# 断流时供应商熔断仍能开闸驱动跨 CLI 换将（维云 aider 实案：claude-opus-5-5
+# 五连撞没人给它记账，下一轮又被原样选回）。
+_MODEL_FAILURE_CODES = frozenset({
+    "FORBIDDEN", "MODEL_UNAVAILABLE", "EMPTY",
+    "TIMEOUT", "NETWORK", "UPSTREAM_SERVER", "RATE_LIMIT",
+})
+_TRANSIENT_MODEL_CODES = frozenset({
+    "TIMEOUT", "NETWORK", "UPSTREAM_SERVER", "RATE_LIMIT",
+})
 # 证据分级（LayerTrace 借鉴，2026-10-22）：健康处置必须区分「观测到的事实」与
 # 「从文本推断的嫌疑」——健康误报复发家族（误记雪崩/快照闸假告警/剪行掩盖成功）
 # 的共性真凶都是推断被当成观测进了处置。推断级只告警送检（探针），观测级才够格
@@ -531,12 +542,17 @@ def report_failure(provider: str, error: str = "", *, model: str = "",
             if evidence == EVIDENCE_OBSERVED or st.get("unprobeable"):
                 row["open_until"] = _now() + CLI_COOLDOWN_SECONDS
             circuits[model] = row
-            # Model-specific errors must not contaminate provider-level
-            # failure counters or timestamps used by the provider circuit.
-            st["last_error_code"] = code
-            st["evidence"] = evidence
-            _persist()
-            return
+            if code in _TRANSIENT_MODEL_CODES:
+                # 瞬态：模型级熔断记完账继续供应商级计数（双记账），供应商
+                # 熔断与跨 CLI 换将的既有行为保持不变。
+                _persist()
+            else:
+                # Model-specific errors must not contaminate provider-level
+                # failure counters or timestamps used by the provider circuit.
+                st["last_error_code"] = code
+                st["evidence"] = evidence
+                _persist()
+                return
         n = int(st.get("consecutive_failures") or 0) + 1
         st["consecutive_failures"] = n
         st["last_fail_at"] = _now()
