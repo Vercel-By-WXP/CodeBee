@@ -23,7 +23,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          # 钉老镜像：windows-latest 随镜像滚动换 GPU 驱动栈，Electron 的
+          # GPU 进程在其上 0xC0000005 必崩（2026-10-25 v0.1.121 三连败实案，
+          # --disable-gpu 也拦不住 Viz 架构拉起 GPU 进程）；windows-2022
+          # 驱动栈为 Electron 已验证稳定组合。
+          - os: windows-2022
             platform: win32
             arch: x64
             dist: dist:win
