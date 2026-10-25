@@ -13,6 +13,12 @@ const { latestRelease, downloadInstaller, launchInstaller } = require('./lib/ins
 
 const FEEDBACK_URL = 'https://github.com/Vercel-By-WXP/CodeBee/issues/new/choose';
 
+// 禁用硬件加速：必须早于 app ready。工具型 UI 走 CPU 合成无损，换来对
+// 主机 GPU 驱动栈的免疫——2026-10-25 windows-latest runner 连续两次
+// GPU 进程 0xC0000005 打死打包 smoke（CI 镜像漂移），Win7 老驱动同类崩
+// 也一并根治。
+app.disableHardwareAcceleration();
+
 const smoke = process.argv.includes('--smoke-test');
 const smokeSecond = process.argv.includes('--smoke-second');
 let smokeRoot;
