@@ -254,7 +254,12 @@ export class DeviceRelay extends DurableObject {
       request.signal.addEventListener("abort", () => this.finish(id, "cancelled"), { once: true });
       try { socket.send(JSON.stringify({ type: "request", id, method: request.method,
         path: url.pathname + url.search, headers, body: encode(body),
-        gzip: caps && caps.gzip && acceptsGzip ? true : undefined })); }
+        // 2026-10-24/25 双重 gzip 事故：connector 层压缩的编码标记在
+        // DO→Worker 内部 fetch 边界丢失，Cloudflare 边缘再压一层，手机解
+        // 一层剩一层二进制、state JSON 必炸。云端彻底不向 connector 请求
+        // 压缩（旧 connector 的 caps 声明一并无视）：线上走 identity，由
+        // CF 边缘做唯一一层透明压缩。
+        gzip: undefined })); }
       catch { this.finish(id, "disconnected"); }
     });
   }

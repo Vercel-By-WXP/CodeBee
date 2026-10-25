@@ -6,12 +6,17 @@ export const SECRET = /^[a-f0-9]{64}$/;
 export const PAIR_CODE = /^[a-f0-9]{32}$/;
 export const REQUEST_HEADERS = new Set([
   "accept", "accept-language", "content-type", "range", "if-none-match",
-  "if-modified-since", "accept-encoding", "x-codebee-token", "x-codebee-client",
-  "x-codebee-name", "origin",
+  "if-modified-since",
+  // 2026-10-25 双重 gzip 终局：accept-encoding 不再进中继段。手机带 gzip
+  // 请求过云后，旧桌面端会把它与自身的 identity 覆盖叠成重复头，本地服务
+  // 按 gzip 赢出压缩，而编码声明在链路上丢失，Cloudflare 边缘再压一层——
+  // 手机 state JSON 全量解析失败。中继段恒 identity，压缩统一由 CF 边缘
+  // 做唯一一层（对新旧桌面端一视同仁）。
+  "x-codebee-token", "x-codebee-client", "x-codebee-name", "origin",
 ]);
 export const RESPONSE_HEADERS = new Set([
   "content-type", "content-disposition", "content-length", "content-range", "accept-ranges",
-  "etag", "last-modified", "location",
+  "etag", "last-modified", "location", "content-encoding", "vary",
 ]);
 
 export async function digest(value) {

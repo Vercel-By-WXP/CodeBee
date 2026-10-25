@@ -284,8 +284,12 @@ class Connector:
             body = base64.b64decode(encoded, validate=True)
             if len(body) > MAX_BODY:
                 raise ValueError("Request too large")
-            allowed = {"accept", "accept-language", "content-type", "range", "if-none-match", "accept-encoding",
+            allowed = {"accept", "accept-language", "content-type", "range", "if-none-match",
                        "if-modified-since", "x-codebee-client", "x-codebee-name", "origin", "host"}
+            # 2026-10-25：accept-encoding 不再透传。大小写两个变体会同时进
+            # headers（worker 侧小写、下方 update 首字母大写），本地服务按
+            # gzip 赢出压缩——与下方 identity 覆盖自相矛盾（curl 复现实锤）。
+            # 本地中继段恒 identity，压缩统一交给 Cloudflare 边缘单层做。
             headers = {k: v for k, v in (message.get("headers") or {}).items()
                        if k in allowed and isinstance(v, str) and not re.search(r"[\r\n\x00]", v)}
             headers.update({"X-CodeBee-Token": remote.token(), "X-Forwarded-For": "198.18.0.1",
