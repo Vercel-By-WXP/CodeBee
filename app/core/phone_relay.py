@@ -299,7 +299,13 @@ class Connector:
             response = connection.getresponse()
             response_headers = {k.lower(): v for k, v in response.getheaders() if k.lower() in
                                 ("content-type", "content-disposition", "content-length", "content-range",
-                                 "accept-ranges", "etag", "last-modified", "location")}
+                                 "accept-ranges", "etag", "last-modified", "location",
+                                 # 2026-10-25 补：本地服务对大 JSON（state ~0.5MB）
+                                 # 会按请求的 Accept-Encoding 自动 gzip——白名单把它
+                                 # 剥掉后 gzip 体无声明过云，Cloudflare 边缘再压一层，
+                                 # 手机解一层剩一层二进制（「非预期 JSON」全案根因）。
+                                 # 如实放行声明：CF 对已编码响应不再二次压缩。
+                                 "content-encoding", "vary")}
             eligible_body = method != "HEAD" and response.status not in (204, 205, 304)
             # 2026-10-24 双重 gzip 事故：本层压出的 gzip 体在 DO→Worker 边界
             # 丢失编码标记（x-codebee-content-encoding 被内部 fetch 吃掉），
@@ -319,11 +325,21 @@ class Connector:
             # response remains a genuinely empty response.
             compress = (message.get("gzip") is True and
                         "content-range" not in response_headers and bool(first_chunk))
-            if compress:
+            # 本地服务已压好 gzip 的响应（state 大 JSON 按请求 Accept-Encoding
+            # 自动压缩）：体原样转发，但编码声明要走 enc 通道（worker 侧由
+            # x-codebee-content-encoding→content-encoding 的既有管线如实还原），
+            # 不能裸塞 content-encoding——DO→Worker 内部边界会剥掉标准头。
+            if (not compress
+                    and response_headers.get("content-encoding", "").lower() == "gzip"):
+                announcement_enc = True
                 response_headers.pop("content-length", None)
+            else:
+                announcement_enc = False
+            if compress or announcement_enc:
+                response_headers.pop("content-encoding", None)
             announcement = {"type": "headers", "id": rid, "status": response.status,
                             "headers": response_headers}
-            if compress:
+            if compress or announcement_enc:
                 announcement["enc"] = "gzip"
             self._send(announcement, socket)
             if eligible_body and not gzip_requested:
