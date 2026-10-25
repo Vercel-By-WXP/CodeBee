@@ -13,11 +13,16 @@ const { latestRelease, downloadInstaller, launchInstaller } = require('./lib/ins
 
 const FEEDBACK_URL = 'https://github.com/Vercel-By-WXP/CodeBee/issues/new/choose';
 
-// 禁用硬件加速：必须早于 app ready。工具型 UI 走 CPU 合成无损，换来对
-// 主机 GPU 驱动栈的免疫——2026-10-25 windows-latest runner 连续两次
-// GPU 进程 0xC0000005 打死打包 smoke（CI 镜像漂移），Win7 老驱动同类崩
-// 也一并根治。
+// GPU 进程免疫：必须早于 app ready。disableHardwareAcceleration 只是改用
+// 软件合成，GPU 进程仍会被拉起——windows-latest runner 连续三次 0xC0000005
+// 打死打包 smoke（2026-10-25，CI 镜像漂移）。smoke 与 Win7 壳（Electron 22
+// 老驱动重灾区）直接 --disable-gpu 不再创建 GPU 进程；现代用户保持默认。
 app.disableHardwareAcceleration();
+if (process.argv.includes('--smoke-test') || process.argv.includes('--smoke-second')
+    || Number(process.versions.electron.split('.')[0]) < 23) {
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+}
 
 const smoke = process.argv.includes('--smoke-test');
 const smokeSecond = process.argv.includes('--smoke-second');
