@@ -219,6 +219,27 @@ class StartupConnectivityTests(unittest.TestCase):
         self.assertIn("fetch(path, Object.assign({}, fetchOpts,", api)
 
     def test_phone_edge_assets_match_the_current_mobile_workbench_sources(self):
+        # public/ui 是部署期生成物（.gitignore 排除，npm run deploy 时由
+        # sync-ui.mjs 重建）。fresh checkout/worktree 里它不存在——先跑一次
+        # sync-ui 再对账；已存在的镜像保持逐字节对账（开发机编辑 app/ui 忘刷
+        # 镜像的漂移在这里拦截）。
+        missing = [name for name in ("app.js", "mobile-workbench.js", "index.html")
+                   if not (PHONE_UI / name).is_file()]
+        if missing:
+            import subprocess
+            proc = subprocess.run(["node", "sync-ui.mjs"],
+                                  cwd=str(PHONE_UI.parent.parent), check=False,
+                                  capture_output=True, timeout=120)
+            if proc.returncode != 0:
+                self.fail("sync-ui 重建镜像失败 rc=%s\nstdout: %s\nstderr: %s"
+                          % (proc.returncode,
+                             proc.stdout.decode("utf-8", "replace")[-500:],
+                             proc.stderr.decode("utf-8", "replace")[-800:]))
+            if proc.returncode != 0:
+                self.fail("sync-ui 重建镜像失败 rc=%s\nstdout: %s\nstderr: %s"
+                          % (proc.returncode,
+                             proc.stdout.decode("utf-8", "replace")[-500:],
+                             proc.stderr.decode("utf-8", "replace")[-800:]))
         for name in ("app.js", "mobile-workbench.js", "index.html"):
             with self.subTest(asset=name):
                 self.assertEqual((APP_JS.parent / name).read_bytes(), (PHONE_UI / name).read_bytes())
