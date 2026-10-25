@@ -1,0 +1,335 @@
+/* 手机常用动作壳：默认隐藏，只在 <=900px 且 body.mob-shell-on 时显示。
+   加载顺序排在所有皮肤之后，保证手机几何不被桌面布局规则盖回去。 */
+.mob-shell { display: none !important; }
+.mob-detail-seg, .mob-detail-actions, .mob-run-progress { display: none; }
+
+@media (max-width: 900px) {
+  :root { --mob-tabbar-h: calc(56px + env(safe-area-inset-bottom)); }
+
+  body.mob-shell-on { overflow: hidden; }
+  body.mob-shell-on .mob-shell {
+    display: flex !important;
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    flex-direction: column;
+    padding-bottom: var(--mob-tabbar-h);
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .mob-top {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: max(10px, env(safe-area-inset-top)) 18px 8px;
+  }
+  .mob-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .mob-brand-name { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+  .mob-conn {
+    display: inline-flex; align-items: center; gap: 5px;
+    min-height: 24px; padding: 2px 8px; border-radius: 999px;
+    background: var(--panel2); color: var(--muted);
+    font-size: 11px; line-height: 1.2; white-space: nowrap;
+  }
+  .mob-conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .mob-conn.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .mob-conn.ok i { background: var(--ok); }
+  .mob-conn.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  .mob-conn.bad i { background: var(--bad); }
+
+  .mob-icon-btn {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; padding: 0;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--panel); color: var(--text);
+  }
+  .mob-icon-btn .ico { width: 20px; height: 20px; }
+  .mob-icon-btn:active { background: var(--panel2); }
+
+  .mob-views {
+    flex: 1; min-height: 0; overflow-y: auto;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    padding: 0 18px 24px;
+  }
+  .mob-view { display: block; }
+  .mob-view.hidden { display: none !important; }
+
+  .mob-hello { padding: 8px 0 16px; }
+  .mob-date { color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+  .mob-hello h1 {
+    margin: 6px 0 8px; font-size: 26px; line-height: 1.28; font-weight: 700;
+    letter-spacing: -0.6px; color: var(--text);
+  }
+  .mob-hello p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+  .mob-view-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 0 14px;
+  }
+  .mob-view-head h1 { margin: 0; font-size: 24px; line-height: 1.3; font-weight: 700; letter-spacing: -0.4px; }
+
+  .mob-new-cta {
+    width: 100%; display: flex; align-items: center; gap: 12px;
+    min-height: 68px; margin: 2px 0 4px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 16px;
+    background: var(--panel); color: var(--text); text-align: left;
+  }
+  .mob-new-cta:active { background: var(--panel2); }
+  .mob-new-ico {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+  }
+  .mob-new-ico .ico { width: 22px; height: 22px; }
+  .mob-new-copy { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .mob-new-copy b { font-size: 15px; line-height: 1.35; }
+  .mob-new-copy small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+  .mob-chev { flex: none; width: 18px; height: 18px; color: var(--muted); }
+
+  .mob-sec { margin-top: 22px; }
+  .mob-sec-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .mob-sec-head h2 { margin: 0; font-size: 14px; line-height: 1.4; font-weight: 700; }
+  .mob-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
+    background: var(--panel2); color: var(--muted); font-size: 12px; font-weight: 600;
+  }
+  .mob-count:empty { display: none; }
+  .mob-cards, .mob-list { display: grid; gap: 10px; }
+
+  .mob-card-item, .mob-card {
+    border: 1px solid var(--border); border-radius: 14px;
+    background: var(--panel); padding: 12px 14px;
+  }
+  .mob-card-item.pending { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+  .mob-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mob-time { color: var(--muted); font-size: 11px; }
+  .mob-card-main {
+    display: block; width: 100%; margin: 6px 0 0; padding: 0;
+    border: 0; background: transparent; color: var(--text); text-align: left;
+  }
+  .mob-card-main b { display: block; font-size: 15px; line-height: 1.4; font-weight: 650; }
+  .mob-card-main p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .mob-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .mob-card-actions button, .mob-detail-actions .mob-act {
+    min-height: 44px; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  }
+  .mob-card-actions .primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+  .mob-card-actions .ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  .mob-card-actions .danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
+
+  .mob-task-card {
+    display: block; width: 100%; min-height: 64px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 14px;
+    background: var(--panel); color: var(--text); text-align: left;
+  }
+  .mob-task-card:active { background: var(--panel2); }
+  .mob-task-card .mob-card-top b { font-size: 14.5px; line-height: 1.4; font-weight: 650; }
+  .mob-task-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+  .mob-track {
+    display: block; height: 4px; margin-top: 10px; border-radius: 999px;
+    background: var(--panel2); overflow: hidden;
+  }
+  .mob-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+
+  .mob-badge {
+    flex: none; display: inline-flex; align-items: center;
+    min-height: 24px; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .mob-badge.run { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .mob-badge.wait { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .mob-badge.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+  .mob-badge.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+  .mob-badge.plain { color: var(--muted); background: var(--panel2); }
+
+  .mob-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .mob-chip {
+    min-height: 44px; padding: 6px 14px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+    font-size: 13px; font-weight: 600;
+  }
+  .mob-chip b { margin-left: 4px; font-weight: 700; }
+  .mob-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); }
+
+  .mob-list { gap: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+  .mob-list:empty { display: none; }
+  .mob-task-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    min-height: 60px; padding: 10px 14px;
+    border: 0; border-bottom: 1px solid var(--border);
+    background: transparent; color: var(--text); text-align: left;
+  }
+  .mob-task-row:last-child { border-bottom: 0; }
+  .mob-task-row:active { background: var(--panel2); }
+  .mob-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .mob-dot.run { background: var(--accent); }
+  .mob-dot.wait { background: var(--warn); }
+  .mob-dot.ok { background: var(--ok); }
+  .mob-dot.bad { background: var(--bad); }
+  .mob-task-copy { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .mob-task-copy b {
+    min-width: 0; font-size: 14.5px; line-height: 1.35; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mob-task-copy small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .mob-empty {
+    margin: 0; padding: 22px 14px; border: 1px dashed var(--border); border-radius: 14px;
+    color: var(--muted); font-size: 13px; text-align: center;
+  }
+
+  .mob-card { display: grid; gap: 2px; margin-bottom: 12px; }
+  .mob-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    min-height: 52px; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .mob-row:last-child { border-bottom: 0; }
+  .mob-conn-value.ok { color: var(--ok); }
+  .mob-conn-value.bad { color: var(--bad); }
+  .mob-me-refresh { margin-top: 10px; min-height: 44px; }
+  .mob-seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 10px; background: var(--panel2); }
+  .mob-seg button {
+    min-width: 64px; min-height: 44px; padding: 4px 10px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--muted); font-size: 13px; font-weight: 600;
+  }
+  .mob-seg button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  /* 基础样式里的 input[type=checkbox]{width:auto} 特异性更高，开关必须带类型选择器才盖得住 */
+  input.mob-switch-input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 44px; height: 26px; margin: 0; padding: 0; flex: none;
+    border: 1px solid var(--border-strong, var(--border)); border-radius: 999px;
+    background: var(--panel2); position: relative; cursor: pointer;
+  }
+  .mob-switch-input::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--panel); box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+    transition: left .18s ease;
+  }
+  input.mob-switch-input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+  input.mob-switch-input[type="checkbox"]:checked::after { left: 20px; background: #fff; }
+  .mob-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+  /* 底部标签栏：两套布局、<=900px 都用同一套手机 IA。 */
+  html[data-layout] #mobile-tabbar {
+    display: flex !important;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: var(--mob-tabbar-h, calc(56px + env(safe-area-inset-bottom)));
+    padding: 0 6px env(safe-area-inset-bottom);
+    z-index: 1200;
+    background: color-mix(in srgb, var(--sidebar) 88%, transparent);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    justify-content: space-around;
+    align-items: stretch;
+  }
+  html[data-layout] #mobile-tabbar .tab-item {
+    position: relative; flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px;
+    min-width: 0; padding: 6px 0; border: 0; background: transparent;
+    color: var(--muted); font-size: 10.5px; font-weight: 600; cursor: pointer;
+  }
+  html[data-layout] #mobile-tabbar .tab-item .ico { width: 21px; height: 21px; }
+  html[data-layout] #mobile-tabbar .tab-item.active { color: var(--accent); }
+  html[data-layout] #mobile-tabbar .mob-tab-new { justify-content: flex-end; padding-bottom: 4px; }
+  html[data-layout] #mobile-tabbar .mob-tab-plus {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 46px; height: 46px; margin-top: -18px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  html[data-layout] #mobile-tabbar .mob-tab-plus .ico { width: 24px; height: 24px; }
+  html[data-layout] #mobile-tabbar .mob-tab-badge {
+    position: absolute; top: 3px; left: calc(50% + 6px);
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+    background: var(--bad); color: #fff; font-size: 10px; font-style: normal; font-weight: 700;
+  }
+  html[data-layout] #mobile-tabbar .mob-tab-badge.hidden { display: none !important; }
+
+  /* 详情态：让出整屏给详情，隐藏标签栏；只保留「进展 / 产出」两段。
+     桌面顶栏（菜单/页面名/多端控制）在手机详情里是第二层头部，一律收掉。 */
+  body.mob-detail-active #mobile-tabbar { display: none !important; }
+  body.mob-detail-active .topbar { display: none !important; }
+  body.mob-detail-active #run-detail { padding-top: env(safe-area-inset-top); }
+
+  .mob-detail-seg, .mob-detail-actions { display: none; }
+  body.mob-detail-active .mob-detail-seg {
+    display: flex; gap: 3px; margin: 4px 0 8px; padding: 3px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--panel2);
+  }
+  body.mob-detail-active .mob-detail-seg button {
+    flex: 1; min-height: 44px; border: 0; border-radius: 9px;
+    background: transparent; color: var(--muted); font-size: 14px; font-weight: 600;
+  }
+  body.mob-detail-active .mob-detail-seg button.on {
+    background: var(--panel); color: var(--text);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 10%, transparent);
+  }
+  body.mob-detail-active .mob-detail-seg button:disabled { opacity: .4; }
+  body.mob-detail-active .mob-detail-actions:not(.hidden) {
+    display: flex; gap: 8px; padding: 0 0 10px;
+  }
+  .mob-detail-actions .mob-act { flex: 1; border: 1px solid var(--border); background: var(--panel2); color: var(--text); }
+  .mob-detail-actions .mob-act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mob-detail-actions .mob-act.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); background: var(--panel); }
+  .mob-detail-actions .mob-act.danger.ghost { background: var(--panel); }
+  .mob-detail-actions .mob-act:disabled { opacity: .5; }
+
+  /* 「进展」= 真实步骤时间线；对话流为空时不占位，输入框始终留在底部。 */
+  body.mob-detail-active .mob-run-progress {
+    display: block; flex: none; max-height: 46vh; overflow-y: auto;
+    margin: 0 0 10px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+  }
+  .mob-rp-head { display: flex; align-items: center; gap: 10px; }
+  .mob-rp-head b { font-size: 18px; line-height: 1.2; }
+  .mob-rp-head span { color: var(--muted); font-size: 12px; }
+  .mob-rp-head .mob-badge { margin-left: auto; }
+  .mob-rp-head + .mob-track { margin: 8px 0 12px; }
+  .mob-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .mob-step { display: flex; gap: 10px; }
+  .mob-node {
+    flex: none; width: 10px; height: 10px; margin-top: 5px;
+    border-radius: 50%; background: var(--muted);
+  }
+  .mob-step.ok .mob-node { background: var(--ok); }
+  .mob-step.run .mob-node {
+    background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .mob-step.bad .mob-node { background: var(--bad); }
+  .mob-step.wait .mob-node { background: transparent; border: 1.5px solid var(--border-strong, var(--border)); }
+  .mob-step-copy { display: block; min-width: 0; }
+  .mob-step-copy b { display: block; font-size: 13px; line-height: 1.4; font-weight: 600; }
+  .mob-step-copy small { display: block; margin-top: 1px; color: var(--muted); font-size: 11px; }
+  .mob-step-copy p {
+    margin: 3px 0 0; max-height: 3em; overflow: hidden;
+    color: var(--muted); font-size: 12px; line-height: 1.5;
+  }
+  .mob-rp-more { margin: 8px 0 0; color: var(--muted); font-size: 11.5px; }
+  #run-detail #rd-chat-run-status { display: none !important; }
+  /* 进展段已经是步骤时间线，成果卡里的「查看执行步骤」在手机上是死路（页签已收） */
+  body.mob-detail-active #rd-outcome .outcome-actions { display: none !important; }
+
+  #run-detail #rd-rail > .detail-head { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  #run-detail #rd-rail > .detail-head > .rd-actions { display: none !important; }
+  #run-detail #rd-tabs, #run-detail #rd-chat-nav { display: none !important; }
+  #run-detail #rd-context { display: none !important; }
+  #run-detail .rd-chat-tools > .cmp-sel, #run-detail #rd-chat-voice { display: none !important; }
+  #run-detail .rd-chat-run-status [data-chat-workspace-toggle],
+  #run-detail .rd-chat-run-status [data-chat-run-expand] { display: none !important; }
+  #run-detail .rd-chat-bar textarea { font-size: 16px; }
+}
+
+@media (max-width: 430px) {
+  .mob-views { padding: 0 14px 20px; }
+  .mob-top { padding-left: 14px; padding-right: 14px; }
+  .mob-hello h1 { font-size: 23px; }
+  .mob-hello p { font-size: 12.5px; }
+}

@@ -30,6 +30,7 @@
 <link rel="stylesheet" href="redesign-layout.css">
 <link rel="stylesheet" href="skin-gradients.css">
 <link rel="stylesheet" href="atlas.css">
+<link rel="stylesheet" href="mobile-shell.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。默认布局=工作台。 -->
@@ -2225,23 +2226,88 @@
     </aside>
   </div>
 
-  <!-- ================= 底部标签栏（仅 workbench 布局移动端显示） ================= -->
+  <!-- ================= 手机常用动作壳（<=900px 显示；桌面默认隐藏） =================
+       只保留手机上真会用的动作：看状态、做裁决、补一句、发任务。内容全部由
+       mobile-workbench.js 从 S.state 绘制；点任务直接进真实详情，新任务进入真实表单。 -->
+  <div id="mobile-shell" class="mob-shell" aria-label="手机工作台" data-i18n-aria="手机工作台">
+    <header class="mob-top">
+      <div class="mob-brand">
+        <span class="mob-brand-name">CodeBee</span>
+        <span class="mob-conn" id="mob-conn"><i aria-hidden="true"></i><span></span></span>
+      </div>
+      <button type="button" class="mob-icon-btn" id="mob-refresh" aria-label="刷新" data-i18n-aria="刷新" title="刷新" data-i18n-title="刷新">
+        <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg>
+      </button>
+    </header>
+    <div class="mob-views" id="mob-views">
+      <section class="mob-view" data-mob-view="home" aria-label="首页" data-i18n-aria="首页">
+        <div class="mob-hello">
+          <div class="mob-date" id="mob-date"></div>
+          <h1 id="mob-greeting"></h1>
+          <p id="mob-summary"></p>
+        </div>
+        <button type="button" class="mob-new-cta" id="mob-new-task">
+          <span class="mob-new-ico"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></span>
+          <span class="mob-new-copy"><b id="mob-new-title"></b><small id="mob-new-sub"></small></span>
+          <svg class="ico mob-chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+        </button>
+        <section class="mob-sec" id="mob-sec-pending">
+          <div class="mob-sec-head"><h2 id="mob-sec-pending-title"></h2><span class="mob-count" id="mob-pending-count"></span></div>
+          <div class="mob-cards" id="mob-home-pending"></div>
+        </section>
+        <section class="mob-sec" id="mob-sec-running">
+          <div class="mob-sec-head"><h2 id="mob-sec-running-title"></h2><span class="mob-count" id="mob-running-count"></span></div>
+          <div class="mob-cards" id="mob-home-running"></div>
+        </section>
+        <section class="mob-sec" id="mob-sec-recent">
+          <div class="mob-sec-head"><h2 id="mob-sec-recent-title"></h2></div>
+          <div class="mob-list" id="mob-home-recent"></div>
+        </section>
+      </section>
+      <section class="mob-view hidden" data-mob-view="tasks" aria-label="任务" data-i18n-aria="任务">
+        <div class="mob-view-head">
+          <h1 id="mob-tasks-title"></h1>
+          <button type="button" class="mob-icon-btn" id="mob-tasks-new" aria-label="新任务" data-i18n-aria="新任务" title="新任务" data-i18n-title="新任务">
+            <svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg>
+          </button>
+        </div>
+        <div class="mob-chips" id="mob-task-filters" role="group" aria-label="筛选" data-i18n-aria="筛选"></div>
+        <div class="mob-list" id="mob-task-list"></div>
+      </section>
+      <section class="mob-view hidden" data-mob-view="me" aria-label="我的" data-i18n-aria="我的">
+        <div class="mob-view-head"><h1 id="mob-me-title"></h1></div>
+        <div class="mob-card">
+          <div class="mob-row"><span id="mob-me-conn-label"></span><b class="mob-conn-value" id="mob-me-conn"></b></div>
+          <button type="button" class="ghost small mob-me-refresh" id="mob-me-refresh"></button>
+        </div>
+        <div class="mob-card">
+          <div class="mob-row"><span id="mob-me-theme-label"></span><div class="mob-seg" id="mob-theme-seg"></div></div>
+          <div class="mob-row"><span id="mob-me-lang-label"></span><div class="mob-seg" id="mob-lang-seg"></div></div>
+          <label class="mob-row" for="mob-sound"><span id="mob-me-sound-label"></span><input type="checkbox" id="mob-sound" class="mob-switch-input"></label>
+        </div>
+        <p class="mob-note" id="mob-me-note"></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- ================= 底部标签栏（手机端） ================= -->
   <nav id="mobile-tabbar" aria-label="主导航" data-i18n-aria="主导航">
-    <button class="tab-item active" data-tab="home" onclick="switchTab('home')">
+    <button type="button" class="tab-item active" data-mob-tab="home">
       <svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg>
-      <span data-i18n="工作台">工作台</span>
+      <span data-mob-tab-label="home">首页</span>
     </button>
-    <button class="tab-item" data-tab="tasks" onclick="switchTab('tasks')">
+    <button type="button" class="tab-item" data-mob-tab="tasks">
       <svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg>
-      <span data-i18n="任务">任务</span>
+      <span data-mob-tab-label="tasks">任务</span>
+      <i class="mob-tab-badge hidden" id="mob-tab-badge"></i>
     </button>
-    <button class="tab-item" data-tab="runs" onclick="switchTab('runs')">
-      <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
-      <span data-i18n="运行">运行</span>
+    <button type="button" class="tab-item mob-tab-new" data-mob-tab="new">
+      <span class="mob-tab-plus"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></span>
+      <span data-mob-tab-label="new">新任务</span>
     </button>
-    <button class="tab-item" data-tab="settings" onclick="switchTab('appearance')">
-      <svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg>
-      <span data-i18n="设置">设置</span>
+    <button type="button" class="tab-item" data-mob-tab="me">
+      <svg class="ico" aria-hidden="true"><use href="#i-idcard"></use></svg>
+      <span data-mob-tab-label="me">我的</span>
     </button>
   </nav>
 

@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee 手机端重设计 · demo</title>
+<style>
+/* ============ demo 舞台（不属于手机 UI） ============ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#eef3f9;color:#0c1a2c;font:14px/1.6 "Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI",system-ui,sans-serif}
+.mob-stage{display:flex;gap:36px;align-items:flex-start;justify-content:center;padding:18px 24px 40px;min-width:0}
+.mob-left{flex:none;display:flex;flex-direction:column;gap:10px;align-items:center}
+.mob-demo-head{max-width:390px}
+.mob-demo-head h1{margin:0 0 4px;font-size:19px;letter-spacing:-.3px}
+.mob-demo-head p{margin:0;color:#5d7290;font-size:12.5px;line-height:1.55}
+.mob-jumps{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:390px}
+.mob-jumps button{appearance:none;border:1px solid #cfe0f4;background:#fff;color:#31506f;border-radius:999px;padding:6px 12px;font:600 12px/1 inherit;cursor:pointer;min-height:32px;white-space:nowrap}
+.mob-jumps button.on{background:#1f6fd0;border-color:#1f6fd0;color:#fff}
+.mob-notes{width:380px;flex:none;background:#fff;border:1px solid #dbe7f5;border-radius:20px;padding:22px 22px 20px;box-shadow:0 18px 50px rgba(24,54,89,.08)}
+.mob-notes h2{margin:0 0 6px;font-size:17px;letter-spacing:-.2px}
+.mob-notes>p{margin:0 0 16px;color:#5d7290;font-size:13px}
+.mob-note-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.mob-note-grid section{border:1px solid #e2ecf9;border-radius:14px;padding:12px 13px;background:#f8fbff}
+.mob-note-grid h3{margin:0 0 8px;font-size:12px;letter-spacing:.4px;color:#5d7290}
+.mob-note-grid ul{margin:0;padding-left:16px;font-size:12.5px;line-height:1.75;color:#24425f}
+.mob-decisions{border-top:1px solid #e6eef8;padding-top:14px;margin-top:2px}
+.mob-decisions h3{margin:0 0 8px;font-size:13px}
+.mob-decisions ol{margin:0;padding-left:18px;font-size:12.5px;line-height:1.75;color:#31506f}
+.mob-decisions li{margin-bottom:7px}
+.mob-tradeoff{margin:14px 0 0;padding:11px 13px;border-radius:12px;background:#fff7e8;color:#7c5a14;font-size:12.5px;line-height:1.7}
+@media (max-width:900px){
+  .mob-stage{flex-direction:column;align-items:center;gap:24px;padding:20px 12px 40px}
+  .mob-notes{width:100%;max-width:420px;margin-top:0}
+  .mob-left{width:100%;max-width:420px}
+  .mob-demo-head{max-width:100%}
+}
+
+/* ============ 手机 UI：复用 ocean 默认皮肤变量 ============ */
+.mob-phone{
+  --app-bg:#ffffff; --panel:#ffffff; --panel2:#f0f6fd;
+  --border:#d7e3f4; --border-soft:#e8f0fa;
+  --text:#0c1a2c; --muted:#5d7290;
+  --accent:#1f6fd0; --accent-ink:#ffffff; --accent-soft:rgba(31,111,208,.10);
+  --ok:#0d9a72; --ok-soft:rgba(13,154,114,.11);
+  --warn:#a9761a; --warn-soft:rgba(169,118,26,.12);
+  --bad:#d23c58; --bad-soft:rgba(210,60,88,.10);
+  --shadow:0 10px 30px rgba(12,26,44,.07);
+  --spring:cubic-bezier(.22,.9,.26,1);
+  position:relative;flex:none;width:390px;height:844px;padding:10px;border-radius:46px;
+  background:linear-gradient(160deg,#22303f,#0b1220 55%);
+  box-shadow:0 34px 80px rgba(12,26,44,.34), inset 0 0 0 1px rgba(255,255,255,.10);
+  color:var(--text);
+  font-family:"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei UI",system-ui,sans-serif;
+}
+.mob-phone[data-theme="dark"]{
+  --app-bg:#0e1626; --panel:#17243a; --panel2:#1d2c46;
+  --border:rgba(255,255,255,.10); --border-soft:rgba(255,255,255,.06);
+  --text:#e7eefb; --muted:#93a6c4;
+  --accent:#3ba9f5; --accent-ink:#062033; --accent-soft:rgba(59,169,245,.16);
+  --ok:#34c98e; --ok-soft:rgba(52,201,142,.14);
+  --warn:#f5b942; --warn-soft:rgba(245,185,66,.14);
+  --bad:#f0566a; --bad-soft:rgba(240,86,106,.14);
+  --shadow:0 12px 34px rgba(0,0,0,.38);
+}
+.mob-screen{position:relative;display:flex;flex-direction:column;width:100%;height:100%;border-radius:37px;overflow:hidden;background:var(--app-bg)}
+.mob-statusbar{flex:none;display:flex;align-items:center;justify-content:space-between;height:42px;padding:0 22px;font-size:12.5px;font-weight:650;letter-spacing:.2px;color:var(--text)}
+.mob-status-right{display:flex;align-items:center;gap:5px;opacity:.9}
+.mob-bars{display:flex;align-items:flex-end;gap:2px;height:10px}
+.mob-bars i{display:block;width:2.5px;border-radius:1px;background:currentColor}
+.mob-bars i:nth-child(1){height:4px}.mob-bars i:nth-child(2){height:6px}.mob-bars i:nth-child(3){height:8px}.mob-bars i:nth-child(4){height:10px}
+.mob-wifi{width:14px;height:11px;border-top:2px solid currentColor;border-radius:50%/70% 70% 0 0;position:relative;margin-top:1px}
+.mob-wifi::after{content:"";position:absolute;left:4px;top:3px;width:6px;height:5px;border-top:2px solid currentColor;border-radius:50%/70% 70% 0 0}
+.mob-battery{width:20px;height:10px;border:1.5px solid currentColor;border-radius:3px;position:relative}
+.mob-battery::before{content:"";position:absolute;inset:1.5px 4px 1.5px 1.5px;border-radius:1px;background:currentColor}
+.mob-battery::after{content:"";position:absolute;right:-3.5px;top:2.5px;width:2px;height:4px;border-radius:0 1px 1px 0;background:currentColor}
+
+.mob-view{display:none;flex:1;min-height:0;flex-direction:column}
+.mob-view.on{display:flex;animation:mob-fade .24s var(--spring)}
+@keyframes mob-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.mob-topbar{flex:none;display:flex;align-items:center;gap:10px;min-height:52px;padding:4px 14px 6px}
+.mob-brand{font-size:18px;font-weight:750;letter-spacing:-.4px}
+.mob-topbar h1{margin:0;flex:1;min-width:0;font-size:18px;font-weight:750;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mob-top-actions{display:flex;align-items:center;gap:6px;margin-left:auto}
+.mob-conn{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+.mob-conn i{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.mob-icon-btn{appearance:none;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid var(--border);border-radius:13px;background:var(--panel);color:var(--text);cursor:pointer}
+.mob-icon-btn:active{transform:scale(.94)}
+.mob-icon-btn.mob-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mob-ico{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mob-ico.sm{width:17px;height:17px}
+
+.mob-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 16px 96px;scrollbar-width:thin}
+.mob-view.mob-detail .mob-body{padding-bottom:88px}
+
+/* 首页 */
+.mob-hero{padding:8px 2px 16px}
+.mob-eyebrow{margin:0 0 8px;font-size:12px;font-weight:650;letter-spacing:.5px;color:var(--accent)}
+.mob-hero h2{margin:0;font-size:26px;line-height:1.28;letter-spacing:-.7px;font-weight:760}
+.mob-hero p.mob-sub{margin:8px 0 0;font-size:13px;color:var(--muted)}
+.mob-quick-compose{display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:10px 12px 10px 16px;border:1px solid var(--border);border-radius:20px;background:var(--panel);box-shadow:var(--shadow);text-align:left;cursor:pointer;color:var(--muted);font:400 15px/1.4 inherit}
+.mob-quick-compose:active{transform:scale(.99)}
+.mob-quick-compose>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-send{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:var(--accent);color:var(--accent-ink);cursor:pointer;flex:none}
+.mob-send .mob-ico{width:19px;height:19px;stroke-width:2.1}
+.mob-quick-row{display:flex;flex-wrap:wrap;gap:8px;padding:12px 2px 2px}
+.mob-quick-row button{flex:none;appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:999px;padding:9px 14px;min-height:44px;font:500 12.5px/1.2 inherit;cursor:pointer}
+.mob-sec{display:flex;align-items:center;gap:8px;margin:22px 2px 10px;font-size:14px;font-weight:750;letter-spacing:-.1px}
+.mob-count{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:750}
+.mob-card{position:relative;border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:var(--shadow);padding:14px 15px}
+.mob-card+.mob-card{margin-top:10px}
+.mob-card h3{margin:0;flex:1;min-width:0;font-size:15px;line-height:1.4;font-weight:680;letter-spacing:-.1px}
+.mob-card p{margin:6px 0 0;font-size:12.5px;line-height:1.6;color:var(--muted)}
+.mob-card-head{display:flex;align-items:center;gap:8px}
+.mob-card-head time{margin-left:auto;flex:none;font-size:11.5px;color:var(--muted)}
+.mob-badge{display:inline-flex;align-items:center;gap:5px;flex:none;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:650;line-height:1.4;white-space:nowrap}
+.mob-badge.running{background:var(--accent-soft);color:var(--accent)}
+.mob-badge.wait{background:var(--warn-soft);color:var(--warn)}
+.mob-badge.done{background:var(--ok-soft);color:var(--ok)}
+.mob-badge.bad{background:var(--bad-soft);color:var(--bad)}
+.mob-badge.plain{background:var(--panel2);color:var(--muted)}
+.mob-badge .mob-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.mob-dec-actions{display:flex;gap:8px;margin-top:12px}
+.mob-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 15px;border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);font:650 13px/1 inherit;cursor:pointer}
+.mob-btn:active{transform:scale(.97)}
+.mob-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mob-btn.ghost{background:transparent;color:var(--muted)}
+.mob-btn.block{width:100%;min-height:50px;font-size:15px;border-radius:15px}
+.mob-btn.danger{color:var(--bad);border-color:var(--bad-soft);background:var(--bad-soft)}
+.mob-progress{height:6px;margin-top:11px;border-radius:999px;background:var(--panel2);overflow:hidden}
+.mob-progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2,#5b4fe0))}
+.mob-card-foot{display:flex;justify-content:space-between;gap:10px;margin-top:9px;font-size:11.5px;color:var(--muted)}
+.mob-card-foot span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-run{cursor:pointer;transition:transform .16s var(--spring)}
+.mob-run:active{transform:scale(.988)}
+.mob-mini-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 2px;border:0;border-bottom:1px solid var(--border-soft);background:transparent;color:var(--text);text-align:left;cursor:pointer}
+.mob-mini-row:last-child{border-bottom:0}
+.mob-mini-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mob-mini-main b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-mini-main small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-state-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.mob-state-dot.ok{background:var(--ok)}
+.mob-state-dot.bad{background:var(--bad)}
+.mob-state-dot.wait{background:var(--warn)}
+.mob-state-dot.running{background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+
+/* 任务列表 */
+.mob-chips{display:flex;flex-wrap:wrap;gap:6px;padding:4px 2px 12px}
+.mob-chips button{flex:none;appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--muted);border-radius:999px;min-height:44px;padding:7px 13px;font:600 12.5px/1 inherit;cursor:pointer}
+.mob-chips button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mob-task-list{border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}
+.mob-task-row{display:flex;align-items:center;gap:11px;width:100%;min-height:66px;padding:11px 14px;border:0;border-bottom:1px solid var(--border-soft);background:transparent;color:var(--text);text-align:left;cursor:pointer}
+.mob-task-row:last-child{border-bottom:0}
+.mob-task-row:active{background:var(--panel2)}
+.mob-task-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.mob-task-main b{font-size:14.5px;font-weight:620;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-task-main small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-empty{padding:38px 20px;text-align:center;color:var(--muted);font-size:13px}
+
+/* 详情 */
+.mob-detail-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 2px 14px;font-size:12px;color:var(--muted)}
+.mob-progress-card{margin-bottom:14px}
+.mob-pc-top{display:flex;align-items:baseline;gap:8px}
+.mob-pc-top b{font-size:24px;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+.mob-pc-top span{font-size:12.5px;color:var(--muted)}
+.mob-pc-note{display:flex;gap:7px;align-items:flex-start;margin:10px 0 0!important;color:var(--text)!important;font-size:12.5px!important}
+.mob-pc-note .mob-ico{flex:none;width:15px;height:15px;margin-top:2px;color:var(--accent)}
+.mob-decide-banner{margin-bottom:14px;padding:14px 15px;border:1px solid var(--warn-soft);border-radius:18px;background:var(--warn-soft)}
+.mob-decide-banner h3{margin:0 0 4px;font-size:14.5px;font-weight:700;color:var(--warn)}
+.mob-decide-banner p{margin:0 0 11px;font-size:12.5px;line-height:1.6;color:var(--text)}
+.mob-seg{display:flex;gap:4px;padding:4px;margin:0 0 14px;border:1px solid var(--border);border-radius:14px;background:var(--panel2)}
+.mob-seg button{flex:1;appearance:none;border:0;border-radius:10px;background:transparent;color:var(--muted);min-height:44px;font:650 13px/1 inherit;cursor:pointer}
+.mob-seg button.on{background:var(--panel);color:var(--text);box-shadow:0 1px 4px rgba(12,26,44,.08)}
+.mob-timeline{list-style:none;margin:0;padding:0 0 6px}
+.mob-step{position:relative;display:flex;gap:12px;padding:0 2px 18px}
+.mob-step::before{content:"";position:absolute;left:12px;top:26px;bottom:0;width:2px;background:var(--border-soft)}
+.mob-step:last-child{padding-bottom:4px}
+.mob-step:last-child::before{display:none}
+.mob-node{position:relative;z-index:1;display:grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
+.mob-node .mob-ico{width:14px;height:14px;stroke-width:2.2}
+.mob-step.ok .mob-node{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.mob-step.run .mob-node{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.mob-step.wait .mob-node{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.mob-step-main{flex:1;min-width:0;padding-top:2px}
+.mob-step-main b{display:block;font-size:13.5px;font-weight:650;line-height:1.4}
+.mob-step-main small{display:block;margin-top:2px;font-size:11.5px;color:var(--muted)}
+.mob-step-main p{margin:5px 0 0;font-size:12.5px;line-height:1.6;color:var(--muted)}
+.mob-output{border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:var(--shadow);padding:14px 15px}
+.mob-output h3{margin:0 0 4px;font-size:14.5px}
+.mob-output p{margin:0;font-size:12.5px;line-height:1.65;color:var(--muted)}
+.mob-file{display:flex;align-items:center;gap:10px;min-height:50px;margin-top:8px;padding:8px 10px;border:1px solid var(--border-soft);border-radius:12px;background:var(--panel2)}
+.mob-file .mob-ico{flex:none;color:var(--accent)}
+.mob-file-main{flex:1;min-width:0}
+.mob-file-main b{display:block;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mob-file-main small{font-size:11px;color:var(--muted)}
+.mob-diff{font:600 11px/1 "Cascadia Code",Consolas,monospace}
+.mob-diff.add{color:var(--ok)}.mob-diff.del{color:var(--bad)}
+.mob-hidden{display:none!important}
+
+.mob-compose-bar{position:absolute;left:10px;right:10px;bottom:12px;z-index:12;display:flex;align-items:center;gap:7px;padding:7px;border:1px solid var(--border);border-radius:20px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(18px);box-shadow:0 10px 30px rgba(12,26,44,.13)}
+.mob-compose-bar input{flex:1;min-width:0;height:42px;padding:0 4px;border:0;background:transparent;color:var(--text);font:400 16px/1.4 inherit;outline:none}
+.mob-compose-bar input::placeholder{color:var(--muted)}
+.mob-compose-bar .mob-send{width:44px;height:44px}
+
+/* 我的 */
+.mob-me-card{display:flex;align-items:center;gap:13px;padding:15px;border:1px solid var(--border);border-radius:20px;background:var(--panel);box-shadow:var(--shadow);margin:4px 0 20px}
+.mob-avatar{display:grid;place-items:center;flex:none;width:48px;height:48px;border-radius:15px;background:linear-gradient(145deg,var(--accent),#5b4fe0);color:#fff;font-size:16px;font-weight:750;letter-spacing:-.4px}
+.mob-me-main{flex:1;min-width:0}
+.mob-me-main b{display:block;font-size:15px;font-weight:700}
+.mob-me-main small{display:block;margin-top:2px;font-size:11.5px;color:var(--muted)}
+.mob-set-title{margin:18px 2px 8px;font-size:12px;font-weight:700;letter-spacing:.4px;color:var(--muted)}
+.mob-set-list{border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}
+.mob-set-row{display:flex;align-items:center;gap:12px;width:100%;min-height:54px;padding:10px 15px;border:0;border-bottom:1px solid var(--border-soft);background:transparent;color:var(--text);font:500 14px/1.4 inherit;text-align:left;cursor:pointer}
+.mob-set-row:last-child{border-bottom:0}
+.mob-set-row .mob-val{margin-left:auto;color:var(--muted);font-size:12.5px}
+.mob-set-row .mob-chev{width:16px;height:16px;color:var(--muted);flex:none}
+.mob-switch{position:relative;flex:none;width:44px;height:26px;margin-left:auto;border-radius:999px;background:var(--panel2);border:1px solid var(--border);transition:background .2s}
+.mob-switch::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--panel);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s var(--spring)}
+.mob-switch.on{background:var(--accent);border-color:var(--accent)}
+.mob-switch.on::after{transform:translateX(18px);background:#fff}
+.mob-foot{margin:22px 4px 8px;text-align:center;font-size:11px;color:var(--muted);line-height:1.7}
+
+/* 底栏 */
+.mob-tabbar{position:absolute;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:6px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:color-mix(in srgb,var(--panel) 88%,transparent);backdrop-filter:blur(20px)}
+.mob-tab{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;padding:3px;border:0;border-radius:14px;background:transparent;color:var(--muted);font:600 10.5px/1.2 inherit;cursor:pointer;position:relative}
+.mob-tab .mob-ico{width:22px;height:22px}
+.mob-tab.on{color:var(--accent)}
+.mob-tab.mob-new .mob-plus{display:grid;place-items:center;width:42px;height:42px;margin-top:-14px;border-radius:50%;background:var(--accent);color:var(--accent-ink);box-shadow:0 8px 18px rgba(31,111,208,.34)}
+.mob-tab.mob-new .mob-plus .mob-ico{width:21px;height:21px;stroke-width:2.3}
+.mob-tab-badge{position:absolute;top:4px;right:calc(50% - 22px);display:grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--warn);color:#fff;font-size:9.5px;font-weight:750}
+
+/* 浮层 */
+.mob-sheet-mask{position:absolute;inset:0;z-index:30;background:rgba(6,14,26,.42);opacity:0;pointer-events:none;transition:opacity .22s}
+.mob-sheet-mask.on{opacity:1;pointer-events:auto}
+.mob-sheet{position:absolute;left:0;right:0;bottom:0;z-index:31;display:flex;flex-direction:column;gap:12px;max-height:88%;padding:16px 16px calc(18px + env(safe-area-inset-bottom));border-radius:26px 26px 0 0;background:var(--panel);box-shadow:0 -18px 50px rgba(6,14,26,.25);transform:translateY(104%);transition:transform .32s var(--spring)}
+.mob-sheet.on{transform:none}
+.mob-sheet-head{display:flex;align-items:center;gap:10px}
+.mob-sheet-head h2{margin:0;flex:1;font-size:17px;letter-spacing:-.2px}
+.mob-sheet textarea{width:100%;min-height:132px;padding:13px 14px;border:1px solid var(--border);border-radius:16px;background:var(--panel2);color:var(--text);font:400 16px/1.6 inherit;resize:none;outline:none}
+.mob-sheet textarea::placeholder{color:var(--muted)}
+.mob-sheet textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.mob-attach{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.mob-attach::-webkit-scrollbar{display:none}
+.mob-attach button{flex:none;appearance:none;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:7px 12px;border:1px solid var(--border);border-radius:999px;background:var(--panel2);color:var(--text);font:500 12.5px/1 inherit;cursor:pointer}
+.mob-attach .mob-ico{width:15px;height:15px;color:var(--accent)}
+.mob-sheet-hint{margin:0;font-size:12px;line-height:1.6;color:var(--muted)}
+.mob-toast{position:absolute;left:50%;bottom:108px;z-index:40;max-width:calc(100% - 48px);padding:10px 16px;border-radius:12px;background:rgba(12,26,44,.92);color:#fff;font-size:12.5px;line-height:1.5;text-align:center;opacity:0;transform:translate(-50%,8px);pointer-events:none;transition:opacity .2s,transform .2s var(--spring)}
+.mob-toast.on{opacity:1;transform:translate(-50%,0)}
+.mob-action-row{display:flex;flex-direction:column;gap:8px}
+.mob-action-row button{appearance:none;width:100%;min-height:50px;border:1px solid var(--border);border-radius:14px;background:var(--panel2);color:var(--text);font:600 14px/1 inherit;cursor:pointer}
+.mob-action-row button.danger{color:var(--bad);background:var(--bad-soft);border-color:transparent}
+
+@media (max-width:430px){
+  .mob-stage{padding:14px 8px 32px}
+  .mob-left{max-width:100%}
+  .mob-phone{width:100%;height:auto;aspect-ratio:390/844;padding:8px;border-radius:36px}
+  .mob-screen{border-radius:30px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mi-home" viewBox="0 0 24 24"><path d="M3.5 10.7 12 3.6l8.5 7.1V20a1 1 0 0 1-1 1h-5v-6.2H9.5V21h-5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="mi-tasks" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 4.8M3.5 12l1.2 1.2L7 10.8M3.5 18l1.2 1.2L7 16.8"/></symbol>
+  <symbol id="mi-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="mi-user" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.8 20.2c.7-3.5 3.6-5.6 7.2-5.6s6.5 2.1 7.2 5.6"/></symbol>
+  <symbol id="mi-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="m16 16 4.2 4.2"/></symbol>
+  <symbol id="mi-more" viewBox="0 0 24 24"><circle cx="5.2" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="18.8" cy="12" r="1.3" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="mi-back" viewBox="0 0 24 24"><path d="M14.5 18.5 8 12l6.5-6.5"/></symbol>
+  <symbol id="mi-check" viewBox="0 0 24 24"><path d="m5 12.8 4.2 4.2L19 7.2"/></symbol>
+  <symbol id="mi-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.1 1.9"/></symbol>
+  <symbol id="mi-alert" viewBox="0 0 24 24"><path d="M12 4.2 21 20H3z"/><path d="M12 9.5v4.4"/><circle cx="12" cy="17.1" r=".9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="mi-folder" viewBox="0 0 24 24"><path d="M3.5 7.2A1.7 1.7 0 0 1 5.2 5.5h4.1l2 2.2h7.5a1.7 1.7 0 0 1 1.7 1.7v8.9a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7z"/></symbol>
+  <symbol id="mi-clip" viewBox="0 0 24 24"><path d="M20 11.3 12.6 18.7a4.4 4.4 0 0 1-6.2-6.2l7.1-7.1a3 3 0 0 1 4.2 4.2l-7.1 7.1a1.6 1.6 0 0 1-2.3-2.3L15 7.7"/></symbol>
+  <symbol id="mi-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="mi-file" viewBox="0 0 24 24"><path d="M6 3.5h7l5 5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M13 3.8V8h4.4"/></symbol>
+  <symbol id="mi-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="mi-chev" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="mi-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+  <symbol id="mi-retry" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4.5V9h-4.5"/></symbol>
+  <symbol id="mi-desktop" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="11.5" rx="1.8"/><path d="M9 20h6M12 16.5V20"/></symbol>
+  <symbol id="mi-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M3.8 12h16.4M12 3.6c2.2 2.3 3.3 5.2 3.3 8.4s-1.1 6.1-3.3 8.4c-2.2-2.3-3.3-5.2-3.3-8.4S9.8 5.9 12 3.6z"/></symbol>
+  <symbol id="mi-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7V21"/></symbol>
+  <symbol id="mi-play" viewBox="0 0 24 24"><path d="M8 5.5 19 12 8 18.5z"/></symbol>
+  <symbol id="mi-bell" viewBox="0 0 24 24"><path d="M6 10a6 6 0 1 1 12 0c0 4 1.4 5.6 2 6.4H4c.6-.8 2-2.4 2-6.4z"/><path d="M10 19.4a2.2 2.2 0 0 0 4 0"/></symbol>
+</svg>
+
+<div class="mob-stage">
+  <div class="mob-left">
+    <div class="mob-demo-head">
+      <h1>CodeBee 手机端重设计 · v1</h1>
+      <p>只保留手机上真正会用的动作：看状态、做裁决、补一句、发任务。点上面的标签或直接操作手机。</p>
+    </div>
+    <div class="mob-jumps" role="group" aria-label="演示页面切换">
+      <button class="on" data-jump="home">首页</button>
+      <button data-jump="tasks">任务</button>
+      <button data-jump="detail">任务详情</button>
+      <button data-jump="me">我的</button>
+      <button data-jump="new">新任务</button>
+    </div>
+
+    <div class="mob-phone" id="phone" data-theme="light">
+      <div class="mob-screen">
+        <div class="mob-statusbar">
+          <span>9:41</span>
+          <span class="mob-status-right">
+            <span class="mob-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="mob-wifi" aria-hidden="true"></span>
+            <span class="mob-battery" aria-hidden="true"></span>
+          </span>
+        </div>
+
+        <!-- 首页 -->
+        <section class="mob-view on" id="view-home" aria-label="首页">
+          <header class="mob-topbar">
+            <span class="mob-brand">CodeBee</span>
+            <span class="mob-conn"><i></i>已连接</span>
+          </header>
+          <div class="mob-body">
+            <section class="mob-hero">
+              <p class="mob-eyebrow" id="today">10 月 25 日 · 星期日</p>
+              <h2>把要做的事，<br>交给 CodeBee。</h2>
+              <p class="mob-sub" id="home-summary">2 个任务在跑 · 1 个等你处理</p>
+            </section>
+            <button type="button" class="mob-quick-compose" onclick="Mob.openNew()">
+              <span>交给 CodeBee 做点什么…</span>
+              <span class="mob-send" aria-hidden="true"><svg class="mob-ico"><use href="#mi-send"/></svg></span>
+            </button>
+            <div class="mob-quick-row">
+              <button type="button" onclick="Mob.openNew('继续修订第 12 章，把追车戏的节奏收紧')">继续修订第 12 章</button>
+              <button type="button" onclick="Mob.openNew('跑一遍全量测试，失败就修')">跑一遍全量测试</button>
+              <button type="button" onclick="Mob.openNew('把今天的改动整理成周报')">整理成本周周报</button>
+            </div>
+
+            <h2 class="mob-sec">等你处理 <span class="mob-count" id="home-wait-count">1</span></h2>
+            <div id="home-wait"></div>
+
+            <h2 class="mob-sec">进行中 <span class="mob-count" id="home-run-count">2</span></h2>
+            <div id="home-run"></div>
+
+            <h2 class="mob-sec">最近完成</h2>
+            <div class="mob-card" id="home-done" style="padding:2px 12px"></div>
+          </div>
+        </section>
+
+        <!-- 任务 -->
+        <section class="mob-view" id="view-tasks" aria-label="任务">
+          <header class="mob-topbar">
+            <h1>任务</h1>
+            <div class="mob-top-actions">
+              <button type="button" class="mob-icon-btn" aria-label="搜索" onclick="Mob.toast('搜索暂未在 demo 中实现')"><svg class="mob-ico"><use href="#mi-search"/></svg></button>
+              <button type="button" class="mob-icon-btn mob-accent" aria-label="新任务" onclick="Mob.openNew()"><svg class="mob-ico"><use href="#mi-plus"/></svg></button>
+            </div>
+          </header>
+          <div class="mob-body">
+            <div class="mob-chips" id="task-chips" role="group" aria-label="筛选任务"></div>
+            <div class="mob-task-list" id="task-list"></div>
+          </div>
+        </section>
+
+        <!-- 详情 -->
+        <section class="mob-view mob-detail" id="view-detail" aria-label="任务详情">
+          <header class="mob-topbar">
+            <button type="button" class="mob-icon-btn" aria-label="返回" onclick="Mob.back()"><svg class="mob-ico"><use href="#mi-back"/></svg></button>
+            <h1 id="detail-top-title">第 12 章：雨夜追车戏改写</h1>
+            <button type="button" class="mob-icon-btn" aria-label="更多操作" onclick="Mob.openActions()"><svg class="mob-ico"><use href="#mi-more"/></svg></button>
+          </header>
+          <div class="mob-body" id="detail-body"></div>
+          <div class="mob-compose-bar">
+            <button type="button" class="mob-icon-btn" style="border:0;background:transparent" aria-label="添加附件" onclick="Mob.toast('附件：从相册或文件选择')"><svg class="mob-ico"><use href="#mi-clip"/></svg></button>
+            <input id="detail-input" placeholder="补充说明或纠偏…" onkeydown="if(event.key==='Enter')Mob.sendDetail()">
+            <button type="button" class="mob-send" aria-label="发送" onclick="Mob.sendDetail()"><svg class="mob-ico"><use href="#mi-send"/></svg></button>
+          </div>
+        </section>
+
+        <!-- 我的 -->
+        <section class="mob-view" id="view-me" aria-label="我的">
+          <header class="mob-topbar"><h1>我的</h1></header>
+          <div class="mob-body">
+            <div class="mob-me-card">
+              <span class="mob-avatar">CB</span>
+              <span class="mob-me-main"><b>CodeBee</b><small>电脑端在线 · 3 秒前有响应</small></span>
+              <span class="mob-badge done"><span class="mob-dot"></span>已连接</span>
+            </div>
+
+            <p class="mob-set-title">外观</p>
+            <div class="mob-seg" id="theme-seg">
+              <button type="button" class="on" data-theme-set="light">浅色</button>
+              <button type="button" data-theme-set="dark">深色</button>
+            </div>
+
+            <p class="mob-set-title">通用</p>
+            <div class="mob-set-list">
+              <button type="button" class="mob-set-row" onclick="Mob.toast('语言：中文 / English')">
+                <svg class="mob-ico sm" style="color:var(--accent)"><use href="#mi-globe"/></svg>
+                <span>语言</span><span class="mob-val">中文</span><svg class="mob-ico mob-chev"><use href="#mi-chev"/></svg>
+              </button>
+              <button type="button" class="mob-set-row" onclick="Mob.toggleSwitch(event)">
+                <svg class="mob-ico sm" style="color:var(--accent)"><use href="#mi-bell"/></svg>
+                <span>任务完成通知</span><span class="mob-switch on" aria-hidden="true"></span>
+              </button>
+              <button type="button" class="mob-set-row" onclick="Mob.toast('配置类设置请回电脑端操作')">
+                <svg class="mob-ico sm" style="color:var(--accent)"><use href="#mi-desktop"/></svg>
+                <span>更多设置</span><span class="mob-val">在电脑上打开</span><svg class="mob-ico mob-chev"><use href="#mi-chev"/></svg>
+              </button>
+            </div>
+            <p class="mob-foot">CodeBee 0.1.120<br>手机端只保留常用操作</p>
+          </div>
+        </section>
+
+        <!-- 底栏 -->
+        <nav class="mob-tabbar" id="tabbar" aria-label="主导航">
+          <button type="button" class="mob-tab on" data-tab="home"><svg class="mob-ico"><use href="#mi-home"/></svg>首页</button>
+          <button type="button" class="mob-tab" data-tab="tasks"><svg class="mob-ico"><use href="#mi-tasks"/></svg>任务<span class="mob-tab-badge" id="tab-badge">1</span></button>
+          <button type="button" class="mob-tab mob-new" data-new="1"><span class="mob-plus"><svg class="mob-ico"><use href="#mi-plus"/></svg></span>新任务</button>
+          <button type="button" class="mob-tab" data-tab="me"><svg class="mob-ico"><use href="#mi-user"/></svg>我的</button>
+        </nav>
+
+        <!-- 新任务 sheet -->
+        <div class="mob-sheet-mask" id="new-mask" onclick="Mob.closeNew()"></div>
+        <div class="mob-sheet" id="new-sheet" role="dialog" aria-modal="true" aria-labelledby="new-title">
+          <div class="mob-sheet-head">
+            <h2 id="new-title">新任务</h2>
+            <button type="button" class="mob-icon-btn" aria-label="关闭" onclick="Mob.closeNew()"><svg class="mob-ico"><use href="#mi-x"/></svg></button>
+          </div>
+          <textarea id="new-goal" placeholder="要完成什么？一句话即可"></textarea>
+          <div class="mob-attach">
+            <button type="button" onclick="Mob.toast('附件：从相册或文件选择')"><svg class="mob-ico"><use href="#mi-clip"/></svg>附件</button>
+            <button type="button" onclick="Mob.toast('工作目录：novel-desk')"><svg class="mob-ico"><use href="#mi-folder"/></svg>novel-desk</button>
+            <button type="button" onclick="Mob.toast('语音输入：按住说话')"><svg class="mob-ico"><use href="#mi-mic"/></svg>语音</button>
+          </div>
+          <p class="mob-sheet-hint">CodeBee 会自动拆解、执行并评审；完成后推送通知给你。</p>
+          <button type="button" class="mob-btn primary block" onclick="Mob.submitNew()">开始执行</button>
+        </div>
+
+        <!-- 更多操作 sheet -->
+        <div class="mob-sheet-mask" id="act-mask" onclick="Mob.closeActions()"></div>
+        <div class="mob-sheet" id="act-sheet" role="dialog" aria-modal="true" aria-label="任务操作">
+          <div class="mob-sheet-head">
+            <h2>任务操作</h2>
+            <button type="button" class="mob-icon-btn" aria-label="关闭" onclick="Mob.closeActions()"><svg class="mob-ico"><use href="#mi-x"/></svg></button>
+          </div>
+          <div class="mob-action-row">
+            <button type="button" onclick="Mob.action('已暂停任务')"><svg class="mob-ico sm" style="vertical-align:-3px;margin-right:6px"><use href="#mi-stop"/></svg>暂停任务</button>
+            <button type="button" onclick="Mob.action('已重新排队')"><svg class="mob-ico sm" style="vertical-align:-3px;margin-right:6px"><use href="#mi-retry"/></svg>重新执行</button>
+            <button type="button" onclick="Mob.action('已复制任务链接')">复制链接</button>
+            <button type="button" onclick="Mob.action('配置与 Git 操作请在电脑上进行')"><svg class="mob-ico sm" style="vertical-align:-3px;margin-right:6px"><use href="#mi-desktop"/></svg>在电脑上打开</button>
+            <button type="button" class="danger" onclick="Mob.action('已归档任务')">归档任务</button>
+          </div>
+        </div>
+
+        <div class="mob-toast" id="toast" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="mob-notes">
+    <h2>手机端只留常用动作</h2>
+    <p>目标：手机上 3 秒内完成「看状态 / 做裁决 / 补一句指令 / 发新任务」。桌面能做的管理操作不再硬塞进来。</p>
+    <div class="mob-note-grid">
+      <section>
+        <h3>保留</h3>
+        <ul>
+          <li>首页总览：在跑 / 待处理</li>
+          <li>一键发新任务</li>
+          <li>裁决：通过 / 驳回</li>
+          <li>任务详情：进展 + 产出</li>
+          <li>补充说明 / 纠偏</li>
+          <li>暂停 / 重试 / 归档</li>
+          <li>完成通知</li>
+          <li>连接 / 外观 / 语言</li>
+        </ul>
+      </section>
+      <section>
+        <h3>移除</h3>
+        <ul>
+          <li>运行记录 Tab（并入任务）</li>
+          <li>完整设置树</li>
+          <li>专家启动面板</li>
+          <li>工作区分组折叠</li>
+          <li>详情 8 个分区</li>
+          <li>原始日志 / Git 区</li>
+          <li>批量选择 / 删除</li>
+          <li>汉堡抽屉导航</li>
+        </ul>
+      </section>
+    </div>
+    <div class="mob-decisions">
+      <h3>需要你拍板</h3>
+      <ol>
+        <li>详情只留「进展 / 产出」两段，原始日志和 Git 细节回电脑看 —— 够用吗？</li>
+        <li>输入区保留「附件 + 语音」，还是只留文字更干净？</li>
+        <li>手机设置只留连接、外观、语言、通知，其余配置回电脑 —— 可以吗？</li>
+      </ol>
+    </div>
+    <p class="mob-tradeoff">取舍：手机不再是缩小的桌面。代价是手机上处理不了分支裁决细节和完整日志；需要时给「在电脑上打开」的明确提示，不做假入口。</p>
+  </aside>
+</div>
+
+<script>
+(function(){
+  const tasks = [
+    { id:'sync', title:'第 12 章：雨夜追车戏改写', workspace:'novel-desk', state:'running', progress:64,
+      step:'第 4/5 步 · 正在评审', ago:'12 分钟前', started:'今天 09:48', agent:'Claude Code · opus',
+      note:'Claude Code 正在检查人物动机是否连贯…', steps:[
+        ['ok','拆解任务','Codex CLI · 2 分钟','拆成 5 步：梳理线索、改写、评审、修订、收尾。'],
+        ['ok','梳理前情','Codex CLI · 4 分钟','对齐第 11 章结尾的时间线和人物位置。'],
+        ['ok','改写追车戏','Claude Code · 8 分钟','收紧了 3 处过长的动作描写，补了 1 处视线交代。'],
+        ['run','交叉评审','Claude Code · 正在进行','正在检查节奏与人物动机是否连贯。'],
+        ['todo','收尾与产出','等待中','']
+      ], files:[] },
+    { id:'compress', title:'批量压缩本月截图', workspace:'batch-scripts', state:'running', progress:28,
+      step:'第 2/4 步 · 正在识别重复图', ago:'28 分钟前', started:'今天 09:32', agent:'Codex CLI · gpt-5',
+      note:'已识别 1,284 张截图，预计节省 412 MB。', steps:[
+        ['ok','扫描目录','Codex CLI · 3 分钟','找到 1,284 张 PNG，共 2.1 GB。'],
+        ['run','识别重复图','Codex CLI · 正在进行','按感知哈希分组，已处理 61%。'],
+        ['todo','压缩与备份','等待中',''],
+        ['todo','产出报告','等待中','']
+      ], files:[] },
+    { id:'export', title:'给导出功能补上 CSV 表头', workspace:'codebee', state:'blocked', progress:80,
+      step:'第 5/5 步 · 等待你确认', ago:'2 分钟前', started:'今天 09:41', agent:'Codex CLI · gpt-5',
+      note:'实现与测试已完成，等待你确认是否保留这 3 个文件的改动。', steps:[
+        ['ok','定位导出实现','Codex CLI · 1 分钟','找到 src/export/csv.py 与两个测试。'],
+        ['ok','补表头逻辑','Codex CLI · 3 分钟','新增可配置表头，默认开启。'],
+        ['ok','补测试','Codex CLI · 2 分钟','覆盖空表、含 BOM 与中文表头。'],
+        ['ok','自测通过','Codex CLI · 1 分钟','12 个用例全部通过。'],
+        ['wait','等待确认','已停下','请确认是否保留改动。']
+      ], files:[
+        ['src/export/csv.py','+12 −3'],['tests/test_export.py','+28'],['README.md','+4']
+      ] },
+    { id:'scroll', title:'修复手机端任务详情滚动卡死', workspace:'codebee', state:'done', progress:100,
+      step:'已完成 · 5/5 步', ago:'2 小时前', started:'今天 07:56', agent:'Codex CLI · gpt-5',
+      note:'已修复并推送，等待下一次发版。', steps:[
+        ['ok','复现问题','Codex CLI · 4 分钟','窄屏下详情容器高度锁死。'],
+        ['ok','修复布局','Codex CLI · 6 分钟','恢复内部滚动，保留输入条固定。'],
+        ['ok','回归测试','Codex CLI · 3 分钟','320 / 390 / 430px 均正常。'],
+        ['ok','整理说明','Codex CLI · 1 分钟','写入 CHANGELOG。'],
+        ['ok','完成','Codex CLI','']
+      ], files:[['app/ui/mobile-workbench.css','+18 −9'],['CHANGELOG.md','+6']] },
+    { id:'bio', title:'人物小传：沈砚的动机线', workspace:'novel-desk', state:'done', progress:100,
+      step:'已完成 · 3/3 步', ago:'9 小时前', started:'今天 00:30', agent:'Claude Code · opus',
+      note:'产出一份 1,200 字的人物小传。', steps:[
+        ['ok','梳理线索','Claude Code · 3 分钟','从已发章节提取 11 条动机线索。'],
+        ['ok','撰写小传','Claude Code · 7 分钟','按时间线组织，保留 2 处悬念。'],
+        ['ok','完成','Claude Code','']
+      ], files:[['创作成果/沈砚-人物小传.md','new 1,204 字']] },
+    { id:'plugin', title:'梳理插件目录的加载顺序', workspace:'codebee', state:'cancelled', progress:50,
+      step:'已取消 · 2/4 步', ago:'6 小时前', started:'今天 03:40', agent:'Codex CLI · gpt-5',
+      note:'你取消了这次运行。', steps:[
+        ['ok','扫描插件','Codex CLI · 2 分钟','列出 14 个插件的依赖。'],
+        ['ok','画依赖图','Codex CLI · 3 分钟','发现 2 处循环依赖。'],
+        ['todo','整理顺序','已取消',''],
+        ['todo','产出文档','已取消','']
+      ], files:[] },
+    { id:'report', title:'把周报模板转成 markdown', workspace:'batch-scripts', state:'draft', progress:0,
+      step:'未开始', ago:'昨天', started:'未开始', agent:'未分配',
+      note:'任务已创建，尚未开始执行。', steps:[['todo','等待开始','','']], files:[] }
+  ];
+
+  const stateLabels = {running:['进行中','running'], blocked:['待处理','wait'], done:['已完成','done'], failed:['失败','bad'], cancelled:['已取消','plain'], draft:['未开始','plain']};
+  let filter = 'all';
+  let current = 'sync';
+  let lastView = 'home';
+
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+  const byId = (id) => tasks.find(t => t.id === id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const pct = (n) => Math.max(0, Math.min(100, n));
+  const ico = (id, cls='') => '<svg class="mob-ico '+cls+'"><use href="#mi-'+id+'"/></svg>';
+
+  function badges() {
+    const wait = tasks.filter(t => t.state === 'blocked').length;
+    const run = tasks.filter(t => t.state === 'running').length;
+    $('#home-wait-count').textContent = wait;
+    $('#home-run-count').textContent = run;
+    $('#tab-badge').textContent = wait;
+    $('#tab-badge').classList.toggle('mob-hidden', wait === 0);
+    $('#home-summary').textContent = run + ' 个任务在跑' + (wait ? ' · ' + wait + ' 个等你处理' : '');
+  }
+
+  function renderHome() {
+    const waits = tasks.filter(t => t.state === 'blocked');
+    $('#home-wait').innerHTML = waits.length ? waits.map(t => `
+      <article class="mob-card">
+        <div class="mob-card-head">
+          <span class="mob-badge wait"><span class="mob-dot"></span>待裁决</span>
+          <time>${esc(t.ago)}</time>
+        </div>
+        <h3 style="margin-top:9px">${esc(t.title)}</h3>
+        <p>${esc(t.note)}</p>
+        <div class="mob-dec-actions">
+          <button type="button" class="mob-btn primary" onclick="Mob.decide(event,'${t.id}','pass')">通过</button>
+          <button type="button" class="mob-btn" onclick="Mob.decide(event,'${t.id}','reject')">驳回</button>
+          <button type="button" class="mob-btn ghost" onclick="Mob.openDetail('${t.id}')">看改动</button>
+        </div>
+      </article>`).join('') : '<div class="mob-card" style="padding:20px;text-align:center;color:var(--muted);font-size:12.5px">没有等你处理的任务</div>';
+
+    const runs = tasks.filter(t => t.state === 'running');
+    $('#home-run').innerHTML = runs.map(t => `
+      <article class="mob-card mob-run" onclick="Mob.openDetail('${t.id}')" tabindex="0" role="button" onkeydown="if(event.key==='Enter')Mob.openDetail('${t.id}')">
+        <div class="mob-card-head">
+          <h3>${esc(t.title)}</h3>
+          <span class="mob-badge running"><span class="mob-dot"></span>进行中</span>
+        </div>
+        <p>${esc(t.step)}</p>
+        <div class="mob-progress" aria-hidden="true"><i style="width:${pct(t.progress)}%"></i></div>
+        <div class="mob-card-foot"><span>${esc(t.ago)}开始 · ${esc(t.agent)}</span><span>${t.progress}%</span></div>
+      </article>`).join('');
+
+    const done = tasks.filter(t => t.state === 'done').slice(0, 3);
+    $('#home-done').innerHTML = done.map(t => `
+      <button type="button" class="mob-mini-row" onclick="Mob.openDetail('${t.id}')">
+        <span class="mob-state-dot ok"></span>
+        <span class="mob-mini-main"><b>${esc(t.title)}</b><small>${esc(t.workspace)} · ${esc(t.ago)}</small></span>
+        <span class="mob-badge done">已完成</span>
+      </button>`).join('');
+  }
+
+  function renderChips() {
+    const defs = [
+      ['all','全部', tasks.length],
+      ['running','进行中', tasks.filter(t=>t.state==='running').length],
+      ['blocked','待处理', tasks.filter(t=>t.state==='blocked').length],
+      ['done','已完成', tasks.filter(t=>t.state==='done').length]
+    ];
+    $('#task-chips').innerHTML = defs.map(([key,label,n]) =>
+      `<button type="button" class="${filter===key?'on':''}" data-filter="${key}" role="tab" aria-selected="${filter===key}">${label} ${n}</button>`).join('');
+  }
+
+  function renderTasks() {
+    const list = filter === 'all' ? tasks : tasks.filter(t => t.state === filter);
+    $('#task-list').innerHTML = list.length ? list.map(t => {
+      const [label,cls] = stateLabels[t.state] || ['未知','plain'];
+      return `<button type="button" class="mob-task-row" onclick="Mob.openDetail('${t.id}')">
+        <span class="mob-state-dot ${cls==='running'?'running':cls==='done'?'ok':cls==='wait'?'wait':cls==='bad'?'bad':''}"></span>
+        <span class="mob-task-main"><b>${esc(t.title)}</b><small>${esc(t.workspace)} · ${esc(t.ago)}${t.state==='running'?' · '+t.progress+'%':''}</small></span>
+        <span class="mob-badge ${cls}">${label}</span>
+      </button>`;
+    }).join('') : '<div class="mob-empty">这个分类下还没有任务</div>';
+    renderChips();
+  }
+
+  function renderDetail() {
+    const t = byId(current) || byId('sync');
+    const [label,cls] = stateLabels[t.state] || ['未知','plain'];
+    $('#detail-top-title').textContent = t.title;
+    const statusBadge = `<span class="mob-badge ${cls}">${cls==='running'?'<span class="mob-dot"></span>':''}${label}</span>`;
+    const decide = t.state === 'blocked' ? `
+      <div class="mob-decide-banner">
+        <h3>等你确认后继续</h3>
+        <p>${esc(t.note)}</p>
+        <div class="mob-dec-actions">
+          <button type="button" class="mob-btn primary" onclick="Mob.decide(event,'${t.id}','pass')">通过并完成</button>
+          <button type="button" class="mob-btn danger" onclick="Mob.decide(event,'${t.id}','reject')">驳回</button>
+        </div>
+      </div>` : '';
+    const timeline = t.steps.map(([kind,title,meta,note]) => `
+      <li class="mob-step ${kind === 'ok' ? 'ok' : kind === 'run' ? 'run' : kind === 'wait' ? 'wait' : ''}">
+        <span class="mob-node">${ico(kind==='ok'?'check':kind==='run'?'play':kind==='wait'?'alert':'clock')}</span>
+        <div class="mob-step-main">
+          <b>${esc(title)}</b>
+          ${meta?`<small>${esc(meta)}</small>`:''}
+          ${note?`<p>${esc(note)}</p>`:''}
+        </div>
+      </li>`).join('');
+    const files = t.files.length ? t.files.map(([name,diff]) => `
+      <div class="mob-file">${ico('file')}
+        <span class="mob-file-main"><b>${esc(name)}</b><small>本次运行改动</small></span>
+        <span class="mob-diff ${diff.startsWith('+')?'add':'del'}">${esc(diff)}</span>
+      </div>`).join('') : '<p style="margin-top:10px">这次运行还没有产出文件。</p>';
+
+    $('#detail-body').innerHTML = `
+      <div class="mob-detail-meta">${statusBadge}<span>${esc(t.workspace)}</span><span>·</span><span>${esc(t.started)}</span></div>
+      ${decide}
+      <article class="mob-card mob-progress-card">
+        <div class="mob-pc-top"><b>${t.progress}%</b><span>${esc(t.step)}</span></div>
+        <div class="mob-progress" aria-hidden="true"><i style="width:${pct(t.progress)}%"></i></div>
+        <p class="mob-pc-note">${ico('clock')}<span>${esc(t.note)}</span></p>
+      </article>
+      <div class="mob-seg" id="detail-seg" role="tablist" aria-label="详情分区">
+        <button type="button" class="on" data-pane="progress" role="tab" aria-selected="true">进展</button>
+        <button type="button" data-pane="output" role="tab" aria-selected="false">产出</button>
+      </div>
+      <ol class="mob-timeline" id="pane-progress">${timeline}</ol>
+      <div class="mob-output mob-hidden" id="pane-output">
+        <h3>本次运行产出</h3>
+        <p>${esc(t.state === 'done' ? '任务已完成，可以使用下列文件。' : t.state === 'blocked' ? '改动已就绪，确认后写入任务分支。' : '收尾后在这里汇总产出与文件。')}</p>
+        ${files}
+      </div>`;
+  }
+
+  function show(name) {
+    if (name !== 'detail') lastView = name;
+    $$('.mob-view').forEach(v => v.classList.toggle('on', v.id === 'view-' + name));
+    $$('#tabbar .mob-tab[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+    $('#tabbar').classList.toggle('mob-hidden', name === 'detail');
+    if (name === 'home') renderHome();
+    if (name === 'tasks') renderTasks();
+    if (name === 'me') syncThemeUI();
+    if (name === 'detail') renderDetail();
+    $$('.mob-jumps [data-jump]').forEach(b => b.classList.toggle('on', b.dataset.jump === name || (name === 'home' && b.dataset.jump === 'home')));
+    const body = $('.mob-view.on .mob-body');
+    if (body) body.scrollTop = 0;
+  }
+
+  let toastTimer = 0;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('on'), 2100);
+  }
+
+  function syncThemeUI() {
+    const dark = $('#phone').dataset.theme === 'dark';
+    $$('#theme-seg [data-theme-set]').forEach(b => b.classList.toggle('on', (b.dataset.themeSet === 'dark') === dark));
+  }
+
+  const Mob = {
+    openNew(preset) {
+      $('#new-goal').value = preset || '';
+      $('#new-mask').classList.add('on');
+      $('#new-sheet').classList.add('on');
+      setTimeout(() => $('#new-goal').focus(), 260);
+    },
+    closeNew() {
+      $('#new-mask').classList.remove('on');
+      $('#new-sheet').classList.remove('on');
+    },
+    submitNew() {
+      const goal = $('#new-goal').value.trim();
+      if (!goal) { toast('先写一句要做什么'); $('#new-goal').focus(); return; }
+      tasks.unshift({ id:'new-'+Date.now(), title:goal, workspace:'novel-desk', state:'running', progress:8,
+        step:'第 1/4 步 · 正在拆解任务', ago:'刚刚', started:'刚刚', agent:'等待路由', note:'CodeBee 正在拆解任务…',
+        steps:[['run','拆解任务','CodeBee · 正在进行','正在把目标拆成可执行的步骤。'],['todo','执行','等待中',''],['todo','评审','等待中',''],['todo','收尾','等待中','']], files:[] });
+      this.closeNew();
+      $('#new-goal').value = '';
+      badges(); renderHome(); renderTasks();
+      show('tasks');
+      toast('已提交，CodeBee 开始执行');
+    },
+    openActions() {
+      $('#act-mask').classList.add('on');
+      $('#act-sheet').classList.add('on');
+    },
+    closeActions() {
+      $('#act-mask').classList.remove('on');
+      $('#act-sheet').classList.remove('on');
+    },
+    action(msg) { this.closeActions(); toast(msg); },
+    openDetail(id) {
+      current = byId(id) ? id : current;
+      show('detail');
+    },
+    back() { show(lastView || 'home'); },
+    decide(event, id, kind) {
+      event.preventDefault();
+      event.stopPropagation();
+      const t = byId(id);
+      if (!t) return;
+      if (kind === 'pass') {
+        t.state = 'done'; t.progress = 100; t.step = '已完成 · 5/5 步'; t.note = '你已通过，改动已写入任务分支。';
+        t.steps = t.steps.map(([k,a,b,c]) => (k === 'wait' || k === 'todo' ? ['ok',a,b||'已确认',c] : [k,a,b,c]));
+        toast('已通过并完成任务');
+      } else {
+        t.state = 'running'; t.progress = 60; t.step = '第 4/5 步 · 已驳回，正在修订'; t.note = '你驳回了改动，CodeBee 正在按备注修订。';
+        t.steps = t.steps.map(([k,a,b,c]) => (k === 'wait' ? ['run',a,'已驳回','正在按你的意见修订。'] : [k,a,b,c]));
+        toast('已驳回，CodeBee 继续修订');
+      }
+      badges(); renderHome(); renderTasks();
+      if ($('#view-detail').classList.contains('on')) renderDetail();
+    },
+    sendDetail() {
+      const input = $('#detail-input');
+      const text = input.value.trim();
+      if (!text) { toast('写一句要补充或纠偏的内容'); return; }
+      input.value = '';
+      toast('已发送，将随下一步执行');
+    },
+    toggleSwitch(event) {
+      const sw = event.currentTarget.querySelector('.mob-switch');
+      if (sw) sw.classList.toggle('on');
+      toast(sw && sw.classList.contains('on') ? '已开启任务完成通知' : '已关闭任务完成通知');
+    },
+    toast
+  };
+  window.Mob = Mob;
+
+  document.addEventListener('click', (event) => {
+    const jump = event.target.closest('[data-jump]');
+    if (jump) {
+      const name = jump.dataset.jump;
+      if (name === 'new') { show('tasks'); Mob.openNew(); return; }
+      if (name === 'detail') { current = 'sync'; show('detail'); return; }
+      show(name);
+      return;
+    }
+    const tab = event.target.closest('.mob-tab[data-tab]');
+    if (tab) { show(tab.dataset.tab); return; }
+    const plus = event.target.closest('.mob-tab[data-new]');
+    if (plus) { Mob.openNew(); return; }
+    const filterBtn = event.target.closest('[data-filter]');
+    if (filterBtn) { filter = filterBtn.dataset.filter; renderTasks(); return; }
+    const seg = event.target.closest('[data-pane]');
+    if (seg) {
+      $$('#detail-seg [data-pane]').forEach(b => {
+        const on = b === seg;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      $('#pane-progress').classList.toggle('mob-hidden', seg.dataset.pane !== 'progress');
+      $('#pane-output').classList.toggle('mob-hidden', seg.dataset.pane !== 'output');
+      return;
+    }
+    const theme = event.target.closest('[data-theme-set]');
+    if (theme) { $('#phone').dataset.theme = theme.dataset.themeSet; syncThemeUI(); return; }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { Mob.closeNew(); Mob.closeActions(); }
+  });
+
+  $('#today').textContent = new Intl.DateTimeFormat('zh-CN', { month:'long', day:'numeric', weekday:'long' }).format(new Date());
+  badges();
+  renderHome();
+  renderTasks();
+  syncThemeUI();
+})();
+</script>
+</body>
+</html>

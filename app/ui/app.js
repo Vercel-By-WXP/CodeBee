@@ -2385,6 +2385,7 @@ function applyState(d) {
     window.__orchStateReady = true;
     window.dispatchEvent(new Event("orch:state-ready"));
   }
+  window.dispatchEvent(new Event("orch:state"));   // 手机壳等消费者跟随每次状态帧刷新
   runSettleWatch(prevState, d);
   if (d.control) setControl(d.control);
   if (d.health) renderHealthBanner(d.health);
