@@ -24020,6 +24020,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-mobile-new").addEventListener("click", () => mobileNewTask());
   $("btn-mobile-workspaces").addEventListener("click", () => {
     $("sub-tasks").classList.remove("mobile-composing");
+    document.body.classList.remove("mob-composing-active");
     document.querySelector("main").scrollTop = 0;
   });
   $("mobile-workspace-list").addEventListener("click", (e) => {

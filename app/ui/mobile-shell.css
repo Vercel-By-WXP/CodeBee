@@ -325,6 +325,21 @@
   #run-detail .rd-chat-run-status [data-chat-workspace-toggle],
   #run-detail .rd-chat-run-status [data-chat-run-expand] { display: none !important; }
   #run-detail .rd-chat-bar textarea { font-size: 16px; }
+
+  /* 新建任务页：顶栏只留品牌和连接状态。抽屉、多端控制、页名在手机上都是桌面残留，
+     且底部四页签已经承担导航，不必在输入页再摆一套。 */
+  body.mob-composing-active #btn-menu,
+  body.mob-composing-active #ctrl-pill,
+  body.mob-composing-active .topbar .page-title { display: none !important; }
+
+  /* 「返回工作区」是面包屑，不是一张白色按钮卡片；点击热区仍保持 44px。 */
+  #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back {
+    min-height: 44px; margin: 0 0 6px; padding: 6px 0; gap: 4px;
+    border: 0; border-radius: 0; background: transparent;
+    color: var(--muted); font-size: 13px; font-weight: 500;
+  }
+  #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back .ico { width: 16px; height: 16px; }
+  #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back:active { color: var(--text); }
 }
 
 @media (max-width: 430px) {
