@@ -490,16 +490,72 @@ def _short_draft_row_id(page, title):
     return ""
 
 
-def reconcile_short_story_book_id(page, book):
+def _short_draft_rows_via_api(page, timeout=8.0):
+    """页面上下文直调草稿箱列表接口，返回 item_list（不可得时 None）。
+
+    2026-10-26 头七案：草稿箱页 /short-draft 可渲染空白（DOM 对账全瞎），
+    但列表接口带登录态直调正常——按名对账必须有一层不看 DOM 的兜底。"""
+    js = ("(async () => { try {"
+          "const r = await fetch('/api/author/short_article/draft_list/v0/"
+          "?aid=2503&app_name=muye_novel&page_count=20&page_index=0"
+          "&time_sort=0&image_fmt_list=270x480', {credentials: 'include'});"
+          "if (!r.ok) return null;"
+          "const j = await r.json();"
+          "const d = (j && j.data) || {};"
+          "return Array.isArray(d.item_list) ? d.item_list : null;"
+          "} catch (e) { return null; } })()")
+    try:
+        rows = page.call(js, await_promise=True, timeout=timeout)
+    except Exception:
+        return None
+    if not isinstance(rows, list):
+        return None
+    return rows[:20]
+
+
+def reconcile_short_story_book_id(page, book, allow_ghost=False):
     """短故事版对账：草稿箱按标题行直读 id（点标题会开新 tab，旧 tab
     page.url 永远拿不到——2026-10-22 实案改行直读）。与 reconcile_book_id
-    同契约 (found, book_id, error)。"""
+    同契约 (found, book_id, error)。
+
+    2026-10-26 头七案加固：一键建的 new 物化握手被平台 400 拒时，编辑器
+    「已保存」是本地假象、标题永不落库，DOM 与接口都找不到名字，只剩一条
+    无名空草稿残片。allow_ghost=True（建书后兜底路径）领养 30 分钟内新建
+    的无名空稿；更早的无名空稿只报告不领养（可能是别人的弃稿），报错带
+    item_id 让人可在「登记已有作品」里人工绑定。"""
+    import time
     title = str((book or {}).get("title") or "").strip()
     if not title:
         return False, "", "作品名为空"
-    row_id = _short_draft_row_id(page, title)
-    if row_id:
-        return True, row_id, ""
+    # 接口优先（不导航、不依赖页面渲染）；取不到再走 DOM 原路
+    rows = _short_draft_rows_via_api(page)
+    if rows is None:
+        row_id = _short_draft_row_id(page, title)
+        if row_id:
+            return True, row_id, ""
+        rows = _short_draft_rows_via_api(page)
+    ghosts = []
+    if rows:
+        now = time.time()
+        for it in rows:
+            if not isinstance(it, dict):
+                continue
+            titles = [str(x or "").strip() for x in (it.get("multi_title") or [])]
+            if title in titles:
+                return True, str(it.get("item_id") or ""), ""
+            if not any(titles) and str(it.get("word_number") or 0) in ("", "0"):
+                ghosts.append((str(it.get("item_id") or ""),
+                               int(it.get("create_time") or 0)))
+        fresh = [g for g in ghosts if g[1] and (now - g[1]) <= 1800]
+        if allow_ghost and fresh:
+            return True, fresh[0][0], "领养30分钟内新建的无名空草稿（平台拒挂名的残片）"
+        if ghosts and (fresh or allow_ghost):
+            gid, ct = ghosts[0]
+            when = time.strftime("%m-%d %H:%M", time.localtime(ct)) if ct else "未知时间"
+            return False, "", (
+                "番茄草稿箱按名未找到《%s》；发现无名空草稿 item_id=%s"
+                "（创建于 %s，一键建被平台拒后的残片多半长这样）：确属本作品"
+                "可在发布面板「登记已有作品」填该 ID 绑定" % (title, gid, when))
     probe = page.call(
         "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
         "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."

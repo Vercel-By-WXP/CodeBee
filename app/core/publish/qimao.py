@@ -436,10 +436,12 @@ def reconcile_book_id(page, book):
         return False, "", str(exc)[:240]
 
 
-def reconcile_short_story_book_id(page, book):
+def reconcile_short_story_book_id(page, book, allow_ghost=False):
     """短故事频道版对账：列表在 book-manage/short（与小说列表分页），点击
     同名作品跳 book-upload?id=<id>（2026-10-22 实机）。与 reconcile_book_id
-    同契约 (found, book_id, error)。"""
+    同契约 (found, book_id, error)。allow_ghost 与番茄版同契约（建书后兜底
+    路径统一传 True）：七猫建书是真实表单提交、无「无名空稿残片」形态，
+    此参数收下不启用。"""
     import re
     import time
     title = str((book or {}).get("title") or "").strip()

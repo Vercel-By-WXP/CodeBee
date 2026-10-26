@@ -154,6 +154,37 @@ def _create_preflight(plat, data, short_story=False):
     return ""
 
 
+# 恢复路径自动重试上限（2026-10-26 头七案）：「未取得 book_id/疑似未建成」
+# 类确定性失败曾被看门狗按持久标记每 15 分钟无限重放（单日 13 连败，每次
+# 白开一个编辑器）。恢复路径每真正起跑一次计数一次，到顶摘标记停止，把
+# 判断权交还人工（首跑来自用户点击，不计入）。
+CREATE_BOOK_RECOVERY_MAX_ATTEMPTS = 3
+
+
+def _bump_pending_create_attempt(slot, task_id):
+    """恢复路径每真正起跑一次建书就自增一次计数，返回自增后的次数。
+
+    读-改-写都基于持久 marker：waiter 线程与看门狗重放两条恢复路径共用
+    同一份计数。marker 已被摘掉（并发收尾）时返回 0，由调用方继续走正常
+    退出路径。"""
+    task_id = str(task_id or "")
+    with _mgr().LOCK:
+        ent = (_mgr()._state.get("platforms") or {}).get(slot) or {}
+        entries = ent.get("pending_creates")
+        stored = entries.get(task_id) if isinstance(entries, dict) else None
+        if not isinstance(stored, dict):
+            legacy = ent.get("pending_create")
+            if (isinstance(legacy, dict) and
+                    str(legacy.get("task_id") or "") == task_id):
+                stored = legacy
+        if not isinstance(stored, dict):
+            return 0
+        pending = dict(stored)
+        pending["attempts"] = int(pending.get("attempts") or 0) + 1
+    _mgr()._remember_pending_create(slot, pending)
+    return int(pending["attempts"])
+
+
 def _queue_create_book_auth_recovery(task_id, plat, account, kwargs):
     """Keep a direct create-book request alive across a login challenge.
 
@@ -247,6 +278,20 @@ def _queue_create_book_auth_recovery(task_id, plat, account, kwargs):
                 state = _mgr()._st(slot)
                 if state.get("status") == "connected":
                     waiting_for_auth = False
+                    attempts = _bump_pending_create_attempt(slot, task_id)
+                    if attempts and attempts > CREATE_BOOK_RECOVERY_MAX_ATTEMPTS:
+                        # 到顶摘标记停止重放（头七案：确定性失败无限 15 分钟
+                        # 空转），台账留一行终态说明，判断权交还人工
+                        _mgr()._forget_pending_create(slot, task_id)
+                        try:
+                            _mgr().ledger.record(
+                                plat, "create_book", task_id=task_id, ok=False,
+                                error="自动重试 %d 次仍未建成，已停止重放；"
+                                      "请到平台作品管理确认，若已建成用"
+                                      "「登记已有作品」补登记" % attempts)
+                        except Exception:
+                            pass
+                        return
                     ok, error = _mgr().create_book_async(
                         task_id, plat, auto_submit=True, account=account,
                         _recovery=True, _recovery_epoch=current_epoch,
@@ -894,8 +939,24 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                         names = names + _mgr()._alt_titles(plat, data, task, logs)
                         cands_ready = True
                     continue
-                # 非撞名失败：按书名对账兜底（原有逻辑），找不回就明说未建成
-                bid = _mgr()._resolve_book_id(plat, page, {"title": name})
+                # 非撞名失败：按书名对账兜底（原有逻辑），找不回就明说未建成。
+                # 短篇必须走短篇对账（draft_list 接口+无名空稿领养）——小说
+                # 书卡点击链（resolve_book_id）在短故事列表里永远扑空
+                # （2026-10-26 头七案：兜底全扑空才报成「疑似未建成」）。
+                bid = ""
+                if is_short_story and callable(reconcile):
+                    try:
+                        f2, b2, d2 = reconcile(page, {"title": name}, True)
+                        if f2 and b2:
+                            bid = str(b2)
+                            if d2:
+                                logs.append("短篇对账：%s" % d2)
+                        elif d2:
+                            logs.append(str(d2))
+                    except Exception:
+                        bid = ""
+                if not bid:
+                    bid = _mgr()._resolve_book_id(plat, page, {"title": name})
                 if bid:
                     book_id = bid
                     logs.append("book_id 提取落空，已按书名在平台对账找回 %s" % bid)
