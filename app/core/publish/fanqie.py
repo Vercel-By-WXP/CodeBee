@@ -200,9 +200,14 @@ UPLOAD_SHORT_STORY_DRAFT = [
     {"do": "navigate", "url": "{short_editor_url}"},
     {"do": "url_any", "any": ["fanqienovel.com"]},
     {"do": "wait", "sel": ".ProseMirror", "timeout": 20},
+    # 「有刚刚更新的草稿」弹窗盖住编辑器时真实键盘路径全失效（2026-10-26
+    # 头七实案：正文只进 4/13207 字）——发布链 10-23 已补此步，上传链漏配
+    {"do": "dismiss_stale"},
     {"do": "fill", "sel": "textarea[placeholder*='短故事名称']", "key": "chapter_title"},
     {"do": "fill", "sel": ".ProseMirror", "key": "chapter_body"},
     {"do": "shot", "name": "fanqie-short-body-filled"},
+    # 标题填入触发自动保存后恢复提示可能才弹出：填正文前再查一次（同发布链）
+    {"do": "dismiss_stale", "timeout": 8},
     {"do": "click_real", "text": "存草稿", "tries": 25},
     {"do": "sleep", "s": 2},
     {"do": "expect_text", "any": ["保存成功", "已保存", "草稿保存成功",
