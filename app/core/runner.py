@@ -797,6 +797,15 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
         full_env.update({str(k): str(v) for k, v in env.items()})
     full_env = _augment_windows_shell_path(full_env, is_windows=(os.name == "nt"))
+    try:
+        # 死本地代理兜底（2026-10-26 实案：系统代理残留指向已退出的 Clash，
+        # 子进程 CLI 继承后全部 10061）。ensure() 同时承担 TTL 复检；os.environ
+        # 已由它剥离，这里再对 env 副本过一道，盖住两次复检之间新死的端口。
+        from . import netenv as _netenv
+        _netenv.ensure()
+        _netenv.strip_dead(full_env)
+    except Exception:
+        pass
     log_fh = None
     if log_path:
         try:
@@ -2263,6 +2272,22 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             dead_model_keys = _bench_mod.model_benched_keys(_bench_run_id)
     except Exception:
         dead_model_keys = set()
+    # 本场网络熔断：同一上游连续 ≥3 次网络类死错（连接被拒/无法发送请求）
+    # 后，后续步骤的链上候选跳过该上游——每个死候选都是一次完整 CLI 冷启动
+    # + 自带重试梯，2026-10-26 实案：同一 aider 通道（litellm 10061）在一个
+    # run 里反复送死 20+ 次，步骤拖成小时级。连败计数跨步骤共享、任一成功
+    # 即复位；只熔 NETWORK（确定性「端点不可达」族），TIMEOUT 仍按瞬态处理。
+    network_dead_upstreams = set()
+    _net_run_id = None
+    try:
+        from . import bench as _bench_net
+        _net_run_id = ((command_context or {}).get("run_id")
+                       or checkpoint_run_id)
+        if _net_run_id:
+            network_dead_upstreams = _bench_net.network_dead_upstreams(
+                _net_run_id)
+    except Exception:
+        network_dead_upstreams = set()
     # 启动前过滤明显的占位模型名。它们常由某个 CLI 的会话标题/默认配置
     # 泄漏进编排链；让子进程自己等待网关返回会把一个确定性配置错拖满
     # 多轮超时。非法项不消耗模型调用预算，后面的真实候选仍可接手。
@@ -2296,6 +2321,27 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             })
             continue
         filtered_attempts.append(att)
+    if network_dead_upstreams and filtered_attempts:
+        # 只在链上还有未熔断候选时跳过死上游；全员都死时保留原序硬闯——
+        # 让通道恢复能被下一次尝试探到，而不是把 run 提前判死。
+        _alive = [a for a in filtered_attempts
+                  if _attempt_upstream(a) not in network_dead_upstreams]
+        if _alive:
+            for a in filtered_attempts:
+                if _attempt_upstream(a) in network_dead_upstreams:
+                    preflight_failures.append({
+                        "model": a.get("model") or "",
+                        "provider_id": a.get("provider_id") or "",
+                        "provider": (a.get("provider") or {}).get("name", "")
+                                    if isinstance(a.get("provider"), dict) else "",
+                        "kind": kind, "key_id": a.get("key_id") or "",
+                        "protocol": _attempt_protocol(a), "ok": False,
+                        "skipped": True,
+                        "error_code": ErrorCode.NETWORK,
+                        "error": "本场上游连续网络失败已熔断，跳过该候选"
+                                 "（链上任一次成功即复位）",
+                    })
+            filtered_attempts = _alive
     attempts = filtered_attempts[:_max_model_attempts(deadline is not None)]
     out = None
     attempt_history = list(preflight_failures)
@@ -2852,6 +2898,19 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
         })
         out["attempts"] = list(attempt_history)
         out["forbidden_upstreams"] = sorted(forbidden_upstreams)
+        # 网络熔断记账：同一上游连续网络死错跨步骤累计，任一成功即复位
+        #（见 network_dead_upstreams 的取用处）。只认 NETWORK——TIMEOUT
+        # 是慢不是死，跨步骤熔断会误杀慢而能用的通道。
+        try:
+            from . import bench as _bench_rec
+            if _net_run_id:
+                if out.get("ok"):
+                    _bench_rec.note_upstream_ok(_net_run_id, upstream)
+                elif (error_code_value(out.get("error_code"))
+                        == ErrorCode.NETWORK.value):
+                    _bench_rec.note_network_failure(_net_run_id, upstream)
+        except Exception:
+            pass
         # A local dsh admission block is a routing event, not a terminal
         # configuration error.  Give the remaining call-chain candidates a
         # chance before returning the exhausted dsh result.

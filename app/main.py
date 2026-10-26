@@ -4694,6 +4694,19 @@ def main():
                  memory_recovery.get("demoted", 0), memory_recovery["errors"]),
               flush=True)
     _step("正在启动健康探针…")
+    try:
+        # 死本地代理自愈（2026-10-26 实案：Clash 退出后系统代理残留 7897，
+        # 进程内 urllib 与子进程 CLI 全部 10061 连接被拒，供应商链整夜空转）。
+        # 必须在健康探针起跑前完成剥离，首轮探测才能反映真实可达性。
+        from core import netenv
+        _dead_proxies = netenv.ensure()
+        if _dead_proxies:
+            print("[CodeBee] 本地代理端口无进程监听（%s），已改直连；"
+                  "代理复活后自动恢复" % "、".join("%s:%d" % t
+                                                  for t in _dead_proxies),
+                  flush=True)
+    except Exception:
+        pass
     health.init()  # 供应商健康/告警：恢复落盘状态 + 启动探针线程
     # CLI discovery is diagnostic only.  Run it in the background so a slow or
     # interactive third-party CLI cannot delay the local Web UI startup.

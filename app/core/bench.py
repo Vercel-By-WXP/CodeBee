@@ -276,6 +276,7 @@ def reset(run_id):
     """run 收场时清掉台账（幂等；测试也用它隔离用例）。"""
     with _LOCK:
         _BENCHED.pop(str(run_id), None)
+        _NETDEAD.pop(str(run_id), None)
 
 
 def is_benched(run_id, agent_id):
@@ -387,6 +388,63 @@ def model_benched_keys(run_id):
             out.add((str(row.get("provider_id") or ""),
                      str(row.get("model") or "")))
         return out
+    except Exception:
+        return set()
+
+
+# ---------------------------------------------------------------- 网络熔断
+# run 内「同一上游连续网络死错」的连败台账（2026-10-26 实案：死本地代理把
+# 大半供应商打成 10061 连接被拒，同一 aider 通道在一场 run 里反复送死 20+
+# 次，每个死候选都是完整 CLI 冷启动+自带重试梯，步骤拖成小时级）。与
+# _BENCHED 的区别：只认 NETWORK（确定性「端点不可达」族，不含 TIMEOUT——
+# 慢不是死），计数跨步骤共享，任一成功即复位，进程内存不落盘（恢复探活由
+# 下一次真实尝试天然承担）。阈值 3：单次抖动不熔断，连死三轮必绕行。
+
+_NET_FUSE_THRESHOLD = 3
+# run_id -> {upstream: 连续网络死错次数}
+_NETDEAD = {}
+
+
+def note_network_failure(run_id, upstream, at=None):
+    """记一次上游网络死错；连败达到阈值时该上游进入本场网络熔断名单。"""
+    if not run_id:
+        return False
+    upstream = str(upstream or "").strip()
+    if not upstream or upstream == "unknown":
+        return False
+    with _LOCK:
+        counters = _NETDEAD.setdefault(str(run_id), {})
+        counters[upstream] = counters.get(upstream, 0) + 1
+        if len(_NETDEAD) > _MAX_RUNS:
+            oldest = min(_NETDEAD, key=lambda k: max(
+                _NETDEAD[k].values()) if _NETDEAD[k] else 0)
+            _NETDEAD.pop(oldest, None)
+        return counters[upstream] >= _NET_FUSE_THRESHOLD
+
+
+def note_upstream_ok(run_id, upstream):
+    """链上任一次成功即复位该上游的连败计数（恢复探活语义）。"""
+    if not run_id:
+        return False
+    upstream = str(upstream or "").strip()
+    if not upstream:
+        return False
+    with _LOCK:
+        counters = _NETDEAD.get(str(run_id))
+        if counters and upstream in counters:
+            counters.pop(upstream, None)
+            if not counters:
+                _NETDEAD.pop(str(run_id), None)
+        return True
+
+
+def network_dead_upstreams(run_id):
+    """本场已熔断（连续网络死错达阈值）的 upstream 键集合。"""
+    try:
+        with _LOCK:
+            counters = _NETDEAD.get(str(run_id), {})
+            return {u for u, n in counters.items()
+                    if n >= _NET_FUSE_THRESHOLD}
     except Exception:
         return set()
 

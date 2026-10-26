@@ -956,6 +956,14 @@ def _record_probe_result(name, st, ok, gone, wire=False):
 def _probe_loop():
     while True:
         try:
+            # 死本地代理自愈的空闲期复检：服务没有在跑任务时只有这条心跳在
+            # 走网络——用户重开 Clash 后，代理环境在这里被发现并恢复，
+            # 下一轮探测即按代理可达性给出真实健康态。
+            try:
+                from . import netenv
+                netenv.ensure()
+            except Exception:
+                pass
             with _LOCK:
                 targets = [(name, st) for name, st in _PROVIDERS.items()
                            if not st.get("static")  # 静态死链无端点可探，绑定恢复时自动解除

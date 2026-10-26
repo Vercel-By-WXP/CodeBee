@@ -6044,6 +6044,22 @@ def _verdict_fail_reason(overall, threshold, last_round, is_selection):
     return "；".join(reasons) or "综合 %.1f / 阈值 %.1f" % (overall, threshold)
 
 
+def _revision_starved_note(history_rounds, effective_revisions):
+    """评审分数始终落在同一份未修订稿件上时的如实补注（2026-10-26 实案）。
+
+    实案：修订链五连灭（litellm 10061 / codex 断网 / claude 502），稿件一字
+    未动，第 6 个尝试的评审给了 5.1 分，任务以「评审未达标，需回炉修订」
+    收场——把基础设施故障伪装成了稿件质量问题，用户照着去改稿纯属白费。
+    本轮修订只要有一次真实生效就不补注（分数反映的就是修订后的稿件）。
+    """
+    if not history_rounds or effective_revisions > 0:
+        return ""
+    return ("；注意：本次运行修订从未生效（外部修订全部失败或无产出，"
+            "本地确定性修订无可修项），评审分数始终基于同一份未修订稿件——"
+            "低分反映的是修订未发生；先在供应商健康面板恢复写作通道再重试，"
+            "追加评审轮只会重复同一结果")
+
+
 _STORY_EXPAND_PROMPT = """你是__ROLE__。短篇小说《__TITLE__》的稿件文件 `__FILE__` 目前字数低于任务下限，请扩写该文件（直接改写该文件）。文件必须以 UTF-8 编码保存（PowerShell 写文件显式加 -Encoding UTF8，禁止依赖默认编码）。
 
 ## 全文目标
@@ -6519,6 +6535,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     publishable = False
     r = 0
     extra_review_rounds = 0
+    _effective_revisions = 0  # 修订真实改变了稿件的轮数（如实死因判定用）
     while r < rounds:
         r += 1
         manuscript = read_ms()
@@ -6932,6 +6949,11 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 except Exception:
                     pass
                 store.add_message(run_id, "修订兜底：%s" % _note)
+        # 修订生效对账：与轮首评审所见的稿件逐字对比——一字未动即本轮修订
+        # 未生效（外部失败/无产出且本地无可修项）。全程零生效时终判错误必须
+        # 如实补注，不把通道故障伪装成稿件质量问题（2026-10-26 实案）。
+        if read_ms() != manuscript:
+            _effective_revisions += 1
         _check_cancel(ev)
 
     final_means = history_rounds[-1]["means"] if history_rounds else {}
@@ -6981,6 +7003,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         ] if review_degraded else []),
         "manuscript_fingerprint": quality_gate.local_version(
             workdir, ms_name)["fingerprint"],
+        # 修订全程未生效（分数始终基于同一份未修订稿件）——报告/界面据此把
+        # 「评审未达标」的语境从稿件质量修正为基础设施故障。
+        "revision_starved": (not publishable and bool(history_rounds)
+                             and _effective_revisions == 0),
     }
     review_policy = review_config.load()
     review_policy["min_score"] = threshold
@@ -7250,15 +7276,22 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                                       history_rounds[-1].get("critic_errors") or {})),
                          summary="评审失败（综合 %.1f）" % overall, ended_at=_now())
     else:
+        _starved_note = _revision_starved_note(history_rounds,
+                                               _effective_revisions)
         store.update_run(run_id, expected_status="running", status="failed", verdict=verdict,
-                         error="评审未达标：%s，需回炉修订%s"
+                         error="评审未达标：%s，需回炉修订%s%s"
                                % (_verdict_fail_reason(overall, threshold,
                                                        history_rounds[-1] if history_rounds else {},
                                                        is_selection),
                                   ("（已自动追加 %d 轮修订仍未过线，停止追加防烧钱）"
                                    % extra_review_rounds)
-                                  if extra_review_rounds else ""),
-                         summary="评审任务未达标（综合 %.1f）" % overall, ended_at=_now())
+                                  if extra_review_rounds else "",
+                                  _starved_note),
+                         summary=("评审任务未达标（综合 %.1f）%s"
+                                  % (overall,
+                                     "；修订未生效，分数基于未修订稿件"
+                                     if _starved_note else "")),
+                         ended_at=_now())
 
 
 # ---------------------------------------------------------------- 入口
