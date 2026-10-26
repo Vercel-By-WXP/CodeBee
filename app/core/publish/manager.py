@@ -596,6 +596,13 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     ch_no, title, body, err = read_chapter(chapter_file)
     if err:
         return False, err
+    if short_story:
+        # 短篇标题=登记书名，绝不回落文件名 stem：story.md 无 markdown 标题
+        # 行时 read_chapter 兜底取 p.stem，编辑器标题位被填成「story」
+        # （2026-10-26 头七实案：12608 字正文配了个叫 story 的标题）
+        book_title = str(book_ref.get("title") or "").strip()
+        if book_title:
+            title = book_title
     release_flags = {}
     if as_draft:
         # 草稿不上线：质量闸不适用（evaluate_release action=draft 直通），

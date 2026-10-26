@@ -594,6 +594,16 @@ class Page:
             n = self.call("(s)=>{const els=[...document.querySelectorAll(s)].filter(e=>e.isContentEditable);"
                           "let n=0;for(const e of els)n=Math.max(n,(e.innerText||'').length);return n;}", sel)
             if int(n or 0) < min(len(text), 20):
+                # insertText 被 ProseMirror 吞掉（2026-10-26 头七实案：旧稿
+                # 恢复弹窗抢焦点后 insertText 只落几字且不进编辑器状态）——
+                # 真实剪贴板 + 真实 Ctrl+A/Ctrl+V 键盘管道兜底（真机验证
+                # 13207 字全量进状态、平台字数计数器同步）
+                self._clipboard_copy(text)
+                if self._real_paste_into(sel):
+                    time.sleep(2.5)
+                    n = self.call("(s)=>{const els=[...document.querySelectorAll(s)].filter(e=>e.isContentEditable);"
+                                  "let n=0;for(const e of els)n=Math.max(n,(e.innerText||'').length);return n;}", sel)
+            if int(n or 0) < min(len(text), 20):
                 raise BrowserError("富文本插入不完整（%s/%d 字）" % (n, len(text)))
             return True
         if ce is None:
@@ -611,6 +621,70 @@ class Page:
             "return{ok:true};}", sel, text)
         if not (r or {}).get("ok"):
             raise BrowserError("填入失败：%s" % ((r or {}).get("err") or "目标不是可输入元素"))
+        return True
+
+    def _clipboard_copy(self, text):
+        """把文本放进真实系统剪贴板（execCommand 走 evaluate 自带的
+        userGesture 授权，不依赖窗口焦点；navigator.clipboard.writeText
+        在窗口失焦时恒拒）。"""
+        js = ("(t)=>{const ta=document.createElement('textarea');"
+              "ta.value=t;ta.style.cssText='position:fixed;left:0;top:0;opacity:0';"
+              "document.body.appendChild(ta);ta.focus();ta.select();"
+              "let ok=false;try{ok=document.execCommand('copy');}catch(e){}"
+              "ta.remove();return ok;}")
+        ok = self.call(js, text)
+        if not ok:
+            raise BrowserError("剪贴板写入失败（execCommand copy 被拒）")
+        return True
+
+    def _real_paste_into(self, sel):
+        """真实鼠标点进元素可见区 + Ctrl+A 全选 + Ctrl+V 粘贴。
+
+        键盘事件必须落在真实焦点上：先 elementFromPoint 找一个命中目标的
+        可见坐标真实点击（弹窗遮挡时找不到命中点直接返回 False，让调用方
+        报原错误），再发标准按键序列（Ctrl 按下→键按下/抬起→Ctrl 抬起）。"""
+        pos = self.call(
+            "(s)=>{const els=[...document.querySelectorAll(s)].filter(e=>e.isContentEditable);"
+            "let best=null;for(const e of els){const r=e.getBoundingClientRect();"
+            "if(r.width>0&&r.height>0&&(!best||r.width*r.height>best.w*best.h))"
+            "best={e,r};}"
+            "if(!best)return null;const r=best.r;const vh=innerHeight,vw=innerWidth;"
+            "for(let dy=30;dy<Math.min(r.height,vh-10);dy+=50){"
+            "const y=r.y+dy;if(y<10||y>vh-10)continue;"
+            "for(let dx=40;dx<Math.min(r.width,vw-10);dx+=100){"
+            "const x=r.x+dx;if(x<10||x>vw-10)continue;"
+            "const t=document.elementFromPoint(x,y);"
+            "if(best.e.contains(t)||t===best.e)"
+            "return {x:Math.round(x),y:Math.round(y)};}}"
+            "return null;}", sel)
+        if not pos:
+            return False
+        self.send("Input.dispatchMouseEvent",
+                  {"type": "mouseMoved", "x": pos["x"], "y": pos["y"]},
+                  timeout=8.0)
+        self.send("Input.dispatchMouseEvent",
+                  {"type": "mousePressed", "x": pos["x"], "y": pos["y"],
+                   "button": "left", "clickCount": 1}, timeout=8.0)
+        self.send("Input.dispatchMouseEvent",
+                  {"type": "mouseReleased", "x": pos["x"], "y": pos["y"],
+                   "button": "left", "clickCount": 1}, timeout=8.0)
+        time.sleep(0.6)
+
+        def _key(type_, key, code, vk, ctrl):
+            params = {"type": type_, "key": key, "code": code,
+                      "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk}
+            if ctrl:
+                params["modifiers"] = 2
+            self.send("Input.dispatchKeyEvent", params, timeout=8.0)
+
+        for key, vk in (("a", 65), ("v", 86)):
+            _key("keyDown", "Control", "ControlLeft", 17, False)
+            time.sleep(0.1 if key == "a" else 0.15)
+            _key("keyDown", key, "Key%s" % key.upper(), vk, True)
+            time.sleep(0.1 if key == "a" else 0.15)
+            _key("keyUp", key, "Key%s" % key.upper(), vk, True)
+            _key("keyUp", "Control", "ControlLeft", 17, False)
+            time.sleep(0.8 if key == "a" else 0.2)
         return True
 
     def click(self, sel):

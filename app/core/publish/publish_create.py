@@ -813,6 +813,11 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                 return False, "登录态恢复任务启动失败：%s" % str(exc)[:160]
             if queued:
                 action_lock.release()
+                # 明示而非静默成功（2026-10-26 头七案：started:true 但界面
+                # 毫无动静，用户以为按钮坏了）：状态牌留给认证看门狗翻面
+                _mgr()._set(slot, status="waiting_login",
+                            error="建书登录态核验未过，已排队自动恢复——"
+                                  "平台连上后会自动重放建书：%s" % str(why)[:120])
                 return True, ""
         action_lock.release()
         return False, why
