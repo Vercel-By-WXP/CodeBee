@@ -157,6 +157,56 @@
     loadStats();
   });
 
+  /* ---------- 作品矩阵（真数据：/api/state + /api/writing/counts，与书架同源） ---------- */
+
+  function fmtWords(n) {
+    n = Number(n) || 0;
+    if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, "") + " 万字";
+    return n + " 字";
+  }
+
+  function renderBooks(tasks, counts) {
+    var box = $("books");
+    var rows = (tasks || []).filter(function (t) {
+      var s = (String(t.type || "") + " " + String(t.name || "")).toLowerCase();
+      return /novel|serial|story|fiction|连载|小说|短篇/.test(s);
+    }).slice(0, 10);
+    if (!rows.length) {
+      box.innerHTML = '<div class="soon"><p class="s-title">还没有作品任务</p>' +
+        '<p class="s-body">从创作台开书后，这里显示每本的字数与章数。</p></div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (t) {
+      var c = counts[t.id] || {};
+      var words = c.known ? fmtWords(c.words) : "—";
+      return '<div class="row">' +
+        '<span class="dot is-ok"></span>' +
+        '<span class="r-main">' +
+          '<div class="r-title">' + esc(t.name || t.id) + "</div>" +
+          '<div class="r-sub">' + esc(t.type || "") + (c.chapters ? " · " + c.chapters + " 章" : "") + "</div>" +
+        "</span>" +
+        '<span class="r-when">' + esc(words) + "</span>" +
+        "</div>";
+    }).join("");
+  }
+
+  async function loadBooks() {
+    try {
+      var st = await api("/api/state");
+      var tasks = st.tasks || [];
+      var ids = tasks.map(function (t) { return t.id; }).filter(Boolean).slice(0, 60).join(",");
+      var counts = {};
+      if (ids) {
+        var w = await api("/api/writing/counts?ids=" + encodeURIComponent(ids));
+        counts = w.counts || {};
+      }
+      renderBooks(tasks, counts);
+    } catch (err) {
+      $("books").innerHTML = '<div class="err">作品矩阵读取失败：' + esc(err.message) + "</div>";
+    }
+  }
+
   loadStats();
   loadRuns();
+  loadBooks();
 })();

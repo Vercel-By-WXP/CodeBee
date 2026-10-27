@@ -336,4 +336,41 @@ textarea:focus {
   border-radius: var(--r-sm);
 }
 
+
+/* ---------- v2 质感层扩展（第二轮） ----------
+   滚动条 / 选区 / 键盘焦点 / 常见内容容器圆角。
+   全部是外观层，不动布局与 DOM；仍在 ocean/classic 作用域内。 */
+
+::selection { background: var(--accent-soft); }
+
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 1px;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 常见内容容器：圆角统一到 v2 三档 */
+.report pre { border-radius: var(--r-sm); }
+.chat-bubble,
+.notice-card,
+.hook-card,
+.mcard { border-radius: var(--r-md); }
+
 } /* end ocean/classic component scope */
