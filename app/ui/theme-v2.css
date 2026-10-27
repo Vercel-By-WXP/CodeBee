@@ -1,170 +1,312 @@
 /* ==========================================================================
-   CodeBee Design Tokens · v2 override layer  (2026-10-27)
+   CodeBee · v2 设计令牌「桥接层」  (2026-10-27，ui-redesign-v2)
    --------------------------------------------------------------------------
-   作用：把 CodeBee 主界面（默认皮肤 ocean / 工作台布局 / 浅色）及其暗色模式，
-   校准到 design/demo 的 v2 调色板与 8·12·16 圆角。
+   设计原则（用户要求）：复用 CodeBee 原生样式，而非另起炉灶。
 
-   为什么是独立文件而不是改 style.css / desktop-workbench.css：
-   主界面是分层主题系统——style.css 与 desktop-workbench.css（默认工作台布局，
-   @media min-width:901px）都各自在 html[data-skin=...] 上重定义 --bg/--panel 等，
-   且后者加载更晚、会把前者盖掉。本文件刻意放在所有样式表之后加载，用【相同选择器 +
-   更晚顺序】赢下级联，从而一处生效、统一 classic 与 ocean 两套皮肤；其余可选皮肤
-   （board 的十套、warm 等）不受影响。删除本文件即可整体回退。
+   做法：
+   1) 复用原生变量名（--bg/--panel/--border/--accent/--accent2/--r-* …）与
+      原生组件结构（button.primary / .card / .panel / input …），只改数值与
+      少量组件签名，不动布局与 DOM、不重写原生组件。
+   2) 把 design/demo 的设计语言「桥接」到原生上：
+       · 招牌蓝紫渐变保持原生（#5b8cff → #8b5cf6），这是 CodeBee 身份，不漂移；
+       · 半透明玻璃面板 / 1px 描边分层 / 精致聚焦环 / 卡片悬浮不位移 / 冷调紧阴影
+         取自 design/demo 的提质感手法；
+       · 圆角从原生 10/14/20 收敛为 8/12/16（design/demo 的 r-sm/md/lg）。
+   3) 同时定义 design/demo 用的变量名（--surface/--line/--text-2/--grad/--accent-soft…
+      ）并映射到原生语义，使两套词汇在同一界面里都能解析。
 
-   变量名沿用既有体系（--bg/--panel/--accent/--r-*…），只改数值，不动布局与 DOM。
+   本文件刻意最后加载，用「相同选择器 + 更晚顺序」赢下级联；删除即整体回退。
+   仅覆盖默认主皮肤（ocean / classic）的明&暗；其余皮肤（forest / board×10 / warm）
+   沿用原生，不受影响。
    ========================================================================== */
 
-/* 兜底 + 全局圆角（无 skin/theme 属性时） */
-:root {
+/* ---------- 兜底 + 全局圆角（无 skin / 任意 skin） ---------- */
+:root,
+html[data-skin] {
   --r-lg: 16px;
   --r-md: 12px;
   --r-sm: 8px;
-
-  --bg: #1b1d22;
-  --sidebar: #15171b;
-  --panel: rgba(255, 255, 255, .045);
-  --panel2: rgba(255, 255, 255, .075);
-  --border: rgba(255, 255, 255, .085);
-  --border-strong: rgba(255, 255, 255, .16);
-  --text: #eceef1;
-  --muted: #a8b0bb;
-  --accent: #6b9bff;
-  --accent2: #a07cf6;
-  --ok: #34c98e;
-  --warn: #f5b942;
-  --bad: #f0566a;
-  --chip-queued-bg: rgba(255, 255, 255, .075);
-  --log-bg: #0c0e12;
-  --log-text: #c3c9d6;
-  --shadow: 0 16px 40px -10px rgba(0, 0, 0, .55);
-  --uc-in: #6b9bff;
-  --uc-ca: #34c98e;
-  --uc-out: #a07cf6;
 }
 
-/* 经典·浅色 → v2 paper */
+/* 圆角：任何已设 skin 的明暗，统一收敛 8·12·16（盖过 style.css 各处写死的 10/14/20） */
+html[data-theme="light"][data-skin],
+html[data-theme="dark"][data-skin] {
+  --r-lg: 16px;
+  --r-md: 12px;
+  --r-sm: 8px;
+}
+
+/* ==========================================================================
+   经典 · 日间 → v2 paper（design/demo 的浅色）
+   ========================================================================== */
 html[data-theme="light"][data-skin="classic"] {
   --bg: #f4f7fb;
   --sidebar: #eef3f8;
-  --panel: rgba(255, 255, 255, .92);
+  --panel: rgba(255, 255, 255, 0.92);
   --panel2: #eef3f8;
-  --border: rgba(21, 49, 78, .11);
-  --border-strong: rgba(21, 49, 78, .20);
+  --border: rgba(21, 49, 78, 0.11);
+  --border-strong: rgba(21, 49, 78, 0.20);
   --text: #10253d;
   --muted: #4f637c;
-  --accent: #2b7fd6;
-  --accent2: #8b5cf6;
-  --ok: #139878;
-  --warn: #b07d18;
-  --bad: #d63c55;
   --chip-queued-bg: #e4ecf4;
   --log-bg: #f6f6f7;
   --log-text: #3a4050;
-  --shadow: 0 12px 32px -8px rgba(15, 30, 55, .18);
-  --uc-in: #2b7fd6;
-  --uc-ca: #139878;
-  --uc-out: #8b5cf6;
+  --shadow: 0 12px 32px -8px rgba(15, 30, 55, 0.18), 0 2px 6px rgba(15, 30, 55, 0.05);
+  --mask: rgba(16, 37, 61, 0.34);
+
+  /* design/demo 词汇 → 原生语义映射 */
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-2: #eef3f8;
+  --surface-3: #e4ecf4;
+  --bg-sunken: #eef3f8;
+  --line: rgba(21, 49, 78, 0.11);
+  --line-2: rgba(21, 49, 78, 0.20);
+  --line-3: rgba(21, 49, 78, 0.34);
+  --line-focus: rgba(22, 125, 206, 0.55);
+  --text-2: #4f637c;
+  --text-3: #8499ad;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent2));
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-fg: #ffffff;
+  --btn: #142d49;
+  --btn-hover: #1e3f63;
+  --btn-fg: #ffffff;
+  --sh-1: 0 1px 2px rgba(15, 30, 55, 0.05);
+  --sh-pop: 0 12px 32px -8px rgba(15, 30, 55, 0.18), 0 2px 6px rgba(15, 30, 55, 0.05);
+  --sh-modal: 0 24px 64px -16px rgba(15, 30, 55, 0.30), 0 4px 12px rgba(15, 30, 55, 0.08);
+  --scrim: rgba(16, 37, 61, 0.34);
 }
 
-/* 经典·暗色 → v2 ink */
+/* ==========================================================================
+   经典 · 夜间 → v2 ink（design/demo 的暗色，中性灰而非原生深蓝）
+   ========================================================================== */
 html[data-theme="dark"][data-skin="classic"] {
   --bg: #1b1d22;
   --sidebar: #15171b;
-  --panel: rgba(255, 255, 255, .045);
-  --panel2: rgba(255, 255, 255, .075);
-  --border: rgba(255, 255, 255, .085);
-  --border-strong: rgba(255, 255, 255, .16);
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel2: rgba(255, 255, 255, 0.075);
+  --border: rgba(255, 255, 255, 0.085);
+  --border-strong: rgba(255, 255, 255, 0.16);
   --text: #eceef1;
   --muted: #a8b0bb;
-  --accent: #6b9bff;
-  --accent2: #a07cf6;
-  --ok: #34c98e;
-  --warn: #f5b942;
-  --bad: #f0566a;
-  --chip-queued-bg: rgba(255, 255, 255, .075);
+  --chip-queued-bg: rgba(255, 255, 255, 0.075);
   --log-bg: #0c0e12;
   --log-text: #c3c9d6;
-  --shadow: 0 16px 40px -10px rgba(0, 0, 0, .55);
-  --uc-in: #6b9bff;
-  --uc-ca: #34c98e;
-  --uc-out: #a07cf6;
+  --shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --mask: rgba(6, 8, 11, 0.66);
+
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.075);
+  --surface-3: rgba(255, 255, 255, 0.115);
+  --bg-sunken: #15171b;
+  --line: rgba(255, 255, 255, 0.085);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --line-3: rgba(255, 255, 255, 0.26);
+  --line-focus: rgba(123, 160, 255, 0.62);
+  --text-2: #a8b0bb;
+  --text-3: #767e8a;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent2));
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-fg: #ffffff;
+  --btn: #f3f5f8;
+  --btn-hover: #ffffff;
+  --btn-fg: #15171b;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --sh-pop: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --sh-modal: 0 28px 70px -18px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --scrim: rgba(6, 8, 11, 0.66);
 }
 
-/* ocean·暗色基底 → v2 ink（覆盖 desktop-workbench.css 的 #202022 暗色） */
-html[data-skin="ocean"] {
-  --bg: #1b1d22;
-  --sidebar: #15171b;
-  --panel: rgba(255, 255, 255, .045);
-  --panel2: rgba(255, 255, 255, .075);
-  --border: rgba(255, 255, 255, .085);
-  --border-strong: rgba(255, 255, 255, .16);
-  --text: #eceef1;
-  --muted: #a8b0bb;
-  --accent: #6b9bff;
-  --accent2: #a07cf6;
-  --ok: #34c98e;
-  --warn: #f5b942;
-  --bad: #f0566a;
-  --chip-queued-bg: rgba(255, 255, 255, .075);
-  --log-bg: #0c0e12;
-  --log-text: #c3c9d6;
-  --shadow: 0 16px 40px -10px rgba(0, 0, 0, .55);
-  --uc-in: #6b9bff;
-  --uc-ca: #34c98e;
-  --uc-out: #a07cf6;
-}
-
-/* ocean·浅色（默认视图：ocean + light + 工作台）→ v2 paper */
+/* ==========================================================================
+   ocean · 日间（默认视图：ocean + light + 工作台）→ v2 paper
+   覆盖 desktop-workbench.css 的实白面板，改为半透明玻璃，贴近 design/demo
+   ========================================================================== */
 html[data-theme="light"][data-skin="ocean"] {
   --bg: #f4f7fb;
   --sidebar: #eef3f8;
-  --panel: rgba(255, 255, 255, .92);
+  --panel: rgba(255, 255, 255, 0.92);
   --panel2: #eef3f8;
-  --border: rgba(21, 49, 78, .11);
-  --border-strong: rgba(21, 49, 78, .20);
+  --border: rgba(21, 49, 78, 0.11);
+  --border-strong: rgba(21, 49, 78, 0.20);
   --text: #10253d;
   --muted: #4f637c;
-  --accent: #2b7fd6;
-  --accent2: #8b5cf6;
-  --ok: #139878;
-  --warn: #b07d18;
-  --bad: #d63c55;
   --chip-queued-bg: #e4ecf4;
   --log-bg: #f6f6f7;
   --log-text: #3a4050;
-  --shadow: 0 12px 32px -8px rgba(15, 30, 55, .18);
-  --uc-in: #2b7fd6;
-  --uc-ca: #139878;
-  --uc-out: #8b5cf6;
+  --shadow: 0 12px 32px -8px rgba(15, 30, 55, 0.18), 0 2px 6px rgba(15, 30, 55, 0.05);
+  --mask: rgba(16, 37, 61, 0.34);
+
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-2: #eef3f8;
+  --surface-3: #e4ecf4;
+  --bg-sunken: #eef3f8;
+  --line: rgba(21, 49, 78, 0.11);
+  --line-2: rgba(21, 49, 78, 0.20);
+  --line-3: rgba(21, 49, 78, 0.34);
+  --line-focus: rgba(22, 125, 206, 0.55);
+  --text-2: #4f637c;
+  --text-3: #8499ad;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent2));
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-fg: #ffffff;
+  --btn: #142d49;
+  --btn-hover: #1e3f63;
+  --btn-fg: #ffffff;
+  --sh-1: 0 1px 2px rgba(15, 30, 55, 0.05);
+  --sh-pop: 0 12px 32px -8px rgba(15, 30, 55, 0.18), 0 2px 6px rgba(15, 30, 55, 0.05);
+  --sh-modal: 0 24px 64px -16px rgba(15, 30, 55, 0.30), 0 4px 12px rgba(15, 30, 55, 0.08);
+  --scrim: rgba(16, 37, 61, 0.34);
 }
 
-/* ocean·暗色（显式，盖过 desktop-workbench.css 的同名规则） → v2 ink */
+/* ==========================================================================
+   ocean · 夜间（显式，盖过 desktop-workbench.css 的同名规则）→ v2 ink
+   ========================================================================== */
 html[data-theme="dark"][data-skin="ocean"] {
   --bg: #1b1d22;
   --sidebar: #15171b;
-  --panel: rgba(255, 255, 255, .045);
-  --panel2: rgba(255, 255, 255, .075);
-  --border: rgba(255, 255, 255, .085);
-  --border-strong: rgba(255, 255, 255, .16);
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel2: rgba(255, 255, 255, 0.075);
+  --border: rgba(255, 255, 255, 0.085);
+  --border-strong: rgba(255, 255, 255, 0.16);
   --text: #eceef1;
   --muted: #a8b0bb;
-  --accent: #6b9bff;
-  --accent2: #a07cf6;
-  --ok: #34c98e;
-  --warn: #f5b942;
-  --bad: #f0566a;
-  --chip-queued-bg: rgba(255, 255, 255, .075);
+  --chip-queued-bg: rgba(255, 255, 255, 0.075);
   --log-bg: #0c0e12;
   --log-text: #c3c9d6;
-  --shadow: 0 16px 40px -10px rgba(0, 0, 0, .55);
-  --uc-in: #6b9bff;
-  --uc-ca: #34c98e;
-  --uc-out: #a07cf6;
+  --shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --mask: rgba(6, 8, 11, 0.66);
+
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.075);
+  --surface-3: rgba(255, 255, 255, 0.115);
+  --bg-sunken: #15171b;
+  --line: rgba(255, 255, 255, 0.085);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --line-3: rgba(255, 255, 255, 0.26);
+  --line-focus: rgba(123, 160, 255, 0.62);
+  --text-2: #a8b0bb;
+  --text-3: #767e8a;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent2));
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-fg: #ffffff;
+  --btn: #f3f5f8;
+  --btn-hover: #ffffff;
+  --btn-fg: #15171b;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --sh-pop: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --sh-modal: 0 28px 70px -18px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --scrim: rgba(6, 8, 11, 0.66);
 }
 
-/* 圆角：任何已设 skin 的明暗，统一收敛为 8·12·16（盖过 style.css 4207 行的 10·14·20） */
-html[data-theme="light"][data-skin], html[data-theme="dark"][data-skin] {
-  --r-lg: 16px;
-  --r-md: 12px;
-  --r-sm: 8px;
+/* ==========================================================================
+   组件签名：在原生组件结构上叠加 design/demo 的提质感手法
+   （原生 CodeBee 组件保持不动，只调外观；招牌蓝紫渐变沿用原生）
+   ========================================================================== */
+
+/* 组件签名仅作用于默认主皮肤（ocean / classic），不波及 forest / board×10 / warm 等 */
+html[data-skin="ocean"],
+html[data-skin="classic"] {
+
+/* 卡片：收敛圆角、悬浮只换描边不位移、阴影收紧（盖过 style.css 4310 的 translateY） */
+.card {
+  border-radius: var(--r-md);
+  transition: border-color 0.18s var(--ease, ease), box-shadow 0.18s var(--ease, ease);
 }
+.card:hover {
+  transform: none;
+  box-shadow: var(--sh-1);
+  border-color: var(--border-strong);
+}
+
+/* 面板：收敛圆角、阴影改为冷调紧阴影（保留原生毛玻璃 blur） */
+.panel {
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-pop);
+}
+
+/* 主 CTA：沿用原生蓝紫渐变，收敛圆角、加精致内描边光 */
+button.primary {
+  border-radius: var(--r-sm);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(20, 45, 73, 0.18);
+}
+button.ghost,
+button.danger {
+  border-radius: var(--r-sm);
+}
+button.small {
+  border-radius: var(--r-sm);
+}
+
+/* 输入框：聚焦时精致聚焦环（design/demo 手法） */
+input,
+select,
+textarea {
+  border-radius: var(--r-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 分段器 / 胶囊：收敛圆角 */
+.seg,
+.segmented {
+  border-radius: var(--r-sm);
+}
+.seg-btn,
+.segmented button {
+  border-radius: var(--r-1, 6px);
+}
+
+/* 顶栏胶囊 / 图标按钮：收敛圆角，悬停位移去掉更稳重 */
+.pill,
+.icon-btn {
+  border-radius: var(--r-sm);
+}
+.pill:hover,
+.icon-btn:hover {
+  transform: none;
+}
+
+/* 行内操作按钮：圆角统一 */
+.card .ops button,
+.ops button,
+.item button {
+  border-radius: var(--r-sm);
+}
+
+/* 列表项 / 设置项：当前项用原生 accent 软填充（design/demo 的 is-on 手法） */
+.qitem.active,
+.set-item.active {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+}
+
+/* 标签 / 状态芯片：沿用原生 color-mix 软填充，收敛圆角 */
+.tag,
+.chip,
+.badge {
+  border-radius: var(--r-1, 6px);
+}
+
+/* 浮层 / 模态：冷调紧阴影 */
+.pop {
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-pop);
+}
+.modal {
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-modal);
+}
+.scrim {
+  background: var(--scrim);
+}
+} /* end ocean/classic component scope */
