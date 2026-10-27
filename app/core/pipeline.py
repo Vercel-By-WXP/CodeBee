@@ -20,8 +20,9 @@ import re
 import threading
 import time
 import weakref
+from types import SimpleNamespace
 
-from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, review_roster, router, runner, skills, store, task_compile, task_graph, usage, volumes, local_fallback
+from . import aiflavor, agent_context, attachments, branching, capability_runtime, catalog, chaptersafe, checkpoints, defectretro, dispatch_log, dispatch_prompt, experts, flows, history, hooks, intent_contract, intervention, jobs, knowledge, manager, modelhub, mocks, novel_quality, paihang, planner, quality_gate, registry, review_config, review_roster, review_tiers, router, runner, skills, store, task_compile, task_graph, usage, volumes, local_fallback
 from . import builtin_agent
 from . import diagnostics
 from . import paths as paths_mod
@@ -624,15 +625,20 @@ def _assemble_review_seats(critics, agents, impl, workflow=None, route=None,
     只有一条 CLI 时由 ``review_roster`` 派生独立复核席，否则「排除作者后没有
     候选」会让每个任务都固定判成未评估，稿件永不可发布。
 
-    ``needed`` 缺省取工作流要求的评审人数（快速 1、专家/连载 2），下限 1：
+    ``needed`` 缺省取工作流要求的评审人数（档位 1~3 席），下限 1：
     连一席都没有的组不该被判成「评审缺席」，那只是没装配。
+
+    **不再用 `MIN_REVIEWERS` 截上限**：三席档要真装配三席。`MIN_REVIEWERS`
+    是「几席才算有效（门禁底线）」，不是「最多几席」——两者混用会让
+    `review_tiers` 声明三席的流程永远只装配两席（这也是 `agents.seats: 3`
+    一直是死字段的原因之一）。
     """
     if needed is None:
         try:
             requested = int((workflow or {}).get("reviewers") or 1)
         except (TypeError, ValueError):
             requested = 1
-        needed = max(1, min(quality_gate.MIN_REVIEWERS, requested))
+        needed = max(1, requested)
     seats, note, independence = review_roster.ensure_review_seats(
         critics, agents, impl, needed)
     if note and isinstance(route, dict):
@@ -647,6 +653,34 @@ def _assemble_review_seats(critics, agents, impl, workflow=None, route=None,
         except Exception:
             pass
     return seats, independence
+
+
+def _mark_reader_seat(seats):
+    """给第 3 席打「读者席」标记，前两席原样返回。
+
+    为什么用标记而不是索引：评审组会在起草换将、大纲重排后重新装配
+    （`_content_reseat_reviewers` 每处都要走），索引不一定稳；标记跟着 agent 走，
+    任何调用点都能问一句「这一席是不是读者席」。
+
+    为什么必须拷贝：`agents` 里的 agent dict 是 router 池的共享对象，原地加键
+    会让「读者席」标记漏到下一个任务的评审组里（同进程多 run 并行时会串味）。
+    """
+    out = []
+    for idx, agent in enumerate(seats or []):
+        if idx >= 2 and isinstance(agent, dict) and not agent.get("_reader_seat"):
+            agent = dict(agent, _reader_seat=True)
+        out.append(agent)
+    return out
+
+
+def _seat_brief(agent):
+    """该席的额外指令（只有第三席非空）；任何异常都退回空串，不影响评审。"""
+    try:
+        if isinstance(agent, dict) and agent.get("_reader_seat"):
+            return review_tiers.seat_brief(2)
+    except Exception:
+        pass
+    return ""
 
 
 def _valid_resume(task, agents):
@@ -2729,6 +2763,13 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
     from . import routing_strategy
     from .error_codes import is_account_dead_error
 
+    # 三席档的第三席额外背「读者视角」的一段窄指令（前两席返回空串）。
+    # 挂在这里而不是每个调用点：这 4 处都是评审的唯一入口，漏一处就会出现
+    # 「同一个三席组里第三席不知道自己该干什么」。
+    _brief = _seat_brief(agent)
+    if _brief:
+        prompt = prompt + "\n\n" + _brief
+
     # 外部模型全部不可用（欠费/额度上限/无 CLI）：每席再试三次只是把同一堵墙
     # 撞九遍，然后才走到本地兜底。直接短路——本地确定性评审不花一分钱，
     # 也不等超时。2026-10-23 实案：三条通道全死时一个评审步要磨 50 分钟。
@@ -3543,7 +3584,29 @@ def _sweep_chapter_registrations(run_id, workdir, nominal, phase):
 
 
 def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route, resume_ctx, difficulty):
-    """连载流水线：大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书。"""
+    """连载流水线：大纲 → 逐章起草/评审/修订 → 全局一致性评审 → 合并成书。
+
+    P2-1 拆分：原 2366 行单函数按阶段切成三段，阶段间状态用
+    `_serial_prepare` 返回的命名空间显式传递（不再靠 20+ 层闭包穿透）：
+      _serial_prepare  —— 评审席/连载参数/故事追踪/圣经/大纲/分卷
+      _serial_chapters —— 逐章起草 → 多轮评审 → 定级修订
+      _serial_finalize —— 全局评审 → 自驱打磨 → 合并成书 → 报告与结论
+    """
+    st = _serial_prepare(run, task, agents, ev, stats, mode, critics, impl,
+                         route, resume_ctx, difficulty)
+    if st is None:          # 故事追踪不可用/漂移：已把 run 置 failed，不再写稿
+        return
+    _serial_chapters(st)
+    _serial_finalize(st)
+
+
+def _serial_prepare(run, task, agents, ev, stats, mode, critics, impl, route,
+                    resume_ctx, difficulty):
+    """连载第一阶段：评审席装配、连载参数、故事追踪校验、故事圣经、大纲与分卷。
+
+    失败（故事追踪不可用 / 状态漂移）时把 run 置 failed 并返回 None。
+    返回的命名空间同时承载后面两段要读的全部状态（含本段定义的闭包）。
+    """
     import json as _json
     run_id = run["id"]
     actual_implementers = [impl]
@@ -3846,6 +3909,24 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
             added.append(item)
         return added
 
+    def means_of(cj_map):
+        vals = {}
+        for d in dims:
+            xs = []
+            for cj in cj_map.values():
+                scores, errors = quality_gate.normalize_scores(cj.get("scores"), dims)
+                if not errors and d in scores:
+                    xs.append(scores[d])
+            if xs:
+                vals[d] = round(sum(xs) / len(xs), 1)
+        return vals
+
+    def review_stats(cj_map, threshold_value):
+        reviews = [{"id": aid, "scores": cj.get("scores")}
+                   for aid, cj in cj_map.items()]
+        return quality_gate.aggregate_reviews(
+            reviews, dims, threshold=threshold_value)
+
     # ---- 独立签约评估设施（开篇闸门 + 2万字检查点共用）----
     def _signing_eval(upto_chapter, note, issue_scope="signing-checkpoint"):
         """按内部五维对截至 upto_chapter 的稿件做文本评估。
@@ -3982,1327 +4063,1480 @@ def _run_serial_review(run, task, agents, ev, stats, mode, critics, impl, route,
     # Re-reading the entire prefix for every chapter makes long continuations O(n²).
     prefix_words = _prefix_word_count(workdir, start - 1, inh_scores)
 
-    # ---- 2) 逐章
-    for k in range(1, n + 1):
-        i = start + k - 1        # 全书章号：文件名/步骤角色/评分记录都按全书编号
-        ch = outline["chapters"][k - 1]
-        ch_file = "chapter-%02d.md" % i
-        # 分卷上下文：评审时也带着「这是第几卷第几章、是不是卷末」——
-        # 卷末章要按卷弧度收束，不符的章节不该靠全书评分才发现。
-        _vpos, _vtotal = volumes.position(vol_plan, i) if vol_plan else (0, 0)
-        vol_review_block = ""
-        if vol_plan and _vpos:
-            _vent = volumes.find(vol_plan, i)
-            _vt = ("《%s》" % _vent["title"]) if (_vent and _vent.get("title")) else ""
-            vol_review_block = (
-                "本卷上下文：第 %d 卷%s，本章是卷内第 %d%s 章。%s\n"
-                % (_vent["vol"], _vt, _vpos,
-                   ("/%d" % _vtotal) if _vtotal else "",
-                   "**卷末章**：须核对本卷主线是否收束、高潮是否到位、卷末钩子是否立住。"
-                   if (_vtotal and _vpos == _vtotal)
-                   else "核对本章是否服务于本卷主线弧光。"))
-        # 逐项目标审稿（借鉴 AI-Novel-Writer）：本章大纲要点随评审下发，评审
-        # 以 <event_check> 回逐项判定；资源账本（借鉴角色资源账本）以 <ledger>
-        # 回本章道具/伤情/承诺/伏笔增量；连续性账本以 <continuity> 回人物/设定/事件
-        # 状态，评审达标后追加供下章注入。
-        def build_event_block(ch_ent):
-            return (
-                "## 本章大纲核对（逐项目标审稿）\n"
-                "本章按大纲应完成：\n- 剧情要点：%s\n- 章末钩子：%s\n- 爽点/情绪爆点：%s\n"
-                "评审时逐项判定「已完成 / 未完成 / 待核实」，判定必须引用正文证据"
-                "（原文短句或位置），写在回复末尾的 <event_check> 块内（每项一行）。"
-                "「铺垫了但没发生」不算已完成；爆点一句带过（未按特写写厚）不算已完成；"
-                "未完成的项必须反映到对应维度评分。\n"
-                "另在 <event_check> 块之后输出 <ledger> 块（没有新变化就整个省略）："
-                "逐行列出本章新出现或状态变化的 道具/伤情/承诺/伏笔，格式："
-                "类型|名称|现状（一句话）。\n"
-                "再输出 <continuity> 块（没有可核对的人物/设定/事件就省略）："
-                "每行严格使用‘实体|属性|本章状态|变化原因原文|正文连续证据’；"
-                "变化原因原文必须是正文中能解释状态变化的具体事件/行动原句，不能写‘随后/剧情需要/突然’等空泛词；"
-                "没有因果桥时写‘未说明’，状态未变时写‘保持’；"
-                "状态改变必须写触发事件、人物选择和代价，不能只写‘剧情需要’。\n%s\n"
-                % (ch_ent.get("beats") or "按大纲推进", ch_ent.get("hook") or "留下悬念",
-                   ch_ent.get("highlight") or "（大纲未指定，按剧情要点核对是否有一处小冲突/小反转写厚）",
-                   vol_review_block))
+    # 阶段间状态：直接快照本段全部局部名——手抄 40+ 字段必漏项，
+    # 且闭包（crit_prompt_for/_signing_eval/...）原样带走，语义不变。
+    return SimpleNamespace(**locals())
 
-        event_block = build_event_block(ch)
-        ev_check_lines = [[]]     # 每章重置：第一份非空评审的逐项判定
-        ledger_lines = []         # 本章全部评审的账本增量并集
-        # A resumed/rebuilt chapter must not compare against its own stale
-        # persisted assertions (or against later chapters from an older run).
-        prior_texts = _quality_chapter_texts(workdir, start, i)
-        prior_continuity_rows = _validated_continuity_rows(
-            _prior_continuity_rows(workdir, i), prior_texts, through=i - 1)
-        continuity_rows = []      # 本章所有评审回填的连续性状态，终轮后写入账本
-        ledger_txt = _read_ledger(workdir)   # 截至上一章的资源账本（起草注入）
-        continuity_txt = _read_continuity_ledger(workdir, before_chapter=i)
-        # 陈年承诺督促（continuum 借鉴）：账本里 ≥3 章未推进且未了结的承诺/
-        # 伏笔点名给起草面——「本章推进/回收其一，或明确有意留白」；老账本
-        # 无承诺类条目时静默不占字节
+
+def _serial_event_block(ch_ent, vol_review_block):
+    """本章大纲核对块（逐项目标审稿）+ 账本/连续性回收指令。
+
+    vol_review_block 由调用方按分卷位置拼好（卷末章要核对卷弧收束）。
+    """
+    return (
+        "## 本章大纲核对（逐项目标审稿）\n"
+        "本章按大纲应完成：\n- 剧情要点：%s\n- 章末钩子：%s\n- 爽点/情绪爆点：%s\n"
+        "评审时逐项判定「已完成 / 未完成 / 待核实」，判定必须引用正文证据"
+        "（原文短句或位置），写在回复末尾的 <event_check> 块内（每项一行）。"
+        "「铺垫了但没发生」不算已完成；爆点一句带过（未按特写写厚）不算已完成；"
+        "未完成的项必须反映到对应维度评分。\n"
+        "另在 <event_check> 块之后输出 <ledger> 块（没有新变化就整个省略）："
+        "逐行列出本章新出现或状态变化的 道具/伤情/承诺/伏笔，格式："
+        "类型|名称|现状（一句话）。\n"
+        "再输出 <continuity> 块（没有可核对的人物/设定/事件就省略）："
+        "每行严格使用‘实体|属性|本章状态|变化原因原文|正文连续证据’；"
+        "变化原因原文必须是正文中能解释状态变化的具体事件/行动原句，不能写‘随后/剧情需要/突然’等空泛词；"
+        "没有因果桥时写‘未说明’，状态未变时写‘保持’；"
+        "状态改变必须写触发事件、人物选择和代价，不能只写‘剧情需要’。\n%s\n"
+        % (ch_ent.get("beats") or "按大纲推进", ch_ent.get("hook") or "留下悬念",
+           ch_ent.get("highlight") or "（大纲未指定，按剧情要点核对是否有一处小冲突/小反转写厚）",
+           vol_review_block))
+
+
+def _serial_chapters(st):
+    """连载第二阶段：逐章起草 → 多轮评审 → 定级修订（全书章号连续）。
+
+    章节级累积量（chapter_scores / issues_all / signing_review_meta /
+    review_degradation_reasons / deterministic_issue_keys）都是就地追加的容器，
+    与 prepare 里定义的闭包共享同一对象，因此不需要回写；只有 prefix_words
+    是整数累计量，由 _serial_one_chapter 返回后重新赋值。
+    """
+    for k in range(1, st.n + 1):
+        st.prefix_words = _serial_one_chapter(st, k)
+
+
+def _serial_one_chapter(st, k):
+    """单章一段流水：上下文 → 起草/赛马 → 多轮评审 → 2 万字检查点。
+
+    返回本章结算后的累计字数（唯一需要回写的整数状态）。
+    """
+    (start, outline, inh_scores, dims, threshold_ch) = (
+        st.start, st.outline, st.inh_scores, st.dims, st.threshold_ch)
+    i = start + k - 1        # 全书章号：文件名/步骤角色/评分记录都按全书编号
+    ch = outline["chapters"][k - 1]
+    ch_file = "chapter-%02d.md" % i
+    cx = _serial_chapter_context(st, i, ch)
+    run_critique, ev_check_lines, ledger_lines = _serial_critique_factory(st, i)
+    dr = _serial_draft_chapter(st, i, ch, ch_file, cx, run_critique)
+    # 正文可复用且旧分数有效：直接记账，跳过本章评审与检查点。
+    if dr.reuse and _reusable_chapter_review(
+            inh_scores.get(i), dims, threshold_ch):
+        return _serial_reused_chapter(st, i)
+    rv = _serial_review_chapter(st, i, ch, ch_file, cx, dr, run_critique,
+                                ev_check_lines, ledger_lines)
+    return _serial_signing_checkpoint(st, i, rv.ch, rv.prefix_words)
+
+
+def _serial_chapter_context(st, i, ch):
+    """本章开写前要注入的一切：分卷提示 / 大纲核对块 / 前情 / 账本快照。
+
+    全部只读推导，不改任何累计容器。
+    """
+    (start, tracking_state, vol_plan, workdir) = (
+        st.start, st.tracking_state, st.vol_plan, st.workdir)
+    # 分卷上下文：评审时也带着「这是第几卷第几章、是不是卷末」——
+    # 卷末章要按卷弧度收束，不符的章节不该靠全书评分才发现。
+    _vpos, _vtotal = volumes.position(vol_plan, i) if vol_plan else (0, 0)
+    vol_review_block = ""
+    if vol_plan and _vpos:
+        _vent = volumes.find(vol_plan, i)
+        _vt = ("《%s》" % _vent["title"]) if (_vent and _vent.get("title")) else ""
+        vol_review_block = (
+            "本卷上下文：第 %d 卷%s，本章是卷内第 %d%s 章。%s\n"
+            % (_vent["vol"], _vt, _vpos,
+               ("/%d" % _vtotal) if _vtotal else "",
+               "**卷末章**：须核对本卷主线是否收束、高潮是否到位、卷末钩子是否立住。"
+               if (_vtotal and _vpos == _vtotal)
+               else "核对本章是否服务于本卷主线弧光。"))
+    # 逐项目标审稿（借鉴 AI-Novel-Writer）：本章大纲要点随评审下发，评审
+    # 以 <event_check> 回逐项判定；资源账本（借鉴角色资源账本）以 <ledger>
+    # 回本章道具/伤情/承诺/伏笔增量；连续性账本以 <continuity> 回人物/设定/事件
+    # 状态，评审达标后追加供下章注入。
+    event_block = _serial_event_block(ch, vol_review_block)
+    # A resumed/rebuilt chapter must not compare against its own stale
+    # persisted assertions (or against later chapters from an older run).
+    prior_texts = _quality_chapter_texts(workdir, start, i)
+    prior_continuity_rows = _validated_continuity_rows(
+        _prior_continuity_rows(workdir, i), prior_texts, through=i - 1)
+    continuity_rows = []      # 本章所有评审回填的连续性状态，终轮后写入账本
+    ledger_txt = _read_ledger(workdir)   # 截至上一章的资源账本（起草注入）
+    continuity_txt = _read_continuity_ledger(workdir, before_chapter=i)
+    # 陈年承诺督促（continuum 借鉴）：账本里 ≥3 章未推进且未了结的承诺/
+    # 伏笔点名给起草面——「本章推进/回收其一，或明确有意留白」；老账本
+    # 无承诺类条目时静默不占字节
+    try:
+        _wl = _ledger_watchlist(_read_ledger_raw(workdir), i)
+        if _wl:
+            ledger_txt += ("\n\n### ⚠ 陈年承诺/伏笔（多章未推进）\n"
+                           + "\n".join("- %s「%s」：%s（已 %d 章未更新——本章应推进、"
+                                       "回收其一，或在大纲允许处明确留白）"
+                                       % (w["type"], w["name"], w["status"], w["age"])
+                                       for w in _wl))
+    except Exception:
+        pass
+    prev = ""
+    draft_sid = ""  # §07 T1.1：本轮 draft/复用章的会话 id（revise 复用；reuse 时为空）
+    if i > 1:
+        tails = []
+        for j in range(max(1, i - 2), i):
+            t = _read_chapter(workdir, j)
+            if t:
+                tails.append("（第 %d 章结尾）…%s" % (j, t[-260:].strip()))
+        prev = "\n".join(tails) or "（无）"
+        # findings 中期记忆（借鉴 agentmemory 持久记忆）：此前各章的关键事实
+        # 追加在 .codebee/findings.md，注入时只取前一章之前的记录（当章发现
+        # 会在当章评审后追加进来）。300+ 章长篇的前情只看近 2 章不够，
+        # findings 填补中期记忆空洞。失败静默。
         try:
-            _wl = _ledger_watchlist(_read_ledger_raw(workdir), i)
-            if _wl:
-                ledger_txt += ("\n\n### ⚠ 陈年承诺/伏笔（多章未推进）\n"
-                               + "\n".join("- %s「%s」：%s（已 %d 章未更新——本章应推进、"
-                                           "回收其一，或在大纲允许处明确留白）"
-                                           % (w["type"], w["name"], w["status"], w["age"])
-                                           for w in _wl))
+            fd_p = os.path.join(workdir, ".codebee", "findings.md")
+            if os.path.isfile(fd_p):
+                fd_txt = _read_text_any_enc(fd_p)
+                if fd_txt:
+                    # 截到 3000 字防无限膨胀；只在尾部追加时自动增长，注入头固定
+                    prev += "\n\n## 此前章节发现摘要\n" + fd_txt[:3000]
         except Exception:
             pass
-        prev = ""
-        draft_sid = ""  # §07 T1.1：本轮 draft/复用章的会话 id（revise 复用；reuse 时为空）
-        if i > 1:
-            tails = []
-            for j in range(max(1, i - 2), i):
-                t = _read_chapter(workdir, j)
-                if t:
-                    tails.append("（第 %d 章结尾）…%s" % (j, t[-260:].strip()))
-            prev = "\n".join(tails) or "（无）"
-            # findings 中期记忆（借鉴 agentmemory 持久记忆）：此前各章的关键事实
-            # 追加在 .codebee/findings.md，注入时只取前一章之前的记录（当章发现
-            # 会在当章评审后追加进来）。300+ 章长篇的前情只看近 2 章不够，
-            # findings 填补中期记忆空洞。失败静默。
-            try:
-                fd_p = os.path.join(workdir, ".codebee", "findings.md")
-                if os.path.isfile(fd_p):
-                    fd_txt = _read_text_any_enc(fd_p)
-                    if fd_txt:
-                        # 截到 3000 字防无限膨胀；只在尾部追加时自动增长，注入头固定
-                        prev += "\n\n## 此前章节发现摘要\n" + fd_txt[:3000]
-            except Exception:
-                pass
-            # 相关历史章节推荐（story_tracking 逐章 facts/characters/foreshadowing
-            # 与本章大纲要点的纯本地重叠计分）：近 2 章窗口外的伏笔回收/人物回场
-            # 给显式指针，经 prev 注入路径自然随降级块走（不新增预算口子）；
-            # 零匹配零输出（老书零噪音），失败静默。
-            try:
-                rel = _related_chapters_note(tracking_state, ch, current=i)
-                if rel:
-                    prev += "\n\n" + rel
-            except Exception:
-                pass
+        # 相关历史章节推荐（story_tracking 逐章 facts/characters/foreshadowing
+        # 与本章大纲要点的纯本地重叠计分）：近 2 章窗口外的伏笔回收/人物回场
+        # 给显式指针，经 prev 注入路径自然随降级块走（不新增预算口子）；
+        # 零匹配零输出（老书零噪音），失败静默。
+        try:
+            rel = _related_chapters_note(tracking_state, ch, current=i)
+            if rel:
+                prev += "\n\n" + rel
+        except Exception:
+            pass
+    return SimpleNamespace(
+        vol_review_block=vol_review_block, event_block=event_block,
+        prior_continuity_rows=prior_continuity_rows,
+        continuity_rows=continuity_rows, ledger_txt=ledger_txt,
+        continuity_txt=continuity_txt, prev=prev, draft_sid=draft_sid)
 
-        # 评审-修订（每章至多 1 轮修订）
-        rounds_used = 1
-        means = {}
 
-        # 逐项目标审稿 + 资源账本的每章聚合桶（run_critique 内解析填充；
-        # event_check 取第一份非空，ledger 全评审增量求并）
-        ev_check_lines = [[]]
-        ledger_lines = []
+def _serial_critique_factory(st, i):
+    """构造本章的多评审执行器（闭包）。
 
-        def run_critique(text, rnd, note_extra="", critic_sids=None, event_check=""):
-            """一轮多维评审：返回 (cj_by_agent, scored, sids, continuity_rows)。
-            变体赛马与主循环共用；连续性断言随稿件返回，避免不同变体串账。
-            event_check：本章大纲核对块（逐项目标审稿），随评审下发并回收标记块。
+    逐项目标审稿与资源账本的每章聚合桶由执行器就地填充：ev_check_lines 取
+    第一份非空判定，ledger_lines 求全部评审的增量并集。返回
+    (run_critique, ev_check_lines, ledger_lines)——后两者是同一对象引用，
+    调用方据此读本章的核对结果。
+    """
+    (_bench_noted, actual_critics, agents, crit_prompt_for, critics) = (
+        st._bench_noted, st.actual_critics, st.agents, st.crit_prompt_for,
+        st.critics)
+    (difficulty, dims, ev, impl, issues_all) = (
+        st.difficulty, st.dims, st.ev, st.impl, st.issues_all)
+    (mode, refresh_actual_route, remember_agent, review_degradation_reasons) = (
+        st.mode, st.refresh_actual_route, st.remember_agent,
+        st.review_degradation_reasons)
+    (run_id, stats, task, threshold_ch, workdir) = (
+        st.run_id, st.stats, st.task, st.threshold_ch, st.workdir)
+    ev_check_lines = [[]]     # 每章重置：第一份非空评审的逐项判定
+    ledger_lines = []         # 本章全部评审的账本增量并集
 
-            多评审并发跑（2026-09-22）：评审占运行总时长的六成以上，而各评审之间
-            互不依赖（同一份稿件、各自视角），串行等待纯属浪费——每位评审的墙上
-            时间直接叠加。与「同章多稿赛马」「best-of 候选」同一套线程范式（那两处
-            早已多线程调用 _run_step）。共享结构的写入全部收敛到 join 之后按
-            critics 原顺序合并，保证与串行版逐字节同结果（ev_check 取第一份非空、
-            issues/ledger 的先后顺序都不变），只在耗时上取并行收益。"""
-            cj_map, sids, reviewed_continuity = {}, dict(critic_sids or {}), []
-            scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
-            role = "critique-c%d" % i
-            results = {}
-            # 本场停用降级：撞过账号级死错（欠费/凭据缺失/权限封禁）的评审
-            # 不再逐章送死（2026-10-15 qwen 欠费案：同一死链连撞 31 次白烧
-            # 4 小时）——直接绕开，名单里还有谁就用谁，全停才收场。
-            from . import bench as _bench
-            live = [a for a in critics
-                    if not _bench.is_benched(run_id, a.get("id"))]
-            for _ba in critics:
-                if _bench.is_benched(run_id, _ba.get("id")) \
-                        and _ba.get("id") not in _bench_noted:
-                    _bench_noted.add(_ba.get("id"))
-                    try:
-                        store.add_message(run_id, (
-                            "评审降级：%s 已本场停用（%s），后续章节自动跳过，"
-                            "由其余评审继续把关" % (
-                                _ba.get("label") or _ba.get("id"),
-                                _bench.reason(run_id, _ba.get("id"))
-                                or "账号级错误")))
-                    except Exception:
-                        pass
-            # 绑定解析提前到主线程：bind_agent 会把链首同步进 CLI 自家配置（写盘），
-            # 多线程同时调它有写盘竞争。解析结果随线程参数传入，线程内只做调用。
-            bound = [modelhub.bind_agent(a, difficulty) for a in live]
+    def run_critique(text, rnd, note_extra="", critic_sids=None, event_check=""):
+        """一轮多维评审：返回 (cj_by_agent, scored, sids, continuity_rows)。
+        变体赛马与主循环共用；连续性断言随稿件返回，避免不同变体串账。
+        event_check：本章大纲核对块（逐项目标审稿），随评审下发并回收标记块。
 
-            def _critique_one(idx, agent):
-                """单评审执行体（线程内只做调用与解析，不改共享结构）。
-
-                异常不吞：记进 results 由主线程按原顺序重抛——串行版的
-                Cancelled/管道异常语义（上抛打断本 run）必须原样保留。"""
+        多评审并发跑（2026-09-22）：评审占运行总时长的六成以上，而各评审之间
+        互不依赖（同一份稿件、各自视角），串行等待纯属浪费——每位评审的墙上
+        时间直接叠加。与「同章多稿赛马」「best-of 候选」同一套线程范式（那两处
+        早已多线程调用 _run_step）。共享结构的写入全部收敛到 join 之后按
+        critics 原顺序合并，保证与串行版逐字节同结果（ev_check 取第一份非空、
+        issues/ledger 的先后顺序都不变），只在耗时上取并行收益。"""
+        cj_map, sids, reviewed_continuity = {}, dict(critic_sids or {}), []
+        scored = 0   # 真正给出分数的评审数；失败/不可解析不得当成 0 分计入
+        role = "critique-c%d" % i
+        results = {}
+        # 本场停用降级：撞过账号级死错（欠费/凭据缺失/权限封禁）的评审
+        # 不再逐章送死（2026-10-15 qwen 欠费案：同一死链连撞 31 次白烧
+        # 4 小时）——直接绕开，名单里还有谁就用谁，全停才收场。
+        from . import bench as _bench
+        live = [a for a in critics
+                if not _bench.is_benched(run_id, a.get("id"))]
+        for _ba in critics:
+            if _bench.is_benched(run_id, _ba.get("id")) \
+                    and _ba.get("id") not in _bench_noted:
+                _bench_noted.add(_ba.get("id"))
                 try:
-                    _critique_one_inner(idx, agent)
-                except BaseException as exc:      # 含 Cancelled
-                    results[idx] = {"error": exc}
+                    store.add_message(run_id, (
+                        "评审降级：%s 已本场停用（%s），后续章节自动跳过，"
+                        "由其余评审继续把关" % (
+                            _ba.get("label") or _ba.get("id"),
+                            _bench.reason(run_id, _ba.get("id"))
+                            or "账号级错误")))
+                except Exception:
+                    pass
+        # 绑定解析提前到主线程：bind_agent 会把链首同步进 CLI 自家配置（写盘），
+        # 多线程同时调它有写盘竞争。解析结果随线程参数传入，线程内只做调用。
+        bound = [modelhub.bind_agent(a, difficulty) for a in live]
 
-            def _critique_one_inner(idx, agent):
-                if agent.get("mode") == "mock":
-                    step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
-                    time.sleep(0.15)
-                    cj = mocks.critique(agent["id"], rnd, dims, threshold_ch)
-                    store.finish_step(run_id, step["n"], "done",
-                                      summary="均分 %.1f：%s" % (
-                                          sum(cj["scores"].values()) / max(1, len(dims)),
-                                          cj["summary"]),
-                                      duration_s=0.15)
-                    results[idx] = {"agent": agent, "cj": cj, "evl": [],
-                                    "ledger": [], "continuity": [], "sid": None}
-                    return
-                lens = _critic_lens(critics, agent)
-                # 同源两席（原席 + 复核席）必须串行：一条 CLI 的两个并发会话会
-                # 抢同一份 CLI 自家配置与运行状态。不同 CLI 各持一把锁，交叉评审
-                # 的并发收益不变。
-                with review_roster.execution_lock(agent):
-                    cj, res, actual, swap_note = _critique_step_with_cli_fallback(
-                        run_id, role, agent,
-                        crit_prompt_for(
-                            text,
-                            note=("小说第 %d 章" % i) + (
-                                "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
-                                "请深挖你的镜头，但所有维度仍需打分）" % lens)
-                            if lens else "",
-                            event_check=event_check, chapter=i) + note_extra
-                        + review_roster.prompt_suffix(agent),
-                        workdir, ev, agents, impl, difficulty,
-                        task.get("type") or "serial_novel", stats, mode,
-                        False, dims=dims,
-                        peers=[a for a in critics
-                               if a.get("id") != agent.get("id")],
-                        ms_name="chapter-%02d.md" % i)
-                if not isinstance(cj, dict):
-                    cj = _critique_json(res, dims)
-                results[idx] = {
-                    "agent": actual or agent, "cj": cj,
-                    "swap_note": swap_note,
-                    # 逐项目标审稿 + 资源账本：标记块先各存各的，join 后按序合并
-                    "evl": _parse_tagged_lines(res.get("text"), "event_check"),
-                    "ledger": _parse_tagged_lines(res.get("text"), "ledger"),
-                    "continuity": novel_quality.validate_continuity_rows(
+        def _critique_one(idx, agent):
+            """单评审执行体（线程内只做调用与解析，不改共享结构）。
+
+            异常不吞：记进 results 由主线程按原顺序重抛——串行版的
+            Cancelled/管道异常语义（上抛打断本 run）必须原样保留。"""
+            try:
+                _critique_one_inner(idx, agent)
+            except BaseException as exc:      # 含 Cancelled
+                results[idx] = {"error": exc}
+
+        def _critique_one_inner(idx, agent):
+            if agent.get("mode") == "mock":
+                step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
+                time.sleep(0.15)
+                cj = mocks.critique(agent["id"], rnd, dims, threshold_ch)
+                store.finish_step(run_id, step["n"], "done",
+                                  summary="均分 %.1f：%s" % (
+                                      sum(cj["scores"].values()) / max(1, len(dims)),
+                                      cj["summary"]),
+                                  duration_s=0.15)
+                results[idx] = {"agent": agent, "cj": cj, "evl": [],
+                                "ledger": [], "continuity": [], "sid": None}
+                return
+            lens = _critic_lens(critics, agent)
+            # 同源两席（原席 + 复核席）必须串行：一条 CLI 的两个并发会话会
+            # 抢同一份 CLI 自家配置与运行状态。不同 CLI 各持一把锁，交叉评审
+            # 的并发收益不变。
+            with review_roster.execution_lock(agent):
+                cj, res, actual, swap_note = _critique_step_with_cli_fallback(
+                    run_id, role, agent,
+                    crit_prompt_for(
+                        text,
+                        note=("小说第 %d 章" % i) + (
+                            "｜你的专属评审视角：%s（其他评审会覆盖其余视角，"
+                            "请深挖你的镜头，但所有维度仍需打分）" % lens)
+                        if lens else "",
+                        event_check=event_check, chapter=i) + note_extra
+                    + review_roster.prompt_suffix(agent),
+                    workdir, ev, agents, impl, difficulty,
+                    task.get("type") or "serial_novel", stats, mode,
+                    False, dims=dims,
+                    peers=[a for a in critics
+                           if a.get("id") != agent.get("id")],
+                    ms_name="chapter-%02d.md" % i)
+            if not isinstance(cj, dict):
+                cj = _critique_json(res, dims)
+            results[idx] = {
+                "agent": actual or agent, "cj": cj,
+                "swap_note": swap_note,
+                # 逐项目标审稿 + 资源账本：标记块先各存各的，join 后按序合并
+                "evl": _parse_tagged_lines(res.get("text"), "event_check"),
+                "ledger": _parse_tagged_lines(res.get("text"), "ledger"),
+                "continuity": novel_quality.validate_continuity_rows(
+                    novel_quality.parse_continuity_lines(
+                        _parse_tagged_lines(res.get("text"), "continuity"), i),
+                    text),
+                # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
+                "sid": _resume_sid(agent, res.get("sid")),
+            }
+
+        threads = []
+        for idx, agent in enumerate(live):
+            th = threading.Thread(target=_critique_one, args=(idx, agent),
+                                  name="crit-%s-c%d-%d" % (run_id, i, idx), daemon=True)
+            threads.append(th)
+            th.start()
+        for th in threads:
+            th.join(3000)
+        _check_cancel(ev)
+
+        # join 后按原顺序合并（确定性：与串行版结果一致）
+        for idx in range(len(live)):
+            r = results.get(idx)
+            if r is None:
+                continue     # 该评审线程超时未回，按「没出分」处理
+            if "error" in r:
+                raise r["error"]     # 还原串行版的异常上抛语义
+            agent, cj = r["agent"], r["cj"]
+            valid_scores, score_errors = quality_gate.normalize_scores(
+                cj.get("scores"), dims)
+            if not score_errors and not cj.get("review_degraded"):
+                scored += 1
+            if cj.get("review_degraded"):
+                review_degradation_reasons.append(
+                    "第 %d 章评审未完成：%s" % (
+                        i, cj.get("review_fallback_reason") or
+                        cj.get("summary") or "模型评审不可用"))
+            if r["evl"] and not ev_check_lines[0]:
+                ev_check_lines[0] = r["evl"]
+            ledger_lines.extend(r["ledger"])
+            reviewed_continuity.extend(r.get("continuity") or [])
+            if r["sid"]:
+                sids[agent["id"]] = r["sid"]
+            cj_map[agent["id"]] = cj
+            if r.get("swap_note") and agent.get("id") not in {
+                    a.get("id") for a in critics}:
+                remember_agent(actual_critics, agent)
+                refresh_actual_route(
+                    review_reason="章节评审换将：%s" %
+                    (agent.get("label") or agent.get("id")))
+            chapter_issues = [_tag_review_issue(it, i, "chapter")
+                              for it in (cj.get("issues") or [])[:6]]
+            _anchor_issues(chapter_issues, text)
+            issues_all.extend(chapter_issues)
+
+        # 有效评审不足两名时补位；仅一人出分也不能形成发布共识。
+        # 补位池同样绕开本场停用的 CLI——拿欠费死链补位只是把失败换个人重演。
+        if scored < quality_gate.MIN_REVIEWERS:
+            tried = {a.get("id") for a in critics}
+            pool = [a for a in (agents or [])
+                    if a.get("mode") == "real" and a.get("id") not in tried
+                    and not _bench.is_benched(run_id, a.get("id"))]
+            spares = list(pool[:2])
+            # 没有其他真实 CLI 可补时派生独立复核席。只装了一条 CLI 或者
+            # 其余全被本场停用，逐章评审就会永远停在「有效评审不足两名」，
+            # 整本书判未评估。同源的第二遍独立会话（不同人格、互不可见）
+            # 至少给出第二份判断，强过直接判死。
+            _src = next((a for a in (critics or [])
+                         if a.get("mode") == "real"), None) or impl
+            _src_id = review_roster.solo_source(_src) if isinstance(
+                _src, dict) else ""
+            if _src_id and not _bench.is_benched(run_id, _src_id):
+                for _no in (1, 2):
+                    _seat = review_roster.make_solo_seat(_src, _no)
+                    if _seat and _seat.get("id") not in tried:
+                        spares.append(_seat)
+            for spare in spares[:2]:
+                res = _run_step(run_id, role, modelhub.bind_agent(spare, difficulty),
+                                crit_prompt_for(
+                                    text,
+                                    note="小说第 %d 章" % i,
+                                    event_check=event_check, chapter=i)
+                                + note_extra
+                                + review_roster.prompt_suffix(spare),
+                                workdir, readonly=True, ev=ev)
+                cj = _critique_json(res, dims)
+                if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
+                        and len(cj.get("scores") or {}) == len(dims):
+                    reviewed_continuity.extend(novel_quality.validate_continuity_rows(
                         novel_quality.parse_continuity_lines(
                             _parse_tagged_lines(res.get("text"), "continuity"), i),
-                        text),
-                    # §07 T1.1：记录该评审的会话 id（第 2 轮复用）
-                    "sid": _resume_sid(agent, res.get("sid")),
-                }
-
-            threads = []
-            for idx, agent in enumerate(live):
-                th = threading.Thread(target=_critique_one, args=(idx, agent),
-                                      name="crit-%s-c%d-%d" % (run_id, i, idx), daemon=True)
-                threads.append(th)
-                th.start()
-            for th in threads:
-                th.join(3000)
-            _check_cancel(ev)
-
-            # join 后按原顺序合并（确定性：与串行版结果一致）
-            for idx in range(len(live)):
-                r = results.get(idx)
-                if r is None:
-                    continue     # 该评审线程超时未回，按「没出分」处理
-                if "error" in r:
-                    raise r["error"]     # 还原串行版的异常上抛语义
-                agent, cj = r["agent"], r["cj"]
-                valid_scores, score_errors = quality_gate.normalize_scores(
-                    cj.get("scores"), dims)
-                if not score_errors and not cj.get("review_degraded"):
+                        text))
+                    cj_map[spare["id"]] = cj
                     scored += 1
-                if cj.get("review_degraded"):
-                    review_degradation_reasons.append(
-                        "第 %d 章评审未完成：%s" % (
-                            i, cj.get("review_fallback_reason") or
-                            cj.get("summary") or "模型评审不可用"))
-                if r["evl"] and not ev_check_lines[0]:
-                    ev_check_lines[0] = r["evl"]
-                ledger_lines.extend(r["ledger"])
-                reviewed_continuity.extend(r.get("continuity") or [])
-                if r["sid"]:
-                    sids[agent["id"]] = r["sid"]
-                cj_map[agent["id"]] = cj
-                if r.get("swap_note") and agent.get("id") not in {
-                        a.get("id") for a in critics}:
-                    remember_agent(actual_critics, agent)
+                    remember_agent(actual_critics, spare)
                     refresh_actual_route(
-                        review_reason="章节评审换将：%s" %
-                        (agent.get("label") or agent.get("id")))
-                chapter_issues = [_tag_review_issue(it, i, "chapter")
-                                  for it in (cj.get("issues") or [])[:6]]
-                _anchor_issues(chapter_issues, text)
-                issues_all.extend(chapter_issues)
+                        review_reason="章节评审补位：%s" %
+                        (spare.get("label") or spare.get("id")))
+                    spare_issues = [_tag_review_issue(it, i, "chapter")
+                                    for it in (cj.get("issues") or [])[:6]
+                                    if isinstance(it, dict)]
+                    _anchor_issues(spare_issues, text)
+                    issues_all.extend(spare_issues)
+                    if scored >= quality_gate.MIN_REVIEWERS:
+                        break
+                _check_cancel(ev)
+        # 评审全停时记录未评估原因，但不截断稿件流水线：后续章节、合并
+        # 和报告仍需完成；发布门禁会因有效评审不足而 fail closed。
+        if not live and _bench.benched_ids(run_id):
+            real_left = [a for a in (agents or [])
+                         if a.get("mode") == "real"
+                         and not _bench.is_benched(run_id, a.get("id"))]
+            if not real_left:
+                _why = "；".join(
+                    "%s：%s" % (aid, why)
+                    for aid, why in sorted(_bench.benched_agents(run_id).items()))
+                review_degradation_reasons.append(
+                    "第 %d 章评审未完成；全部评审 CLI 已停用：%s" % (i, _why))
+        return cj_map, scored, sids, reviewed_continuity
+    return run_critique, ev_check_lines, ledger_lines
 
-            # 有效评审不足两名时补位；仅一人出分也不能形成发布共识。
-            # 补位池同样绕开本场停用的 CLI——拿欠费死链补位只是把失败换个人重演。
-            if scored < quality_gate.MIN_REVIEWERS:
-                tried = {a.get("id") for a in critics}
-                pool = [a for a in (agents or [])
-                        if a.get("mode") == "real" and a.get("id") not in tried
-                        and not _bench.is_benched(run_id, a.get("id"))]
-                spares = list(pool[:2])
-                # 没有其他真实 CLI 可补时派生独立复核席。只装了一条 CLI 或者
-                # 其余全被本场停用，逐章评审就会永远停在「有效评审不足两名」，
-                # 整本书判未评估。同源的第二遍独立会话（不同人格、互不可见）
-                # 至少给出第二份判断，强过直接判死。
-                _src = next((a for a in (critics or [])
-                             if a.get("mode") == "real"), None) or impl
-                _src_id = review_roster.solo_source(_src) if isinstance(
-                    _src, dict) else ""
-                if _src_id and not _bench.is_benched(run_id, _src_id):
-                    for _no in (1, 2):
-                        _seat = review_roster.make_solo_seat(_src, _no)
-                        if _seat and _seat.get("id") not in tried:
-                            spares.append(_seat)
-                for spare in spares[:2]:
-                    res = _run_step(run_id, role, modelhub.bind_agent(spare, difficulty),
-                                    crit_prompt_for(
-                                        text,
-                                        note="小说第 %d 章" % i,
-                                        event_check=event_check, chapter=i)
-                                    + note_extra
-                                    + review_roster.prompt_suffix(spare),
-                                    workdir, readonly=True, ev=ev)
-                    cj = _critique_json(res, dims)
-                    if isinstance(cj, dict) and isinstance(cj.get("scores"), dict) \
-                            and len(cj.get("scores") or {}) == len(dims):
-                        reviewed_continuity.extend(novel_quality.validate_continuity_rows(
-                            novel_quality.parse_continuity_lines(
-                                _parse_tagged_lines(res.get("text"), "continuity"), i),
-                            text))
-                        cj_map[spare["id"]] = cj
-                        scored += 1
-                        remember_agent(actual_critics, spare)
-                        refresh_actual_route(
-                            review_reason="章节评审补位：%s" %
-                            (spare.get("label") or spare.get("id")))
-                        spare_issues = [_tag_review_issue(it, i, "chapter")
-                                        for it in (cj.get("issues") or [])[:6]
-                                        if isinstance(it, dict)]
-                        _anchor_issues(spare_issues, text)
-                        issues_all.extend(spare_issues)
-                        if scored >= quality_gate.MIN_REVIEWERS:
-                            break
-                    _check_cancel(ev)
-            # 评审全停时记录未评估原因，但不截断稿件流水线：后续章节、合并
-            # 和报告仍需完成；发布门禁会因有效评审不足而 fail closed。
-            if not live and _bench.benched_ids(run_id):
-                real_left = [a for a in (agents or [])
-                             if a.get("mode") == "real"
-                             and not _bench.is_benched(run_id, a.get("id"))]
-                if not real_left:
-                    _why = "；".join(
-                        "%s：%s" % (aid, why)
-                        for aid, why in sorted(_bench.benched_agents(run_id).items()))
-                    review_degradation_reasons.append(
-                        "第 %d 章评审未完成；全部评审 CLI 已停用：%s" % (i, _why))
-            return cj_map, scored, sids, reviewed_continuity
 
-        def means_of(cj_map):
-            vals = {}
-            for d in dims:
-                xs = []
-                for cj in cj_map.values():
-                    scores, errors = quality_gate.normalize_scores(cj.get("scores"), dims)
-                    if not errors and d in scores:
-                        xs.append(scores[d])
-                if xs:
-                    vals[d] = round(sum(xs) / len(xs), 1)
-            return vals
+def _serial_reused_chapter(st, i):
+    """复用章结算：沿用既有有效评分记账，不重审不重评。返回累计字数。"""
+    (chapter_scores, inh_scores, prefix_words) = (
+        st.chapter_scores, st.inh_scores, st.prefix_words)
+    (run_id, vol_plan) = (st.run_id, st.vol_plan)
+    cs = dict(inh_scores[i])
+    cs.setdefault("chapter", i)
+    cs["reused"] = True
+    _vent = volumes.find(vol_plan, i) if vol_plan else None
+    if _vent:
+        cs["vol"] = _vent["vol"]
+        if _vent.get("title"):
+            cs["vol_title"] = _vent["title"]
+    chapter_scores.append(cs)
+    prefix_words += int(cs.get("words") or 0)
+    store.update_run(run_id, chapter_scores=chapter_scores)
+    return prefix_words
 
-        def review_stats(cj_map, threshold_value):
-            reviews = [{"id": aid, "scores": cj.get("scores")}
-                       for aid, cj in cj_map.items()]
-            return quality_gate.aggregate_reviews(
-                reviews, dims, threshold=threshold_value)
 
-        critic_sids = {}   # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
-        race_cj = None     # 变体赛马已评审胜者：直接作为第 1 轮结果，不重评
-        race_scored = 0
-        race_continuity = []
-        race_losers = []   # 赛马败稿文本（收卷前留存）：首轮修订时提炼败者精华
+def _serial_draft_chapter(st, i, ch, ch_file, cx, run_critique):
+    """起草本章（含换将重试与变体赛马）；复用章不重写。
 
-        reuse = i in done_set and os.path.exists(os.path.join(workdir, ch_file))
-        if reuse:
-            # 坏稿防线：进程中途死掉会留下半成品文件（实测 4 字节的 chapter-12），
-            # 按「文件存在」复用会让评审给垃圾稿打低分、修订陷入循环。
-            # 字数低于 max(200, 30% 目标字数) → 视为未完成，整章重写。
-            words_now = _wc(_read_chapter(workdir, i))
-            if words_now < max(200, int(wpc * 0.3)):
-                reuse = False
-        if reuse:
-            # 断点续跑：上一遍已写好的章直接复用（不重写；分数沿用既有记录或重评）
-            step, _log = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"),
-                                        note="断点续跑")
-            store.finish_step(run_id, step["n"], "done",
-                              summary="（断点续跑）复用上一遍成稿 %s（约 %d 字）"
-                                      % (ch_file, _wc(_read_chapter(workdir, i))),
-                              duration_s=0.1)
-        elif impl.get("mode") == "mock":
-            step, log_abs = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"))
-            _write_chapter(workdir, i, mocks.draft_manuscript(
-                {"title": ch["title"], "goal": task["goal"]}, 1))
-            time.sleep(0.2)
-            store.finish_step(run_id, step["n"], "done", summary="（mock）第 %d 章草稿落盘" % i,
-                              duration_s=0.2)
-        else:
-            # 重写未达标章时旧稿仍在场：不点破来历，作者会「校验沿用」直接交卷
-            # （2026-10-03 实案：agent 对照章纲逐项核对旧稿后原样保留，补钩修订落空）。
-            # 必须明说旧稿未过审、要求覆盖。
-            stale_note = ""
-            if os.path.exists(os.path.join(workdir, ch_file)):
-                stale_note = ("- 注意：目录里已有一版**未通过评审**的旧稿 `%s`——不要校验沿用、"
-                              "不要增量修补，按本章任务直接覆盖重写。" % ch_file)
-            # 上一轮未达标原因（「重写未达标章」链路）：本章被点名的 major 与
-            # 全书级 major 随起草提示词下发——原因只躺在报告里、作者盲写等
-            # 修订拉回，白白多烧一轮评审（2026-10-10 实案）。
-            # 按「点名命中本章」路由（chapter 字段 + note 文案并集）：字段常是
-            # 评审/签约检查点所在章而非病灶章（2026-10-13 神瞳实案：chapter=9、
-            # 病灶在第 6 章金额矛盾），只按字段路由会把第 6 章的病下发给
-            # 第 9 章的起草者，修一轮也消不掉账。
-            redo_lines = []
-            mine = [x for x in redo_issues if _issue_hits_chapter(x, i)]
-            book_lvl = [x for x in redo_issues
-                        if not any(_issue_hits_chapter(x, c)
-                                   for c in range(start, end + 1))]
-            if mine:
-                redo_lines.append("- 本章被上一轮评审点名的问题（重写必须逐条消解）：")
-                redo_lines += _major_lines(mine)
-            if book_lvl:
-                redo_lines.append("- 上一轮全书级 major 问题（本章重写须配合消解，不得相抵）：")
-                redo_lines += _major_lines(book_lvl)
-            redo_note = ("## 上一轮评审未达标原因（必读）\n" + "\n".join(redo_lines) + "\n"
-                         ) if redo_lines else ""
-            # 跨章复用红线负样例：此前各章实际的开笔/收束摘录随起草下发，把
-            # 「评审事后抓句式同款」前移成「起草事前看反面样例」（105-112 批
-            # 章末收束句式 4 连用被判 major 的根治；首批第 1 章无样例为空块）
-            reuse_guard = novel_quality.reuse_guard_block(
-                _reuse_guard_samples(workdir, i))
-            # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
-            # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
-            # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
-            cap_block = capability_runtime.block_for(task, run_id)
-            # Keep the legacy shrinker contract: the unified capability block
-            # is the stable, shrinkable context; the story bible remains a
-            # separate section so retries can preserve its chapter boundaries.
-            sk_lessons, kb_block = cap_block, ""
-            # 用户全局指令（A5）放技能块之前：同任务跨章字节级稳定，不打碎
-            # 供应商前缀缓存（§07 T1.3 静态头部纪律）；GLOBAL.md 改动才失效。
-            _gblk = _global_directives(task)
-            sk_block = "\n\n".join(p for p in (_gblk, cap_block, bible) if p)
-            scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
-                "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
+    返回 reuse（本章正文是否可复用）与赛马产物；run_critique 用于给赛马变体
+    打分，与正式评审共用同一执行器（会话与聚合桶都按章共享）。
+    """
+    (actual_implementers, agents, bible, difficulty, done_set, end) = (
+        st.actual_implementers, st.agents, st.bible, st.difficulty,
+        st.done_set, st.end)
+    (ev, impl, means_of, outline_txt, redo_issues) = (
+        st.ev, st.impl, st.means_of, st.outline_txt, st.redo_issues)
+    (refresh_actual_route, remember_agent, resume_ctx, route, run_id) = (
+        st.refresh_actual_route, st.remember_agent, st.resume_ctx, st.route,
+        st.run_id)
+    (rubric_block, serial, start, step_wd, style_tpl, task) = (
+        st.rubric_block, st.serial, st.start, st.step_wd, st.style_tpl, st.task)
+    (vol_block_for, workdir, wpc) = (
+        st.vol_block_for, st.workdir, st.wpc)
+    (prev, ledger_txt, continuity_txt, draft_sid) = (
+        cx.prev, cx.ledger_txt, cx.continuity_txt, cx.draft_sid)
+    critic_sids = {}   # §07 T1.1：每评审的会话 id（第 2 轮复用，前缀走缓存读）
+    race_cj = None     # 变体赛马已评审胜者：直接作为第 1 轮结果，不重评
+    race_scored = 0
+    race_continuity = []
+    race_losers = []   # 赛马败稿文本（收卷前留存）：首轮修订时提炼败者精华
 
-            # 多线剧情推演（inkos 借鉴 2026-09-23）：serial.branches>=2 时
-            # 写章前一次编排者调用生成 N 条分支节拍、自荐择优，选中分支替换
-            # 本章 BEATS/HOOK（计划级赛马，省 prose 级开销）；失败静默走原大纲。
-            branch_beats = branch_hook = None
+    reuse = i in done_set and os.path.exists(os.path.join(workdir, ch_file))
+    if reuse:
+        # 坏稿防线：进程中途死掉会留下半成品文件（实测 4 字节的 chapter-12），
+        # 按「文件存在」复用会让评审给垃圾稿打低分、修订陷入循环。
+        # 字数低于 max(200, 30% 目标字数) → 视为未完成，整章重写。
+        words_now = _wc(_read_chapter(workdir, i))
+        if words_now < max(200, int(wpc * 0.3)):
+            reuse = False
+    if reuse:
+        # 断点续跑：上一遍已写好的章直接复用（不重写；分数沿用既有记录或重评）
+        step, _log = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"),
+                                    note="断点续跑")
+        store.finish_step(run_id, step["n"], "done",
+                          summary="（断点续跑）复用上一遍成稿 %s（约 %d 字）"
+                                  % (ch_file, _wc(_read_chapter(workdir, i))),
+                          duration_s=0.1)
+    elif impl.get("mode") == "mock":
+        step, log_abs = store.add_step(run_id, "draft-c%d" % i, impl["id"], impl.get("label"))
+        _write_chapter(workdir, i, mocks.draft_manuscript(
+            {"title": ch["title"], "goal": task["goal"]}, 1))
+        time.sleep(0.2)
+        store.finish_step(run_id, step["n"], "done", summary="（mock）第 %d 章草稿落盘" % i,
+                          duration_s=0.2)
+    else:
+        # 重写未达标章时旧稿仍在场：不点破来历，作者会「校验沿用」直接交卷
+        # （2026-10-03 实案：agent 对照章纲逐项核对旧稿后原样保留，补钩修订落空）。
+        # 必须明说旧稿未过审、要求覆盖。
+        stale_note = ""
+        if os.path.exists(os.path.join(workdir, ch_file)):
+            stale_note = ("- 注意：目录里已有一版**未通过评审**的旧稿 `%s`——不要校验沿用、"
+                          "不要增量修补，按本章任务直接覆盖重写。" % ch_file)
+        # 上一轮未达标原因（「重写未达标章」链路）：本章被点名的 major 与
+        # 全书级 major 随起草提示词下发——原因只躺在报告里、作者盲写等
+        # 修订拉回，白白多烧一轮评审（2026-10-10 实案）。
+        # 按「点名命中本章」路由（chapter 字段 + note 文案并集）：字段常是
+        # 评审/签约检查点所在章而非病灶章（2026-10-13 神瞳实案：chapter=9、
+        # 病灶在第 6 章金额矛盾），只按字段路由会把第 6 章的病下发给
+        # 第 9 章的起草者，修一轮也消不掉账。
+        redo_lines = []
+        mine = [x for x in redo_issues if _issue_hits_chapter(x, i)]
+        book_lvl = [x for x in redo_issues
+                    if not any(_issue_hits_chapter(x, c)
+                               for c in range(start, end + 1))]
+        if mine:
+            redo_lines.append("- 本章被上一轮评审点名的问题（重写必须逐条消解）：")
+            redo_lines += _major_lines(mine)
+        if book_lvl:
+            redo_lines.append("- 上一轮全书级 major 问题（本章重写须配合消解，不得相抵）：")
+            redo_lines += _major_lines(book_lvl)
+        redo_note = ("## 上一轮评审未达标原因（必读）\n" + "\n".join(redo_lines) + "\n"
+                     ) if redo_lines else ""
+        # 跨章复用红线负样例：此前各章实际的开笔/收束摘录随起草下发，把
+        # 「评审事后抓句式同款」前移成「起草事前看反面样例」（105-112 批
+        # 章末收束句式 4 连用被判 major 的根治；首批第 1 章无样例为空块）
+        reuse_guard = novel_quality.reuse_guard_block(
+            _reuse_guard_samples(workdir, i))
+        # stable_order：同一任务 8 个章节的技能块必须字节级一致（§07 T1.2' 前缀缓存）
+        # 三块分开留底：起草重试的分层降级（_serial_shrunk_block）要按
+        # 「经验库/圣经」各自的身份收缩，折成一整块就只剩 4K 硬截一层了
+        cap_block = capability_runtime.block_for(task, run_id)
+        # Keep the legacy shrinker contract: the unified capability block
+        # is the stable, shrinkable context; the story bible remains a
+        # separate section so retries can preserve its chapter boundaries.
+        sk_lessons, kb_block = cap_block, ""
+        # 用户全局指令（A5）放技能块之前：同任务跨章字节级稳定，不打碎
+        # 供应商前缀缓存（§07 T1.3 静态头部纪律）；GLOBAL.md 改动才失效。
+        _gblk = _global_directives(task)
+        sk_block = "\n\n".join(p for p in (_gblk, cap_block, bible) if p)
+        scope = ("本章 = 大纲第 %d 章" % i) if start == 1 else (
+            "本批为第 %d–%d 章，下列按全书章号列出各章要点" % (start, end))
+
+        # 多线剧情推演（inkos 借鉴 2026-09-23）：serial.branches>=2 时
+        # 写章前一次编排者调用生成 N 条分支节拍、自荐择优，选中分支替换
+        # 本章 BEATS/HOOK（计划级赛马，省 prose 级开销）；失败静默走原大纲。
+        branch_beats = branch_hook = None
+        try:
+            n_branch = max(1, min(3, int(serial.get("branches") or 1)))
+            if n_branch >= 2:
+                got = branching.plan_branches(
+                    run_id, task, i, task["goal"], outline_txt, prev, n_branch)
+                if got:
+                    branch_beats, branch_hook = got
+        except Exception:
+            branch_beats = None
+
+        def _draft_prompt(vfile):
+            prompt = _render_template_values(SERIAL_CHAPTER_PROMPT, {
+                "__SKILLS__": sk_block,
+                "__SCOPE__": scope,
+                "__VOLUME__": vol_block_for(i),
+                "__I__": str(i),
+                "__FILE__": vfile,
+                "__GOAL__": task["goal"],
+                "__OUTLINE__": outline_txt,
+                "__PREV__": prev,
+                "__LEDGER__": ledger_txt,
+                "__CONTINUITY__": continuity_txt,
+                "__TITLE__": ch["title"],
+                "__BEATS__": branch_beats or ch["beats"] or "按大纲推进",
+                "__HOOK__": branch_hook or ch.get("hook") or "留下悬念",
+                "__LOCKED_CH__": serial_locked_chapter_block(workdir, i),
+                "__STALE_NOTE__": stale_note,
+                "__REDO_ISSUES__": redo_note,
+                "__REUSE_GUARD__": reuse_guard,
+                "__REVIEW_RUBRIC__": rubric_block,
+                "__HIGHLIGHT__": ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转",
+                "__STYLE__": style_tpl,
+                "__QUALITY_GATE__": novel_quality.opening_requirements(i, wpc),
+                "__WORDS__": str(wpc),
+            })
+            if task.get("plan_mode"):
+                return prompt + ("\n\n## 计划模式\n先列出本章可执行的简要步骤，再依此起草；"
+                                 "交稿前按步骤检查。不要只输出计划。")
+            return prompt
+
+        n_variants = max(1, min(3, int(serial.get("variants") or 1)))
+        race = (n_variants >= 2 and not _compaction_enabled()
+                and not resume_ctx)   # 续会话语义只认 impl 一人，赛马退场
+        if not race:
+            prompt = _draft_prompt(ch_file)
+            # 网关突发限流（Not Allowed / UnknownError）秒~分钟级自愈：章稿
+            # 失败先退避重试同作者（保住连载风格一致），重试穷尽才判死整 run
+            # ——2026-09-17 七猫连载实测：多 run 并行推进时后位章节必撞限流，
+            # 一章失败即整 run 作废，太贵。
+            def _chapter_state():
+                """草稿验收：成品是章稿文件本身，不是退出码——文件够长且无
+                逐字重复才算好。整段/整句/完整对白逐字重复是成稿事故（113/
+                118 章实案两处整段连排、对白复现，评审 major 一票否决+白烧
+                一轮评审），落盘时确定性拦截打回，省下评审再抓的往返。"""
+                txt = _read_chapter(workdir, i)
+                if not txt or _wc(txt) < int(wpc * 0.6):
+                    return False, (txt or "")
+                return not novel_quality.duplicate_notes(txt), txt
+
+            res = None
+            good = False
+            txt = ""
+            use_prompt = prompt
+            chapter_impl = impl
+            chapter_reason = route.get("author", "")
+            last_attempt_impl = impl
+            last_attempt_reason = chapter_reason
+            fallback_error_note = ""
+            prev_prompt = None      # 上一次实际下发的提示词
+            prev_timed_out = False  # 上一次是否「超时/停滞」收场
+            shrink_note = ""        # 本次重试的分层降级说明（进 step note 供对账）
+            dup_fix_note = ""       # 查重打回后的消重指令（重试/换将随提示词下发）
+            # 作者本场停用（欠费/凭据缺失等账号级死错）时不再退避重试：
+            # 三轮同作者重试 + 30/60s 退避对死账号纯属白烧——合成一条
+            # 失败结果，直接落到下面的换将逻辑换人（2026-10-15 案）。
+            _author_benched_why = ""
             try:
-                n_branch = max(1, min(3, int(serial.get("branches") or 1)))
-                if n_branch >= 2:
-                    got = branching.plan_branches(
-                        run_id, task, i, task["goal"], outline_txt, prev, n_branch)
-                    if got:
-                        branch_beats, branch_hook = got
+                from . import bench as _bench
+                if (impl.get("mode") != "mock"
+                        and _bench.is_benched(run_id, impl.get("id"))):
+                    _author_benched_why = (
+                        _bench.reason(run_id, impl.get("id")) or "本场已停用")
             except Exception:
-                branch_beats = None
-
-            def _draft_prompt(vfile):
-                prompt = _render_template_values(SERIAL_CHAPTER_PROMPT, {
-                    "__SKILLS__": sk_block,
-                    "__SCOPE__": scope,
-                    "__VOLUME__": vol_block_for(i),
-                    "__I__": str(i),
-                    "__FILE__": vfile,
-                    "__GOAL__": task["goal"],
-                    "__OUTLINE__": outline_txt,
-                    "__PREV__": prev,
-                    "__LEDGER__": ledger_txt,
-                    "__CONTINUITY__": continuity_txt,
-                    "__TITLE__": ch["title"],
-                    "__BEATS__": branch_beats or ch["beats"] or "按大纲推进",
-                    "__HOOK__": branch_hook or ch.get("hook") or "留下悬念",
-                    "__LOCKED_CH__": serial_locked_chapter_block(workdir, i),
-                    "__STALE_NOTE__": stale_note,
-                    "__REDO_ISSUES__": redo_note,
-                    "__REUSE_GUARD__": reuse_guard,
-                    "__REVIEW_RUBRIC__": rubric_block,
-                    "__HIGHLIGHT__": ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转",
-                    "__STYLE__": style_tpl,
-                    "__QUALITY_GATE__": novel_quality.opening_requirements(i, wpc),
-                    "__WORDS__": str(wpc),
-                })
-                if task.get("plan_mode"):
-                    return prompt + ("\n\n## 计划模式\n先列出本章可执行的简要步骤，再依此起草；"
-                                     "交稿前按步骤检查。不要只输出计划。")
-                return prompt
-
-            n_variants = max(1, min(3, int(serial.get("variants") or 1)))
-            race = (n_variants >= 2 and not _compaction_enabled()
-                    and not resume_ctx)   # 续会话语义只认 impl 一人，赛马退场
-            if not race:
-                prompt = _draft_prompt(ch_file)
-                # 网关突发限流（Not Allowed / UnknownError）秒~分钟级自愈：章稿
-                # 失败先退避重试同作者（保住连载风格一致），重试穷尽才判死整 run
-                # ——2026-09-17 七猫连载实测：多 run 并行推进时后位章节必撞限流，
-                # 一章失败即整 run 作废，太贵。
-                def _chapter_state():
-                    """草稿验收：成品是章稿文件本身，不是退出码——文件够长且无
-                    逐字重复才算好。整段/整句/完整对白逐字重复是成稿事故（113/
-                    118 章实案两处整段连排、对白复现，评审 major 一票否决+白烧
-                    一轮评审），落盘时确定性拦截打回，省下评审再抓的往返。"""
-                    txt = _read_chapter(workdir, i)
-                    if not txt or _wc(txt) < int(wpc * 0.6):
-                        return False, (txt or "")
-                    return not novel_quality.duplicate_notes(txt), txt
-
-                res = None
-                good = False
-                txt = ""
-                use_prompt = prompt
-                chapter_impl = impl
-                chapter_reason = route.get("author", "")
-                last_attempt_impl = impl
-                last_attempt_reason = chapter_reason
-                fallback_error_note = ""
-                prev_prompt = None      # 上一次实际下发的提示词
-                prev_timed_out = False  # 上一次是否「超时/停滞」收场
-                shrink_note = ""        # 本次重试的分层降级说明（进 step note 供对账）
-                dup_fix_note = ""       # 查重打回后的消重指令（重试/换将随提示词下发）
-                # 作者本场停用（欠费/凭据缺失等账号级死错）时不再退避重试：
-                # 三轮同作者重试 + 30/60s 退避对死账号纯属白烧——合成一条
-                # 失败结果，直接落到下面的换将逻辑换人（2026-10-15 案）。
                 _author_benched_why = ""
-                try:
-                    from . import bench as _bench
-                    if (impl.get("mode") != "mock"
-                            and _bench.is_benched(run_id, impl.get("id"))):
-                        _author_benched_why = (
-                            _bench.reason(run_id, impl.get("id")) or "本场已停用")
-                except Exception:
-                    _author_benched_why = ""
-                if _author_benched_why:
-                    res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
-                           "tokens": 0, "error": "作者 %s 已本场停用：%s" % (
-                               impl.get("id"), _author_benched_why),
-                           "raw": {}, "kind": impl.get("kind", "")}
-                for draft_attempt in ([] if _author_benched_why else range(3)):
-                    if draft_attempt:
-                        # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
-                        if ev is not None:
-                            if ev.wait(30 * draft_attempt):
-                                break
-                        else:
-                            time.sleep(30 * draft_attempt)
-                    if draft_attempt and len(prompt) > 12000 and sk_block and sk_block in prompt:
-                        # 长提示词在容量受限通道（讯飞托管 35B 等）上会挂起/秒拒
-                        # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
-                        # 边界，保大纲/前情/本章要点（2026-09-17 七猫实测：全量
-                        # 30KB 对讯飞必挂）。用户全局指令（A5）不参与收缩：8KB 封顶
-                        # 的高优先级指令降级时原样保留在头部。
-                        shrunk_block, shrink_note = _serial_shrunk_block(
-                            sk_lessons, bible, kb_block)
-                        if _gblk:
-                            shrunk_block = _gblk + "\n\n" + shrunk_block
-                        use_prompt = prompt.replace(sk_block, shrunk_block) + dup_fix_note
-                    elif draft_attempt and dup_fix_note:
-                        # 同作者重试带上一稿的重复证据（消重指令）——同提示重跑
-                        # 只会长出同族事故，新变量才值得烧（同 2026-09-22 超时教训）
-                        use_prompt = prompt + dup_fix_note
-                    # 超时重试必须有新变量才值得做（2026-09-22）：提示词与上次逐字节
-                    # 相同、上次又是超时/停滞收场时，重试只是把同一个超时再烧一遍
-                    # （2400s × N）。此时直接跳出交替换将——换 CLI/模型才是新机会。
-                    # 注意保留「缩上下文重试」：提示词真的变小了（缩块生效）就照试，
-                    # 那是针对「提示词过大挂起」的有效降级。
-                    if prev_timed_out and use_prompt == prev_prompt:
-                        break
-                    res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), use_prompt,
-                                    step_wd, readonly=False, ev=ev, timeout=2400,
-                                    resume=resume_ctx["session"] if resume_ctx else None,
-                                    images=_task_images(task, workdir),
-                                    note=("起草重试 %d/2（网关限流退避%s）"
-                                          % (draft_attempt,
-                                             ("；降级：" + shrink_note) if shrink_note else "")) if draft_attempt else "")
-                    prev_prompt = use_prompt
-                    prev_timed_out = bool((res.get("raw") or {}).get("timed_out"))
-                    if (res.get("raw") or {}).get("repeat_stop"):
-                        break   # 重复守卫强制停止：同输入再试仍是死路，终态跳出
-                    if not res["ok"] and _has_forbidden_result(res):
-                        # 403 是上游权限判死（确定性秒死）：同作者同提示再退避重试
-                        # 仍是同一句 "Request not allowed"，只会把 30/60s 退避和白烧
-                        # 的三遍撞墙留到重复守卫才收口（2026-09-24 draft-c9 案）。
-                        # 立即跳出交换将——换到异上游才是新机会。
-                        break
-                    if (not res["ok"]
-                            and is_account_dead_error(res.get("error_code"))):
-                        # 额度耗尽、凭据失效、权限封禁和 CLI 启动失败都属于
-                        # 确定性账号级错误。_finish_step_result 已把它记入本场
-                        # 停用台账；继续走 30/60 秒的同作者重试只会重复撞墙，
-                        # 应立即进入下面的备用 CLI 换将流程。
-                        break
-                    good, txt = _chapter_state()
+            if _author_benched_why:
+                res = {"ok": False, "text": "", "json": None, "cost_usd": 0.0,
+                       "tokens": 0, "error": "作者 %s 已本场停用：%s" % (
+                           impl.get("id"), _author_benched_why),
+                       "raw": {}, "kind": impl.get("kind", "")}
+            for draft_attempt in ([] if _author_benched_why else range(3)):
+                if draft_attempt:
+                    # 30s / 60s 退避；ev.wait 睡等可被取消即刻唤醒
+                    if ev is not None:
+                        if ev.wait(30 * draft_attempt):
+                            break
+                    else:
+                        time.sleep(30 * draft_attempt)
+                if draft_attempt and len(prompt) > 12000 and sk_block and sk_block in prompt:
+                    # 长提示词在容量受限通道（讯飞托管 35B 等）上会挂起/秒拒
+                    # ——分层降级：经验库→4K、模块库按模块边界、圣经按二级标题
+                    # 边界，保大纲/前情/本章要点（2026-09-17 七猫实测：全量
+                    # 30KB 对讯飞必挂）。用户全局指令（A5）不参与收缩：8KB 封顶
+                    # 的高优先级指令降级时原样保留在头部。
+                    shrunk_block, shrink_note = _serial_shrunk_block(
+                        sk_lessons, bible, kb_block)
+                    if _gblk:
+                        shrunk_block = _gblk + "\n\n" + shrunk_block
+                    use_prompt = prompt.replace(sk_block, shrunk_block) + dup_fix_note
+                elif draft_attempt and dup_fix_note:
+                    # 同作者重试带上一稿的重复证据（消重指令）——同提示重跑
+                    # 只会长出同族事故，新变量才值得烧（同 2026-09-22 超时教训）
+                    use_prompt = prompt + dup_fix_note
+                # 超时重试必须有新变量才值得做（2026-09-22）：提示词与上次逐字节
+                # 相同、上次又是超时/停滞收场时，重试只是把同一个超时再烧一遍
+                # （2400s × N）。此时直接跳出交替换将——换 CLI/模型才是新机会。
+                # 注意保留「缩上下文重试」：提示词真的变小了（缩块生效）就照试，
+                # 那是针对「提示词过大挂起」的有效降级。
+                if prev_timed_out and use_prompt == prev_prompt:
+                    break
+                res = _run_step(run_id, "draft-c%d" % i, modelhub.bind_agent(impl, difficulty), use_prompt,
+                                step_wd, readonly=False, ev=ev, timeout=2400,
+                                resume=resume_ctx["session"] if resume_ctx else None,
+                                images=_task_images(task, workdir),
+                                note=("起草重试 %d/2（网关限流退避%s）"
+                                      % (draft_attempt,
+                                         ("；降级：" + shrink_note) if shrink_note else "")) if draft_attempt else "")
+                prev_prompt = use_prompt
+                prev_timed_out = bool((res.get("raw") or {}).get("timed_out"))
+                if (res.get("raw") or {}).get("repeat_stop"):
+                    break   # 重复守卫强制停止：同输入再试仍是死路，终态跳出
+                if not res["ok"] and _has_forbidden_result(res):
+                    # 403 是上游权限判死（确定性秒死）：同作者同提示再退避重试
+                    # 仍是同一句 "Request not allowed"，只会把 30/60s 退避和白烧
+                    # 的三遍撞墙留到重复守卫才收口（2026-09-24 draft-c9 案）。
+                    # 立即跳出交换将——换到异上游才是新机会。
+                    break
+                if (not res["ok"]
+                        and is_account_dead_error(res.get("error_code"))):
+                    # 额度耗尽、凭据失效、权限封禁和 CLI 启动失败都属于
+                    # 确定性账号级错误。_finish_step_result 已把它记入本场
+                    # 停用台账；继续走 30/60 秒的同作者重试只会重复撞墙，
+                    # 应立即进入下面的备用 CLI 换将流程。
+                    break
+                good, txt = _chapter_state()
+                if good:
+                    break
+                if txt:
+                    _dups = novel_quality.duplicate_notes(txt)
+                    if _dups:
+                        dup_fix_note = _dup_reject_note(_dups)
+                if res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
+                    # 回复正文就是完整章稿（kimi 35B 实测：正文当消息回而不
+                    # 落盘）→ 代为落盘救回成品
+                    try:
+                        _write_chapter(workdir, i, res["text"])
+                        good, txt = _chapter_state()
+                    except OSError:
+                        pass
                     if good:
                         break
                     if txt:
                         _dups = novel_quality.duplicate_notes(txt)
                         if _dups:
                             dup_fix_note = _dup_reject_note(_dups)
-                    if res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
-                        # 回复正文就是完整章稿（kimi 35B 实测：正文当消息回而不
-                        # 落盘）→ 代为落盘救回成品
+                if ev is not None and ev.is_set():
+                    break
+            # 同作者重试穷尽 → 起草换将：按路由分序逐个试备选（最多 2 个，
+            # 只试一个会让第二名没机会——2026-09-17 c35 实测 opencode 顶在
+            # 前面，能干活的 kimi 永远轮不上）。连载不断档优先，风格差异交
+            # 评审门与后续 revise 拉回。
+            if not good:
+                tried = {impl["id"], "mock-a", "mock-b"}
+                # 已封 403 上游随每次失败累积：换将选将与死链补位都不许再撞同一条
+                # 网关（此前用裸 router.pick 换将，同网关候选照单全收）
+                blocked_ups = _forbidden_upstream_sets(
+                    res, router.agent_upstreams(
+                        impl["id"], difficulty=difficulty,
+                        task_type=task.get("type") or "serial", role="implement"))
+                # 本场停用的 CLI 一并排除：欠费死链补位只是把失败换个人重演
+                try:
+                    from . import bench as _bench
+                    tried |= {a.get("id") for a in (agents or [])
+                              if _bench.is_benched(run_id, a.get("id"))}
+                except Exception:
+                    pass
+                swap_guard = {"exclude": tried, "blocked": blocked_ups}
+                for _alt in range(2):
+                    if good or (ev is not None and ev.is_set()):
+                        break
+                    other, other_reason = router.pick_switch_candidate(
+                        agents, "implement", task.get("type") or "serial", None,
+                        exclude=tried, difficulty=difficulty,
+                        blocked_upstreams=blocked_ups,
+                        failed_cli=last_attempt_impl, error=res)
+                    if not (other and other.get("mode") == "real"):
+                        if other is None and other_reason.startswith(
+                                "策略判定错误无需跨 CLI 降级"):
+                            fallback_error_note = other_reason
+                        break
+                    tried.add(other["id"])
+                    last_attempt_impl = other
+                    last_attempt_reason = "章节起草换将：%s" % (
+                        other_reason or other.get("label") or other.get("id"))
+                    res = _run_step(run_id, "draft-c%d" % i,
+                                    modelhub.bind_agent(other, difficulty), use_prompt,
+                                    step_wd, readonly=False, ev=ev, timeout=2400,
+                                    images=_task_images(task, workdir),
+                                    swap_guard=swap_guard,
+                                    note="起草换将 %s → %s：%s" % (
+                                        impl["id"], other["id"],
+                                        (other_reason or "")[:90]))
+                    if (res.get("raw") or {}).get("repeat_stop"):
+                        break   # 重复守卫判死：换将同 role 计数链必拦，终态跳出
+                    if not res["ok"]:
+                        blocked_ups.extend(_forbidden_upstream_sets(
+                            res, router.agent_upstreams(
+                                other["id"], difficulty=difficulty,
+                                task_type=task.get("type") or "serial",
+                                role="implement")))
+                    good, txt = _chapter_state()
+                    if not good and res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
                         try:
                             _write_chapter(workdir, i, res["text"])
                             good, txt = _chapter_state()
                         except OSError:
                             pass
-                        if good:
-                            break
-                        if txt:
-                            _dups = novel_quality.duplicate_notes(txt)
-                            if _dups:
-                                dup_fix_note = _dup_reject_note(_dups)
-                    if ev is not None and ev.is_set():
-                        break
-                # 同作者重试穷尽 → 起草换将：按路由分序逐个试备选（最多 2 个，
-                # 只试一个会让第二名没机会——2026-09-17 c35 实测 opencode 顶在
-                # 前面，能干活的 kimi 永远轮不上）。连载不断档优先，风格差异交
-                # 评审门与后续 revise 拉回。
-                if not good:
-                    tried = {impl["id"], "mock-a", "mock-b"}
-                    # 已封 403 上游随每次失败累积：换将选将与死链补位都不许再撞同一条
-                    # 网关（此前用裸 router.pick 换将，同网关候选照单全收）
-                    blocked_ups = _forbidden_upstream_sets(
-                        res, router.agent_upstreams(
-                            impl["id"], difficulty=difficulty,
-                            task_type=task.get("type") or "serial", role="implement"))
-                    # 本场停用的 CLI 一并排除：欠费死链补位只是把失败换个人重演
-                    try:
-                        from . import bench as _bench
-                        tried |= {a.get("id") for a in (agents or [])
-                                  if _bench.is_benched(run_id, a.get("id"))}
-                    except Exception:
-                        pass
-                    swap_guard = {"exclude": tried, "blocked": blocked_ups}
-                    for _alt in range(2):
-                        if good or (ev is not None and ev.is_set()):
-                            break
-                        other, other_reason = router.pick_switch_candidate(
-                            agents, "implement", task.get("type") or "serial", None,
-                            exclude=tried, difficulty=difficulty,
-                            blocked_upstreams=blocked_ups,
-                            failed_cli=last_attempt_impl, error=res)
-                        if not (other and other.get("mode") == "real"):
-                            if other is None and other_reason.startswith(
-                                    "策略判定错误无需跨 CLI 降级"):
-                                fallback_error_note = other_reason
-                            break
-                        tried.add(other["id"])
-                        last_attempt_impl = other
-                        last_attempt_reason = "章节起草换将：%s" % (
-                            other_reason or other.get("label") or other.get("id"))
-                        res = _run_step(run_id, "draft-c%d" % i,
-                                        modelhub.bind_agent(other, difficulty), use_prompt,
-                                        step_wd, readonly=False, ev=ev, timeout=2400,
-                                        images=_task_images(task, workdir),
-                                        swap_guard=swap_guard,
-                                        note="起草换将 %s → %s：%s" % (
-                                            impl["id"], other["id"],
-                                            (other_reason or "")[:90]))
-                        if (res.get("raw") or {}).get("repeat_stop"):
-                            break   # 重复守卫判死：换将同 role 计数链必拦，终态跳出
-                        if not res["ok"]:
-                            blocked_ups.extend(_forbidden_upstream_sets(
-                                res, router.agent_upstreams(
-                                    other["id"], difficulty=difficulty,
-                                    task_type=task.get("type") or "serial",
-                                    role="implement")))
-                        good, txt = _chapter_state()
-                        if not good and res["ok"] and _wc(res.get("text") or "") >= int(wpc * 0.6):
-                            try:
-                                _write_chapter(workdir, i, res["text"])
-                                good, txt = _chapter_state()
-                            except OSError:
-                                pass
-                        if good:
-                            draft_sid = ""   # 换将作者无本任会话，revise 另起
-                            chapter_impl = last_attempt_impl
-                            chapter_reason = last_attempt_reason
-                if not good:
-                    time.sleep(3)   # 落盘竞态宽限：CLI 崩溃退出前写的文件可能晚于
-                    good, txt = _chapter_state()   # 退出检查零点几秒才可见（c34 实测）
                     if good:
+                        draft_sid = ""   # 换将作者无本任会话，revise 另起
                         chapter_impl = last_attempt_impl
                         chapter_reason = last_attempt_reason
-                if not good:
-                    # 失败原因带上本场停用名单——「第 N 章起草失败: None」对
-                    # 用户等于没解释，欠费/凭据问题要说透（2026-10-15 案）
-                    _benched_why = ""
-                    try:
-                        from . import bench as _bench
-                        _bl = _bench.benched_agents(run_id)
-                        if _bl:
-                            _benched_why = "；本场停用：%s" % "；".join(
-                                "%s：%s" % (aid, why)
-                                for aid, why in sorted(_bl.items())[:4])
-                    except Exception:
-                        pass
-                    store.update_run(run_id, expected_status="running", status="failed",
-                                     error=("第 %d 章起草失败: %s"
-                                            % (i, (res or {}).get("error"))) + _benched_why
-                                     + (("；" + fallback_error_note)
-                                        if fallback_error_note else ""),
-                                     ended_at=_now())
-                    return
-                remember_agent(actual_implementers, chapter_impl)
-                refresh_actual_route(chapter_impl, implement_reason=chapter_reason)
-                if not res["ok"]:
-                    # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
-                    # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
-                    live = ((store.get_run(run_id) or {}).get("steps") or [])
-                    if live:
-                        store.finish_step(run_id, live[-1]["n"], "done",
-                                          summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
-                                                  % _wc(txt))
-                # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
-                draft_sid = (_resume_sid(impl, res.get("sid")) or "") if res["ok"] else draft_sid
-            else:
-                # ---- 同章多稿赛马（dev-3.0）：n 个作者并行起草 → 逐变体评审 →
-                # 均分最高者为正稿。变体写隔离文件 chapter-XX-vK.md，赢家改名、
-                # 败稿删除；变体 0 = 本任作者（revise 会话沿用），其余取跨族优先的
-                # 其他真实智能体，不足时同作者开新会话凑数。
-                scored_variants = []
-                # 复赛降级块（算一次）：与非赛马起草重试同源（_serial_shrunk_block）
-                # ——预算内与 sk_block 字节级一致（replace 等于原样），超预算才真降级；
-                # 用户全局指令（A5）不参与收缩，原样保留在头部
-                race_shrunk_block, race_shrink_note = _serial_shrunk_block(
-                    sk_lessons, bible, kb_block)
-                if _gblk:
-                    race_shrunk_block = _gblk + "\n\n" + race_shrunk_block
-                for race_round in range(2):
-                    # 全变体失败（网关突发限流）→ 60s 退避重赛一轮，别一章判死
-                    if race_round:
-                        # ev.wait 睡等可被取消即刻唤醒
-                        if ev is not None:
-                            if ev.wait(60):
-                                break
-                        else:
-                            time.sleep(60)
-                        for kk in range(n_variants):
-                            # 清上一轮残稿：防陈旧半成品被本轮评分误认成新成品
-                            try:
-                                os.remove(os.path.join(workdir, "chapter-%02d-v%d.md" % (i, kk)))
-                            except OSError:
-                                pass
-                    pool = [impl]
-                    others = [a for a in agents if a.get("mode") == "real" and a["id"] != impl["id"]]
-                    others.sort(key=lambda a: 0 if a.get("kind") != impl.get("kind") else 1)
-                    pool += others[:n_variants - 1]
-                    while len(pool) < n_variants:
-                        pool.append(impl)   # 不够就同作者再开一路（新会话天然出不同稿）
-                    results = {}
-
-                    def _draft_one(kk, agent):
-                        vfile = "chapter-%02d-v%d.md" % (i, kk)
-                        vp = _draft_prompt(vfile)
-                        if race_round and len(vp) > 12000 and sk_block and sk_block in vp:
-                            # 复赛分层降级（与非赛马起草重试同口径）：容量受限通道上
-                            # 全量提示词必挂，复赛照发同一份全量只是把 N×2400s 再烧
-                            # 一遍——按身份收缩经验库/圣经（大纲/前情/知识库块不动）。
-                            vp = vp.replace(sk_block, race_shrunk_block)
-                        note = "赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id"))
-                        if race_round and race_shrink_note:
-                            note += "；复赛降级：%s" % race_shrink_note
-                        r = _run_step(run_id, "draft-c%d-v%d" % (i, kk),
-                                      modelhub.bind_agent(agent, difficulty),
-                                      vp, step_wd, readonly=False, ev=ev,
-                                      timeout=2400,
-                                      # 赛马只在全新起草时启用（无续会话），每路都是新会话
-                                      images=_task_images(task, workdir),
-                                      note=note)
-                        results[kk] = (vfile, agent, r)
-
-                    threads = []
-                    for kk, agent in enumerate(pool):
-                        th = threading.Thread(target=_draft_one, args=(kk, agent),
-                                              name="race-%s-c%d-v%d" % (run_id, i, kk), daemon=True)
-                        threads.append(th)
-                        th.start()
-                    for th in threads:
-                        th.join(3000)
-                    _check_cancel(ev)
-
-                    scored_variants = []
-                    for kk in range(len(pool)):
-                        vfile, agent, r = results.get(kk, (None, None, None))
-                        if vfile is None:
-                            continue
-                        txt = _read_variant(workdir, i, kk)
-                        ok_text = txt and _wc(txt) >= int(wpc * 0.6)
-                        if r is not None and not r["ok"] and not ok_text:
-                            continue   # 这一路彻底失败（无成品也不够长）
-                        if not ok_text:
-                            continue
-                        cj_map, sc, sids2, continuity2 = run_critique(
-                            txt, 1, note_extra="（本稿为同章赛马变体 %d/%d，只评这一份）" % (kk + 1, len(pool)))
-                        m = means_of(cj_map)
-                        avg = round(sum(m.values()) / max(1, len(m)), 2) if m else 0.0
-                        scored_variants.append({"variant": kk, "agent": agent.get("id"),
-                                                "file": vfile, "means": m, "avg": avg,
-                                                "cj": cj_map, "scored": sc, "sids": sids2,
-                                                "continuity": continuity2})
-                    if scored_variants:
-                        break
-                if not scored_variants:
-                    store.update_run(run_id, expected_status="running", status="failed",
-                                     error="第 %d 章赛马全部变体起草失败" % i, ended_at=_now())
-                    return
-                scored_variants.sort(key=lambda v: (-v["avg"], v["variant"]))
-                win = scored_variants[0]
-                win_agent = next((a for a in pool if a.get("id") == win["agent"]), None)
-                if win_agent is not None:
-                    remember_agent(actual_implementers, win_agent)
-                    refresh_actual_route(
-                        win_agent,
-                        implement_reason="同章多稿赛马胜出：%s" %
-                        (win_agent.get("label") or win_agent.get("id")))
-                # 收敛：赢家转正，败稿删除；胜者评审结果直接作为第 1 轮（不重评）
-                if win["file"] != ch_file:
-                    try:
-                        os.replace(os.path.join(workdir, win["file"]),
-                                   os.path.join(workdir, ch_file))
-                    except OSError as e:
-                        store.update_run(run_id, expected_status="running", status="failed",
-                                         error="第 %d 章赛马收卷失败: %r" % (i, e), ended_at=_now())
-                        return
-                for v in scored_variants[1:]:
-                    # 败者精华：删除前留存文本，供首轮修订提炼（懒调用）
-                    try:
-                        race_losers.append({
-                            "variant": v["variant"],
-                            "text": chaptersafe.strip_internal_blocks(
-                                _read_text_any_enc(os.path.join(workdir, v["file"])))[:8000]})
-                    except OSError:
-                        pass
-                    try:
-                        os.remove(os.path.join(workdir, v["file"]))
-                    except OSError:
-                        pass
-                race_log = [{"variant": v["variant"], "agent": v["agent"], "avg": v["avg"],
-                             "chosen": v is win, "reviewed": v["scored"] > 0}
-                            for v in scored_variants]
-                latest_run = store.get_run(run_id) or {}
-                all_variants = dict(latest_run.get("variants") or {})
-                all_variants[str(i)] = race_log
-                store.update_run(run_id, variants=all_variants)
-                if win["scored"] > 0:
-                    race_cj, race_scored = win["cj"], win["scored"]
-                    race_continuity = win.get("continuity") or []
-                    critic_sids.update(win["sids"])
-                # revise 会话沿用变体 0（本任作者）的会话；那一路失败则留空
-                r0 = (results.get(0) or (None, None, None))[2] or {}
-                draft_sid = _resume_sid(impl, r0.get("sid")) or ""
-
-        # 正文可复用；缺少双人有效评审的旧分数必须重新评审。
-        if reuse and _reusable_chapter_review(
-                inh_scores.get(i), dims, threshold_ch):
-            cs = dict(inh_scores[i])
-            cs.setdefault("chapter", i)
-            cs["reused"] = True
-            _vent = volumes.find(vol_plan, i) if vol_plan else None
-            if _vent:
-                cs["vol"] = _vent["vol"]
-                if _vent.get("title"):
-                    cs["vol_title"] = _vent["title"]
-            chapter_scores.append(cs)
-            prefix_words += int(cs.get("words") or 0)
-            store.update_run(run_id, chapter_scores=chapter_scores)
-            continue
-
-        # 开篇闸门（仅全书第 1 章、真实作者、可经 serial.opening_gate=false 关闭）：
-        # 第 1 章先核内部五维，减少在弱开篇上继续扩写的成本。
-        gate_live = (start == 1 and i == 1 and impl.get("mode") == "real"
-                     and bool(serial.get("opening_gate", True)))
-        gate_note = ""
-        gate_opening_ok = None   # rnd1 闸门评估是否过线（None=未评估）
-        s_issues = []
-        for rnd in (1, 2):
-            text = _read_chapter(workdir, i)
-            if rnd > 1:
-                issues_all[:] = _clear_chapter_review_issues(issues_all, i)
-                # A repaired chapter replaces the first review round's state
-                # assertions; retaining both would manufacture a conflict.
-                continuity_rows[:] = []
-            if rnd == 1 and race_cj is not None:
-                cj_by_agent, scored = race_cj, race_scored
-                continuity_rows[:] = race_continuity
-            else:
-                cj_by_agent, scored, sids_now, current_continuity = run_critique(
-                    text, rnd, critic_sids=critic_sids, event_check=event_block)
-                continuity_rows[:] = current_continuity
-                critic_sids.update(sids_now)
-            if not scored:
-                # 「评不上」≠「评了 0 分」：保留空评分并继续修订、合并和报告，
-                # 最终明确标成未评估且禁止发布。
-                review_degradation_reasons.append(
-                    "第 %d 章评审未取得有效评分；稿件质量未判定" % i)
-            means = means_of(cj_by_agent)
-            chapter_review = review_stats(cj_by_agent, threshold_ch)
-            passed = chapter_review.get("passed") is True
-            chapter_evaluated = bool(chapter_review.get("consensus"))
-            if (chapter_review.get("reviewer_count", 0) < quality_gate.MIN_REVIEWERS
-                    or not chapter_review.get("consensus")):
-                review_degradation_reasons.append(
-                    "第 %d 章评审未形成有效人数/共识（%d/%d）；稿件质量未判定" % (
-                        i, chapter_review.get("reviewer_count", 0),
-                        quality_gate.MIN_REVIEWERS))
-            # The model still owns literary judgement, but these two local
-            # audits are deterministic release evidence: semantic ledger
-            # conflicts and repeated chapter templates must enter the same
-            # repair loop as model-reported major issues.
-            chapter_quality_texts = _quality_chapter_texts(workdir, start, i)
-            continuity_issues = novel_quality.continuity_conflict_notes(
-                _validated_continuity_rows(
-                    prior_continuity_rows + continuity_rows,
-                    chapter_quality_texts, through=i))
-            if i == 1 and gate_live:
-                opening_issues = novel_quality.opening_signal_notes(text)
-            else:
-                opening_issues = [dict(item) for item in
-                                  (s_issues if rnd == 1 and gate_live else [])
-                                  if item.get("kind") in {
-                                      "开篇缺少具体触发事件",
-                                      "开篇缺少人物选择或即时后果",
-                                  }]
-            repetition_issues = [
-                _quality_issue_for_chapter(item, i)
-                for item in novel_quality.repetition_notes(chapter_quality_texts)
-                if _issue_hits_chapter(item, i)]
-            craft_issues = novel_quality.chapter_craft_notes(text, chapter=i)
-            clear_deterministic_issues(i)
-            add_deterministic_issues(
-                continuity_issues + repetition_issues + craft_issues + opening_issues)
-            # Recompute from the current manuscript every round.  The issue
-            # collector is idempotent for reporting, but a prior-round issue
-            # must still block this round when repair did not resolve it.
-            if any(item.get("severity") == "major"
-                   for item in continuity_issues + repetition_issues + craft_issues):
-                passed = False
-            if rnd == 1 and gate_live:
-                s_means, s_issues, s_summary = _signing_eval(
-                    i, "（开篇闸门：核第 1 章能否抓住读者）",
-                    issue_scope="opening-gate")
-                if s_means is None:
-                    reason = ("开篇评审未完成，稿件质量未判定：" +
-                              "；".join(signing_review_meta.get("evidence_errors") or [])[:300])
-                    _signing_record("opening_gate", dict(
-                        signing_review_meta, chapter=i, evaluated=False,
-                        review_degraded=True, review_fallback_reason=reason))
-                    review_degradation_reasons.append(reason)
-                if s_means is not None:
-                    gate_opening_ok = (_all_ge(s_means, threshold_ch)
-                                       and not signing_review_meta.get("blocking_issues"))
-                    _signing_record("opening_gate", {
-                        **signing_review_meta,
-                        "chapter": i, "means": s_means,
-                        "summary": (s_summary or "")[:200],
-                        "opening_below_line": not gate_opening_ok})
-                if s_means is not None and not gate_opening_ok:
-                    # 内部评估未过线：回大纲层重设计前三章节拍，再按新节拍重写，
-                    # 而不是只修文案——切入点不行是结构病（重设计失败回退普通修订）
-                    passed = False
-                    critique_txt = _opening_redesign_critique(
-                        s_means, s_issues, threshold_ch)
-                    rebuilt = _planner_call(
-                        planner.redesign_opening, task, outline=outline,
-                        critique=critique_txt, author_agent=impl, workdir=workdir,
-                        ev=ev, deadline=_run_deadline(run_id), run_id=run_id)
-                    if rebuilt is not None:
-                        ch = outline["chapters"][k - 1]       # 合并是原位改写，刷新引用
-                        event_block = build_event_block(ch)   # 逐项核对按新节拍重建
-                        outline_txt = render_outline_txt()    # 后续章节看到新节拍
-                        gate_note = ("- [开篇闸门] 前三章节拍已按签约评估重新设计"
-                                     "（见「本章按大纲应完成」），请按新节拍对本章做结构性重写，不是小修。")
-            if passed or rnd == 2:
-                break
-            # 第 1 轮不达标 → 修订该章后重评审（点名命中即归本章——含 note
-            # 文案点名，跨章矛盾类病灶章的修订面才收得到意见）
-            rounds_used = 2
-            majors = [x for x in issues_all if _issue_hits_chapter(x, i)
-                      and x.get("severity") == "major"][:8]
-            majors, _unanchored = _anchor_issues(majors, text)
-            revision_means = means if chapter_evaluated else {}
-            crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, revision_means[d], threshold_ch)
-                          for d in dims if d in revision_means]
-            if not revision_means:
-                crit_lines.append(
-                    "- 评审未完成，稿件质量未判定；请只按章纲、连续性和明确的确定性问题修订，"
-                    "不要把缺失评审理解为稿件质量差。")
-            crit_lines += _major_lines(majors)
-            if gate_note:
-                crit_lines.insert(0, gate_note)
-            if _unanchored:
-                crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
-            sig_now = novel_quality.signal_summary(text, chapter=i)
-            if sig_now.get("hints"):
-                crit_lines.append("- 确定性复查提示（修订须对应处理）："
-                                  + "；".join(sig_now["hints"]))
-            if rnd == 1 and race_losers and impl.get("mode") == "real":
-                # 赛马败者精华回收（连载版）：一次选择器调用提炼落选稿优点，
-                # 与评审意见一并喂给首轮修订；失败静默不影响修订
+            if not good:
+                time.sleep(3)   # 落盘竞态宽限：CLI 崩溃退出前写的文件可能晚于
+                good, txt = _chapter_state()   # 退出检查零点几秒才可见（c34 实测）
+                if good:
+                    chapter_impl = last_attempt_impl
+                    chapter_reason = last_attempt_reason
+            if not good:
+                # 失败原因带上本场停用名单——「第 N 章起草失败: None」对
+                # 用户等于没解释，欠费/凭据问题要说透（2026-10-15 案）
+                _benched_why = ""
                 try:
-                    cands = "### 胜者稿（已选定）\n\n%s" % _read_chapter(workdir, i)[:8000]
-                    for li, lo in enumerate(race_losers, 1):
-                        cands += "\n\n### 落选稿 %d\n\n%s" % (li, lo["text"])
-                    sel_prompt = _render_template_values(BESTOF_SELECTOR_PROMPT, {
-                        "__GOAL__": task["goal"],
-                        "__CANDIDATES__": cands,
-                    })
-                    sel = _run_step(run_id, "race-select-c%d" % i,
-                                    modelhub.bind_agent(critics[0] if critics else impl, difficulty),
-                                    sel_prompt, step_wd, readonly=True, ev=ev,
-                                    note="赛马败者精华提炼")
-                    _selcj = runner.extract_json(sel.get("text") or "")
-                    _imp = str((_selcj or {}).get("improvements") or "").strip()
-                    if _imp:
-                        crit_lines.append("- [赛马精华] 终审从落选候选稿提炼出值得吸收的优点：%s"
-                                          % _imp[:400])
+                    from . import bench as _bench
+                    _bl = _bench.benched_agents(run_id)
+                    if _bl:
+                        _benched_why = "；本场停用：%s" % "；".join(
+                            "%s：%s" % (aid, why)
+                            for aid, why in sorted(_bl.items())[:4])
                 except Exception:
                     pass
-            if impl.get("mode") == "mock":
-                step, log_abs = store.add_step(run_id, "revise-c%d" % i, impl["id"],
-                                               impl.get("label"))
-                _write_chapter(workdir, i, mocks.draft_manuscript(
-                    {"title": ch["title"], "goal": task["goal"]}, 2))
-                time.sleep(0.15)
-                store.finish_step(run_id, step["n"], "done",
-                                  summary="（mock）已按评审意见修订第 %d 章" % i, duration_s=0.15)
-            else:
-                prompt = _render_template_values(SERIAL_REVISE_PROMPT, {
-                    "__I__": str(i),
-                    "__FILE__": ch_file,
-                    "__GOAL__": task["goal"],
-                    "__VOLUME__": vol_block_for(i),
-                    "__CONTINUITY__": continuity_txt,
-                    "__BEATS__": ch.get("beats") or "按大纲推进",
-                    "__LOCKED_CH__": serial_locked_chapter_block(workdir, i),
-                    "__REVIEW_RUBRIC__": rubric_block,
-                    "__HIGHLIGHT__": ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转",
-                    "__STYLE__": style_tpl,
-                    "__CRITIQUE__": "\n".join(crit_lines),
-                    "__WORDS__": str(wpc),
-                })
-                cap = capability_runtime.block_for(task, run_id)
-                if cap:
-                    prompt += "\n\n" + cap
-                prompt = attachments.append_task_context(prompt, task)
-                before_revision = _read_chapter(workdir, i)
-                revise_result = _run_step(
-                    run_id, "revise-c%d" % i,
-                    modelhub.bind_agent(impl, difficulty), prompt,
-                    step_wd, readonly=False, ev=ev, timeout=2400,
-                    resume=resume_ctx["session"] if resume_ctx else draft_sid)
-                after_revision = _read_chapter(workdir, i)
-                if not revise_result.get("ok"):
-                    revision_note = (revise_result.get("error") or
-                                     "CLI 未确认修订成功")[:300]
-                    review_degradation_reasons.append(
-                        ("第 %d 章修订调用异常退出，但稿件有变化并已重新评审：%s"
-                         if after_revision != before_revision else
-                         "第 %d 章修订失败且稿件未变化：%s") % (i, revision_note))
-            remember_agent(actual_implementers, impl)
-            refresh_actual_route(
-                impl, implement_reason="章节修订：%s" %
-                (impl.get("label") or impl.get("id")))
-            # 正史重写后旧推演标过期（inkos 借鉴）：修订改写了章稿，本章的
-            # 分支计划不再反映当前正史——审计标记防误读。失败静默。
-            try:
-                branching.mark_stale(workdir, i)
-            except Exception:
-                pass
-            # 防线B：修订 CLI 若动了账面外章稿（点名修链路模板/契约打架实案），
-            # 步内即按磁盘回登记并留痕，不留到下一轮 run 的开场闸
-            _sweep_chapter_registrations(run_id, workdir, i, "章节修订")
-            _check_cancel(ev)
-        if gate_live and not (gate_opening_ok and rounds_used == 1):
-            # 闸门终判（rnd1 已过线且未修订时免复核）：五维仍低于内部阈值
-            # 时先暂停扩写，不据此预测平台结果。
-            issues_all[:] = _clear_scoped_chapter_issues(
-                issues_all, i, "opening-gate")
-            s_means2, _si2, s_sum2 = _signing_eval(
-                i, "（开篇闸门终判：重设计/修订后能否申请签约评估）",
-                issue_scope="opening-gate")
-            _signing_record("opening_gate_final", {
-                **signing_review_meta,
-                "chapter": i, "means": s_means2 or {},
-                "summary": (s_sum2 or "")[:200]})
-            if s_means2 is None:
-                reason = ("开篇闸门终评未完成，稿件质量未判定：" +
-                          "；".join(signing_review_meta.get("evidence_errors") or [])[:300])
-                review_degradation_reasons.append(reason)
-                _signing_record("opening_gate_final", dict(
-                    signing_review_meta, chapter=i, evaluated=False,
-                    review_degraded=True, review_fallback_reason=reason))
-            shortfalls = (["%s %.1f" % (d, v) for d, v in s_means2.items()
-                           if v < threshold_ch] if s_means2 is not None else [])
-            blockers = (signing_review_meta.get("blocking_issues") or []) \
-                if s_means2 is not None else []
-            if s_means2 is not None and (shortfalls or blockers):
                 store.update_run(run_id, expected_status="running", status="failed",
-                                 error="开篇闸门：第 1 章内部文本评估 %s（项目阈值 %.1f）"
-                                       "（已尝试重设计或修订仍不达标），暂停扩写；"
-                                       "稿件保留，可人工复核或调整目标后重开。"
-                                       % ("、".join(shortfalls) or "存在有正文证据的 major：" +
-                                          "；".join(str(it.get("note") or "")[:100] for it in blockers[:3]), threshold_ch),
+                                 error=("第 %d 章起草失败: %s"
+                                        % (i, (res or {}).get("error"))) + _benched_why
+                                 + (("；" + fallback_error_note)
+                                    if fallback_error_note else ""),
                                  ended_at=_now())
                 return
-        cs_new = {"chapter": i, "title": ch["title"],
-                  "means": means if chapter_review.get("consensus") else {},
-                  "passed": passed,
-                  "reviewer_count": chapter_review.get("reviewer_count", 0),
-                  "reviewer_consensus": chapter_review.get("consensus", False),
-                  "reviewer_spreads": chapter_review.get("spreads", {}),
-                  "review_degraded": (chapter_review.get("reviewer_count", 0)
-                                      < quality_gate.MIN_REVIEWERS or
-                                      not chapter_review.get("consensus")),
-                  "review_status": (
-                      "evaluated" if chapter_review.get("consensus") else
-                      "not_evaluated" if not chapter_review.get("reviewer_count")
-                      else "insufficient_reviewers_or_consensus"),
-                  "provisional_means": (means if means and
-                                        not chapter_review.get("consensus") else {}),
-                  "rounds": rounds_used,
-                  "words": _wc(_read_chapter(workdir, i)),
-                  "quality_signals": novel_quality.signal_summary(
-                      _read_chapter(workdir, i), chapter=i)}
-        _vent = volumes.find(vol_plan, i) if vol_plan else None
-        if _vent:
-            cs_new["vol"] = _vent["vol"]                     # 章节卡按卷分组用
-            if _vent.get("title"):
-                cs_new["vol_title"] = _vent["title"]
-        if ev_check_lines[0]:
-            cs_new["event_check"] = ev_check_lines[0][:8]   # 逐项目标审稿结果
-        chapter_scores.append(cs_new)
-        prefix_words += int(cs_new.get("words") or 0)
-        # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
-        store.update_run(run_id, chapter_scores=chapter_scores)
-        # Structured story state is committed alongside the chapter.  The
-        # pipeline remains compatible with legacy workdirs: a tracking failure
-        # is reported in the run evidence but never deletes a valid chapter.
-        # 防线B：验收前把本章周期内账面外的章稿改动步内回登记（正常流程此扫
-        # 幂等空转；有漂移则当场愈合并留痕，不再等下一轮 run 的开场闸）
-        _sweep_chapter_registrations(run_id, workdir, i, "章节验收")
-        try:
-            from . import story_tracking
-            story_tracking.commit_chapter(
-                workdir, i, outline_txt, _read_chapter(workdir, i),
-                facts=[str(x.get("note") or "") for x in issues_all
-                       if isinstance(x, dict) and x.get("chapter") == i and x.get("note")],
-                foreshadowing=[{"id": "F-%04d-%02d" % (i, n + 1),
-                                "text": str(line)[:400], "status": "active",
-                                "planted_chapter": i}
-                               for n, line in enumerate(ledger_lines[:20])],
-                characters=["%s·%s：%s" % (row.get("entity"), row.get("attribute"),
-                                           row.get("state"))
-                            for row in continuity_rows[:30]],
-                timeline=["第 %d 章：%s（%s）" % (i, row.get("state"), row.get("reason"))
-                          for row in continuity_rows[:30]
-                          if str(row.get("attribute") or "") in ("时间", "地点", "行程", "事件")],
-                author_truth=["%s·%s：%s；依据：%s" % (
-                    row.get("entity"), row.get("attribute"), row.get("state"),
-                    row.get("reason") or "保持") for row in continuity_rows[:30]],
-                next_promises=[ch.get("hook") or ch.get("highlight") or ""],
-            )
-        except Exception as exc:
-            try:
-                store.update_run(run_id, story_tracking_warning=str(exc)[:300])
-            except Exception:
-                pass
-        # 旧账换新账（章内修订回路）：本章终评达标 → 用终轮评审的 issues 换掉
-        # 第 1 轮的旧账。不换的话「修订后已达标」的章仍顶着第 1 轮 majors，
-        # 最终 publishable 被陈账永远压着 False。放在 story_tracking 取材之后：
-        # 事实沉淀仍吃得到修订前的完整意见，门禁只认终轮评判。
-        # 按「点名命中本章」撤账：签约检查点 majors 的 chapter 字段是检查点
-        # 章而非病灶章（2026-10-13 神瞳实案：chapter=9、病灶在第 6 章），
-        # 只按字段撤账，病灶章修订达标也摘不掉检查点章名下的旧账。
-        if cs_new["passed"] and cj_by_agent:
-            issues_all[:] = [x for x in issues_all if not _issue_hits_chapter(x, i)]
-            for _cj in cj_by_agent.values():
-                if isinstance(_cj, dict):
-                    revised_issues = [_tag_review_issue(it, i, "chapter")
-                                      for it in (_cj.get("issues") or [])[:6]
-                                      if isinstance(it, dict)]
-                    _anchor_issues(revised_issues, _read_chapter(workdir, i))
-                    issues_all.extend(revised_issues)
-        # 资源账本（借鉴角色资源账本）：评审提出的道具/伤情/承诺/伏笔增量
-        # 追加到 .codebee/resource-ledger.md，下一章起草时注入，防跨章穿帮。
-        # 失败静默——账本是增强不是硬依赖。
-        if ledger_lines:
-            try:
-                _append_ledger(workdir, i, ledger_lines)
-            except Exception:
-                pass
-        try:
-            # Empty final assertions are meaningful on a chapter rerun: they
-            # clear stale facts instead of silently preserving old reviewer
-            # state in the next chapter's prompt.
-            _append_continuity_ledger(workdir, i, continuity_rows)
-        except Exception:
-            pass
-        # findings 沉淀（借鉴 agentmemory 持久记忆）：章节标题+要点追加到
-        # .codebee/findings.md——后续章节起草时随圣经/模块库注入，弥补
-        # 前情提要只看近 2 章结尾的中期记忆空洞。失败静默。
-        try:
-            fd_p = os.path.join(workdir, ".codebee", "findings.md")
-            os.makedirs(os.path.dirname(fd_p), exist_ok=True)
-            header_needed = not os.path.isfile(fd_p)
-            with open(fd_p, "a", encoding="utf-8") as f:
-                if header_needed:
-                    f.write("# 章节发现（每章评审达标后自动追加，供后续章节参考）\n\n")
-                f.write("- 第%d章《%s》：%s（%d 字，%s）\n" % (
-                    i, ch["title"],
-                    ch.get("beats") or "按大纲推进", chapter_scores[-1]["words"],
-                    "%.1f 分" % (means.get("情节", means.get("情节推进", 0.0)))
-                    if means else "无评分"))
-        except Exception:
-            pass
-
-        # ---- 2万字文本预评估（项目默认检查点，不是平台通用政策）。累计字数
-        # 过线时做一次独立签约评估；未达线先重改最弱章一轮再复核一次。
-        # 不中止批次——终局全局评审仍是发布门，这里把问题提前暴露并给一次
-        # 修复机会（全书评审通过记录 signing_checkpoint，只触发一次）。
-        if impl.get("mode") == "real":
-            total_words = prefix_words
-            latest_cp = (store.get_run(run_id) or {}).get("signing_checkpoint")
-            if _signing_checkpoint_due(
-                    total_words, latest_cp, novel_quality.SIGNING_CHECKPOINT_WORDS):
-                cp_means, cp_issues, cp_summary = _signing_eval(
-                    i, "（2万字签约预评估检查点）")
-                cp = {"at_words": total_words, "chapter": i,
-                      "means": cp_means or {},
-                      "reviewer_count": signing_review_meta.get("reviewer_count", 0),
-                      "reviewer_consensus": signing_review_meta.get("consensus", False),
-                      "reviewer_spreads": signing_review_meta.get("spreads", {}),
-                      "read_chapters": signing_review_meta.get("read_chapters", []),
-                      "read_scope": signing_review_meta.get("read_scope", []),
-                      "evidence_errors": signing_review_meta.get("evidence_errors", []),
-                      "passed": bool(cp_means) and all(
-                          v >= threshold for v in cp_means.values()) and not
-                          signing_review_meta.get("blocking_issues") if cp_means else None,
-                      "summary": (cp_summary or "")[:200]}
-                if cp["passed"] is False:
-                    # 分数短板和有正文证据的 major 都可能导致检查点失败。
-                    # 后者即使总分过线也必须命中病灶章，不能因“没有最弱章”空转。
-                    weak, cp_blockers = _checkpoint_repair_targets(
-                        chapter_scores, cp_means, threshold, cp_issues,
-                        lo=start, hi=i, limit=4)
-                    checkpoint_revised = []
-                    short = "；".join(
-                        "%s %.1f（签约线 %.1f）" % (d, v, threshold)
-                        for d, v in (cp_means or {}).items() if v < threshold)
-                    for c in weak:
-                        j = c["chapter"]
-                        _wch = outline["chapters"][j - start] if start <= j <= end \
-                            else ch
-                        crit = _checkpoint_repair_critique(
-                            short or "（各维度均未明确出分）", cp_blockers, j)
-                        res = _run_step(
-                            run_id, "polish-cp%d" % j,
-                            modelhub.bind_agent(impl, difficulty),
-                            _render_template_values(SERIAL_REVISE_PROMPT, {
-                                "__I__": str(j),
-                                "__FILE__": "chapter-%02d.md" % j,
-                                "__GOAL__": task["goal"],
-                                "__VOLUME__": vol_block_for(j),
-                                "__CONTINUITY__": _read_continuity_ledger(
-                                    workdir, before_chapter=j),
-                                "__BEATS__": _wch.get("beats") or "按大纲推进",
-                                "__LOCKED_CH__": serial_locked_chapter_block(workdir, j),
-                                "__REVIEW_RUBRIC__": rubric_block,
-                                "__HIGHLIGHT__": _wch.get("highlight")
-                                or "按剧情要点自然铺设一处小冲突/小反转",
-                                "__STYLE__": style_tpl,
-                                "__CRITIQUE__": crit,
-                                "__WORDS__": str(wpc),
-                            }),
-                            workdir, readonly=False, ev=ev, timeout=2400,
-                            note="2万字检查点：签约预评估未达线，重改最弱章")
-                        if not res["ok"]:
-                            continue
-                        checkpoint_revised.append(j)
+            remember_agent(actual_implementers, chapter_impl)
+            refresh_actual_route(chapter_impl, implement_reason=chapter_reason)
+            if not res["ok"]:
+                # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
+                # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
+                live = ((store.get_run(run_id) or {}).get("steps") or [])
+                if live:
+                    store.finish_step(run_id, live[-1]["n"], "done",
+                                      summary="起草调用超时，但章稿已完整落盘（约 %d 字）——交评审门判质量"
+                                              % _wc(txt))
+            # §07 T1.1：draft 会话 id 供本轮 revise 复用（同会话内前缀走缓存读计价）
+            draft_sid = (_resume_sid(impl, res.get("sid")) or "") if res["ok"] else draft_sid
+        else:
+            # ---- 同章多稿赛马（dev-3.0）：n 个作者并行起草 → 逐变体评审 →
+            # 均分最高者为正稿。变体写隔离文件 chapter-XX-vK.md，赢家改名、
+            # 败稿删除；变体 0 = 本任作者（revise 会话沿用），其余取跨族优先的
+            # 其他真实智能体，不足时同作者开新会话凑数。
+            scored_variants = []
+            # 复赛降级块（算一次）：与非赛马起草重试同源（_serial_shrunk_block）
+            # ——预算内与 sk_block 字节级一致（replace 等于原样），超预算才真降级；
+            # 用户全局指令（A5）不参与收缩，原样保留在头部
+            race_shrunk_block, race_shrink_note = _serial_shrunk_block(
+                sk_lessons, bible, kb_block)
+            if _gblk:
+                race_shrunk_block = _gblk + "\n\n" + race_shrunk_block
+            for race_round in range(2):
+                # 全变体失败（网关突发限流）→ 60s 退避重赛一轮，别一章判死
+                if race_round:
+                    # ev.wait 睡等可被取消即刻唤醒
+                    if ev is not None:
+                        if ev.wait(60):
+                            break
+                    else:
+                        time.sleep(60)
+                    for kk in range(n_variants):
+                        # 清上一轮残稿：防陈旧半成品被本轮评分误认成新成品
                         try:
-                            branching.mark_stale(workdir, j)
+                            os.remove(os.path.join(workdir, "chapter-%02d-v%d.md" % (i, kk)))
+                        except OSError:
+                            pass
+                pool = [impl]
+                others = [a for a in agents if a.get("mode") == "real" and a["id"] != impl["id"]]
+                others.sort(key=lambda a: 0 if a.get("kind") != impl.get("kind") else 1)
+                pool += others[:n_variants - 1]
+                while len(pool) < n_variants:
+                    pool.append(impl)   # 不够就同作者再开一路（新会话天然出不同稿）
+                results = {}
+
+                def _draft_one(kk, agent):
+                    vfile = "chapter-%02d-v%d.md" % (i, kk)
+                    vp = _draft_prompt(vfile)
+                    if race_round and len(vp) > 12000 and sk_block and sk_block in vp:
+                        # 复赛分层降级（与非赛马起草重试同口径）：容量受限通道上
+                        # 全量提示词必挂，复赛照发同一份全量只是把 N×2400s 再烧
+                        # 一遍——按身份收缩经验库/圣经（大纲/前情/知识库块不动）。
+                        vp = vp.replace(sk_block, race_shrunk_block)
+                    note = "赛马变体 %d/%d（%s）" % (kk + 1, len(pool), agent.get("id"))
+                    if race_round and race_shrink_note:
+                        note += "；复赛降级：%s" % race_shrink_note
+                    r = _run_step(run_id, "draft-c%d-v%d" % (i, kk),
+                                  modelhub.bind_agent(agent, difficulty),
+                                  vp, step_wd, readonly=False, ev=ev,
+                                  timeout=2400,
+                                  # 赛马只在全新起草时启用（无续会话），每路都是新会话
+                                  images=_task_images(task, workdir),
+                                  note=note)
+                    results[kk] = (vfile, agent, r)
+
+                threads = []
+                for kk, agent in enumerate(pool):
+                    th = threading.Thread(target=_draft_one, args=(kk, agent),
+                                          name="race-%s-c%d-v%d" % (run_id, i, kk), daemon=True)
+                    threads.append(th)
+                    th.start()
+                for th in threads:
+                    th.join(3000)
+                _check_cancel(ev)
+
+                scored_variants = []
+                for kk in range(len(pool)):
+                    vfile, agent, r = results.get(kk, (None, None, None))
+                    if vfile is None:
+                        continue
+                    txt = _read_variant(workdir, i, kk)
+                    ok_text = txt and _wc(txt) >= int(wpc * 0.6)
+                    if r is not None and not r["ok"] and not ok_text:
+                        continue   # 这一路彻底失败（无成品也不够长）
+                    if not ok_text:
+                        continue
+                    cj_map, sc, sids2, continuity2 = run_critique(
+                        txt, 1, note_extra="（本稿为同章赛马变体 %d/%d，只评这一份）" % (kk + 1, len(pool)))
+                    m = means_of(cj_map)
+                    avg = round(sum(m.values()) / max(1, len(m)), 2) if m else 0.0
+                    scored_variants.append({"variant": kk, "agent": agent.get("id"),
+                                            "file": vfile, "means": m, "avg": avg,
+                                            "cj": cj_map, "scored": sc, "sids": sids2,
+                                            "continuity": continuity2})
+                if scored_variants:
+                    break
+            if not scored_variants:
+                store.update_run(run_id, expected_status="running", status="failed",
+                                 error="第 %d 章赛马全部变体起草失败" % i, ended_at=_now())
+                return
+            scored_variants.sort(key=lambda v: (-v["avg"], v["variant"]))
+            win = scored_variants[0]
+            win_agent = next((a for a in pool if a.get("id") == win["agent"]), None)
+            if win_agent is not None:
+                remember_agent(actual_implementers, win_agent)
+                refresh_actual_route(
+                    win_agent,
+                    implement_reason="同章多稿赛马胜出：%s" %
+                    (win_agent.get("label") or win_agent.get("id")))
+            # 收敛：赢家转正，败稿删除；胜者评审结果直接作为第 1 轮（不重评）
+            if win["file"] != ch_file:
+                try:
+                    os.replace(os.path.join(workdir, win["file"]),
+                               os.path.join(workdir, ch_file))
+                except OSError as e:
+                    store.update_run(run_id, expected_status="running", status="failed",
+                                     error="第 %d 章赛马收卷失败: %r" % (i, e), ended_at=_now())
+                    return
+            for v in scored_variants[1:]:
+                # 败者精华：删除前留存文本，供首轮修订提炼（懒调用）
+                try:
+                    race_losers.append({
+                        "variant": v["variant"],
+                        "text": chaptersafe.strip_internal_blocks(
+                            _read_text_any_enc(os.path.join(workdir, v["file"])))[:8000]})
+                except OSError:
+                    pass
+                try:
+                    os.remove(os.path.join(workdir, v["file"]))
+                except OSError:
+                    pass
+            race_log = [{"variant": v["variant"], "agent": v["agent"], "avg": v["avg"],
+                         "chosen": v is win, "reviewed": v["scored"] > 0}
+                        for v in scored_variants]
+            latest_run = store.get_run(run_id) or {}
+            all_variants = dict(latest_run.get("variants") or {})
+            all_variants[str(i)] = race_log
+            store.update_run(run_id, variants=all_variants)
+            if win["scored"] > 0:
+                race_cj, race_scored = win["cj"], win["scored"]
+                race_continuity = win.get("continuity") or []
+                critic_sids.update(win["sids"])
+            # revise 会话沿用变体 0（本任作者）的会话；那一路失败则留空
+            r0 = (results.get(0) or (None, None, None))[2] or {}
+            draft_sid = _resume_sid(impl, r0.get("sid")) or ""
+    return SimpleNamespace(
+        reuse=reuse, critic_sids=critic_sids, draft_sid=draft_sid,
+        race_cj=race_cj, race_scored=race_scored,
+        race_continuity=race_continuity, race_losers=race_losers)
+
+
+def _serial_review_chapter(st, i, ch, ch_file, cx, dr, run_critique,
+                           ev_check_lines, ledger_lines):
+    """本章评审-修订：开篇闸门 → 至多两轮评审 → 至多一轮修订。
+
+    返回 prefix_words（修订会改字数）与刷新后的 ch（合并可能原位改写大纲条目）。
+    """
+    (_signing_eval, _signing_record, actual_implementers) = (
+        st._signing_eval, st._signing_record, st.actual_implementers)
+    (add_deterministic_issues, chapter_scores, clear_deterministic_issues) = (
+        st.add_deterministic_issues, st.chapter_scores,
+        st.clear_deterministic_issues)
+    (critics, difficulty, dims, ev, impl, issues_all) = (
+        st.critics, st.difficulty, st.dims, st.ev, st.impl, st.issues_all)
+    (means_of, outline, refresh_actual_route, remember_agent) = (
+        st.means_of, st.outline, st.refresh_actual_route, st.remember_agent)
+    (render_outline_txt, resume_ctx, review_degradation_reasons, review_stats) = (
+        st.render_outline_txt, st.resume_ctx, st.review_degradation_reasons,
+        st.review_stats)
+    (rubric_block, run_id, serial, signing_review_meta, start) = (
+        st.rubric_block, st.run_id, st.serial, st.signing_review_meta, st.start)
+    (step_wd, story_tracking, style_tpl, task, threshold_ch) = (
+        st.step_wd, st.story_tracking, st.style_tpl, st.task, st.threshold_ch)
+    (vol_block_for, vol_plan, workdir, wpc) = (
+        st.vol_block_for, st.vol_plan, st.workdir, st.wpc)
+    k = i - start + 1        # 本批章序（i = start + k - 1），合并后重建大纲条目要用
+    (continuity_rows, continuity_txt, prior_continuity_rows) = (
+        cx.continuity_rows, cx.continuity_txt, cx.prior_continuity_rows)
+    (vol_review_block, event_block) = (cx.vol_review_block, cx.event_block)
+    (critic_sids, draft_sid, race_cj, race_continuity) = (
+        dr.critic_sids, dr.draft_sid, dr.race_cj, dr.race_continuity)
+    (race_losers, race_scored, prefix_words) = (
+        dr.race_losers, dr.race_scored, st.prefix_words)
+    # 评审-修订（每章至多 1 轮修订）
+    rounds_used = 1
+    means = {}
+
+    # 开篇闸门（仅全书第 1 章、真实作者、可经 serial.opening_gate=false 关闭）：
+    # 第 1 章先核内部五维，减少在弱开篇上继续扩写的成本。
+    gate_live = (start == 1 and i == 1 and impl.get("mode") == "real"
+                 and bool(serial.get("opening_gate", True)))
+    gate_note = ""
+    gate_opening_ok = None   # rnd1 闸门评估是否过线（None=未评估）
+    s_issues = []
+    for rnd in (1, 2):
+        text = _read_chapter(workdir, i)
+        if rnd > 1:
+            issues_all[:] = _clear_chapter_review_issues(issues_all, i)
+            # A repaired chapter replaces the first review round's state
+            # assertions; retaining both would manufacture a conflict.
+            continuity_rows[:] = []
+        if rnd == 1 and race_cj is not None:
+            cj_by_agent, scored = race_cj, race_scored
+            continuity_rows[:] = race_continuity
+        else:
+            cj_by_agent, scored, sids_now, current_continuity = run_critique(
+                text, rnd, critic_sids=critic_sids, event_check=event_block)
+            continuity_rows[:] = current_continuity
+            critic_sids.update(sids_now)
+        if not scored:
+            # 「评不上」≠「评了 0 分」：保留空评分并继续修订、合并和报告，
+            # 最终明确标成未评估且禁止发布。
+            review_degradation_reasons.append(
+                "第 %d 章评审未取得有效评分；稿件质量未判定" % i)
+        means = means_of(cj_by_agent)
+        chapter_review = review_stats(cj_by_agent, threshold_ch)
+        passed = chapter_review.get("passed") is True
+        chapter_evaluated = bool(chapter_review.get("consensus"))
+        if (chapter_review.get("reviewer_count", 0) < quality_gate.MIN_REVIEWERS
+                or not chapter_review.get("consensus")):
+            review_degradation_reasons.append(
+                "第 %d 章评审未形成有效人数/共识（%d/%d）；稿件质量未判定" % (
+                    i, chapter_review.get("reviewer_count", 0),
+                    quality_gate.MIN_REVIEWERS))
+        # The model still owns literary judgement, but these two local
+        # audits are deterministic release evidence: semantic ledger
+        # conflicts and repeated chapter templates must enter the same
+        # repair loop as model-reported major issues.
+        chapter_quality_texts = _quality_chapter_texts(workdir, start, i)
+        continuity_issues = novel_quality.continuity_conflict_notes(
+            _validated_continuity_rows(
+                prior_continuity_rows + continuity_rows,
+                chapter_quality_texts, through=i))
+        if i == 1 and gate_live:
+            opening_issues = novel_quality.opening_signal_notes(text)
+        else:
+            opening_issues = [dict(item) for item in
+                              (s_issues if rnd == 1 and gate_live else [])
+                              if item.get("kind") in {
+                                  "开篇缺少具体触发事件",
+                                  "开篇缺少人物选择或即时后果",
+                              }]
+        repetition_issues = [
+            _quality_issue_for_chapter(item, i)
+            for item in novel_quality.repetition_notes(chapter_quality_texts)
+            if _issue_hits_chapter(item, i)]
+        craft_issues = novel_quality.chapter_craft_notes(text, chapter=i)
+        clear_deterministic_issues(i)
+        add_deterministic_issues(
+            continuity_issues + repetition_issues + craft_issues + opening_issues)
+        # Recompute from the current manuscript every round.  The issue
+        # collector is idempotent for reporting, but a prior-round issue
+        # must still block this round when repair did not resolve it.
+        if any(item.get("severity") == "major"
+               for item in continuity_issues + repetition_issues + craft_issues):
+            passed = False
+        if rnd == 1 and gate_live:
+            s_means, s_issues, s_summary = _signing_eval(
+                i, "（开篇闸门：核第 1 章能否抓住读者）",
+                issue_scope="opening-gate")
+            if s_means is None:
+                reason = ("开篇评审未完成，稿件质量未判定：" +
+                          "；".join(signing_review_meta.get("evidence_errors") or [])[:300])
+                _signing_record("opening_gate", dict(
+                    signing_review_meta, chapter=i, evaluated=False,
+                    review_degraded=True, review_fallback_reason=reason))
+                review_degradation_reasons.append(reason)
+            if s_means is not None:
+                gate_opening_ok = (_all_ge(s_means, threshold_ch)
+                                   and not signing_review_meta.get("blocking_issues"))
+                _signing_record("opening_gate", {
+                    **signing_review_meta,
+                    "chapter": i, "means": s_means,
+                    "summary": (s_summary or "")[:200],
+                    "opening_below_line": not gate_opening_ok})
+            if s_means is not None and not gate_opening_ok:
+                # 内部评估未过线：回大纲层重设计前三章节拍，再按新节拍重写，
+                # 而不是只修文案——切入点不行是结构病（重设计失败回退普通修订）
+                passed = False
+                critique_txt = _opening_redesign_critique(
+                    s_means, s_issues, threshold_ch)
+                rebuilt = _planner_call(
+                    planner.redesign_opening, task, outline=outline,
+                    critique=critique_txt, author_agent=impl, workdir=workdir,
+                    ev=ev, deadline=_run_deadline(run_id), run_id=run_id)
+                if rebuilt is not None:
+                    ch = outline["chapters"][k - 1]       # 合并是原位改写，刷新引用
+                    event_block = _serial_event_block(ch, vol_review_block)   # 逐项核对按新节拍重建
+                    outline_txt = render_outline_txt()    # 后续章节看到新节拍
+                    gate_note = ("- [开篇闸门] 前三章节拍已按签约评估重新设计"
+                                 "（见「本章按大纲应完成」），请按新节拍对本章做结构性重写，不是小修。")
+        if passed or rnd == 2:
+            break
+        # 第 1 轮不达标 → 修订该章后重评审（点名命中即归本章——含 note
+        # 文案点名，跨章矛盾类病灶章的修订面才收得到意见）
+        rounds_used = 2
+        majors = [x for x in issues_all if _issue_hits_chapter(x, i)
+                  and x.get("severity") == "major"][:8]
+        majors, _unanchored = _anchor_issues(majors, text)
+        revision_means = means if chapter_evaluated else {}
+        crit_lines = ["- %s：%.1f（章阈值 %.1f）" % (d, revision_means[d], threshold_ch)
+                      for d in dims if d in revision_means]
+        if not revision_means:
+            crit_lines.append(
+                "- 评审未完成，稿件质量未判定；请只按章纲、连续性和明确的确定性问题修订，"
+                "不要把缺失评审理解为稿件质量差。")
+        crit_lines += _major_lines(majors)
+        if gate_note:
+            crit_lines.insert(0, gate_note)
+        if _unanchored:
+            crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
+        sig_now = novel_quality.signal_summary(text, chapter=i)
+        if sig_now.get("hints"):
+            crit_lines.append("- 确定性复查提示（修订须对应处理）："
+                              + "；".join(sig_now["hints"]))
+        if rnd == 1 and race_losers and impl.get("mode") == "real":
+            # 赛马败者精华回收（连载版）：一次选择器调用提炼落选稿优点，
+            # 与评审意见一并喂给首轮修订；失败静默不影响修订
+            try:
+                cands = "### 胜者稿（已选定）\n\n%s" % _read_chapter(workdir, i)[:8000]
+                for li, lo in enumerate(race_losers, 1):
+                    cands += "\n\n### 落选稿 %d\n\n%s" % (li, lo["text"])
+                sel_prompt = _render_template_values(BESTOF_SELECTOR_PROMPT, {
+                    "__GOAL__": task["goal"],
+                    "__CANDIDATES__": cands,
+                })
+                sel = _run_step(run_id, "race-select-c%d" % i,
+                                modelhub.bind_agent(critics[0] if critics else impl, difficulty),
+                                sel_prompt, step_wd, readonly=True, ev=ev,
+                                note="赛马败者精华提炼")
+                _selcj = runner.extract_json(sel.get("text") or "")
+                _imp = str((_selcj or {}).get("improvements") or "").strip()
+                if _imp:
+                    crit_lines.append("- [赛马精华] 终审从落选候选稿提炼出值得吸收的优点：%s"
+                                      % _imp[:400])
+            except Exception:
+                pass
+        if impl.get("mode") == "mock":
+            step, log_abs = store.add_step(run_id, "revise-c%d" % i, impl["id"],
+                                           impl.get("label"))
+            _write_chapter(workdir, i, mocks.draft_manuscript(
+                {"title": ch["title"], "goal": task["goal"]}, 2))
+            time.sleep(0.15)
+            store.finish_step(run_id, step["n"], "done",
+                              summary="（mock）已按评审意见修订第 %d 章" % i, duration_s=0.15)
+        else:
+            prompt = _render_template_values(SERIAL_REVISE_PROMPT, {
+                "__I__": str(i),
+                "__FILE__": ch_file,
+                "__GOAL__": task["goal"],
+                "__VOLUME__": vol_block_for(i),
+                "__CONTINUITY__": continuity_txt,
+                "__BEATS__": ch.get("beats") or "按大纲推进",
+                "__LOCKED_CH__": serial_locked_chapter_block(workdir, i),
+                "__REVIEW_RUBRIC__": rubric_block,
+                "__HIGHLIGHT__": ch.get("highlight") or "按剧情要点自然铺设一处小冲突/小反转",
+                "__STYLE__": style_tpl,
+                "__CRITIQUE__": "\n".join(crit_lines),
+                "__WORDS__": str(wpc),
+            })
+            cap = capability_runtime.block_for(task, run_id)
+            if cap:
+                prompt += "\n\n" + cap
+            prompt = attachments.append_task_context(prompt, task)
+            before_revision = _read_chapter(workdir, i)
+            revise_result = _run_step(
+                run_id, "revise-c%d" % i,
+                modelhub.bind_agent(impl, difficulty), prompt,
+                step_wd, readonly=False, ev=ev, timeout=2400,
+                resume=resume_ctx["session"] if resume_ctx else draft_sid)
+            after_revision = _read_chapter(workdir, i)
+            if not revise_result.get("ok"):
+                revision_note = (revise_result.get("error") or
+                                 "CLI 未确认修订成功")[:300]
+                review_degradation_reasons.append(
+                    ("第 %d 章修订调用异常退出，但稿件有变化并已重新评审：%s"
+                     if after_revision != before_revision else
+                     "第 %d 章修订失败且稿件未变化：%s") % (i, revision_note))
+        remember_agent(actual_implementers, impl)
+        refresh_actual_route(
+            impl, implement_reason="章节修订：%s" %
+            (impl.get("label") or impl.get("id")))
+        # 正史重写后旧推演标过期（inkos 借鉴）：修订改写了章稿，本章的
+        # 分支计划不再反映当前正史——审计标记防误读。失败静默。
+        try:
+            branching.mark_stale(workdir, i)
+        except Exception:
+            pass
+        # 防线B：修订 CLI 若动了账面外章稿（点名修链路模板/契约打架实案），
+        # 步内即按磁盘回登记并留痕，不留到下一轮 run 的开场闸
+        _sweep_chapter_registrations(run_id, workdir, i, "章节修订")
+        _check_cancel(ev)
+    if gate_live and not (gate_opening_ok and rounds_used == 1):
+        # 闸门终判（rnd1 已过线且未修订时免复核）：五维仍低于内部阈值
+        # 时先暂停扩写，不据此预测平台结果。
+        issues_all[:] = _clear_scoped_chapter_issues(
+            issues_all, i, "opening-gate")
+        s_means2, _si2, s_sum2 = _signing_eval(
+            i, "（开篇闸门终判：重设计/修订后能否申请签约评估）",
+            issue_scope="opening-gate")
+        _signing_record("opening_gate_final", {
+            **signing_review_meta,
+            "chapter": i, "means": s_means2 or {},
+            "summary": (s_sum2 or "")[:200]})
+        if s_means2 is None:
+            reason = ("开篇闸门终评未完成，稿件质量未判定：" +
+                      "；".join(signing_review_meta.get("evidence_errors") or [])[:300])
+            review_degradation_reasons.append(reason)
+            _signing_record("opening_gate_final", dict(
+                signing_review_meta, chapter=i, evaluated=False,
+                review_degraded=True, review_fallback_reason=reason))
+        shortfalls = (["%s %.1f" % (d, v) for d, v in s_means2.items()
+                       if v < threshold_ch] if s_means2 is not None else [])
+        blockers = (signing_review_meta.get("blocking_issues") or []) \
+            if s_means2 is not None else []
+        if s_means2 is not None and (shortfalls or blockers):
+            store.update_run(run_id, expected_status="running", status="failed",
+                             error="开篇闸门：第 1 章内部文本评估 %s（项目阈值 %.1f）"
+                                   "（已尝试重设计或修订仍不达标），暂停扩写；"
+                                   "稿件保留，可人工复核或调整目标后重开。"
+                                   % ("、".join(shortfalls) or "存在有正文证据的 major：" +
+                                      "；".join(str(it.get("note") or "")[:100] for it in blockers[:3]), threshold_ch),
+                             ended_at=_now())
+            return
+    cs_new = {"chapter": i, "title": ch["title"],
+              "means": means if chapter_review.get("consensus") else {},
+              "passed": passed,
+              "reviewer_count": chapter_review.get("reviewer_count", 0),
+              "reviewer_consensus": chapter_review.get("consensus", False),
+              "reviewer_spreads": chapter_review.get("spreads", {}),
+              "review_degraded": (chapter_review.get("reviewer_count", 0)
+                                  < quality_gate.MIN_REVIEWERS or
+                                  not chapter_review.get("consensus")),
+              "review_status": (
+                  "evaluated" if chapter_review.get("consensus") else
+                  "not_evaluated" if not chapter_review.get("reviewer_count")
+                  else "insufficient_reviewers_or_consensus"),
+              "provisional_means": (means if means and
+                                    not chapter_review.get("consensus") else {}),
+              "rounds": rounds_used,
+              "words": _wc(_read_chapter(workdir, i)),
+              "quality_signals": novel_quality.signal_summary(
+                  _read_chapter(workdir, i), chapter=i)}
+    _vent = volumes.find(vol_plan, i) if vol_plan else None
+    if _vent:
+        cs_new["vol"] = _vent["vol"]                     # 章节卡按卷分组用
+        if _vent.get("title"):
+            cs_new["vol_title"] = _vent["title"]
+    if ev_check_lines[0]:
+        cs_new["event_check"] = ev_check_lines[0][:8]   # 逐项目标审稿结果
+    chapter_scores.append(cs_new)
+    prefix_words += int(cs_new.get("words") or 0)
+    # 每章即时持久化：长篇中断/超时后可断点续跑，不丢已完成章的分数
+    store.update_run(run_id, chapter_scores=chapter_scores)
+    # Structured story state is committed alongside the chapter.  The
+    # pipeline remains compatible with legacy workdirs: a tracking failure
+    # is reported in the run evidence but never deletes a valid chapter.
+    # 防线B：验收前把本章周期内账面外的章稿改动步内回登记（正常流程此扫
+    # 幂等空转；有漂移则当场愈合并留痕，不再等下一轮 run 的开场闸）
+    _sweep_chapter_registrations(run_id, workdir, i, "章节验收")
+    try:
+        from . import story_tracking
+        story_tracking.commit_chapter(
+            workdir, i, outline_txt, _read_chapter(workdir, i),
+            facts=[str(x.get("note") or "") for x in issues_all
+                   if isinstance(x, dict) and x.get("chapter") == i and x.get("note")],
+            foreshadowing=[{"id": "F-%04d-%02d" % (i, n + 1),
+                            "text": str(line)[:400], "status": "active",
+                            "planted_chapter": i}
+                           for n, line in enumerate(ledger_lines[:20])],
+            characters=["%s·%s：%s" % (row.get("entity"), row.get("attribute"),
+                                       row.get("state"))
+                        for row in continuity_rows[:30]],
+            timeline=["第 %d 章：%s（%s）" % (i, row.get("state"), row.get("reason"))
+                      for row in continuity_rows[:30]
+                      if str(row.get("attribute") or "") in ("时间", "地点", "行程", "事件")],
+            author_truth=["%s·%s：%s；依据：%s" % (
+                row.get("entity"), row.get("attribute"), row.get("state"),
+                row.get("reason") or "保持") for row in continuity_rows[:30]],
+            next_promises=[ch.get("hook") or ch.get("highlight") or ""],
+        )
+    except Exception as exc:
+        try:
+            store.update_run(run_id, story_tracking_warning=str(exc)[:300])
+        except Exception:
+            pass
+    # 旧账换新账（章内修订回路）：本章终评达标 → 用终轮评审的 issues 换掉
+    # 第 1 轮的旧账。不换的话「修订后已达标」的章仍顶着第 1 轮 majors，
+    # 最终 publishable 被陈账永远压着 False。放在 story_tracking 取材之后：
+    # 事实沉淀仍吃得到修订前的完整意见，门禁只认终轮评判。
+    # 按「点名命中本章」撤账：签约检查点 majors 的 chapter 字段是检查点
+    # 章而非病灶章（2026-10-13 神瞳实案：chapter=9、病灶在第 6 章），
+    # 只按字段撤账，病灶章修订达标也摘不掉检查点章名下的旧账。
+    if cs_new["passed"] and cj_by_agent:
+        issues_all[:] = [x for x in issues_all if not _issue_hits_chapter(x, i)]
+        for _cj in cj_by_agent.values():
+            if isinstance(_cj, dict):
+                revised_issues = [_tag_review_issue(it, i, "chapter")
+                                  for it in (_cj.get("issues") or [])[:6]
+                                  if isinstance(it, dict)]
+                _anchor_issues(revised_issues, _read_chapter(workdir, i))
+                issues_all.extend(revised_issues)
+    # 资源账本（借鉴角色资源账本）：评审提出的道具/伤情/承诺/伏笔增量
+    # 追加到 .codebee/resource-ledger.md，下一章起草时注入，防跨章穿帮。
+    # 失败静默——账本是增强不是硬依赖。
+    if ledger_lines:
+        try:
+            _append_ledger(workdir, i, ledger_lines)
+        except Exception:
+            pass
+    try:
+        # Empty final assertions are meaningful on a chapter rerun: they
+        # clear stale facts instead of silently preserving old reviewer
+        # state in the next chapter's prompt.
+        _append_continuity_ledger(workdir, i, continuity_rows)
+    except Exception:
+        pass
+    # findings 沉淀（借鉴 agentmemory 持久记忆）：章节标题+要点追加到
+    # .codebee/findings.md——后续章节起草时随圣经/模块库注入，弥补
+    # 前情提要只看近 2 章结尾的中期记忆空洞。失败静默。
+    try:
+        fd_p = os.path.join(workdir, ".codebee", "findings.md")
+        os.makedirs(os.path.dirname(fd_p), exist_ok=True)
+        header_needed = not os.path.isfile(fd_p)
+        with open(fd_p, "a", encoding="utf-8") as f:
+            if header_needed:
+                f.write("# 章节发现（每章评审达标后自动追加，供后续章节参考）\n\n")
+            f.write("- 第%d章《%s》：%s（%d 字，%s）\n" % (
+                i, ch["title"],
+                ch.get("beats") or "按大纲推进", chapter_scores[-1]["words"],
+                "%.1f 分" % (means.get("情节", means.get("情节推进", 0.0)))
+                if means else "无评分"))
+    except Exception:
+        pass
+    return SimpleNamespace(prefix_words=prefix_words, ch=ch)
+
+
+def _serial_signing_checkpoint(st, i, ch, prefix_words):
+    """2 万字签约预评估检查点：过线即独立评估，未达线重改最弱章后复核一次。
+
+    不中止批次——终局全局评审仍是发布门，这里只把问题提前暴露并给一次修复机会
+    （全书评审通过记录 signing_checkpoint，只触发一次）。返回修订后的累计字数。
+    """
+    (_signing_eval, chapter_scores, crit_prompt_for, critics, difficulty) = (
+        st._signing_eval, st.chapter_scores, st.crit_prompt_for, st.critics,
+        st.difficulty)
+    (dims, end, ev, impl, issues_all, outline) = (
+        st.dims, st.end, st.ev, st.impl, st.issues_all, st.outline)
+    (rubric_block, run_id, signing_review_meta, start, story_tracking) = (
+        st.rubric_block, st.run_id, st.signing_review_meta, st.start,
+        st.story_tracking)
+    (style_tpl, task, threshold, threshold_ch, vol_block_for) = (
+        st.style_tpl, st.task, st.threshold, st.threshold_ch, st.vol_block_for)
+    (workdir, wpc) = (st.workdir, st.wpc)
+    # ---- 2万字文本预评估（项目默认检查点，不是平台通用政策）。累计字数
+    # 过线时做一次独立签约评估；未达线先重改最弱章一轮再复核一次。
+    # 不中止批次——终局全局评审仍是发布门，这里把问题提前暴露并给一次
+    # 修复机会（全书评审通过记录 signing_checkpoint，只触发一次）。
+    if impl.get("mode") == "real":
+        total_words = prefix_words
+        latest_cp = (store.get_run(run_id) or {}).get("signing_checkpoint")
+        if _signing_checkpoint_due(
+                total_words, latest_cp, novel_quality.SIGNING_CHECKPOINT_WORDS):
+            cp_means, cp_issues, cp_summary = _signing_eval(
+                i, "（2万字签约预评估检查点）")
+            cp = {"at_words": total_words, "chapter": i,
+                  "means": cp_means or {},
+                  "reviewer_count": signing_review_meta.get("reviewer_count", 0),
+                  "reviewer_consensus": signing_review_meta.get("consensus", False),
+                  "reviewer_spreads": signing_review_meta.get("spreads", {}),
+                  "read_chapters": signing_review_meta.get("read_chapters", []),
+                  "read_scope": signing_review_meta.get("read_scope", []),
+                  "evidence_errors": signing_review_meta.get("evidence_errors", []),
+                  "passed": bool(cp_means) and all(
+                      v >= threshold for v in cp_means.values()) and not
+                      signing_review_meta.get("blocking_issues") if cp_means else None,
+                  "summary": (cp_summary or "")[:200]}
+            if cp["passed"] is False:
+                # 分数短板和有正文证据的 major 都可能导致检查点失败。
+                # 后者即使总分过线也必须命中病灶章，不能因“没有最弱章”空转。
+                weak, cp_blockers = _checkpoint_repair_targets(
+                    chapter_scores, cp_means, threshold, cp_issues,
+                    lo=start, hi=i, limit=4)
+                checkpoint_revised = []
+                short = "；".join(
+                    "%s %.1f（签约线 %.1f）" % (d, v, threshold)
+                    for d, v in (cp_means or {}).items() if v < threshold)
+                for c in weak:
+                    j = c["chapter"]
+                    _wch = outline["chapters"][j - start] if start <= j <= end \
+                        else ch
+                    crit = _checkpoint_repair_critique(
+                        short or "（各维度均未明确出分）", cp_blockers, j)
+                    res = _run_step(
+                        run_id, "polish-cp%d" % j,
+                        modelhub.bind_agent(impl, difficulty),
+                        _render_template_values(SERIAL_REVISE_PROMPT, {
+                            "__I__": str(j),
+                            "__FILE__": "chapter-%02d.md" % j,
+                            "__GOAL__": task["goal"],
+                            "__VOLUME__": vol_block_for(j),
+                            "__CONTINUITY__": _read_continuity_ledger(
+                                workdir, before_chapter=j),
+                            "__BEATS__": _wch.get("beats") or "按大纲推进",
+                            "__LOCKED_CH__": serial_locked_chapter_block(workdir, j),
+                            "__REVIEW_RUBRIC__": rubric_block,
+                            "__HIGHLIGHT__": _wch.get("highlight")
+                            or "按剧情要点自然铺设一处小冲突/小反转",
+                            "__STYLE__": style_tpl,
+                            "__CRITIQUE__": crit,
+                            "__WORDS__": str(wpc),
+                        }),
+                        workdir, readonly=False, ev=ev, timeout=2400,
+                        note="2万字检查点：签约预评估未达线，重改最弱章")
+                    if not res["ok"]:
+                        continue
+                    checkpoint_revised.append(j)
+                    try:
+                        branching.mark_stale(workdir, j)
+                    except Exception:
+                        pass
+                    # 重改稿回登记（同打磨波：摘要与 .codebee 副本跟手，
+                    # 防下一轮 run 开场漂移闸误杀）
+                    try:
+                        story_tracking.refresh_prose(
+                            workdir, j, _read_chapter(workdir, j))
+                    except Exception as exc:
+                        try:
+                            store.update_run(run_id, story_tracking_warning=str(exc)[:300])
                         except Exception:
                             pass
-                        # 重改稿回登记（同打磨波：摘要与 .codebee 副本跟手，
-                        # 防下一轮 run 开场漂移闸误杀）
-                        try:
-                            story_tracking.refresh_prose(
-                                workdir, j, _read_chapter(workdir, j))
-                        except Exception as exc:
-                            try:
-                                store.update_run(run_id, story_tracking_warning=str(exc)[:300])
-                            except Exception:
-                                pass
-                        _sweep_chapter_registrations(run_id, workdir, j, "2万字检查点重改")
-                    for revised_chapter in checkpoint_revised:
-                        revised_text = _read_chapter(workdir, revised_chapter)
-                        revised_reviews = []
-                        revised_issues = []
-                        from . import bench as _bench
-                        reviewers = [a for a in critics
-                                     if a.get("mode") == "mock"
-                                     or not _bench.is_benched(run_id, a.get("id"))]
-                        for reviewer_idx, reviewer in enumerate(reviewers):
-                            if reviewer.get("mode") == "mock":
-                                revised_cj = mocks.critique(
-                                    reviewer["id"], 3, dims, threshold_ch)
-                            else:
-                                revised_result = _run_step(
-                                    run_id, "critique-c%d" % revised_chapter,
-                                    modelhub.bind_agent(reviewer, difficulty),
-                                    crit_prompt_for(
-                                        revised_text,
-                                        note="小说第 %d 章（签约检查点打磨后）" % revised_chapter,
-                                        chapter=revised_chapter),
-                                    workdir, readonly=True, ev=ev)
-                                revised_cj = _critique_json(revised_result, dims)
-                            revised_reviews.append({
-                                "id": reviewer.get("id") or "reviewer-%d" % reviewer_idx,
-                                "scores": revised_cj.get("scores")})
-                            revised_issues.extend(
-                                _tag_review_issue(it, revised_chapter, "chapter")
-                                for it in (revised_cj.get("issues") or [])[:6]
-                                if isinstance(it, dict))
-                            _check_cancel(ev)
-                        revised_aggregate = quality_gate.aggregate_reviews(
-                            revised_reviews, dims, threshold=threshold_ch)
-                        for chapter_score in chapter_scores:
-                            if chapter_score.get("chapter") != revised_chapter:
-                                continue
-                            old_words = int(chapter_score.get("words") or 0)
-                            chapter_score.update({
-                                "means": revised_aggregate["means"],
-                                "passed": revised_aggregate["passed"] is True,
-                                "reviewer_count": revised_aggregate["reviewer_count"],
-                                "reviewer_consensus": revised_aggregate["consensus"] is True,
-                                "reviewer_spreads": revised_aggregate["spreads"],
-                                "words": _wc(revised_text),
-                                "polished": True,
-                            })
-                            prefix_words += chapter_score["words"] - old_words
-                            break
-                        issues_all[:] = [x for x in issues_all
-                                         if not _issue_hits_chapter(x, revised_chapter)]
-                        _anchor_issues(revised_issues, revised_text)
-                        issues_all.extend(revised_issues)
-                    cp_means2, _cpi2, cp_sum2 = _signing_eval(
-                        i, "（2万字检查点复核）")
-                    if checkpoint_revised:
-                        cp = _checkpoint_after_reassessment(
-                            cp, prefix_words, cp_means2, signing_review_meta,
-                            cp_sum2, threshold)
-                store.update_run(run_id, signing_checkpoint=cp)
+                    _sweep_chapter_registrations(run_id, workdir, j, "2万字检查点重改")
+                for revised_chapter in checkpoint_revised:
+                    revised_text = _read_chapter(workdir, revised_chapter)
+                    revised_reviews = []
+                    revised_issues = []
+                    from . import bench as _bench
+                    reviewers = [a for a in critics
+                                 if a.get("mode") == "mock"
+                                 or not _bench.is_benched(run_id, a.get("id"))]
+                    for reviewer_idx, reviewer in enumerate(reviewers):
+                        if reviewer.get("mode") == "mock":
+                            revised_cj = mocks.critique(
+                                reviewer["id"], 3, dims, threshold_ch)
+                        else:
+                            _rev_prompt = crit_prompt_for(
+                                revised_text,
+                                note="小说第 %d 章（签约检查点打磨后）" % revised_chapter,
+                                chapter=revised_chapter)
+                            _rev_brief = _seat_brief(reviewer)
+                            if _rev_brief:
+                                _rev_prompt = _rev_prompt + "\n\n" + _rev_brief
+                            revised_result = _run_step(
+                                run_id, "critique-c%d" % revised_chapter,
+                                modelhub.bind_agent(reviewer, difficulty),
+                                _rev_prompt,
+                                workdir, readonly=True, ev=ev)
+                            revised_cj = _critique_json(revised_result, dims)
+                        revised_reviews.append({
+                            "id": reviewer.get("id") or "reviewer-%d" % reviewer_idx,
+                            "scores": revised_cj.get("scores")})
+                        revised_issues.extend(
+                            _tag_review_issue(it, revised_chapter, "chapter")
+                            for it in (revised_cj.get("issues") or [])[:6]
+                            if isinstance(it, dict))
+                        _check_cancel(ev)
+                    revised_aggregate = quality_gate.aggregate_reviews(
+                        revised_reviews, dims, threshold=threshold_ch)
+                    for chapter_score in chapter_scores:
+                        if chapter_score.get("chapter") != revised_chapter:
+                            continue
+                        old_words = int(chapter_score.get("words") or 0)
+                        chapter_score.update({
+                            "means": revised_aggregate["means"],
+                            "passed": revised_aggregate["passed"] is True,
+                            "reviewer_count": revised_aggregate["reviewer_count"],
+                            "reviewer_consensus": revised_aggregate["consensus"] is True,
+                            "reviewer_spreads": revised_aggregate["spreads"],
+                            "words": _wc(revised_text),
+                            "polished": True,
+                        })
+                        prefix_words += chapter_score["words"] - old_words
+                        break
+                    issues_all[:] = [x for x in issues_all
+                                     if not _issue_hits_chapter(x, revised_chapter)]
+                    _anchor_issues(revised_issues, revised_text)
+                    issues_all.extend(revised_issues)
+                cp_means2, _cpi2, cp_sum2 = _signing_eval(
+                    i, "（2万字检查点复核）")
+                if checkpoint_revised:
+                    cp = _checkpoint_after_reassessment(
+                        cp, prefix_words, cp_means2, signing_review_meta,
+                        cp_sum2, threshold)
+            store.update_run(run_id, signing_checkpoint=cp)
+    return prefix_words
+
+
+def _serial_finalize(st):
+    """连载第三阶段：全局一致性评审 → 自驱打磨 → 合并成书 → 报告与结论。"""
+    (actual_critics, actual_implementers, add_deterministic_issues, agents) = (
+        st.actual_critics, st.actual_implementers, st.add_deterministic_issues, st.agents)
+    (bible, chapter_scores, clear_deterministic_issues, crit_prompt_for) = (
+        st.bible, st.chapter_scores, st.clear_deterministic_issues, st.crit_prompt_for)
+    (critics, difficulty, dimkey, dims, end, ev, impl, issues_all) = (
+        st.critics, st.difficulty, st.dimkey, st.dims, st.end, st.ev, st.impl, st.issues_all)
+    (mode, n, outline, refresh_actual_route, remember_agent, resume_ctx) = (
+        st.mode, st.n, st.outline, st.refresh_actual_route, st.remember_agent, st.resume_ctx)
+    (review_degradation_reasons, review_independence, review_stats, route) = (
+        st.review_degradation_reasons, st.review_independence, st.review_stats, st.route)
+    (rubric_block, run_id, start, stats, story_tracking, style_tpl) = (
+        st.rubric_block, st.run_id, st.start, st.stats, st.story_tracking, st.style_tpl)
+    (task, threshold, threshold_ch, vol_block_for, vol_plan, workdir) = (
+        st.task, st.threshold, st.threshold_ch, st.vol_block_for, st.vol_plan, st.workdir)
+    wpc = st.wpc
 
     # ---- 3) 全局一致性评审（覆盖 1..end 全书：续写批次必须连同旧章一起查一致性）
     full_text = _full_manuscript(workdir, start, end)
@@ -6239,9 +6473,71 @@ def _revise_fallback_agent(agents, impl, workdir, benched=None):
 
 
 def _run_content_review(run, task, agents, ev, stats, mode):
+    """内容评审引擎（派单与通用写作链共用的评审-修订主路径）：编排入口。
+
+    四段依次是 ``_content_prepare``（路由/规划/大纲）→ ``_content_draft``
+    （起草与短篇字数闸）→ ``_content_rounds``（评审-修订循环）→
+    ``_content_finalize``（终判/报告/终态）。状态经 ``SimpleNamespace``
+    快照串接，任一段返回 None 表示已自行收口（通常是 failed）。
+    """
+    st = _content_prepare(run, task, agents, ev, stats, mode)
+    if st is None:
+        return
+    st = _content_draft(st)
+    if st is None:
+        return
+    st = _content_rounds(st)
+    _content_finalize(st)
+
+
+def _content_reseat_reviewers(seats, agents, impl, workflow, mode, route, run_id):
+    """按当前工作流重截评审组，并做单通道兜底（多通道时恒等变换）。
+
+    起草换将、大纲重排都会重新挑评审组，每一处都必须走这里：漏一处就会
+    「新组只剩一席」时退回旧的未评估终局。
+
+    返回 ``(席位, 独立性等级)``。独立性必须由调用方回写进自己的局部——它是
+    「这组席位怎么来的」的一部分，要随 verdict 对外披露，不能只留在本函数里。
+    席位装配依赖 impl（换将后是新执行者），所以 impl 走参数而不是闭包捕获。
+    """
+    seats = list(seats or [])
+    if mode != "manual":
+        seats = seats[:workflow["reviewers"]]
+    # 手动模式不替用户加人：只在组为空时补一席，避免「点了评审却没人评」。
+    needed = max(1, len(seats)) if mode == "manual" else None
+    seats, independence = _assemble_review_seats(
+        seats, agents, impl, workflow=workflow, route=route, needed=needed,
+        run_id=run_id)
+    return _mark_reader_seat(seats), independence
+
+
+def _content_state(st, local):
+    """把本段局部叠加到上游快照上，返回新的状态快照。
+
+    段函数只解包自己用到的名字，若直接 ``SimpleNamespace(**locals())`` 就会把
+    上游其余字段全部截断，下一段再取就是 AttributeError。合并顺序是「上游打底、
+    本段覆盖」——本段重绑的名字（impl / critics / rounds / publishable）必须赢。
+    ``local`` 用调用方的 ``locals()`` 传入，其中的 ``st`` 自身要剔掉，否则快照
+    里会出现自引用。
+    """
+    merged = dict(vars(st))
+    merged.update(local)
+    merged.pop("st", None)
+    return SimpleNamespace(**merged)
+
+
+def _content_prepare(run, task, agents, ev, stats, mode):
+    """准备：任务副本、路由、规划、大纲，产出全流程共用的状态快照。
+
+    `rank_scan`（派单）的四平台榜单素材在这里注入，只抓一次供起草/修订/评审
+    共用。返回 None 表示没有可用智能体，已把任务收口成 failed。
+    """
+    # 派单（rank_scan）专用：榜单素材抓取、报告校验、终局收口都走它。桩函数
+    # 之外无人引用，import 提前到无条件一行，四段共用同一个模块对象。
+    from . import selection
+
     is_selection = task.get("type") == "rank_scan"
     if is_selection:
-        from . import selection
         # 四平台排行榜来源供起草、修订与评审共用，只抓一次；CLI/API 同一入口。
         material = (paihang.rank_scan_prompt(task.get("goal") or "")
                     if not agents or any(a.get("mode") != "mock" for a in agents) else None)
@@ -6275,39 +6571,26 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     else:
         task_type = task.get("type") or "novel"
         impl, route["author"] = router.pick(agents, "implement", task_type, stats)
-        critics, route["critics"] = router.pick_critics(agents, task_type, stats, impl=impl)
+        critics, route["critics"] = router.pick_critics(
+            agents, task_type, stats, impl=impl,
+            limit=workflow.get("reviewers"))
     if impl is None:
         store.update_run(run_id, expected_status="running", status="failed",
                          error="没有可用智能体", ended_at=_now())
-        return
+        return None
     if resume_ctx is not None:
         if mode != "manual":
             critics, route["critics"] = router.pick_critics(
-                agents, task.get("type") or "novel", stats, impl=impl)
+                agents, task.get("type") or "novel", stats, impl=impl,
+                limit=workflow.get("reviewers"))
         else:
             critics = _pick_critics_manual(agents, task)
 
     critic_pool = list(critics)
     review_independence = ""
 
-    def _reseat_reviewers(seats):
-        """按当前工作流重截评审组，并做单通道兜底（多通道时恒等变换）。
-
-        起草换将、大纲重排都会重新挑评审组，每一处都必须走这里：漏一处就会
-        在「新组只剩一席」时退回旧的未评估终局。
-        """
-        nonlocal review_independence
-        seats = list(seats or [])
-        if mode != "manual":
-            seats = seats[:workflow["reviewers"]]
-        # 手动模式不替用户加人：只在组为空时补一席，避免「点了评审却没人评」。
-        needed = max(1, len(seats)) if mode == "manual" else None
-        seats, review_independence = _assemble_review_seats(
-            seats, agents, impl, workflow=workflow, route=route, needed=needed,
-            run_id=run_id)
-        return seats
-
-    critics = _reseat_reviewers(critics)
+    critics, review_independence = _content_reseat_reviewers(
+        critics, agents, impl, workflow, mode, route, run_id)
 
     _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
                          implement_reason=route.get("author", ""),
@@ -6342,13 +6625,43 @@ def _run_content_review(run, task, agents, ev, stats, mode):
     if outline:
         workflow = task_compile.content_workflow(
             task, difficulty, plan=outline, mode=mode)
-        critics = _reseat_reviewers(critic_pool)
+        critics, review_independence = _content_reseat_reviewers(
+            critic_pool, agents, impl, workflow, mode, route, run_id)
         store.update_run(run_id, outline=outline, workflow=workflow)
         _record_actual_route(run_id, task, agents, stats, impl, critics=critics,
                              implement_reason=route.get("author", ""),
                              review_reason=route.get("critics", ""))
     rounds = workflow["review_rounds"]
+    return SimpleNamespace(**locals())
 
+
+def _content_draft(st):
+    """起草：mock / 沿用预置稿 / 真实 CLI（含赛马择优、换将重试、本地模板）。
+
+    短篇字数闸卡在评审之前——欠字数的短篇是废稿，不该进评审空烧配额。
+    返回 None 表示起草或字数闸已把任务收口成 failed。
+    """
+    agents = st.agents
+    critics = st.critics
+    difficulty = st.difficulty
+    dims = st.dims
+    draft_note = st.draft_note
+    ev = st.ev
+    impl = st.impl
+    critic_pool = st.critic_pool
+    mode = st.mode
+    ms_name = st.ms_name
+    outline = st.outline
+    read_ms = st.read_ms
+    resume_ctx = st.resume_ctx
+    route = st.route
+    run_id = st.run_id
+    stats = st.stats
+    step_wd = st.step_wd
+    task = st.task
+    workdir = st.workdir
+    workflow = st.workflow
+    write_ms = st.write_ms
     # 1) 起草
     draft_degraded = False
     draft_source = ""
@@ -6462,8 +6775,10 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                 route["author"] = fallback_note
                 if mode != "manual":
                     critic_pool, route["critics"] = router.pick_critics(
-                        agents, task.get("type") or "novel", stats, impl=impl)
-                    critics = _reseat_reviewers(critic_pool)
+                        agents, task.get("type") or "novel", stats, impl=impl,
+                        limit=workflow.get("reviewers"))
+                    critics, review_independence = _content_reseat_reviewers(
+                        critic_pool, agents, impl, workflow, mode, route, run_id)
                 plan = planner.make_novel_plan(_steered_task(run_id, task), impl, critics)
                 store.update_run(run_id, route=route, plan=plan)
                 _record_actual_route(
@@ -6514,7 +6829,7 @@ def _run_content_review(run, task, agents, ev, stats, mode):
                                      error="起草失败: %s；本地兜底也未成功: %s"
                                            % (draft_degradation_reason, _lnote),
                                      ended_at=_now())
-                    return
+                    return None
 
     # 1.5) 短篇字数闸（起草后、评审前）：不足自动扩写（≤2 轮）、超出压缩
     # （1 轮，尽力而为）。mock 执行没有字数意义；扩写步本身失败或仍欠下限
@@ -6528,434 +6843,581 @@ def _run_content_review(run, task, agents, ev, stats, mode):
         if story_err:
             store.update_run(run_id, expected_status="running", status="failed",
                              error=story_err, ended_at=_now())
-            return
+            return None
+    return _content_state(st, locals())
 
+
+def _content_rounds(st):
+    """评审-修订循环：每轮评审 → 门禁 → 追加轮判定 → 修订。
+
+    循环本体只做四件事：推进轮次、按本轮结论早退、决定是否追加修订轮、
+    调两段执行单轮。单轮内部再分 `_content_review_round`（评审 + 减员补位 +
+    共识）与 `_content_revise_round`（按意见修订），都返回合并后的状态快照。
+
+    退化判定（服务不可用 / 席位不足 / 纯机测）只压本轮 `publishable`，终局
+    结论统一由 `_content_finalize` 出；轮数可在末尾按进步检测自动追加。
+    """
     # 2) 评审-修订循环（轮数可在末尾按进步检测自动追加，见 break 处）
     history_rounds = []
     publishable = False
     r = 0
     extra_review_rounds = 0
     _effective_revisions = 0  # 修订真实改变了稿件的轮数（如实死因判定用）
+    rounds = st.rounds
     while r < rounds:
         r += 1
-        manuscript = read_ms()
-        # 视频任务渲染前置（2026-10-24 拍板）：交付完整性评的是成片本身，
-        # 「评审达标才渲染」让该维度永远看到「成片未产出」，文字修订永远
-        # 填不上——结构死锁。每轮评审前按当前稿件试渲染一次（本地链、零
-        # 模型成本、best-effort 不拦流程），评审员看得到真实产物；终审
-        # 通过后仍有正式渲染收口。
-        if (task.get("type") == "handdraw_video"
-                and impl.get("mode") != "mock"):
-            try:
-                from . import handdraw_render
-                _pv_step, _pv_log = store.add_step(
-                    run_id, "render-preview-r%d" % r, "local-render",
-                    "试渲染（评审前）")
-                _t0 = time.time()
-                _pv_ok, _pv_path, _pv_note = handdraw_render.render_for_run(
-                    task, workdir)
-                store.finish_step(
-                    run_id, _pv_step["n"], "done" if _pv_ok else "failed",
-                    summary=_pv_note, duration_s=time.time() - _t0)
-                try:
-                    _pv_log.write_text("[preview] %s" % _pv_note,
-                                       encoding="utf-8")
-                except Exception:
-                    pass
-            except Exception:
-                logging.getLogger(__name__).debug(
-                    "试渲染失败 run=%s", run_id, exc_info=True)
-        per_agent, issues_all = {}, []
-        round_critic_errors = {}
-        dimkey = ", ".join('"%s": 0' % d for d in dims)
-        crit_prompt = _render_template_values(_ensure_critique_placeholders(
-            _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT)), {
-                "__DIMKEYS__": dimkey,
-                "__MANUSCRIPT__": manuscript or "（稿件为空！）",
-            })
-        if task.get("context"):
-            crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
-        # 经验库/知识库注入（serial 逐章评审同款；「## 待评审稿件」锚点由
-        # _ensure_critique_placeholders 保证存在），按证据强度随评审下发
-        cap = capability_runtime.block_for(task, run_id)
-        if cap:
-            crit_prompt = crit_prompt.replace(
-                "## 待评审稿件", "%s\n\n## 待评审稿件" % cap, 1)
-        # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
-        # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
-        crit_prompt = _aiflavor_inject(task, crit_prompt, manuscript)
-        if is_selection:
-            crit_prompt += _content_contract(task) + "\n" + selection.REVIEW
-        for idx, agent in enumerate(critics):
-            role = "critique-r%d" % r
-            if agent.get("mode") == "mock":
-                step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
-                time.sleep(0.15)
-                cj = mocks.critique(agent["id"], r, dims, threshold)
-                store.finish_step(run_id, step["n"], "done",
-                                  summary="均分 %.1f：%s" % (
-                                      sum(cj["scores"].values()) / max(1, len(dims)), cj["summary"]),
-                                  duration_s=0.15)
-                try:
-                    log_abs.write_text("[mock] %s\n" % str(cj), encoding="utf-8")
-                except Exception:
-                    pass
-            else:
-                # 评审步自身失败（上游断流/输出无法解析）不等于评了 0 分：
-                # 先重试评审步，可换将的失败再换 CLI，耗尽才按无评分记账
-                # （r-20261021-164007 实案：critic 流断在 Reconnecting 1/5，
-                # 六维全 0 被当合法评审轮吞掉；2026-10-22 实案：codex 默认
-                # 上游 403 死链固定重试三次，整轮评审直接判失败）。
-                cj, res, actual, swap_note = _critique_step_with_cli_fallback(
-                    run_id, role, agent,
-                    crit_prompt + review_roster.prompt_suffix(agent),
-                    workdir, ev, agents,
-                    impl, difficulty, task.get("type") or "novel", stats,
-                    mode, is_selection, dims=dims,
-                    peers=[a for a in critics if a.get("id") != agent.get("id")],
-                    ms_name=ms_name)
-                if actual.get("id") != agent.get("id"):
-                    critics[idx] = actual
-                    agent = actual
-                    route["critics"] = ((route.get("critics") or "") +
-                                        ("；" if route.get("critics") else "") +
-                                        swap_note)
-                    try:
-                        plan = planner.make_novel_plan(
-                            _steered_task(run_id, task), impl, critics)
-                        store.update_run(run_id, route=route, plan=plan)
-                        _record_actual_route(
-                            run_id, task, agents, stats, impl, critics=critics,
-                            implement_reason=route.get("author", ""),
-                            review_reason=route.get("critics", ""))
-                    except Exception:
-                        logging.getLogger(__name__).warning(
-                            "评审换将后的路由回写失败 run=%s", run_id,
-                            exc_info=True)
-                elif swap_note and "评审本地兜底" in swap_note:
-                    route["critics"] = ((route.get("critics") or "") +
-                                        ("；" if route.get("critics") else "") +
-                                        swap_note)
-                if not (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-                        and cj["scores"]):
-                    round_critic_errors[agent.get("id") or "CLI"] = (
-                        res.get("error") or res.get("text") or "输出无法解析")[:160]
-                    # Preserve the explicit degraded/fallback markers. Losing
-                    # them here turns an unevaluated reviewer into an empty
-                    # ordinary review, allowing another reviewer's scores to
-                    # pass the release gate accidentally.
-                    prior = cj if isinstance(cj, dict) else {}
-                    cj = {
-                        "scores": {}, "issues": list(prior.get("issues") or []),
-                        "summary": prior.get("summary") or
-                                   "评审输出无法解析（重试后仍失败）：%s" % (
-                                       (res.get("error") or res.get("text") or "")[:150]),
-                    }
-                    for key in ("review_degraded", "review_fallback",
-                                "review_fallback_reason"):
-                        if prior.get(key):
-                            cj[key] = prior[key]
-            per_agent[agent["id"]] = cj
-            model_issues = [_tag_review_issue(
-                issue, issue.get("chapter", "全稿评审"), "selection-review")
-                for issue in (cj.get("issues") or []) if isinstance(issue, dict)]
-            _anchor_issues(model_issues, manuscript)
-            issues_all.extend(model_issues)
-            _check_cancel(ev)
-
-        # 组内减员兜底：某位评审死在本场不可恢复的错误上（欠费、七天上限、
-        # 无凭据）之后，本轮可能只剩一席。此时补一个同源复核席再评一遍——
-        # 「少一个人」不等于「没法评」，把减员直接判成未评估，会让任务在一条
-        # 已死的通道上反复失败（2026-10-23 实案：claude 七天上限 + grok 无凭据，
-        # 评审组减到 1 人，稿件判未评估）。手动模式不补：用户点名谁评就是谁评。
-        required_reviewers = max(1, min(
-            quality_gate.MIN_REVIEWERS,
-            int(workflow.get("reviewers") or 1)))
-        _real_scored = [
-            (aid, cj) for aid, cj in per_agent.items()
-            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-            and cj.get("scores")
-            and cj.get("review_fallback") not in
-                (local_fallback.HEURISTIC, "local")
-        ]
-        if (_real_scored and len(_real_scored) < required_reviewers
-                and mode != "manual"
-                and impl.get("mode") == "real"):
-            # 机测结果可作为保守证据，但不是模型评审席；不能用它凑满席位，
-            # 也不能因当前 roster 已有 solo 席就放弃补位。复用初始装配策略，
-            # 先尝试未入席的真实 CLI / 同 CLI 其他配置模型，再退化到新人格会话。
-            _expanded, _note, _independence = review_roster.ensure_review_seats(
-                critics, agents, impl, len(critics) + 1)
-            _occupied_ids = {str(a.get("id") or "") for a in critics}
-            _seat = next((a for a in _expanded
-                          if str(a.get("id") or "") not in _occupied_ids), None)
-            if _seat is None:
-                used_solo_indexes = [
-                    int(a.get("_solo_index") or 0) for a in critics
-                    if review_roster.is_solo_seat(a)
-                ]
-                next_solo_index = max(used_solo_indexes or [0]) + 1
-                _seat = review_roster.make_solo_seat(impl, next_solo_index)
-            if _seat and _seat.get("id") not in per_agent:
-                cj, res, actual, _seat_note = _critique_step_with_cli_fallback(
-                    run_id, role, _seat,
-                    crit_prompt + review_roster.prompt_suffix(_seat),
-                    workdir, ev, agents, impl, difficulty,
-                    task.get("type") or "novel", stats, mode, is_selection,
-                    dims=dims,
-                    peers=[a for a in critics if a.get("id") != _seat.get("id")],
-                    ms_name=ms_name)
-                if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-                        and cj["scores"]):
-                    _key = (actual or _seat).get("id") or _seat["id"]
-                    per_agent[_key] = cj
-                    if not any(a.get("id") == _key for a in critics):
-                        critics.append(actual or _seat)
-                    review_independence = review_roster.independence_of(critics)
-                    if review_roster.is_solo_seat(actual or _seat):
-                        _solo_note = review_roster.describe(
-                            review_independence, critics)
-                        route["critics"] = (
-                            (route.get("critics") or "") +
-                            ("；" if route.get("critics") else "") +
-                            "评审减员后补位（%s）" % (_solo_note or "独立复核席"))
-                    try:
-                        plan = planner.make_novel_plan(
-                            _steered_task(run_id, task), impl, critics)
-                        store.update_run(run_id, route=route, plan=plan)
-                        _record_actual_route(
-                            run_id, task, agents, stats, impl, critics=critics,
-                            implement_reason=route.get("author", ""),
-                            review_reason=route.get("critics", ""))
-                    except Exception:
-                        logging.getLogger(__name__).warning(
-                            "评审减员补位后的路由回写失败 run=%s", run_id,
-                            exc_info=True)
-
-        # 有模型评审时，本地机测只保留为兜底证据，不参与模型共识均值；否则
-        # 低置信度的规则分会压低真实评审，并造成“有两个模型席仍未达标”的错判。
-        _consensus_reviews = [
-            cj for cj in per_agent.values()
-            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-            and cj.get("scores")
-            and cj.get("review_fallback") not in
-                (local_fallback.HEURISTIC, "local")
-        ]
-        _mean_reviews = _consensus_reviews or [
-            cj for cj in per_agent.values()
-            if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-            and cj.get("scores")
-        ]
-        means = {}
-        for d in dims:
-            vals = [float(cj["scores"].get(d, 0)) for cj in _mean_reviews
-                    if d in cj["scores"]]
-            if vals:
-                means[d] = round(sum(vals) / len(vals), 1)
-        round_critic_failed = bool(per_agent) and not any(
-            cj.get("scores") for cj in per_agent.values())
-        # 共识看「有效评分数」，不是「有没有人失败过」：三个人里死一个、另外两个
-        # 给出完整评分，本轮已经有共识。坚持 any(review_degraded) 会让完全健康的
-        # 两席被一条已停用通道的失败记录连坐（2026-10-23 实案：claude 七天上限
-        # 与 grok 无凭据各留一条失败，把 aider+codex 的完整评分整轮作废）。
-        _valid_scored = [
-            cj for cj in _consensus_reviews
-            if not cj.get("review_degraded")
-        ]
-        _heuristic_only_assessment = (
-            not _consensus_reviews and any(
-                isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
-                and cj.get("scores")
-                and cj.get("review_fallback") in
-                    (local_fallback.HEURISTIC, "local")
-                for cj in per_agent.values()))
-        round_degraded = (len(_valid_scored) < required_reviewers
-                          and not _heuristic_only_assessment)
-        round_review_count = quality_gate.aggregate_reviews(
-            [{"id": aid, "scores": cj.get("scores")}
-             for aid, cj in per_agent.items()], dims,
-            threshold=threshold)["reviewer_count"]
-        # The workflow is allowed to select one reviewer for standard tasks.
-        # Requiring the global serial/deep-review minimum here made those
-        # deliberately single-reviewer runs fail even when the reviewer
-        # returned a complete, valid assessment. Deep/expert workflows still
-        # request two reviewers and therefore keep the stronger gate.
-        round_degraded = (round_degraded or
-                          (round_review_count < required_reviewers
-                           and not _heuristic_only_assessment))
-        provisional_means = means if round_degraded else {}
-        # Keep available scores for the final report even when consensus is
-        # incomplete. `review_degraded` still closes the publish gate; hiding
-        # deterministic/local evidence would incorrectly turn a completed
-        # fallback assessment into "no assessment".
-        publishable = bool(means) and all(v >= threshold for v in means.values())
-        if round_degraded or draft_degraded:
-            publishable = False
-        # 本地兜底产物不能开发布门禁：本地模板稿不是成品，纯机测评审也不构成真实
-        # 共识。就算机测给到中性分也绝不放行——"成功"不能靠占位稿冒充。
-        # 2026-10-23 实案：全通道死亡时若稿件是本地模板、评审全是本地启发式，
-        # 原来会因中性分 7.0 误判 publishable=True，给用户一个假"成功"。
-        if publishable:
-            _real_reviews = [
-                cj for cj in per_agent.values()
-                if isinstance(cj, dict)
-                and isinstance(cj.get("scores"), dict) and cj.get("scores")
-                and cj.get("review_fallback") != local_fallback.HEURISTIC]
-            if draft_source == local_fallback.TEMPLATE or not _real_reviews:
-                publishable = False
-        if is_selection:
-            _, package_errors = selection.parse_report(manuscript)
-            issues_all.extend({"dim": "交接完整", "severity": "major", "note": error}
-                              for error in package_errors)
-            # A missing critic/dimension and unresolved major cannot be hidden by averaging.
-            complete = bool(per_agent) and all(
-                all(d in cj.get("scores", {}) and 1 <= float(cj["scores"][d]) <= 10
-                    for d in dims) for cj in per_agent.values())
-            publishable = publishable and complete and not any(
-                _is_blocking_issue(issue) for issue in issues_all)
-        history_rounds.append({"round": r, "means": means,
-                               "provisional_means": provisional_means,
-                               "per_agent": {k: v.get("scores", {}) for k, v in per_agent.items()},
-                               "issues": issues_all, "passed": publishable,
-                               "critic_failed": round_critic_failed,
-                               "critic_errors": round_critic_errors,
-                               "review_degraded": round_degraded,
-                               "review_fallbacks": [
-                                   cj.get("review_fallback") for cj in per_agent.values()
-                                   if isinstance(cj, dict) and cj.get("review_fallback")]})
+        st, rr = _content_review_round(st, r)
+        publishable = rr.publishable
+        history_rounds.append(rr.history_entry)
         if publishable:
             break
         if r >= rounds:
             # 规划轮烧完：评审健康且还在进步 → 自动追加修订轮继续打回；
             # 停止进步 / 硬上限 / 服务降级 / mock → 收口交终审。
-            if should_extend_review(extra_review_rounds, round_degraded,
-                                    draft_degraded, bool(means),
+            if should_extend_review(extra_review_rounds, rr.degraded,
+                                    st.draft_degraded, bool(rr.means),
                                     history_rounds,
-                                    mock_mode=impl.get("mode") == "mock"):
+                                    mock_mode=st.impl.get("mode") == "mock"):
                 extra_review_rounds += 1
                 rounds += 1
-                workflow["review_rounds"] = rounds
+                st.workflow["review_rounds"] = rounds
                 try:
-                    store.update_run(run_id, workflow=workflow)
+                    store.update_run(st.run_id, workflow=st.workflow)
                 except Exception:
                     logging.getLogger(__name__).debug(
-                        "追加修订轮的 workflow 回写失败 run=%s", run_id,
+                        "追加修订轮的 workflow 回写失败 run=%s", st.run_id,
                         exc_info=True)
             else:
                 break
 
-        # 修订
-        crit_lines = ["- %s：%.1f（阈值 %.1f）" % (d, means[d], threshold)
-                      for d in dims if d in means]
-        if not means:
-            crit_lines.append(
-                "- 评审未完成，稿件质量未判定；请结合任务目标和确定性问题谨慎修订，"
-                "不要把缺失评分理解为稿件质量差。")
-        majors = [i for i in issues_all if i.get("severity") == "major"][:8]
-        majors, _unanchored = _anchor_issues(majors, manuscript)
-        crit_lines += _major_lines(majors)
-        if _unanchored:
-            crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
-        if r == 1 and bestof_improvements:
-            # 败者精华回收（freebuff suggestedImprovements 的落地）：终审从落选
-            # 候选稿提炼的优点，首轮修订时与评审意见一并喂给作者
-            crit_lines.append("- [赛马精华] 终审择优时从落选候选稿提炼出值得吸收的优点：%s"
-                              % bestof_improvements[:400])
-        if impl.get("mode") == "mock":
-            step, log_abs = store.add_step(run_id, "revise-r%d" % r, impl["id"], impl.get("label"))
-            write_ms(mocks.draft_manuscript(task, r + 1))
-            time.sleep(0.2)
-            store.finish_step(run_id, step["n"], "done", summary="（mock）已按评审意见修订",
-                              duration_s=0.2)
-            try:
-                log_abs.write_text("[mock] 已修订\n", encoding="utf-8")
-            except Exception:
-                pass
-        else:
-            prompt = _render_template_values(NOVEL_REVISE_PROMPT, {
-                "__FILE__": ms_name,
-                "__ROLE__": _content_role(task),
-                "__GOAL__": task["goal"],
-                "__CRITIQUE__": "\n".join(crit_lines),
-            })
-            prompt += _content_contract(task)
-            cap = capability_runtime.block_for(task, run_id)
-            if cap:
-                prompt += "\n\n" + cap
-            prompt = attachments.append_task_context(prompt, task)
-            try:
-                from . import bench as _rev_bench
-                _rev_benched = _rev_bench.benched_ids(run_id)
-            except Exception:
-                _rev_benched = None
-            if local_fallback.any_live_channel(agents, _rev_benched):
-                before_revise = _read_manuscript(workdir, ms_name)
-                revise_result = _run_step(
-                    run_id, "revise-r%d" % r,
-                    modelhub.bind_agent(impl, difficulty), prompt,
-                    workdir, readonly=False, ev=ev,
-                    resume=resume_ctx["session"] if resume_ctx else None)
-                after_revise = _read_manuscript(workdir, ms_name)
-                # 修订换将：主执行者本轮失败时先换一个不同的可写 CLI 接手，
-                # 仍无产出才落本地兜底（见 _revise_fallback_agent 注释）。
-                if not revise_result.get("ok"):
-                    alt_impl = _revise_fallback_agent(
-                        agents, impl, workdir, _rev_benched)
-                    if alt_impl is not None:
-                        alt_result = _run_step(
-                            run_id, "revise-alt-r%d" % r,
-                            modelhub.bind_agent(alt_impl, difficulty), prompt,
-                            workdir, readonly=False, ev=ev)
-                        after_alt = _read_manuscript(workdir, ms_name)
-                        if (alt_result.get("ok")
-                                and after_alt != after_revise):
-                            revise_result = alt_result
-                            after_revise = after_alt
-                # CLI 返回失败（包括 checkpoint/session-sync-pending）或声称成功
-                # 但稿件未变化，都不应空等下一轮评审；立即做本地确定性修订。
-                if not revise_result.get("ok") or after_revise == before_revise:
-                    reason = (revise_result.get("error") or
-                              "修订步骤未产生稿件变更")[:300]
-                    step, log_abs = store.add_step(
-                        run_id, "revise-local-r%d" % r,
-                        "local-fallback", "本地修订兜底",
-                        note="外部修订失败或无有效产出：%s" % reason)
-                    _lok, _new, _changes, _note = local_fallback.write_local_revise(
-                        workdir, ms_name, after_revise)
-                    store.finish_step(
-                        run_id, step["n"], "done" if _lok else "failed",
-                        summary=_note)
-                    try:
-                        log_abs.write_text(
-                            ("外部修订未生效：%s\n%s\n" % (reason, _note)
-                             + "\n".join("- " + c for c in _changes)),
-                            encoding="utf-8")
-                    except Exception:
-                        pass
-                    store.add_message(run_id, "修订兜底：%s" % _note)
-            else:
-                # 外部模型全部不可用：不再烧超时。能机测的问题（重复段、超长段）
-                # 本地确定性修掉，语义级问题留给人工——修订循环继续往下走，
-                # 任务不停摆。
-                step, log_abs = store.add_step(
-                    run_id, "revise-r%d" % r, "local-fallback", "本地修订")
-                _lok, _new, _changes, _note = local_fallback.write_local_revise(
-                    workdir, ms_name)
-                store.finish_step(run_id, step["n"], "done", summary=_note)
-                try:
-                    log_abs.write_text(
-                        (_note + "\n\n" + "\n".join("- " + c for c in _changes)
-                         if _changes else _note) + "\n", encoding="utf-8")
-                except Exception:
-                    pass
-                store.add_message(run_id, "修订兜底：%s" % _note)
+        st = _content_revise_round(st, r, rr.manuscript, rr.means, rr.issues_all)
         # 修订生效对账：与轮首评审所见的稿件逐字对比——一字未动即本轮修订
         # 未生效（外部失败/无产出且本地无可修项）。全程零生效时终判错误必须
         # 如实补注，不把通道故障伪装成稿件质量问题（2026-10-26 实案）。
-        if read_ms() != manuscript:
+        if st.read_ms() != rr.manuscript:
             _effective_revisions += 1
+        _check_cancel(st.ev)
+    _extra = dict(locals())
+    _extra.pop("rr", None)
+    return _content_state(st, _extra)
+
+
+def _content_review_round(st, r):
+    """单轮评审：渲染评审提示 → 逐个评审席 → 减员补位 → 共识与门禁。
+
+    返回 ``(state, result)``。state 是合并后的快照——`critics` /
+    `route` / `review_independence` 都可能在本轮被改写；result 带本轮
+    结论（`manuscript` / `means` / `issues_all` / `publishable` /
+    `degraded` / `history_entry`）。
+    """
+    agents = st.agents
+    critics = st.critics
+    difficulty = st.difficulty
+    dims = st.dims
+    draft_degraded = st.draft_degraded
+    draft_source = st.draft_source
+    ev = st.ev
+    impl = st.impl
+    is_selection = st.is_selection
+    mode = st.mode
+    ms_name = st.ms_name
+    read_ms = st.read_ms
+    route = st.route
+    run_id = st.run_id
+    selection = st.selection
+    stats = st.stats
+    task = st.task
+    threshold = st.threshold
+    workdir = st.workdir
+    workflow = st.workflow
+    manuscript = read_ms()
+    # 视频任务渲染前置（2026-10-24 拍板）：交付完整性评的是成片本身，
+    # 「评审达标才渲染」让该维度永远看到「成片未产出」，文字修订永远
+    # 填不上——结构死锁。每轮评审前按当前稿件试渲染一次（本地链、零
+    # 模型成本、best-effort 不拦流程），评审员看得到真实产物；终审
+    # 通过后仍有正式渲染收口。
+    if (task.get("type") == "handdraw_video"
+            and impl.get("mode") != "mock"):
+        try:
+            from . import handdraw_render
+            _pv_step, _pv_log = store.add_step(
+                run_id, "render-preview-r%d" % r, "local-render",
+                "试渲染（评审前）")
+            _t0 = time.time()
+            _pv_ok, _pv_path, _pv_note = handdraw_render.render_for_run(
+                task, workdir)
+            store.finish_step(
+                run_id, _pv_step["n"], "done" if _pv_ok else "failed",
+                summary=_pv_note, duration_s=time.time() - _t0)
+            try:
+                _pv_log.write_text("[preview] %s" % _pv_note,
+                                   encoding="utf-8")
+            except Exception:
+                pass
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "试渲染失败 run=%s", run_id, exc_info=True)
+    per_agent, issues_all = {}, []
+    round_critic_errors = {}
+    dimkey = ", ".join('"%s": 0' % d for d in dims)
+    crit_prompt = _render_template_values(_ensure_critique_placeholders(
+        _tpl(task, "critique_prompt", NOVEL_CRITIQUE_PROMPT)), {
+            "__DIMKEYS__": dimkey,
+            "__MANUSCRIPT__": manuscript or "（稿件为空！）",
+        })
+    if task.get("context"):
+        crit_prompt += "\n\n## 原始任务背景与附件参考\n" + task["context"]
+    # 经验库/知识库注入（serial 逐章评审同款；「## 待评审稿件」锚点由
+    # _ensure_critique_placeholders 保证存在），按证据强度随评审下发
+    cap = capability_runtime.block_for(task, run_id)
+    if cap:
+        crit_prompt = crit_prompt.replace(
+            "## 待评审稿件", "%s\n\n## 待评审稿件" % cap, 1)
+    # AI 味确定性检测（借鉴 oh-story 去AI味）：客观参考线随评审下发，
+    # 命中才追加——评审官结合上下文判断是否真问题，脚本不直接扣分
+    crit_prompt = _aiflavor_inject(task, crit_prompt, manuscript)
+    if is_selection:
+        crit_prompt += _content_contract(task) + "\n" + selection.REVIEW
+    for idx, agent in enumerate(critics):
+        role = "critique-r%d" % r
+        if agent.get("mode") == "mock":
+            step, log_abs = store.add_step(run_id, role, agent["id"], agent.get("label"))
+            time.sleep(0.15)
+            cj = mocks.critique(agent["id"], r, dims, threshold)
+            store.finish_step(run_id, step["n"], "done",
+                              summary="均分 %.1f：%s" % (
+                                  sum(cj["scores"].values()) / max(1, len(dims)), cj["summary"]),
+                              duration_s=0.15)
+            try:
+                log_abs.write_text("[mock] %s\n" % str(cj), encoding="utf-8")
+            except Exception:
+                pass
+        else:
+            # 评审步自身失败（上游断流/输出无法解析）不等于评了 0 分：
+            # 先重试评审步，可换将的失败再换 CLI，耗尽才按无评分记账
+            # （r-20261021-164007 实案：critic 流断在 Reconnecting 1/5，
+            # 六维全 0 被当合法评审轮吞掉；2026-10-22 实案：codex 默认
+            # 上游 403 死链固定重试三次，整轮评审直接判失败）。
+            cj, res, actual, swap_note = _critique_step_with_cli_fallback(
+                run_id, role, agent,
+                crit_prompt + review_roster.prompt_suffix(agent),
+                workdir, ev, agents,
+                impl, difficulty, task.get("type") or "novel", stats,
+                mode, is_selection, dims=dims,
+                peers=[a for a in critics if a.get("id") != agent.get("id")],
+                ms_name=ms_name)
+            if actual.get("id") != agent.get("id"):
+                critics[idx] = actual
+                agent = actual
+                route["critics"] = ((route.get("critics") or "") +
+                                    ("；" if route.get("critics") else "") +
+                                    swap_note)
+                try:
+                    plan = planner.make_novel_plan(
+                        _steered_task(run_id, task), impl, critics)
+                    store.update_run(run_id, route=route, plan=plan)
+                    _record_actual_route(
+                        run_id, task, agents, stats, impl, critics=critics,
+                        implement_reason=route.get("author", ""),
+                        review_reason=route.get("critics", ""))
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "评审换将后的路由回写失败 run=%s", run_id,
+                        exc_info=True)
+            elif swap_note and "评审本地兜底" in swap_note:
+                route["critics"] = ((route.get("critics") or "") +
+                                    ("；" if route.get("critics") else "") +
+                                    swap_note)
+            if not (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                    and cj["scores"]):
+                round_critic_errors[agent.get("id") or "CLI"] = (
+                    res.get("error") or res.get("text") or "输出无法解析")[:160]
+                # Preserve the explicit degraded/fallback markers. Losing
+                # them here turns an unevaluated reviewer into an empty
+                # ordinary review, allowing another reviewer's scores to
+                # pass the release gate accidentally.
+                prior = cj if isinstance(cj, dict) else {}
+                cj = {
+                    "scores": {}, "issues": list(prior.get("issues") or []),
+                    "summary": prior.get("summary") or
+                               "评审输出无法解析（重试后仍失败）：%s" % (
+                                   (res.get("error") or res.get("text") or "")[:150]),
+                }
+                for key in ("review_degraded", "review_fallback",
+                            "review_fallback_reason"):
+                    if prior.get(key):
+                        cj[key] = prior[key]
+        per_agent[agent["id"]] = cj
+        model_issues = [_tag_review_issue(
+            issue, issue.get("chapter", "全稿评审"), "selection-review")
+            for issue in (cj.get("issues") or []) if isinstance(issue, dict)]
+        _anchor_issues(model_issues, manuscript)
+        issues_all.extend(model_issues)
         _check_cancel(ev)
 
+    # 组内减员兜底：某位评审死在本场不可恢复的错误上（欠费、七天上限、
+    # 无凭据）之后，本轮可能只剩一席。此时补一个同源复核席再评一遍——
+    # 「少一个人」不等于「没法评」，把减员直接判成未评估，会让任务在一条
+    # 已死的通道上反复失败（2026-10-23 实案：claude 七天上限 + grok 无凭据，
+    # 评审组减到 1 人，稿件判未评估）。手动模式不补：用户点名谁评就是谁评。
+    required_reviewers = max(1, min(
+        quality_gate.MIN_REVIEWERS,
+        int(workflow.get("reviewers") or 1)))
+    _real_scored = [
+        (aid, cj) for aid, cj in per_agent.items()
+        if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+        and cj.get("scores")
+        and cj.get("review_fallback") not in
+            (local_fallback.HEURISTIC, "local")
+    ]
+    if (_real_scored and len(_real_scored) < required_reviewers
+            and mode != "manual"
+            and impl.get("mode") == "real"):
+        # 机测结果可作为保守证据，但不是模型评审席；不能用它凑满席位，
+        # 也不能因当前 roster 已有 solo 席就放弃补位。复用初始装配策略，
+        # 先尝试未入席的真实 CLI / 同 CLI 其他配置模型，再退化到新人格会话。
+        _expanded, _note, _independence = review_roster.ensure_review_seats(
+            critics, agents, impl, len(critics) + 1)
+        _occupied_ids = {str(a.get("id") or "") for a in critics}
+        _seat = next((a for a in _expanded
+                      if str(a.get("id") or "") not in _occupied_ids), None)
+        if _seat is None:
+            used_solo_indexes = [
+                int(a.get("_solo_index") or 0) for a in critics
+                if review_roster.is_solo_seat(a)
+            ]
+            next_solo_index = max(used_solo_indexes or [0]) + 1
+            _seat = review_roster.make_solo_seat(impl, next_solo_index)
+        if _seat and _seat.get("id") not in per_agent:
+            cj, res, actual, _seat_note = _critique_step_with_cli_fallback(
+                run_id, role, _seat,
+                crit_prompt + review_roster.prompt_suffix(_seat),
+                workdir, ev, agents, impl, difficulty,
+                task.get("type") or "novel", stats, mode, is_selection,
+                dims=dims,
+                peers=[a for a in critics if a.get("id") != _seat.get("id")],
+                ms_name=ms_name)
+            if (isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+                    and cj["scores"]):
+                _key = (actual or _seat).get("id") or _seat["id"]
+                per_agent[_key] = cj
+                if not any(a.get("id") == _key for a in critics):
+                    critics.append(actual or _seat)
+                review_independence = review_roster.independence_of(critics)
+                if review_roster.is_solo_seat(actual or _seat):
+                    _solo_note = review_roster.describe(
+                        review_independence, critics)
+                    route["critics"] = (
+                        (route.get("critics") or "") +
+                        ("；" if route.get("critics") else "") +
+                        "评审减员后补位（%s）" % (_solo_note or "独立复核席"))
+                try:
+                    plan = planner.make_novel_plan(
+                        _steered_task(run_id, task), impl, critics)
+                    store.update_run(run_id, route=route, plan=plan)
+                    _record_actual_route(
+                        run_id, task, agents, stats, impl, critics=critics,
+                        implement_reason=route.get("author", ""),
+                        review_reason=route.get("critics", ""))
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "评审减员补位后的路由回写失败 run=%s", run_id,
+                        exc_info=True)
+
+    _cons = _content_round_consensus(
+        per_agent, dims, threshold, required_reviewers, draft_degraded,
+        draft_source, is_selection, manuscript, issues_all, selection)
+    means = _cons.means
+    provisional_means = _cons.provisional_means
+    publishable = _cons.publishable
+    round_degraded = _cons.degraded
+    round_critic_failed = _cons.critic_failed
+    issues_all = _cons.issues_all
+
+    history_entry = {"round": r, "means": means,
+                    "provisional_means": provisional_means,
+                    "per_agent": {k: v.get("scores", {}) for k, v in per_agent.items()},
+                    "issues": issues_all, "passed": publishable,
+                    "critic_failed": round_critic_failed,
+                    "critic_errors": round_critic_errors,
+                    "review_degraded": round_degraded,
+                    "review_fallbacks": [
+                        cj.get("review_fallback") for cj in per_agent.values()
+                        if isinstance(cj, dict) and cj.get("review_fallback")]}
+    _extra = dict(locals())
+    _extra.pop("st", None)
+    return (_content_state(st, _extra),
+            SimpleNamespace(manuscript=manuscript, means=means,
+                            issues_all=issues_all,
+                            publishable=publishable,
+                            degraded=round_degraded,
+                            history_entry=history_entry))
+
+
+def _content_round_consensus(per_agent, dims, threshold, required_reviewers,
+                             draft_degraded, draft_source, is_selection,
+                             manuscript, issues_all, selection):
+    """本轮共识与发布门禁：把各席评分折成均值，并判定能否放行。
+
+    纯计算（只读 `per_agent`，唯一副作用是派单模式下往 `issues_all` 追加
+    交接完整性问题），因此可以脱离流水线单测——发布门禁的每个分支都对应
+    一次真实误判事故，值得单独锁。
+
+    返回 `SimpleNamespace`：`means` / `provisional_means` / `degraded` /
+    `publishable` / `critic_failed` / `issues_all`。
+    """
+    # 有模型评审时，本地机测只保留为兜底证据，不参与模型共识均值；否则
+    # 低置信度的规则分会压低真实评审，并造成“有两个模型席仍未达标”的错判。
+    _consensus_reviews = [
+        cj for cj in per_agent.values()
+        if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+        and cj.get("scores")
+        and cj.get("review_fallback") not in
+            (local_fallback.HEURISTIC, "local")
+    ]
+    _mean_reviews = _consensus_reviews or [
+        cj for cj in per_agent.values()
+        if isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+        and cj.get("scores")
+    ]
+    means = {}
+    for d in dims:
+        vals = [float(cj["scores"].get(d, 0)) for cj in _mean_reviews
+                if d in cj["scores"]]
+        if vals:
+            means[d] = round(sum(vals) / len(vals), 1)
+    round_critic_failed = bool(per_agent) and not any(
+        cj.get("scores") for cj in per_agent.values())
+    # 共识看「有效评分数」，不是「有没有人失败过」：三个人里死一个、另外两个
+    # 给出完整评分，本轮已经有共识。坚持 any(review_degraded) 会让完全健康的
+    # 两席被一条已停用通道的失败记录连坐（2026-10-23 实案：claude 七天上限
+    # 与 grok 无凭据各留一条失败，把 aider+codex 的完整评分整轮作废）。
+    _valid_scored = [
+        cj for cj in _consensus_reviews
+        if not cj.get("review_degraded")
+    ]
+    _heuristic_only_assessment = (
+        not _consensus_reviews and any(
+            isinstance(cj, dict) and isinstance(cj.get("scores"), dict)
+            and cj.get("scores")
+            and cj.get("review_fallback") in
+                (local_fallback.HEURISTIC, "local")
+            for cj in per_agent.values()))
+    round_degraded = (len(_valid_scored) < required_reviewers
+                      and not _heuristic_only_assessment)
+    round_review_count = quality_gate.aggregate_reviews(
+        [{"id": aid, "scores": cj.get("scores")}
+         for aid, cj in per_agent.items()], dims,
+        threshold=threshold)["reviewer_count"]
+    # The workflow is allowed to select one reviewer for standard tasks.
+    # Requiring the global serial/deep-review minimum here made those
+    # deliberately single-reviewer runs fail even when the reviewer
+    # returned a complete, valid assessment. Deep/expert workflows still
+    # request two reviewers and therefore keep the stronger gate.
+    round_degraded = (round_degraded or
+                      (round_review_count < required_reviewers
+                       and not _heuristic_only_assessment))
+    provisional_means = means if round_degraded else {}
+    # Keep available scores for the final report even when consensus is
+    # incomplete. `review_degraded` still closes the publish gate; hiding
+    # deterministic/local evidence would incorrectly turn a completed
+    # fallback assessment into "no assessment".
+    publishable = bool(means) and all(v >= threshold for v in means.values())
+    if round_degraded or draft_degraded:
+        publishable = False
+    # 本地兜底产物不能开发布门禁：本地模板稿不是成品，纯机测评审也不构成真实
+    # 共识。就算机测给到中性分也绝不放行——"成功"不能靠占位稿冒充。
+    # 2026-10-23 实案：全通道死亡时若稿件是本地模板、评审全是本地启发式，
+    # 原来会因中性分 7.0 误判 publishable=True，给用户一个假"成功"。
+    if publishable:
+        _real_reviews = [
+            cj for cj in per_agent.values()
+            if isinstance(cj, dict)
+            and isinstance(cj.get("scores"), dict) and cj.get("scores")
+            and cj.get("review_fallback") != local_fallback.HEURISTIC]
+        if draft_source == local_fallback.TEMPLATE or not _real_reviews:
+            publishable = False
+    if is_selection:
+        _, package_errors = selection.parse_report(manuscript)
+        issues_all.extend({"dim": "交接完整", "severity": "major", "note": error}
+                          for error in package_errors)
+        # A missing critic/dimension and unresolved major cannot be hidden by averaging.
+        complete = bool(per_agent) and all(
+            all(d in cj.get("scores", {}) and 1 <= float(cj["scores"][d]) <= 10
+                for d in dims) for cj in per_agent.values())
+        publishable = publishable and complete and not any(
+            _is_blocking_issue(issue) for issue in issues_all)
+    return SimpleNamespace(
+        means=means, provisional_means=provisional_means,
+        degraded=round_degraded, publishable=publishable,
+        critic_failed=round_critic_failed,
+        issues_all=issues_all)
+
+
+def _content_revise_round(st, r, manuscript, means, issues_all):
+    """按本轮意见修订：组装意见 → 外部修订（含换将/本地兜底）或 mock。
+
+    只改稿件、不改结论；「修订是否真的动了稿」由调用方逐字比对记账。
+    """
+    agents = st.agents
+    bestof_improvements = st.bestof_improvements
+    difficulty = st.difficulty
+    dims = st.dims
+    ev = st.ev
+    impl = st.impl
+    ms_name = st.ms_name
+    resume_ctx = st.resume_ctx
+    run_id = st.run_id
+    task = st.task
+    threshold = st.threshold
+    workdir = st.workdir
+    write_ms = st.write_ms
+    # 修订
+    crit_lines = ["- %s：%.1f（阈值 %.1f）" % (d, means[d], threshold)
+                  for d in dims if d in means]
+    if not means:
+        crit_lines.append(
+            "- 评审未完成，稿件质量未判定；请结合任务目标和确定性问题谨慎修订，"
+            "不要把缺失评分理解为稿件质量差。")
+    majors = [i for i in issues_all if i.get("severity") == "major"][:8]
+    majors, _unanchored = _anchor_issues(majors, manuscript)
+    crit_lines += _major_lines(majors)
+    if _unanchored:
+        crit_lines.append("- ⚠ %d 条 major 意见的引文未能在稿件中锚定，已降序殿后" % _unanchored)
+    if r == 1 and bestof_improvements:
+        # 败者精华回收（freebuff suggestedImprovements 的落地）：终审从落选
+        # 候选稿提炼的优点，首轮修订时与评审意见一并喂给作者
+        crit_lines.append("- [赛马精华] 终审择优时从落选候选稿提炼出值得吸收的优点：%s"
+                          % bestof_improvements[:400])
+    if impl.get("mode") == "mock":
+        step, log_abs = store.add_step(run_id, "revise-r%d" % r, impl["id"], impl.get("label"))
+        write_ms(mocks.draft_manuscript(task, r + 1))
+        time.sleep(0.2)
+        store.finish_step(run_id, step["n"], "done", summary="（mock）已按评审意见修订",
+                          duration_s=0.2)
+        try:
+            log_abs.write_text("[mock] 已修订\n", encoding="utf-8")
+        except Exception:
+            pass
+    else:
+        prompt = _render_template_values(NOVEL_REVISE_PROMPT, {
+            "__FILE__": ms_name,
+            "__ROLE__": _content_role(task),
+            "__GOAL__": task["goal"],
+            "__CRITIQUE__": "\n".join(crit_lines),
+        })
+        prompt += _content_contract(task)
+        cap = capability_runtime.block_for(task, run_id)
+        if cap:
+            prompt += "\n\n" + cap
+        prompt = attachments.append_task_context(prompt, task)
+        try:
+            from . import bench as _rev_bench
+            _rev_benched = _rev_bench.benched_ids(run_id)
+        except Exception:
+            _rev_benched = None
+        if local_fallback.any_live_channel(agents, _rev_benched):
+            before_revise = _read_manuscript(workdir, ms_name)
+            revise_result = _run_step(
+                run_id, "revise-r%d" % r,
+                modelhub.bind_agent(impl, difficulty), prompt,
+                workdir, readonly=False, ev=ev,
+                resume=resume_ctx["session"] if resume_ctx else None)
+            after_revise = _read_manuscript(workdir, ms_name)
+            # 修订换将：主执行者本轮失败时先换一个不同的可写 CLI 接手，
+            # 仍无产出才落本地兜底（见 _revise_fallback_agent 注释）。
+            if not revise_result.get("ok"):
+                alt_impl = _revise_fallback_agent(
+                    agents, impl, workdir, _rev_benched)
+                if alt_impl is not None:
+                    alt_result = _run_step(
+                        run_id, "revise-alt-r%d" % r,
+                        modelhub.bind_agent(alt_impl, difficulty), prompt,
+                        workdir, readonly=False, ev=ev)
+                    after_alt = _read_manuscript(workdir, ms_name)
+                    if (alt_result.get("ok")
+                            and after_alt != after_revise):
+                        revise_result = alt_result
+                        after_revise = after_alt
+            # CLI 返回失败（包括 checkpoint/session-sync-pending）或声称成功
+            # 但稿件未变化，都不应空等下一轮评审；立即做本地确定性修订。
+            if not revise_result.get("ok") or after_revise == before_revise:
+                reason = (revise_result.get("error") or
+                          "修订步骤未产生稿件变更")[:300]
+                step, log_abs = store.add_step(
+                    run_id, "revise-local-r%d" % r,
+                    "local-fallback", "本地修订兜底",
+                    note="外部修订失败或无有效产出：%s" % reason)
+                _lok, _new, _changes, _note = local_fallback.write_local_revise(
+                    workdir, ms_name, after_revise)
+                store.finish_step(
+                    run_id, step["n"], "done" if _lok else "failed",
+                    summary=_note)
+                try:
+                    log_abs.write_text(
+                        ("外部修订未生效：%s\n%s\n" % (reason, _note)
+                         + "\n".join("- " + c for c in _changes)),
+                        encoding="utf-8")
+                except Exception:
+                    pass
+                store.add_message(run_id, "修订兜底：%s" % _note)
+        else:
+            # 外部模型全部不可用：不再烧超时。能机测的问题（重复段、超长段）
+            # 本地确定性修掉，语义级问题留给人工——修订循环继续往下走，
+            # 任务不停摆。
+            step, log_abs = store.add_step(
+                run_id, "revise-r%d" % r, "local-fallback", "本地修订")
+            _lok, _new, _changes, _note = local_fallback.write_local_revise(
+                workdir, ms_name)
+            store.finish_step(run_id, step["n"], "done", summary=_note)
+            try:
+                log_abs.write_text(
+                    (_note + "\n\n" + "\n".join("- " + c for c in _changes)
+                     if _changes else _note) + "\n", encoding="utf-8")
+            except Exception:
+                pass
+            store.add_message(run_id, "修订兜底：%s" % _note)
+    _extra = dict(locals())
+    _extra.pop("st", None)
+    return _content_state(st, _extra)
+
+
+def _content_finalize(st):
+    """收尾：终判、评审策略评估、短篇终稿闸、成片渲染、报告与终态。
+
+    本段只读状态、不再改稿件内容；对外结论（verdict / report / run.status）
+    在这里一次写完。
+    """
+    _effective_revisions = st._effective_revisions
+    critics = st.critics
+    difficulty = st.difficulty
+    dims = st.dims
+    draft_degradation_reason = st.draft_degradation_reason
+    draft_degraded = st.draft_degraded
+    draft_source = st.draft_source
+    ev = st.ev
+    extra_review_rounds = st.extra_review_rounds
+    history_rounds = st.history_rounds
+    impl = st.impl
+    is_selection = st.is_selection
+    manuscript = st.manuscript
+    mode = st.mode
+    ms_name = st.ms_name
+    ms_path = st.ms_path
+    per_agent = st.per_agent
+    publishable = st.publishable
+    required_reviewers = st.required_reviewers
+    resume_ctx = st.resume_ctx
+    review_independence = st.review_independence
+    rounds = st.rounds
+    route = st.route
+    run_id = st.run_id
+    selection = st.selection
+    step_wd = st.step_wd
+    task = st.task
+    threshold = st.threshold
+    workdir = st.workdir
+    workflow = st.workflow
     final_means = history_rounds[-1]["means"] if history_rounds else {}
     overall = (round(sum(final_means.values()) / len(final_means), 1)
                if final_means else None)

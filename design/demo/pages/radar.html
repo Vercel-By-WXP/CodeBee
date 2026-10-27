@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 分析洞察台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  .app { grid-template-columns: 52px minmax(0, 1fr) 300px; }
+
+  /* 全流程阶段条容器 */
+  .flowbar {
+    display: flex; align-items: center; gap: var(--s-3);
+    padding: var(--s-2) var(--s-4);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .flowbar .flabel { font-size: var(--t-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-3); font-weight: var(--w-semi); }
+
+  /* tabs */
+  .tabpane { display: none; }
+  .tabpane.is-on { display: block; }
+
+  /* 榜单表 */
+  .rank { counter-reset: r; }
+  .rank .item {
+    display: grid; grid-template-columns: 26px 1fr auto auto; gap: var(--s-3);
+    align-items: center; padding: var(--s-3) var(--s-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .rank .item:last-child { border-bottom: 0; }
+  .rank .no { font-family: var(--font-mono); font-size: var(--t-small); color: var(--text-3); text-align: center; }
+  .rank .item.top1 .no, .rank .item.top2 .no, .rank .item.top3 .no { color: var(--accent); font-weight: var(--w-semi); }
+  .rank .b-name { font-size: var(--t-body); font-weight: var(--w-medium); color: var(--text); }
+  .rank .b-meta { font-size: var(--t-caption); color: var(--text-3); margin-top: 2px; }
+  .rank .heat { display: flex; align-items: center; gap: 6px; }
+  .rank .heat .num { font-size: var(--t-caption); color: var(--text-2); width: 34px; text-align: right; }
+
+  /* 拆解维度 */
+  .dim { padding: var(--s-3) 0; border-bottom: 1px solid var(--line); }
+  .dim:last-child { border-bottom: 0; }
+  .dim .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .dim .d-name { font-size: var(--t-small); color: var(--text); font-weight: var(--w-medium); }
+  .dim .d-score { font-family: var(--font-mono); font-size: var(--t-caption); color: var(--text-2); }
+
+  /* 竞品矩阵：按维度对比的条形 */
+  .matrix { display: flex; flex-direction: column; gap: var(--s-4); }
+  .mrow { display: grid; grid-template-columns: 110px 1fr; gap: var(--s-3); align-items: center; }
+  .mrow .ml { font-size: var(--t-small); color: var(--text-2); }
+  .mstack { display: flex; flex-direction: column; gap: 4px; }
+  .mseries { display: flex; align-items: center; gap: 6px; }
+  .mseries .ms-name { width: 64px; font-size: 11px; color: var(--text-3); flex: 0 0 auto; }
+  .mbar { flex: 1; height: 10px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+  .mbar > i { display: block; height: 100%; border-radius: inherit; }
+  .mbar > i.mine { background: var(--grad); }
+  .mbar > i.rival { background: var(--line-3); }
+  .mbar > i.rival2 { background: var(--line-2); }
+
+  /* 透视卡片网格 */
+  .pivot { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+  .pcard { border: 1px solid var(--line); border-radius: var(--r-3); padding: var(--s-4); background: var(--surface); }
+  .pcard .pk { font-size: var(--t-caption); color: var(--text-3); }
+  .pcard .pv { font-family: var(--font-mono); font-size: var(--f-24); font-weight: var(--w-semi); color: var(--text); margin-top: 4px; }
+  .pcard .ptrend { font-size: var(--t-caption); margin-top: 4px; }
+  .ptrend.up { color: var(--ok); }
+  .ptrend.down { color: var(--bad); }
+
+  /* 词云（简单标签云） */
+  .cloud { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-2) 0; }
+  .cloud .w { padding: 3px var(--s-3); border: 1px solid var(--line-2); border-radius: var(--r-pill); font-size: var(--t-caption); color: var(--text-2); }
+  .cloud .w.hot { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
+
+  .aside-card { padding: var(--s-4); border-bottom: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-hive" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M12 2.5l7 4v9l-7 4-7-4v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5 6.5l7 4 7-4M12 10.5V21"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20l4-1 10-10-3-3L5 16l-1 4zM14 6l3 3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V4M4 20h16M8 16l3-4 3 2 4-6"/></symbol>
+    <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M4 4h16v16H4zM4 10h16M4 16h16M10 4v16M16 4v16"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 4 3 6a5 5 0 0 1-10 0c0-4 4-5 5-13z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 1 0-2 5M20 5v6h-6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v10M8 11l4 4 4-4M5 19h14"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16l-6 7v6l-4 2v-8z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12l5 5 9-11"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <nav class="rail">
+    <a class="brand" href="#welcome" style="padding:0;justify-content:center"><svg class="brand-mark"><use href="#i-hive"/></svg></a>
+    <span class="divider" style="width:24px;margin:4px 0"></span>
+    <a class="rail-btn" href="#" title="创作"><svg><use href="#i-pen"/></svg></a>
+    <a class="rail-btn" href="#" title="执行台"><svg><use href="#i-code"/></svg></a>
+    <a class="rail-btn" href="#" title="成稿"><svg><use href="#i-doc"/></svg></a>
+    <a class="rail-btn is-on" href="#" title="分析"><svg><use href="#i-chart"/></svg></a>
+    <span class="grow"></span>
+    <a class="rail-btn" href="#" title="设置"><svg><use href="#i-set"/></svg></a>
+  </nav>
+
+  <section class="main">
+    <header class="topbar">
+      <div class="crumb">
+        <span>分析洞察</span><span class="sep">/</span>
+        <strong>番茄小说 · 悬疑品类</strong>
+      </div>
+      <span class="grow"></span>
+      <span class="row-2">
+        <button class="btn btn-outline btn-sm"><svg style="width:14px;height:14px"><use href="#i-refresh"/></svg>重新扫描</button>
+        <button class="btn btn-primary btn-sm"><svg style="width:14px;height:14px"><use href="#i-download"/></svg>导出报告</button>
+        <button class="icon-btn" id="tt" title="明暗"><svg id="ttI"><use href="#i-moon"/></svg></button>
+      </span>
+    </header>
+
+    <!-- 全流程阶段条 -->
+    <div class="flowbar">
+      <span class="flabel">全流程</span>
+      <div class="pipeline">
+        <span class="step is-done"><span class="n">1</span>榜单扫描</span>
+        <span class="arrow"><svg><use href="#i-arrow"/></svg></span>
+        <span class="step is-on"><span class="n">2</span>选题拆解</span>
+        <span class="arrow"><svg><use href="#i-arrow"/></svg></span>
+        <span class="step"><span class="n">3</span>竞品矩阵</span>
+        <span class="arrow"><svg><use href="#i-arrow"/></svg></span>
+        <span class="step"><span class="n">4</span>数据透视</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="page-inner" style="max-width:1000px">
+        <!-- tabs -->
+        <div class="tabs" style="margin-bottom:var(--s-5)">
+          <button class="tab" data-pane="p-scan">榜单概览</button>
+          <button class="tab is-on" data-pane="p-decompose">选题拆解</button>
+          <button class="tab" data-pane="p-matrix">竞品矩阵</button>
+          <button class="tab" data-pane="p-pivot">数据透视</button>
+        </div>
+
+        <!-- 榜单概览 -->
+        <div class="tabpane" id="p-scan">
+          <div class="panel card-pad">
+            <div class="row between" style="margin-bottom:var(--s-2)">
+              <span class="caps">悬疑惊悚 · 实时热榜 Top 8</span>
+              <span class="row-1 tiny"><svg style="width:13px;height:13px;color:var(--accent)"><use href="#i-flame"/></svg> 更新于 2 分钟前</span>
+            </div>
+            <div class="rank">
+              <div class="item top1"><span class="no">1</span><span><div class="b-name">停灵三夜</div><div class="b-meta">灵异 · 单元剧 · 完读率 68%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:100%"></i></span><span class="num">9.8w</span></span><span class="tag tag-accent">新晋</span></div>
+              <div class="item top2"><span class="no">2</span><span><div class="b-name">死当铺的第九十九件心愿</div><div class="b-meta">悬疑 · 单元剧 · 完读率 61%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:82%"></i></span><span class="num">8.1w</span></span><span class="tag">在更</span></div>
+              <div class="item top3"><span class="no">3</span><span><div class="b-name">长安灯下录</div><div class="b-meta">古风探案 · 连载 · 完读率 57%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:71%"></i></span><span class="num">7.0w</span></span><span class="tag">在更</span></div>
+              <div class="item"><span class="no">4</span><span><div class="b-name">第七次日落</div><div class="b-meta">硬核推理 · 完读率 54%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:60%"></i></span><span class="num">5.9w</span></span><span class="tag">在更</span></div>
+              <div class="item"><span class="no">5</span><span><div class="b-name">雾港来信</div><div class="b-meta">推理 · 完读率 49%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:52%"></i></span><span class="num">5.1w</span></span><span class="tag">在更</span></div>
+              <div class="item"><span class="no">6</span><span><div class="b-name">无声证词</div><div class="b-meta">司法悬疑 · 完读率 46%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:47%"></i></span><span class="num">4.6w</span></span><span class="tag">在更</span></div>
+              <div class="item"><span class="no">7</span><span><div class="b-name">白塔疑云</div><div class="b-meta">校园悬疑 · 完读率 43%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:43%"></i></span><span class="num">4.2w</span></span><span class="tag">在更</span></div>
+              <div class="item"><span class="no">8</span><span><div class="b-name">骨瓷</div><div class="b-meta">民俗惊悚 · 完读率 41%</div></span><span class="heat"><span class="bar" style="width:120px"><i style="width:40%"></i></span><span class="num">3.9w</span></span><span class="tag">在更</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 选题拆解 -->
+        <div class="tabpane is-on" id="p-decompose">
+          <div class="panel card-pad">
+            <div class="row between" style="margin-bottom:var(--s-4)">
+              <div>
+                <span class="caps">拆解对象</span>
+                <h3 class="page-title" style="font-size:var(--t-h3);margin-top:4px">《停灵三夜》爆款因子拆解</h3>
+              </div>
+              <span class="tag tag-ok">综合得分 91</span>
+            </div>
+
+            <div class="dim">
+              <div class="row"><span class="d-name">题材新颖度</span><span class="d-score">94 / 100</span></div>
+              <div class="bar"><i style="width:94%"></i></div>
+            </div>
+            <div class="dim">
+              <div class="row"><span class="d-name">人设记忆点</span><span class="d-score">88 / 100</span></div>
+              <div class="bar"><i style="width:88%"></i></div>
+            </div>
+            <div class="dim">
+              <div class="row"><span class="d-name">开篇钩子强度</span><span class="d-score">96 / 100</span></div>
+              <div class="bar"><i style="width:96%"></i></div>
+            </div>
+            <div class="dim">
+              <div class="row"><span class="d-name">节奏密度（爽点/千字）</span><span class="d-score">82 / 100</span></div>
+              <div class="bar"><i style="width:82%"></i></div>
+            </div>
+            <div class="dim">
+              <div class="row"><span class="d-name">情感共振</span><span class="d-score">79 / 100</span></div>
+              <div class="bar"><i style="width:79%"></i></div>
+            </div>
+
+            <hr style="margin:var(--s-4) 0">
+
+            <span class="caps" style="display:block;margin-bottom:var(--s-3)">爽点节奏（按章节）</span>
+            <div class="spark" style="height:56px">
+              <i style="--h:40%"></i><i style="--h:62%"></i><i class="peak" style="--h:100%"></i><i style="--h:55%"></i><i style="--h:78%"></i><i style="--h:48%"></i><i class="peak" style="--h:92%"></i><i style="--h:60%"></i><i style="--h:84%"></i><i style="--h:52%"></i><i style="--h:70%"></i><i style="--h:46%"></i>
+            </div>
+            <div class="row between tiny" style="margin-top:var(--s-2)"><span class="faint">第 1 章</span><span class="faint">第 12 章</span></div>
+          </div>
+        </div>
+
+        <!-- 竞品矩阵 -->
+        <div class="tabpane" id="p-matrix">
+          <div class="panel card-pad">
+            <span class="caps" style="display:block;margin-bottom:var(--s-4)">我的选题 vs 竞品 · 五维对比</span>
+            <div class="matrix">
+              <div class="mrow"><span class="ml">题材新颖</span><div class="mstack">
+                <div class="mseries"><span class="ms-name">我的选题</span><div class="mbar"><i class="mine" style="width:92%"></i></div></div>
+                <div class="mseries"><span class="ms-name">停灵三夜</span><div class="mbar"><i class="rival" style="width:94%"></i></div></div>
+                <div class="mseries"><span class="ms-name">无声证词</span><div class="mbar"><i class="rival2" style="width:78%"></i></div></div>
+              </div></div>
+              <div class="mrow"><span class="ml">人设记忆</span><div class="mstack">
+                <div class="mseries"><span class="ms-name">我的选题</span><div class="mbar"><i class="mine" style="width:86%"></i></div></div>
+                <div class="mseries"><span class="ms-name">停灵三夜</span><div class="mbar"><i class="rival" style="width:88%"></i></div></div>
+                <div class="mseries"><span class="ms-name">无声证词</span><div class="mbar"><i class="rival2" style="width:72%"></i></div></div>
+              </div></div>
+              <div class="mrow"><span class="ml">开篇钩子</span><div class="mstack">
+                <div class="mseries"><span class="ms-name">我的选题</span><div class="mbar"><i class="mine" style="width:90%"></i></div></div>
+                <div class="mseries"><span class="ms-name">停灵三夜</span><div class="mbar"><i class="rival" style="width:96%"></i></div></div>
+                <div class="mseries"><span class="ms-name">无声证词</span><div class="mbar"><i class="rival2" style="width:70%"></i></div></div>
+              </div></div>
+              <div class="mrow"><span class="ml">节奏密度</span><div class="mstack">
+                <div class="mseries"><span class="ms-name">我的选题</span><div class="mbar"><i class="mine" style="width:83%"></i></div></div>
+                <div class="mseries"><span class="ms-name">停灵三夜</span><div class="mbar"><i class="rival" style="width:82%"></i></div></div>
+                <div class="mseries"><span class="ms-name">无声证词</span><div class="mbar"><i class="rival2" style="width:68%"></i></div></div>
+              </div></div>
+              <div class="mrow"><span class="ml">情感共振</span><div class="mstack">
+                <div class="mseries"><span class="ms-name">我的选题</span><div class="mbar"><i class="mine" style="width:85%"></i></div></div>
+                <div class="mseries"><span class="ms-name">停灵三夜</span><div class="mbar"><i class="rival" style="width:79%"></i></div></div>
+                <div class="mseries"><span class="ms-name">无声证词</span><div class="mbar"><i class="rival2" style="width:81%"></i></div></div>
+              </div></div>
+            </div>
+            <div class="row-3 tiny" style="margin-top:var(--s-4)">
+              <span class="row-1"><span class="mbar" style="width:18px"><i class="mine" style="width:100%"></i></span>我的选题</span>
+              <span class="row-1"><span class="mbar" style="width:18px"><i class="rival" style="width:100%"></i></span>头部竞品</span>
+              <span class="row-1"><span class="mbar" style="width:18px"><i class="rival2" style="width:100%"></i></span>同档竞品</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据透视 -->
+        <div class="tabpane" id="p-pivot">
+          <div class="pivot" style="margin-bottom:var(--s-4)">
+            <div class="pcard"><div class="pk">品类日均收藏</div><div class="pv">12.4k</div><div class="ptrend up">▲ 8.2% 周环比</div></div>
+            <div class="pcard"><div class="pk">平均完读率</div><div class="pv">58%</div><div class="ptrend up">▲ 3.1pt</div></div>
+            <div class="pcard"><div class="pk">首秀 72h 留存</div><div class="pv">41%</div><div class="ptrend down">▼ 1.7pt</div></div>
+            <div class="pcard"><div class="pk">单章追读转化</div><div class="pv">73%</div><div class="ptrend up">▲ 2.4pt</div></div>
+          </div>
+          <div class="panel card-pad">
+            <span class="caps" style="display:block;margin-bottom:var(--s-3)">关键词热度分布（近 30 天）</span>
+            <div class="cloud">
+              <span class="w hot">单元剧</span><span class="w hot">民俗怪谈</span><span class="w">法医</span><span class="w hot">反转</span>
+              <span class="w">密室</span><span class="w">复仇</span><span class="w hot">细思极恐</span><span class="w">师徒</span>
+              <span class="w">失忆</span><span class="w">古董</span><span class="w hot">替身</span><span class="w">家族秘辛</span>
+              <span class="w">赛博</span><span class="w">本格推理</span><span class="w">童年阴影</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="aside">
+    <div class="aside-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">扫描状态</span>
+      <div class="row-2" style="margin-bottom:var(--s-2)"><span class="dot dot-ok"></span><span class="tiny">番茄 · 悬疑</span><span class="grow"></span><span class="tag tag-ok">完成</span></div>
+      <div class="row-2" style="margin-bottom:var(--s-2)"><span class="dot dot-ok"></span><span class="tiny">七猫 · 悬疑</span><span class="grow"></span><span class="tag tag-ok">完成</span></div>
+      <div class="row-2"><span class="dot dot-warn"></span><span class="tiny">起点 · 灵异</span><span class="grow"></span><span class="tag tag-warn">限流</span></div>
+    </div>
+    <div class="aside-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-2)">样本量</span>
+      <div class="row between tiny" style="margin-bottom:6px"><span class="faint">覆盖书目</span><span class="num">1,284</span></div>
+      <div class="row between tiny" style="margin-bottom:6px"><span class="faint">章节切片</span><span class="num">38.6k</span></div>
+      <div class="row between tiny"><span class="faint">抓取耗时</span><span class="num">42s</span></div>
+    </div>
+    <div class="aside-card" style="border-bottom:0">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">建议落点</span>
+      <div class="tiny" style="color:var(--text-2);line-height:1.6">
+        悬疑单元剧 + 民俗怪谈元素在本档位完读率领先，建议以<strong style="color:var(--text)">「非遗匠人 + 单元悬案」</strong>切入，规避已饱和的纯本格赛道。
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  // tabs
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('is-on'));
+    document.querySelectorAll('.tabpane').forEach(x => x.classList.remove('is-on'));
+    t.classList.add('is-on');
+    document.getElementById(t.dataset.pane).classList.add('is-on');
+  }));
+  // 主题同步 + 切换
+  const root = document.documentElement;
+  addEventListener('message', e => { if (e.data && e.data.surface) { root.setAttribute('data-surface', e.data.surface); } });
+  document.getElementById('tt').addEventListener('click', () => {
+    const paper = root.getAttribute('data-surface') === 'paper';
+    root.setAttribute('data-surface', paper ? 'ink' : 'paper');
+    document.getElementById('ttI').innerHTML = paper ? '<use href="#i-sun"/>' : '<use href="#i-moon"/>';
+  });
+</script>
+</body>
+</html>

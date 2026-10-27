@@ -1,0 +1,562 @@
+/* ==========================================================================
+   CodeBee Components · v2 —— 全站唯一控件实现
+   规则：页面里不允许再写「某个按钮长得不一样」。要新形态，先加进这里。
+
+   这一版的组件语言 = CodeBee 现有基因提纯：
+     · 控件圆角 --r-2(8)；卡片 --r-3(12)；浮层 --r-4(16)
+     · 分层靠 1px 描边（--line / --line-2），不靠阴影
+     · 主 CTA 用蓝紫渐变 --grad（CodeBee 招牌身份）；其余按钮克制
+     · 选中/高亮沿用 .bee-digest 手法：左侧 3px accent 竖线
+   ========================================================================== */
+
+/* ============================ 按钮 ============================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  height: var(--h-ctl);
+  padding: 0 var(--s-4);
+  border-radius: var(--r-2);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.005em;
+  color: var(--text);
+  border: 1px solid transparent;
+  background: transparent;
+  white-space: nowrap;
+  transition: background var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+.btn svg { width: 15px; height: 15px; flex: 0 0 auto; }
+
+.btn-lg { height: var(--h-lg); padding: 0 var(--s-5); font-size: var(--t-body); }
+.btn-sm { height: var(--h-sm); padding: 0 var(--s-3); font-size: var(--t-caption); }
+
+/* 主 CTA：蓝紫渐变。CodeBee 唯一被允许大面积上色的区域 */
+.btn-primary {
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(20, 45, 73, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.btn-primary:hover { filter: brightness(1.06); }
+.btn-primary:active { filter: brightness(0.97); }
+[data-surface="ink"] .btn-primary { color: #fff; }
+
+/* 次要：近黑底（paper） / 近白底（ink） */
+.btn-solid {
+  background: var(--btn);
+  color: var(--btn-fg);
+}
+.btn-solid:hover { background: var(--btn-hover); }
+
+/* 描边 */
+.btn-outline {
+  border-color: var(--line-2);
+  color: var(--text);
+  background: var(--surface);
+}
+.btn-outline:hover { border-color: var(--line-3); background: var(--surface-2); }
+
+/* 安静：无框，hover 出面 */
+.btn-ghost { color: var(--text-2); }
+.btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+/* 危险：只在真正危险动作出现 */
+.btn-danger { color: var(--bad); }
+.btn-danger:hover { background: var(--bad-soft); }
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* 图标按钮（无文字） */
+.btn-icon { padding: 0; width: var(--h-ctl); }
+
+/* ============================ 表单 ============================ */
+.field { display: flex; flex-direction: column; gap: var(--s-2); }
+.field > label,
+.field-label {
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.input,
+.textarea,
+.select {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  color: var(--text);
+  font-size: var(--t-body);
+  padding: 0 var(--s-3);
+  height: var(--h-ctl);
+  transition: border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+.textarea { height: auto; padding: var(--s-3); line-height: var(--lh-ui); resize: vertical; }
+.input::placeholder,
+.textarea::placeholder { color: var(--text-3); }
+.input:focus,
+.textarea:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--line-focus);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
+    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 14px, calc(100% - 11px) 14px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: var(--s-6);
+}
+
+/* ============================ 标签 / 状态 ============================ */
+/* 描边小标签，方角，不用填充。全大写英文或小字 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  font-size: var(--t-caption);
+  font-weight: var(--w-medium);
+  color: var(--text-2);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.tag .mono { font-size: 11px; }
+
+/* 状态色软填充标签（仅语义状态用） */
+.tag-ok { color: var(--ok); background: var(--ok-soft); border-color: transparent; }
+.tag-warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+.tag-bad { color: var(--bad); background: var(--bad-soft); border-color: transparent; }
+.tag-accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+
+/* 状态圆点 */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  flex: 0 0 auto;
+  background: var(--text-3);
+}
+.dot-ok { background: var(--ok); }
+.dot-warn { background: var(--warn); }
+.dot-bad { background: var(--bad); }
+.dot-accent { background: var(--accent); }
+.dot-pulse { position: relative; }
+.dot-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--r-pill);
+  border: 2px solid currentColor;
+  opacity: 0.4;
+  animation: dot-pulse 1.8s var(--ease-out) infinite;
+}
+@keyframes dot-pulse {
+  0% { transform: scale(0.7); opacity: 0.5; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* ============================ 键盘键 ============================ */
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+/* ============================ 卡片 / 面板 ============================ */
+/* 静态卡片：描边分层，零阴影。hover 只换边框，不位移 */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  transition: border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out);
+}
+.card-pad { padding: var(--pad-card); }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+}
+/* 选中 / 高亮：沿用 CodeBee .bee-digest 的左边线手法 */
+.panel-marked {
+  border-left: 3px solid var(--accent);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.panel-title {
+  font-size: var(--t-small);
+  font-weight: var(--w-semi);
+  color: var(--text);
+}
+.panel-body { padding: var(--s-4); }
+
+/* ============================ 进度 / 评分 ============================ */
+/* 细进度条：渐变填充 */
+.bar {
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grad);
+}
+.bar-ok > i { background: var(--ok); }
+.bar-warn > i { background: var(--warn); }
+.bar-bad > i { background: var(--bad); }
+
+/* 圆环进度（执行台评分用） */
+.ring {
+  --p: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-pill);
+  background:
+    conic-gradient(var(--accent) calc(var(--p) * 1%), var(--surface-3) 0);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.ring::before {
+  content: "";
+  width: 44px;
+  height: 44px;
+  border-radius: inherit;
+  background: var(--surface);
+}
+.ring > span {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: var(--w-semi);
+  color: var(--text);
+}
+
+/* 三席评分小药丸（圆角胶囊） */
+.score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  height: 22px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.score b { font-weight: var(--w-semi); color: var(--text); }
+.score small { font-size: 10px; color: var(--text-3); }
+
+/* ============================ 表格 ============================ */
+.table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.table th {
+  text-align: left;
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line-2);
+  white-space: nowrap;
+}
+.table td {
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-body);
+  color: var(--text);
+  vertical-align: middle;
+}
+.table tr:last-child td { border-bottom: 0; }
+.table tbody tr { transition: background var(--dur-1) var(--ease-out); }
+.table tbody tr:hover { background: var(--surface-2); }
+
+/* ============================ 列表行 ============================ */
+/* 带左边线可标记「进行中 / 当前」 */
+.row-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-out), color var(--dur-1);
+  border-left: 3px solid transparent;
+}
+.row-item:hover { background: var(--surface-2); color: var(--text); }
+.row-item.is-on {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-left-color: var(--accent);
+}
+
+/* 段步骤链（执行台用）：横向，完成段用渐变，当前段描边 */
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.steps .seg {
+  height: 6px;
+  flex: 1 1 0;
+  background: var(--surface-3);
+  margin-right: 3px;
+  border-radius: 2px;
+  transition: background var(--dur-2) var(--ease-out);
+}
+.steps .seg:last-child { margin-right: 0; }
+.steps .seg.done { background: var(--accent); }
+.steps .seg.active { background: var(--grad); }
+
+/* ============================ 流程阶段条 ============================ */
+/* 横向带标签的阶段流，每个工作页顶部用它读出「全流程」 */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+}
+.pipeline .step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px var(--s-3);
+  border-radius: var(--r-pill);
+  font-size: var(--t-caption);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.pipeline .step .n {
+  width: 16px; height: 16px;
+  border-radius: var(--r-pill);
+  display: grid; place-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  flex: 0 0 auto;
+}
+.pipeline .step.is-done { color: var(--text-2); }
+.pipeline .step.is-done .n { background: var(--ok-soft); color: var(--ok); }
+.pipeline .step.is-on { background: var(--accent-soft); color: var(--text); font-weight: var(--w-medium); }
+.pipeline .step.is-on .n { background: var(--grad); color: #fff; }
+.pipeline .arrow { color: var(--line-2); flex: 0 0 auto; }
+.pipeline .arrow svg { width: 13px; height: 13px; display: block; }
+
+/* ============================ 页签 ============================ */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  position: relative;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-small);
+  color: var(--text-2);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--dur-1) var(--ease-out);
+}
+.tab:hover { color: var(--text); }
+.tab.is-on { color: var(--text); font-weight: var(--w-semi); border-bottom-color: var(--accent); }
+
+/* ============================ 分段器 ============================ */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+}
+.segmented button {
+  height: var(--h-sm);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-1);
+  font-size: var(--t-caption);
+  color: var(--text-2);
+  transition: background var(--dur-1), color var(--dur-1);
+}
+.segmented button.is-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--sh-1);
+}
+
+/* ============================ 头像 / 识别色块 ============================ */
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-pill);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: var(--w-semi);
+  color: #fff;
+  background: var(--grad);
+  flex: 0 0 auto;
+}
+
+/* ============================ 空态 ============================ */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  padding: var(--s-12) var(--s-6);
+  text-align: center;
+  color: var(--text-3);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-3);
+  background: var(--bg-sunken);
+}
+.empty svg { width: 30px; height: 30px; opacity: 0.5; }
+.empty h4 { font-size: var(--t-h3); color: var(--text-2); }
+.empty p { font-size: var(--t-small); max-width: 36em; }
+
+/* ============================ 计数气泡 ============================ */
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ============================ 开关 ============================ */
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  border: 1px solid var(--line-2);
+  cursor: pointer;
+  transition: background var(--dur-1);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: inherit;
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+.switch.is-on { background: var(--accent); border-color: transparent; }
+.switch.is-on::after { transform: translateX(14px); background: #fff; }
+
+/* ============================ 浮层 / 模态 ============================ */
+.pop {
+  position: absolute;
+  z-index: var(--z-pop);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  box-shadow: var(--sh-pop);
+  padding: var(--s-2);
+}
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+}
+.modal {
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-4);
+  box-shadow: var(--sh-modal);
+  overflow: hidden;
+}
+.modal-head { padding: var(--s-5) var(--s-5) var(--s-3); }
+.modal-body { padding: 0 var(--s-5) var(--s-4); }
+.modal-foot { padding: var(--s-3) var(--s-5) var(--s-5); display: flex; justify-content: flex-end; gap: var(--s-2); }
+
+/* ============================ 小统计：贴底窄柱 ============================ */
+/* 柱状用在「写作节奏」这类，容器必须有固定列宽，柱贴底 */
+.spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+}
+.spark > i {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent-soft);
+  position: relative;
+}
+.spark > i::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: var(--h, 40%);
+  background: var(--accent);
+  border-radius: inherit;
+}
+.spark > i.peak::after { background: var(--accent-2); }
+
+/* ============================ 角标 / 数字 ============================ */
+.price {
+  font-family: var(--font-mono);
+  font-weight: var(--w-semi);
+  letter-spacing: -0.02em;
+}

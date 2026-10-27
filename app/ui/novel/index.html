@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>书架 · CodeBee 小说版</title>
+<link rel="stylesheet" href="/novel/novel.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#/" id="brand-link">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/>
+        <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/>
+      </svg>
+    </span>
+    <span id="brand-name">CodeBee 小说版</span>
+  </a>
+  <div class="topbar-right">
+    <span id="conn-dot" class="conn-dot" title="正在连接"></span>
+    <a class="btn btn-switch" href="/welcome/" title="换一个产品形态">切换</a>
+    <button id="btn-new" class="btn btn-primary" type="button">开新书</button>
+  </div>
+</header>
+
+<main id="view-shelf" class="view">
+  <div class="shelf-head">
+    <h1>我的书架</h1>
+    <p class="sub" id="shelf-sub"></p>
+  </div>
+  <div id="shelf-grid" class="shelf-grid"></div>
+  <div id="shelf-empty" class="empty hidden">
+    <p class="empty-title">书架还空着</p>
+    <p class="empty-body">说一句话，让蜂群把你脑子里的故事写下来。第一本建议从短篇开始，一万多字，十几分钟就有初稿。</p>
+    <button class="btn btn-primary" type="button" id="btn-empty-new">写第一本</button>
+  </div>
+</main>
+
+<main id="view-book" class="view hidden">
+  <button class="back" type="button" id="btn-back">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    书架
+  </button>
+
+  <div class="book-head">
+    <div>
+      <p class="book-kind" id="book-kind"></p>
+      <h1 id="book-title"></h1>
+      <p class="book-goal" id="book-goal"></p>
+    </div>
+    <div class="book-state">
+      <span id="book-status" class="pill"></span>
+    </div>
+  </div>
+
+  <div class="book-body">
+    <section class="card">
+      <h2>现在在做什么</h2>
+      <p class="now" id="book-now">—</p>
+      <div class="bar"><i id="book-bar"></i></div>
+      <p class="meta" id="book-progress-text"></p>
+    </section>
+
+    <section class="card">
+      <h2>进展</h2>
+      <dl class="kv" id="book-kv"></dl>
+    </section>
+
+    <section class="card span-2" id="pub-card">
+      <div class="pub-head">
+        <h2>发布</h2>
+        <span class="pub-rate" id="pub-rate"></span>
+      </div>
+      <div id="pub-plats" class="pub-plats">
+        <p class="hint">正在读平台状态…</p>
+      </div>
+      <div class="pub-hint-row">
+        <p class="hint" id="pub-hint"></p>
+        <button class="btn" type="button" id="pub-retry" hidden>重试</button>
+        <button class="btn" type="button" id="pub-manual" hidden>手动发</button>
+      </div>
+      <div id="pub-log" class="pub-log"></div>
+    </section>
+
+    <section class="card span-2" id="out-card">
+      <div class="pub-head">
+        <h2>结果回流</h2>
+        <span class="pub-rate" id="out-rate"></span>
+      </div>
+      <p class="hint" id="out-tip">平台审完、签没签、多少人读——把结果登记下来。下次开同题材的书，评审会带着这条经验看你的稿子。</p>
+      <div id="out-plats" class="pub-plats">
+        <p class="hint">正在读结果…</p>
+      </div>
+      <details class="out-preview" id="out-preview-box" hidden>
+        <summary>下次同题材开书，评审会看到这段</summary>
+        <pre id="out-preview"></pre>
+      </details>
+    </section>
+
+    <section class="card span-2">
+      <h2>评审意见</h2>
+      <div id="book-review" class="review-body">还没有评审结果。</div>
+    </section>
+
+    <section class="card span-2">
+      <h2>成稿</h2>
+      <div id="book-files" class="files">—</div>
+    </section>
+  </div>
+</main>
+
+<div id="composer-mask" class="mask hidden" role="dialog" aria-modal="true" aria-labelledby="composer-title">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="composer-title">开一本新书</h2>
+      <button class="icon-btn" type="button" id="btn-close-composer" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <label class="field">
+      <span class="label">想写个什么故事</span>
+      <textarea id="f-goal" rows="4" placeholder="例：一个殡仪馆化妆师发现，每个死者生前都曾收到过他经手的一封信。悬疑，冷叙述，结尾要留一个没解释的细节。"></textarea>
+      <span class="hint">写得越具体，初稿越接近你想要的。题材、主角、卖点、想要的调子都可以写进去。</span>
+    </label>
+
+    <div class="field">
+      <span class="label">写多长</span>
+      <div class="chips" id="f-form">
+        <button type="button" class="chip is-on" data-form="short_story">短篇 · 约1.2万字</button>
+        <button type="button" class="chip" data-form="serial_novel">连载 · 8章</button>
+        <button type="button" class="chip" data-form="novel">长篇 · 单稿</button>
+      </div>
+    </div>
+
+    <div class="field" id="row-words">
+      <span class="label">目标字数</span>
+      <div class="stepper">
+        <button type="button" class="step" data-step="-2000">−</button>
+        <input id="f-words" type="number" min="2000" max="50000" step="1000" value="12000">
+        <button type="button" class="step" data-step="2000">+</button>
+      </div>
+    </div>
+
+    <div class="field hidden" id="row-chapters">
+      <span class="label">章数</span>
+      <div class="stepper">
+        <button type="button" class="step" data-chapter-step="-2">−</button>
+        <input id="f-chapters" type="number" min="2" max="60" step="1" value="8">
+        <button type="button" class="step" data-chapter-step="2">+</button>
+      </div>
+      <span class="hint">每章约 2500 字，写完一章就会有一章可读。</span>
+    </div>
+
+    <div class="sheet-foot">
+      <p class="msg" id="composer-msg"></p>
+      <button class="btn btn-primary" type="button" id="btn-start">开始写</button>
+    </div>
+  </div>
+</div>
+
+<div id="kit-mask" class="mask hidden" role="dialog" aria-modal="true" aria-labelledby="kit-title">
+  <div class="sheet kit-sheet">
+    <div class="sheet-head">
+      <div>
+        <h2 id="kit-title">手动发布包</h2>
+        <p class="kit-sub" id="kit-sub">正在整理稿子和建书资料…</p>
+      </div>
+      <button class="icon-btn" type="button" id="btn-close-kit" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="kit-body"></div>
+    <div class="sheet-foot">
+      <p class="msg" id="kit-msg"></p>
+      <div class="kit-actions">
+        <a class="btn" id="kit-open" href="#" target="_blank" rel="noopener" hidden>打开平台</a>
+        <a class="btn btn-primary" id="kit-download" href="#" hidden>下载 .txt</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="out-mask" class="mask hidden" role="dialog" aria-modal="true" aria-labelledby="out-title">
+  <div class="sheet out-sheet">
+    <div class="sheet-head">
+      <div>
+        <h2 id="out-title">登记平台结果</h2>
+        <p class="kit-sub" id="out-sub">平台怎么说的，就照原样记——改写过的理由帮不上下一次。</p>
+      </div>
+      <button class="icon-btn" type="button" id="btn-close-out" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="field">
+      <span class="label">哪个平台</span>
+      <div class="chips" id="out-plat-chips"></div>
+    </div>
+
+    <div class="field">
+      <span class="label">结果是什么</span>
+      <div class="chips" id="out-stage-chips"></div>
+      <span class="hint" id="out-stage-hint"></span>
+    </div>
+
+    <label class="field" id="row-quote">
+      <span class="label">平台原话</span>
+      <textarea id="f-quote" rows="4" placeholder="例：您的作品《…》经审核，存在开篇节奏拖沓、主线冲突出现较晚的问题，暂不通过。"></textarea>
+      <span class="hint">从站内信或后台提示里复制，别改写。没有原文也能存，但下次评审就只知道「被拒过」，不知道该改哪里。</span>
+    </label>
+
+    <div class="field">
+      <span class="label">阅读量（可不填）</span>
+      <input id="f-reads" type="number" min="0" step="1" placeholder="平台显示的阅读/追读人数">
+    </div>
+
+    <label class="field">
+      <span class="label">你自己记一笔（可不填）</span>
+      <input id="f-note" type="text" maxlength="120" placeholder="例：前三章确实在铺设定，第五版开始砍。">
+    </label>
+
+    <div class="sheet-foot">
+      <p class="msg" id="out-msg"></p>
+      <button class="btn btn-primary" type="button" id="btn-save-out">存下来</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/novel/novel.js"></script>
+</body>
+</html>

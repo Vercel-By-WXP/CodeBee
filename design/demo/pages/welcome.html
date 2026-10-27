@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 选择工作台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  /* 页面专属：只写布局，不写颜色/字号 */
+  body {
+    background-image: radial-gradient(
+      720px 420px at 86% -8%,
+      var(--halo), transparent 62%
+    );
+    background-repeat: no-repeat;
+  }
+  .wrap {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--s-5) var(--s-8);
+    border-bottom: 1px solid var(--line);
+  }
+  .hero {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--s-20) var(--s-6) var(--s-10);
+    width: 100%;
+  }
+  .hero h1 {
+    font-size: clamp(30px, 4vw, 46px);
+    line-height: 1.12;
+    font-weight: var(--w-bold);
+    letter-spacing: var(--tracking-tight);
+    margin-top: var(--s-5);
+  }
+  .hero h1 em {
+    font-style: normal;
+    background: var(--grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero p {
+    margin-top: var(--s-4);
+    font-size: var(--t-lead);
+    line-height: var(--lh-body);
+    color: var(--text-2);
+    max-width: 36em;
+  }
+  .list {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 var(--s-6) var(--s-12);
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+  .entry {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-4) var(--s-4) var(--s-3);
+    border: 1px solid var(--line);
+    border-left: 3px solid transparent;
+    border-radius: var(--r-3);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color var(--dur-2) var(--ease-out),
+      box-shadow var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+  .entry:hover {
+    border-color: var(--line-2);
+    border-left-color: var(--accent);
+    box-shadow: var(--sh-1);
+  }
+  .entry-ico {
+    width: 44px; height: 44px;
+    border-radius: var(--r-2);
+    display: grid; place-items: center;
+    background: var(--surface-2);
+    color: var(--accent);
+  }
+  .entry-ico svg { width: 21px; height: 21px; }
+  .entry-main { min-width: 0; }
+  .entry-name {
+    font-size: var(--t-h3);
+    font-weight: var(--w-semi);
+    color: var(--text);
+    display: flex; align-items: center; gap: var(--s-2);
+  }
+  .entry-desc {
+    margin-top: 3px;
+    font-size: var(--t-small);
+    color: var(--text-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .entry-go { color: var(--text-3); display: flex; align-items: center; gap: var(--s-3); }
+  .entry-go svg { width: 18px; height: 18px; transition: transform var(--dur-2) var(--ease-out); }
+  .entry:hover .entry-go { color: var(--text); }
+  .entry:hover .entry-go svg { transform: translateX(3px); }
+  .entry kbd-meta { color: var(--text-3); }
+  .foot {
+    margin-top: auto;
+    padding: var(--s-5) var(--s-8);
+    border-top: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: var(--t-caption);
+    color: var(--text-3);
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-hive" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5l7 4v9l-7 4-7-4v-9z" opacity=".18"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M12 2.5l7 4v9l-7 4-7-4v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5 6.5l7 4 7-4M12 10.5V21"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20l4-1 10-10-3-3L5 16l-1 4zM14 6l3 3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3h7l4 4v14H7zM14 3v4h4"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M9.5 12h6M9.5 15h6M9.5 18h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V4M4 20h16M8 16l3-4 3 2 4-6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+    <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#">
+      <svg class="brand-mark" viewBox="0 0 24 24"><use href="#i-hive"/></svg>
+      <span class="brand-name">CodeBee</span>
+      <span class="brand-ver">v0.1</span>
+    </a>
+    <div class="row-2">
+      <button class="icon-btn" id="themeToggle" title="切换明暗"><svg id="themeIco"><use href="#i-moon"/></svg></button>
+      <button class="btn btn-ghost btn-sm">已有进度</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <span class="caps">选择一个工作台</span>
+      <h1>把活交给 <em>对的 Agent</em>，<br>而不是自己从头折腾。</h1>
+      <p>CodeBee 把写作、编码、成稿、洞察拆成专职 Agent。挑一个入口，剩下的流程交给它跑——你只需要在关键节点拍板。</p>
+    </section>
+
+    <section class="list">
+      <a class="entry" href="#writing">
+        <span class="entry-ico"><svg><use href="#i-pen"/></svg></span>
+        <span class="entry-main">
+          <span class="entry-name">小说创作 <span class="tag">3 个工种</span></span>
+          <span class="entry-desc">长篇小说 · 番茄短故事 · 连载运营</span>
+        </span>
+        <span class="entry-go"><kbd class="kbd">1</kbd><svg><use href="#i-arrow"/></svg></span>
+      </a>
+
+      <a class="entry" href="#code">
+        <span class="entry-ico"><svg><use href="#i-code"/></svg></span>
+        <span class="entry-main">
+          <span class="entry-name">代码工程 <span class="tag">2 个工种</span></span>
+          <span class="entry-desc">写代码 · 调 Bug · 工程化交付</span>
+        </span>
+        <span class="entry-go"><kbd class="kbd">2</kbd><svg><use href="#i-arrow"/></svg></span>
+      </a>
+
+      <a class="entry" href="#dossier">
+        <span class="entry-ico"><svg><use href="#i-doc"/></svg></span>
+        <span class="entry-main">
+          <span class="entry-name">成稿工作台 <span class="tag">5 组要件</span></span>
+          <span class="entry-desc">标书 · 方案 · 要件清单与合规校验</span>
+        </span>
+        <span class="entry-go"><kbd class="kbd">3</kbd><svg><use href="#i-arrow"/></svg></span>
+      </a>
+
+      <a class="entry" href="#radar">
+        <span class="entry-ico"><svg><use href="#i-chart"/></svg></span>
+        <span class="entry-main">
+          <span class="entry-name">分析洞察 <span class="tag">榜单扫描</span></span>
+          <span class="entry-desc">平台榜单 · 竞品拆解 · 数据透视</span>
+        </span>
+        <span class="entry-go"><kbd class="kbd">4</kbd><svg><use href="#i-arrow"/></svg></span>
+      </a>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>CodeBee · 多 Agent 编排工作台</span>
+    <span class="row-2"><span>按 1–4 快速进入</span><svg class="brand-mark" style="width:14px;height:14px;opacity:.5"><use href="#i-hive"/></svg></span>
+  </footer>
+</div>
+
+<script>
+  // 演示交互：明暗切换 + 键盘 1-4 进入
+  const root = document.documentElement;
+  addEventListener('message', e => { if (e.data && e.data.surface) { root.setAttribute('data-surface', e.data.surface); } });
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    const paper = root.getAttribute('data-surface') === 'paper';
+    root.setAttribute('data-surface', paper ? 'ink' : 'paper');
+    document.getElementById('themeIco').innerHTML =
+      paper ? '<use href="#i-sun"/>' : '<use href="#i-moon"/>';
+  });
+  const map = { '1': '#writing', '2': '#code', '3': '#dossier', '4': '#radar' };
+  addEventListener('keydown', e => {
+    if (map[e.key]) location.hash = map[e.key];
+  });
+</script>
+</body>
+</html>

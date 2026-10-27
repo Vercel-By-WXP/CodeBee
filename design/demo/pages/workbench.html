@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="ink" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 执行台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  /* 执行台三栏：轨 / 主区 / 右栏。覆盖 base 的 4 列骨架 */
+  .app { grid-template-columns: 52px minmax(0, 1fr) 300px; }
+  .status-line { display: flex; align-items: center; gap: var(--s-2); }
+
+  .timeline { display: flex; flex-direction: column; }
+  .tl-item {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: var(--s-3);
+    padding-bottom: var(--s-4);
+    position: relative;
+  }
+  .tl-item::before {
+    content: "";
+    position: absolute;
+    left: 8px; top: 18px; bottom: 0;
+    width: 1px; background: var(--line);
+  }
+  .tl-item:last-child::before { display: none; }
+  .tl-node {
+    width: 18px; height: 18px; border-radius: var(--r-pill);
+    border: 2px solid var(--line-2); margin-top: 2px;
+    display: grid; place-items: center; background: var(--surface);
+    z-index: 1;
+  }
+  .tl-node.done { border-color: var(--ok); background: var(--ok); }
+  .tl-node.active { border-color: var(--accent); }
+  .tl-node.active::after {
+    content: ""; width: 6px; height: 6px; border-radius: inherit; background: var(--accent);
+  }
+  .tl-body { min-width: 0; }
+  .tl-head { display: flex; align-items: center; gap: var(--s-2); }
+  .tl-title { font-size: var(--t-small); font-weight: var(--w-medium); color: var(--text); }
+  .tl-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+  .tl-desc { margin-top: 2px; font-size: var(--t-caption); color: var(--text-2); }
+
+  .log {
+    font-family: var(--font-mono);
+    font-size: 12px; line-height: 1.7;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--r-3); padding: var(--s-3) var(--s-4);
+    color: var(--text-2);
+  }
+  .log .ok { color: var(--ok); }
+  .log .ac { color: var(--accent); }
+  .log .dim { color: var(--text-3); }
+
+  .aside-card { padding: var(--s-4); border-bottom: 1px solid var(--line); }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+  .metric {
+    border: 1px solid var(--line); border-radius: var(--r-2);
+    padding: var(--s-3); background: var(--surface);
+  }
+  .metric .v { font-family: var(--font-mono); font-size: var(--f-19); font-weight: var(--w-semi); color: var(--text); }
+  .metric .k { font-size: var(--t-caption); color: var(--text-3); margin-top: 2px; }
+
+  .judges { display: flex; flex-direction: column; gap: var(--s-2); }
+  .judge { display: flex; align-items: center; gap: var(--s-2); }
+  .judge .who { flex: 1; font-size: var(--t-small); color: var(--text-2); }
+
+  .phase-card {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: var(--r-3); padding: var(--s-4); background: var(--surface);
+  }
+  .gates { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-hive" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M12 2.5l7 4v9l-7 4-7-4v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5 6.5l7 4 7-4M12 10.5V21"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20l4-1 10-10-3-3L5 16l-1 4zM14 6l3 3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V4M4 20h16M8 16l3-4 3 2 4-6"/></symbol>
+    <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6zM10 20a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M7 5h3v14H7zM14 5h3v14h-3z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12l5 5 9-11"/></symbol>
+    <symbol id="i-bug" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v16M5 8h14M5 16h14M8 6l8 2M16 6l-8 2M9 12H4M20 12h-5M9 18l6-2M15 18l-6-2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <nav class="rail">
+    <a class="brand" href="#welcome" style="padding:0;justify-content:center"><svg class="brand-mark"><use href="#i-hive"/></svg></a>
+    <span class="divider" style="width:24px;margin:4px 0"></span>
+    <a class="rail-btn" href="#" title="创作"><svg><use href="#i-pen"/></svg></a>
+    <a class="rail-btn is-on" href="#" title="执行台"><svg><use href="#i-code"/></svg></a>
+    <a class="rail-btn" href="#" title="成稿"><svg><use href="#i-doc"/></svg></a>
+    <a class="rail-btn" href="#" title="分析"><svg><use href="#i-chart"/></svg></a>
+    <span class="grow"></span>
+    <a class="rail-btn" href="#" title="设置"><svg><use href="#i-set"/></svg></a>
+  </nav>
+
+  <section class="main">
+    <header class="topbar">
+      <div class="crumb">
+        <span>执行台</span><span class="sep">/</span>
+        <strong>支付网关超时诊断</strong>
+      </div>
+      <span class="grow"></span>
+      <div class="status-line">
+        <span class="row-1"><span class="dot dot-accent dot-pulse" style="color:var(--accent)"></span><span class="tiny">运行中</span></span>
+        <span class="divider-v" style="height:18px"></span>
+        <button class="btn btn-ghost btn-sm"><svg style="width:14px;height:14px"><use href="#i-pause"/></svg>暂停</button>
+        <button class="icon-btn" title="通知"><svg><use href="#i-bell"/></svg></button>
+        <button class="icon-btn" id="tt" title="明暗"><svg id="ttI"><use href="#i-sun"/></svg></button>
+      </div>
+    </header>
+
+    <div class="page">
+      <div class="page-inner" style="max-width:920px">
+        <div class="page-head" style="border:0;margin:0 0 var(--s-5);padding:0">
+          <div class="grow">
+            <span class="caps">code · 工程化</span>
+            <h1 class="page-title" style="font-size:var(--t-h1);margin-top:6px">支付网关超时诊断与修复</h1>
+            <div class="row-3" style="margin-top:10px">
+              <span class="tag tag-accent">P1 故障</span>
+              <span class="tiny">任务 #T-2048</span>
+              <span class="tiny">· 已用 11m 32s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel card-pad" style="margin-bottom:var(--s-4)">
+          <div class="row between" style="margin-bottom:var(--s-3)">
+            <span class="caps">流程进度</span>
+            <span class="num tiny">4 / 7 阶段</span>
+          </div>
+          <div class="steps">
+            <span class="seg done"></span><span class="seg done"></span>
+            <span class="seg done"></span><span class="seg active"></span>
+            <span class="seg"></span><span class="seg"></span><span class="seg"></span>
+          </div>
+          <div class="tiny muted" style="margin-top:8px">定位 → 复现 → 剖析 → 修复 → 验证 → 回归 → 交付</div>
+        </div>
+
+        <div class="phase-card" style="margin-bottom:var(--s-4)">
+          <div class="row between" style="margin-bottom:var(--s-2)">
+            <span class="row-2"><span class="dot dot-accent"></span><strong style="font-size:var(--t-body)">阶段 4 · 修复</strong></span>
+            <span class="tag tag-accent">进行中</span>
+          </div>
+          <p class="tiny" style="color:var(--text-2);line-height:1.6">
+            Agent 已锁定超时根因为连接池在高峰期的获取等待未设上限。正在生成补丁：
+            为 <span class="mono">acquire()</span> 增加 800ms 超时与退避重试，并补充压力测试。
+          </p>
+        </div>
+
+        <div class="panel" style="margin-bottom:var(--s-4)">
+          <div class="panel-head"><span class="panel-title">执行轨迹</span><span class="grow"></span><span class="tiny">最近 12 条</span></div>
+          <div class="panel-body">
+            <div class="timeline">
+              <div class="tl-item">
+                <span class="tl-node active"></span>
+                <div class="tl-body"><div class="tl-head"><span class="tl-title">生成修复补丁</span><span class="tl-time">11:42</span></div><div class="tl-desc">正在写入 patch · 2 files changed</div></div>
+              </div>
+              <div class="tl-item">
+                <span class="tl-node done"></span>
+                <div class="tl-body"><div class="tl-head"><span class="tl-title">根因剖析完成</span><span class="tl-time">11:39</span></div><div class="tl-desc">连接池获取等待无上限 · 置信度 0.92</div></div>
+              </div>
+              <div class="tl-item">
+                <span class="tl-node done"></span>
+                <div class="tl-body"><div class="tl-head"><span class="tl-title">稳定复现</span><span class="tl-time">11:31</span></div><div class="tl-desc">以 4× 并发压测复现 503，p99 上升至 2.3s</div></div>
+              </div>
+              <div class="tl-item">
+                <span class="tl-node done"></span>
+                <div class="tl-body"><div class="tl-head"><span class="tl-title">日志与链路定位</span><span class="tl-time">11:24</span></div><div class="tl-desc">追踪到 gateway → pool 阻塞点</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="log">
+          <div><span class="dim">$</span> <span class="ac">agent.code.fix</span> --task T-2048 --phase patch</div>
+          <div><span class="dim">›</span> reading <span class="ok">gateway/pool.py</span> (314 lines)</div>
+          <div><span class="dim">›</span> diff computed <span class="ok">+18 −2</span></div>
+          <div><span class="dim">›</span> <span class="ok">lint pass</span> · <span class="ok">typecheck pass</span></div>
+          <div><span class="dim">›</span> awaiting approval to apply patch…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="aside">
+    <div class="aside-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">三席评分</span>
+      <div class="row" style="gap:var(--s-4)">
+        <div class="ring" style="--p:86"><span>86</span></div>
+        <div class="judges grow">
+          <div class="judge"><span class="avatar" style="width:22px;height:22px;font-size:10px">A</span><span class="who">架构一致性</span><span class="score"><b>88</b></span></div>
+          <div class="judge"><span class="avatar" style="width:22px;height:22px;font-size:10px;background:var(--accent-2)">B</span><span class="who">风险可控</span><span class="score"><b>84</b></span></div>
+          <div class="judge"><span class="avatar" style="width:22px;height:22px;font-size:10px">C</span><span class="who">交付完整</span><span class="score"><b>87</b></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="aside-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">门禁</span>
+      <div class="gates">
+        <span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg> 契约</span>
+        <span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg> 安全</span>
+        <span class="tag"><svg style="width:12px;height:12px"><use href="#i-shield"/></svg> 评审</span>
+        <span class="tag"><svg style="width:12px;height:12px"><use href="#i-bug"/></svg> 压测</span>
+      </div>
+    </div>
+
+    <div class="aside-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">用量</span>
+      <div class="metrics">
+        <div class="metric"><div class="v">11.5k</div><div class="k">输入 tokens</div></div>
+        <div class="metric"><div class="v">3.2k</div><div class="k">输出 tokens</div></div>
+        <div class="metric"><div class="v">7</div><div class="k">工具调用</div></div>
+        <div class="metric"><div class="v">11m</div><div class="k">耗时</div></div>
+      </div>
+    </div>
+
+    <div class="aside-card" style="border-bottom:0">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">运行环境</span>
+      <div class="row between tiny" style="margin-bottom:6px"><span class="faint">分支</span><span class="mono">fix/gateway-timeout</span></div>
+      <div class="row between tiny" style="margin-bottom:6px"><span class="faint">运行时</span><span class="mono">python 3.13</span></div>
+      <div class="row between tiny"><span class="faint">Agent</span><span class="mono">code · gpt-5</span></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const root = document.documentElement;
+  addEventListener('message', e => { if (e.data && e.data.surface) { root.setAttribute('data-surface', e.data.surface); } });
+  document.getElementById('tt').addEventListener('click', () => {
+    const ink = root.getAttribute('data-surface') === 'ink';
+    root.setAttribute('data-surface', ink ? 'paper' : 'ink');
+    document.getElementById('ttI').innerHTML = ink ? '<use href="#i-moon"/>' : '<use href="#i-sun"/>';
+  });
+</script>
+</body>
+</html>

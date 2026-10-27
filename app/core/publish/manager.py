@@ -1288,6 +1288,16 @@ def _sync_published_impl(task_id, plat, manual=False):
                            remote_last_schedule_at=st["last_schedule_at"],
                            remote_synced_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                            **extra)
+        # 结果回流（P1-2）：把这次校准看到的客观进度（已发布/在审/未通过
+        # 章数）记到 outcome 台账。只写 progress，不碰人工结论——书本级的
+        # 审核/签约判决只在站内信里，猜不得。
+        try:
+            from . import outcome as pub_outcome
+            pub_outcome.note_progress(task_id, plat, live=st["published"],
+                                      pending=st["review"], total=st["total"],
+                                      rejected=st["rejected"])
+        except Exception:
+            pass                    # 回流是旁路，坏了不能影响发布主流程
         return True, ""
     except Exception as e:
         return False, "校准失败：%s" % str(e)[:160]

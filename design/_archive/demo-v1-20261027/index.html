@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 统一界面 Demo</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  .gallery {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* 展厅自己的导航 */
+  .g-side {
+    display: flex;
+    flex-direction: column;
+    width: 232px;
+    flex-shrink: 0;
+    background: var(--bg-sunken);
+    border-right: 1px solid var(--line);
+  }
+
+  .g-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    height: var(--topbar-h);
+    padding: 0 var(--s-4);
+    border-bottom: 1px solid var(--line);
+    font-weight: var(--w-semi);
+    letter-spacing: -0.01em;
+  }
+
+  .g-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--s-3) var(--s-2);
+  }
+
+  .g-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    width: 100%;
+    padding: 8px var(--s-3);
+    border-radius: var(--r-2);
+    font-size: var(--font-small);
+    color: var(--text-2);
+    text-align: left;
+    transition: background var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+  .g-nav-item:hover { background: var(--surface-3); color: var(--text); }
+  .g-nav-item[aria-current="true"] {
+    background: var(--surface);
+    color: var(--text);
+    font-weight: var(--w-medium);
+    box-shadow: var(--sh-1);
+  }
+  .g-nav-item .n {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: var(--r-1);
+    background: var(--surface-3);
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    color: var(--text-3);
+    flex-shrink: 0;
+  }
+  .g-nav-item[aria-current="true"] .n {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .g-side-foot {
+    padding: var(--s-3);
+    border-top: 1px solid var(--line);
+    font-size: var(--font-caption);
+    color: var(--text-3);
+    line-height: var(--lh-ui);
+  }
+
+  /* 右侧舞台 */
+  .g-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .g-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    height: var(--topbar-h);
+    padding: 0 var(--s-4);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .g-title {
+    font-size: var(--font-small);
+    font-weight: var(--w-medium);
+  }
+  .g-sub {
+    font-size: var(--font-caption);
+    color: var(--text-3);
+  }
+
+  .g-stage {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bg-sunken);
+    padding: var(--s-5);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  .g-stage.is-doc {
+    display: block;
+    padding: 0;
+    background: var(--bg);
+  }
+
+  #frame {
+    width: 100%;
+    max-width: 1440px;
+    height: calc(100vh - var(--topbar-h) - 2 * var(--s-5) - 2px);
+    height: calc(100dvh - var(--topbar-h) - 2 * var(--s-5) - 2px);
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    background: var(--surface);
+    box-shadow: var(--sh-2);
+    transition: max-width var(--dur-3) var(--ease-out);
+  }
+
+  .g-stage[data-w="1024"] #frame { max-width: 1024px; }
+  .g-stage[data-w="390"] #frame { max-width: 390px; border-radius: var(--r-4); }
+
+  /* ---------- 设计系统文档 ---------- */
+  .doc {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: var(--s-10) var(--s-8) var(--s-16);
+  }
+
+  .doc-hero {
+    margin-bottom: var(--s-12);
+    padding-bottom: var(--s-8);
+    border-bottom: 1px solid var(--line);
+  }
+  .doc-hero h1 {
+    font-size: var(--font-display);
+    line-height: 1.14;
+    font-weight: var(--w-semi);
+    letter-spacing: -0.028em;
+  }
+  .doc-hero p {
+    margin-top: var(--s-4);
+    max-width: 34em;
+    font-size: var(--font-body-lg);
+    line-height: var(--lh-snug);
+    color: var(--text-2);
+  }
+
+  .doc-sec {
+    margin-bottom: var(--s-12);
+    scroll-margin-top: var(--s-6);
+  }
+  .doc-sec > h2 {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-3);
+    margin-bottom: var(--s-2);
+    font-size: var(--font-h3);
+    font-weight: var(--w-semi);
+    letter-spacing: -0.012em;
+  }
+  .doc-sec > h2 .idx {
+    font-family: var(--font-mono);
+    font-size: var(--font-caption);
+    color: var(--accent);
+    letter-spacing: 0;
+  }
+  .doc-sec > .lede {
+    margin-bottom: var(--s-5);
+    max-width: 36em;
+    font-size: var(--font-small);
+    line-height: var(--lh-ui);
+    color: var(--text-2);
+  }
+
+  /* 色板 */
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--s-2);
+  }
+  .sw {
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .sw-chip {
+    height: 52px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sw-body {
+    padding: 7px var(--s-2) 8px;
+  }
+  .sw-name {
+    font-size: var(--font-caption);
+    font-weight: var(--w-medium);
+  }
+  .sw-val {
+    margin-top: 1px;
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    color: var(--text-3);
+    word-break: break-all;
+  }
+
+  /* 字阶 */
+  .type-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-4);
+    padding: var(--s-3) 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .type-row:last-child { border-bottom: none; }
+  .type-meta {
+    width: 108px;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    color: var(--text-3);
+    line-height: 1.6;
+  }
+  .type-sample {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 刻度 */
+  .scale {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .scale-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    height: 26px;
+  }
+  .scale-tag {
+    width: 74px;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    color: var(--text-3);
+  }
+  .scale-bar {
+    height: 8px;
+    border-radius: 2px;
+    background: var(--accent);
+    opacity: 0.8;
+  }
+  .radius-demo {
+    width: 62px;
+    height: 44px;
+    background: var(--surface-3);
+    border: 1px solid var(--line-strong);
+  }
+
+  /* 组件展示 */
+  .spec {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: var(--s-4);
+    padding: var(--s-4) 0;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+  .spec:last-child { border-bottom: none; }
+  .spec-name {
+    font-size: var(--font-small);
+    font-weight: var(--w-medium);
+    color: var(--text-2);
+  }
+  .spec-name small {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    font-weight: var(--w-normal);
+    color: var(--text-3);
+  }
+  .spec-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .spec-body.col {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rule-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-small);
+  }
+  .rule-table th,
+  .rule-table td {
+    text-align: left;
+    padding: 9px var(--s-3);
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  .rule-table th {
+    font-size: var(--font-label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    font-weight: var(--w-semi);
+  }
+  .rule-table td:first-child { color: var(--text-2); white-space: nowrap; }
+  .rule-table code {
+    font-family: var(--font-mono);
+    font-size: var(--font-caption);
+    color: var(--accent);
+  }
+  .rule-table tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <g id="i-sun" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2.4v2.2M12 19.4v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>
+    </g>
+    <g id="i-moon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z"/>
+    </g>
+    <g id="i-check" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12.8 4.2 4.2L19 6.6"/>
+    </g>
+    <g id="i-search" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="11" cy="11" r="6.8"/><path d="m20 20-4.4-4.4"/>
+    </g>
+    <g id="i-plus" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></g>
+    <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4v10.5M7.8 10.4 12 14.6l4.2-4.2M4.5 19.4h15"/>
+    </g>
+    <g id="i-alert" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4.4 21 19.6H3z"/><path d="M12 10.2v4M12 16.9h.01"/>
+    </g>
+    <g id="i-layers" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>
+    </g>
+  </defs>
+</svg>
+
+<div class="gallery">
+  <aside class="g-side">
+    <div class="g-brand">
+      <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" style="color:var(--accent)">
+        <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M12 2.2 21.4 7.6v8.8L12 21.8 2.6 16.4V7.6z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12 8.4v7.2M8.9 10.2v3.6M15.1 10.2v3.6"/>
+      </svg>
+      CodeBee 界面重构
+    </div>
+
+    <nav class="g-nav" aria-label="视图">
+      <button class="g-nav-item" data-view="doc" aria-current="true">
+        <span class="n">0</span>设计系统
+      </button>
+      <div class="nav-label">四个场景</div>
+      <button class="g-nav-item" data-view="welcome">
+        <span class="n">1</span>欢迎 · 选形态
+      </button>
+      <button class="g-nav-item" data-view="workbench">
+        <span class="n">2</span>执行台 · 任务
+      </button>
+      <button class="g-nav-item" data-view="novel">
+        <span class="n">3</span>小说版 · 书架
+      </button>
+      <button class="g-nav-item" data-view="dossier">
+        <span class="n">4</span>成稿台 · 要件
+      </button>
+    </nav>
+
+    <div class="g-side-foot">
+      一套 tokens、一套组件、两套底色。<br />
+      改样式只改 <span class="t-mono">tokens.css</span>。
+    </div>
+  </aside>
+
+  <main class="g-main">
+    <header class="g-bar">
+      <span class="g-title" id="g-title">设计系统</span>
+      <span class="g-sub" id="g-sub">唯一真源 · 颜色 / 字阶 / 间距 / 组件</span>
+      <span class="grow"></span>
+
+      <div class="segmented" id="seg-surface">
+        <button aria-pressed="true" data-surface-set="paper">亮</button>
+        <button aria-pressed="false" data-surface-set="ink">暗</button>
+      </div>
+
+      <div class="segmented" id="seg-width">
+        <button aria-pressed="true" data-width="1440">桌面</button>
+        <button aria-pressed="false" data-width="1024">窄屏</button>
+        <button aria-pressed="false" data-width="390">手机</button>
+      </div>
+    </header>
+
+    <div class="g-stage is-doc" id="stage" data-w="1440">
+      <!-- 设计系统文档 -->
+      <div class="doc" id="doc">
+        <div class="doc-hero">
+          <h1>一个内核，四张脸，<br />但只有一套手艺。</h1>
+          <p>
+            现在的问题不是哪个页面丑，是五个页面各自发明了一套配色、一套圆角、一套字号。
+            这份 demo 把决定外观的东西全部收进 <span class="t-mono">tokens.css</span>：
+            四个场景共用同一套形状语言，只有底色明暗和一块强调色随场景变。
+          </p>
+        </div>
+
+        <section class="doc-sec" id="s-color">
+          <h2><span class="idx">01</span>颜色</h2>
+          <p class="lede">
+            只有一组暖灰阶、一个强调色、三个状态色。强调色全站只表示「正在进行 / 需要看这里」，
+            不当品牌色刷屏 —— 主按钮用近黑（亮色底）或近白（暗色底），这样工程界面不会显得轻浮，
+            写作界面也不会显得刺眼。
+          </p>
+          <div class="swatches" id="swatches"></div>
+        </section>
+
+        <section class="doc-sec" id="s-type">
+          <h2><span class="idx">02</span>字阶与字体</h2>
+          <p class="lede">
+            九档字号，全部用 <span class="t-mono">--f-*</span> 取，页面里不写死 px。
+            三族字体各有边界：无衬线只做界面，衬线只做稿件正文，等宽只做编号与数字。
+          </p>
+          <div id="type-list"></div>
+        </section>
+
+        <section class="doc-sec" id="s-space">
+          <h2><span class="idx">03</span>间距与圆角</h2>
+          <p class="lede">
+            间距只有 4 的倍数的十一档，圆角只有五档。这条约束是「看起来像一个产品」最省力的一条 ——
+            现在五个页面有 10 / 12 / 14 / 20 四种圆角，一眼就不像一家做的。
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-8)">
+            <div class="scale" id="scale-space"></div>
+            <div class="scale" id="scale-radius"></div>
+          </div>
+        </section>
+
+        <section class="doc-sec" id="s-comp">
+          <h2><span class="idx">04</span>组件</h2>
+          <p class="lede">
+            全站唯一实现。任何页面想「我的按钮不太一样」，都必须改这里，否则四个场景会重新分叉。
+          </p>
+
+          <div class="spec">
+            <div class="spec-name">按钮<small>.btn · 3 高度 × 4 形态</small></div>
+            <div class="spec-body">
+              <button class="btn btn-solid">主要动作</button>
+              <button class="btn btn-outline">次要动作</button>
+              <button class="btn btn-ghost">轻量</button>
+              <button class="btn btn-danger">删除</button>
+              <button class="btn btn-solid" disabled>不可用</button>
+              <button class="btn btn-sm btn-solid">小号</button>
+              <button class="btn btn-lg btn-outline">大号</button>
+              <button class="btn btn-sm btn-icon btn-ghost" title="图标按钮"><svg class="ico" viewBox="0 0 24 24"><use href="#i-download"/></svg></button>
+            </div>
+          </div>
+
+          <div class="spec">
+            <div class="spec-name">输入<small>.input / .search / .check / .switch</small></div>
+            <div class="spec-body col">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-3)">
+                <div class="field">
+                  <label class="field-label">书名</label>
+                  <input class="input" value="头七结账人" />
+                </div>
+                <div class="field">
+                  <label class="field-label">搜索</label>
+                  <div class="search">
+                    <svg class="ico" viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                    <input class="input" placeholder="任务、编号、章节" />
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--s-5);margin-top:var(--s-2)">
+                <label class="check"><input type="checkbox" checked /> 只保留废标项</label>
+                <label class="check"><input type="checkbox" /> 包含已完成的</label>
+                <span class="switch" role="switch" aria-checked="true" tabindex="0"></span>
+                <span class="switch" role="switch" aria-checked="false" tabindex="0"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="spec">
+            <div class="spec-name">标签<small>.tag · 5 种语义</small></div>
+            <div class="spec-body">
+              <span class="tag">默认</span>
+              <span class="tag tag-ok">已具备</span>
+              <span class="tag tag-warn">待补</span>
+              <span class="tag tag-bad">废标项</span>
+              <span class="tag tag-accent"><span class="dot dot-live"></span>进行中</span>
+              <span class="tag tag-solid">第 2 轮</span>
+              <span class="count">12</span>
+              <span class="kbd">⌘</span><span class="kbd">K</span>
+            </div>
+          </div>
+
+          <div class="spec">
+            <div class="spec-name">进度<small>.bar / .ring / .steps</small></div>
+            <div class="spec-body">
+              <div class="bar" style="width:180px"><i style="width:62%"></i></div>
+              <div class="bar bar-accent" style="width:120px"><i style="width:38%"></i></div>
+              <div class="ring" style="--p:82"><span>8.2</span></div>
+              <div class="steps" style="width:120px">
+                <i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="spec">
+            <div class="spec-name">表格<small>.table · 行高 44</small></div>
+            <div class="spec-body col">
+              <div style="border:1px solid var(--line);border-radius:var(--r-2);overflow:hidden">
+                <table class="table">
+                  <thead>
+                    <tr><th>章节</th><th>字数</th><th>评审</th><th class="num">耗时</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>第十二章 · 红绳又出现了一次</td><td>3,010</td><td><span class="tag tag-ok">通过 8.3</span></td><td class="num">1m 22s</td></tr>
+                    <tr><td>第十三章 · 最后一页</td><td>2,840</td><td><span class="tag tag-ok">通过 8.1</span></td><td class="num">2m 41s</td></tr>
+                    <tr><td>第十四章 · 他听见了</td><td>—</td><td><span class="tag tag-accent"><span class="dot dot-live"></span>进行中</span></td><td class="num">—</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="spec">
+            <div class="spec-name">提示<small>.note · 3 语气</small></div>
+            <div class="spec-body col">
+              <div class="note">这是一条普通说明，用来补一句上下文，不抢注意力。</div>
+              <div class="note note-accent">
+                <svg class="ico" viewBox="0 0 24 24"><use href="#i-layers"/></svg>
+                强调条：用于「这件事跟你有关，但不必马上处理」。
+              </div>
+              <div class="note note-warn">
+                <svg class="ico" viewBox="0 0 24 24"><use href="#i-alert"/></svg>
+                警示条：用于「不处理就会出事」。同一个语气在四个场景里都必须是这个红。
+              </div>
+            </div>
+          </div>
+
+          <div class="spec">
+            <div class="spec-name">空态<small>.empty</small></div>
+            <div class="spec-body col">
+              <div class="card">
+                <div class="empty">
+                  <span class="empty-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-plus"/></svg></span>
+                  <h3>还没有任务</h3>
+                  <p>给它一句话，它会自己拆步骤、跑评审、把东西交出来。</p>
+                  <button class="btn btn-sm btn-solid">新建第一个任务</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="doc-sec" id="s-rules">
+          <h2><span class="idx">05</span>这套系统怎么落地</h2>
+          <p class="lede">
+            不是重画五个页面就完事，而是把「页面自己定义外观」这件事禁掉。下面是迁移顺序与代价。
+          </p>
+          <table class="rule-table">
+            <thead>
+              <tr><th>步骤</th><th>做什么</th><th>影响面</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>把 <code>tokens.css</code> 接进现有五套 CSS，先把同名变量映射到新 token（<code>--paper</code>→<code>--bg</code>、<code>--ink-2</code>→<code>--text-2</code>…），页面结构一行不动</td>
+                <td>只改 CSS 顶部变量块，风险最低，当天可见</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>用 <code>components.css</code> 替换各页的按钮/输入/标签/表格，删掉重复实现</td>
+                <td>逐页替换，可一页一页上</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>统一骨架：顶栏 56、导轨 56、侧栏 248、页面留白 32。小说版与成稿台从「全屏自由布局」改为同一套骨架</td>
+                <td>这两页的 HTML 骨架要改，视觉变化最大</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>把设置从 <code>index.html</code> 抽成独立 <code>settings.html</code>，四个场景右上角都指向它</td>
+                <td>顺带补上「垂直版没有设置入口」的缺口</td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td>主界面 <code>style.css</code>（9,891 行）最后动 —— 它最大、测试最多，等前三步稳了再收</td>
+                <td>工作量最大，但收益是「所有页面第一次看起来像一家」</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <iframe id="frame" class="hidden" title="场景预览"></iframe>
+    </div>
+  </main>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var stage = document.getElementById("stage");
+    var doc = document.getElementById("doc");
+    var frame = document.getElementById("frame");
+    var title = document.getElementById("g-title");
+    var sub = document.getElementById("g-sub");
+
+    var VIEWS = {
+      doc: { name: "设计系统", sub: "唯一真源 · 颜色 / 字阶 / 间距 / 组件", page: null },
+      welcome: { name: "欢迎 · 选形态", sub: "四个门口，选完记住，随时可切", page: "pages/welcome.html" },
+      workbench: { name: "执行台 · 任务", sub: "暗色 · 密度最高的一页", page: "pages/workbench.html" },
+      novel: { name: "小说版 · 书架 → 书页", sub: "点任意一本进书页，看衬线正文", page: "pages/novel.html" },
+      dossier: { name: "成稿台 · 要件核对", sub: "一眼看出哪项缺了会废标", page: "pages/dossier.html" }
+    };
+
+    var state = { view: "doc", surface: "paper", width: "1440" };
+
+    /* ---------- 设计系统文档的动态部分 ---------- */
+
+    var NEUTRAL = [
+      ["--n-0", "#ffffff"], ["--n-50", "#f6f3ed"], ["--n-100", "#e9e4d9"],
+      ["--n-200", "#dcd5c7"], ["--n-300", "#c4bbaa"], ["--n-400", "#a09789"],
+      ["--n-500", "#857e72"], ["--n-600", "#5f584d"], ["--n-700", "#3d382f"],
+      ["--n-800", "#26221b"], ["--n-900", "#1a1714"]
+    ];
+
+    var SEMANTIC = [
+      ["--bg", "页面底"], ["--surface", "卡片面"], ["--surface-2", "次级面"],
+      ["--surface-3", "凹槽 / 悬停"], ["--line", "分隔线"], ["--line-strong", "控件边框"],
+      ["--text", "正文"], ["--text-2", "次要"], ["--text-3", "辅助"],
+      ["--accent", "强调 · 唯一"], ["--ok", "通过"], ["--warn", "待补"], ["--bad", "废标 / 失败"]
+    ];
+
+    function buildSwatches() {
+      var host = document.getElementById("swatches");
+      var html = "";
+      SEMANTIC.forEach(function (row) {
+        html += '<div class="sw"><div class="sw-chip" style="background:var(' + row[0] + ')"></div>' +
+          '<div class="sw-body"><div class="sw-name">' + row[1] + '</div>' +
+          '<div class="sw-val">' + row[0] + '</div></div></div>';
+      });
+      host.innerHTML = html;
+
+      var host2 = document.createElement("div");
+      host2.className = "swatches";
+      host2.style.marginTop = "var(--s-3)";
+      html = "";
+      NEUTRAL.forEach(function (row) {
+        html += '<div class="sw"><div class="sw-chip" style="background:var(' + row[0] + ')"></div>' +
+          '<div class="sw-body"><div class="sw-val">' + row[0] + '</div></div></div>';
+      });
+      host2.innerHTML = html;
+      host.parentNode.insertBefore(host2, host.nextSibling);
+    }
+
+    var TYPE = [
+      ["--font-display", "44 / 1.24 / 600", "今天想把哪件事做完"],
+      ["--font-h1", "34 / 1.24 / 600", "你的书架"],
+      ["--font-h2", "26 / 1.24 / 600", "这 5 项缺了会直接废标"],
+      ["--font-h3", "20 / 1.42 / 600", "连载《头七结账人》第 13 章"],
+      ["--font-body-lg", "16 / 1.42 / 400", "同一个内核，四张不同的脸"],
+      ["--font-body", "14 / 1.55 / 400", "正文默认。所有界面文字都从这里起"],
+      ["--font-small", "13 / 1.55 / 400", "次要说明、表格内容、侧栏条目"],
+      ["--font-caption", "12 / 1.55 / 400", "元信息：字数、时间、编号后缀"],
+      ["--font-label", "11 / 1.4 / 600 / +0.09em", "SECTION 小标签"]
+    ];
+
+    function buildType() {
+      var host = document.getElementById("type-list");
+      host.innerHTML = TYPE.map(function (r) {
+        return '<div class="type-row"><div class="type-meta">' + r[0] + "<br />" + r[1] + "</div>" +
+          '<div class="type-sample" style="font-size:var(' + r[0] + ')">' + r[2] + "</div></div>";
+      }).join("");
+    }
+
+    var SPACE = [["--s-1", 4], ["--s-2", 8], ["--s-3", 12], ["--s-4", 16], ["--s-5", 20],
+      ["--s-6", 24], ["--s-8", 32], ["--s-10", 40], ["--s-12", 48]];
+    var RADIUS = [["--r-1", 6], ["--r-2", 8], ["--r-3", 12], ["--r-4", 16], ["--r-5", 20], ["--r-pill", 999]];
+
+    function buildScale() {
+      document.getElementById("scale-space").innerHTML = SPACE.map(function (r) {
+        return '<div class="scale-row"><span class="scale-tag">' + r[0] + " · " + r[1] + "</span>" +
+          '<span class="scale-bar" style="width:' + (r[1] * 2.4) + 'px"></span></div>';
+      }).join("");
+
+      document.getElementById("scale-radius").innerHTML = RADIUS.map(function (r) {
+        return '<div class="scale-row"><span class="scale-tag">' + r[0] + "</span>" +
+          '<span class="radius-demo" style="border-radius:var(' + r[0] + (r[1] === 999 ? ');height:22px;width:62px' : ')') + '"></span></div>';
+      }).join("");
+    }
+
+    buildSwatches();
+    buildType();
+    buildScale();
+
+    /* ---------- 视图切换 ---------- */
+
+    function render() {
+      var v = VIEWS[state.view];
+      title.textContent = v.name;
+      sub.textContent = v.sub;
+
+      document.querySelectorAll(".g-nav-item").forEach(function (b) {
+        b.setAttribute("aria-current", b.dataset.view === state.view ? "true" : "false");
+      });
+
+      if (!v.page) {
+        doc.classList.remove("hidden");
+        frame.classList.add("hidden");
+        stage.classList.add("is-doc");
+        return;
+      }
+
+      doc.classList.add("hidden");
+      frame.classList.remove("hidden");
+      stage.classList.remove("is-doc");
+
+      // 首次进入某页时把主题写进 hash，避免「先按自身默认渲染、再被纠正」的闪烁；
+      // 同一页内切明暗只发消息，不重载 iframe（会丢页面内状态：书页、展开项）。
+      if (frame.dataset.page !== v.page) {
+        frame.dataset.page = v.page;
+        frame.setAttribute("src", v.page + "#" + state.surface);
+      } else {
+        postSurface();
+      }
+    }
+
+    function postSurface() {
+      try {
+        frame.contentWindow.postMessage({ type: "demo:set-surface", mode: state.surface }, "*");
+      } catch (e) {}
+    }
+
+    frame.addEventListener("load", postSurface);
+
+    document.querySelectorAll(".g-nav-item").forEach(function (b) {
+      b.addEventListener("click", function () {
+        state.view = b.dataset.view;
+        render();
+      });
+    });
+
+    document.querySelectorAll("#seg-surface button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        state.surface = b.dataset.surfaceSet;
+        document.querySelectorAll("#seg-surface button").forEach(function (x) {
+          x.setAttribute("aria-pressed", x === b ? "true" : "false");
+        });
+        root.setAttribute("data-surface", state.surface);
+        postSurface();
+      });
+    });
+
+    document.querySelectorAll("#seg-width button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        state.width = b.dataset.width;
+        stage.setAttribute("data-w", state.width);
+        document.querySelectorAll("#seg-width button").forEach(function (x) {
+          x.setAttribute("aria-pressed", x === b ? "true" : "false");
+        });
+      });
+    });
+
+    // 页面内切换明暗时，同步展厅开关
+    window.addEventListener("message", function (e) {
+      var d = e.data || {};
+      if (d.type === "demo:surface" && d.mode !== state.surface) {
+        state.surface = d.mode;
+        root.setAttribute("data-surface", state.surface);
+        document.querySelectorAll("#seg-surface button").forEach(function (x) {
+          x.setAttribute("aria-pressed", x.dataset.surfaceSet === state.surface ? "true" : "false");
+        });
+      }
+    });
+
+    render();
+  })();
+</script>
+</body>
+</html>

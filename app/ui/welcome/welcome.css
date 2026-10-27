@@ -1,0 +1,260 @@
+/* CodeBee 欢迎页 · 形态选择
+   与小说版同一套墨纸语言：宣纸底、墨字、朱砂点睛。
+   它是四个产品共同的门口，所以不放任何单一形态的视觉主张。 */
+
+:root {
+  --paper: #F7F4EE;
+  --card: #FFFFFF;
+  --ink: #1F1D1A;
+  --ink-2: #6B655C;
+  --ink-3: #9A9388;
+  --accent: #B4552D;
+  --accent-soft: #F3E7DF;
+  --line: rgba(31, 29, 26, 0.10);
+  --line-strong: rgba(31, 29, 26, 0.20);
+  --ok: #3E7A4E;
+  --serif: Georgia, "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --r: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 顶栏 ---------- */
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 58px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--serif);
+  font-size: 15px;
+  letter-spacing: 0.2px;
+}
+
+.mark {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform: rotate(45deg);
+}
+
+.top-hint {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* ---------- 主体 ---------- */
+
+.wrap {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 56px 28px 72px;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.sub {
+  margin: 0 0 34px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+/* ---------- 卡片 ---------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 208px;
+  padding: 20px 22px 18px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background .16s ease;
+}
+
+.card:hover,
+.card:focus-visible {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(31, 29, 26, 0.06);
+  outline: none;
+}
+
+.card:hover::before,
+.card:focus-visible::before { background: var(--accent); }
+
+.card[aria-current="true"] { border-color: var(--line-strong); }
+.card[aria-current="true"]::before { background: var(--accent); }
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.card-key {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--ink-3);
+  min-width: 14px;
+}
+
+.card-name {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.card-tag {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.card-tag.on { border-color: rgba(180, 85, 45, 0.35); color: var(--accent); }
+
+.card-intent {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.card-tagline {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.chip.more { color: var(--ink-3); border-style: dashed; }
+
+.card-go {
+  margin-top: auto;
+  padding-top: 6px;
+  color: var(--accent);
+  font-size: 12.5px;
+  opacity: 0;
+  transform: translateX(-3px);
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.card:hover .card-go,
+.card:focus-visible .card-go,
+.card[aria-current="true"] .card-go { opacity: 1; transform: none; }
+
+/* ---------- 页脚 ---------- */
+
+.msg {
+  min-height: 22px;
+  margin: 18px 0 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.msg.bad { color: #A8322B; }
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link:hover { color: var(--accent); }
+
+.foot-note { color: var(--ink-3); font-size: 12px; }
+
+/* ---------- 窄屏 ---------- */
+
+@media (max-width: 720px) {
+  .wrap { padding: 34px 18px 48px; }
+  h1 { font-size: 24px; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .top { padding: 0 18px; }
+  .top-hint { display: none; }
+}

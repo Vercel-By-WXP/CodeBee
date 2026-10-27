@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 设置</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  .app { grid-template-columns: 52px 232px minmax(0, 1fr); }
+
+  .cat-group { margin-bottom: var(--s-4); }
+  .cat-group > .cg-title {
+    font-size: var(--t-label); letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-3); font-weight: var(--w-semi);
+    padding: var(--s-2) var(--s-3) var(--s-1);
+  }
+  .cat {
+    display: flex; align-items: center; gap: var(--s-3);
+    padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
+    color: var(--text-2); font-size: var(--t-small); cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .cat:hover { background: var(--surface-2); color: var(--text); }
+  .cat.is-on { background: var(--accent-soft); color: var(--text); border-left-color: var(--accent); font-weight: var(--w-medium); }
+  .cat .ci { width: 16px; height: 16px; flex: 0 0 auto; color: var(--text-3); }
+  .cat.is-on .ci { color: var(--accent); }
+  .cat .badge { margin-left: auto; }
+
+  .pane { display: none; }
+  .pane.is-on { display: block; }
+  .pane-head { margin-bottom: var(--s-5); }
+  .pane-head h2 { font-size: var(--t-h2); font-weight: var(--w-semi); }
+  .pane-head p { font-size: var(--t-small); color: var(--text-2); margin-top: var(--s-1); }
+
+  .section { margin-bottom: var(--s-6); }
+  .section > h3 { font-size: var(--t-h3); font-weight: var(--w-semi); margin-bottom: var(--s-3); display:flex; align-items:center; gap:var(--s-2); }
+
+  .model-card {
+    display: grid; grid-template-columns: 36px 1fr auto; gap: var(--s-3); align-items: center;
+    padding: var(--s-3) var(--s-4); border: 1px solid var(--line); border-radius: var(--r-3);
+    background: var(--surface); margin-bottom: var(--s-2);
+  }
+  .model-card.is-default { border-left: 3px solid var(--accent); }
+  .m-ico { width:36px;height:36px;border-radius:var(--r-2); display:grid;place-items:center; background:var(--surface-2); color:var(--accent); }
+  .m-ico svg { width:18px;height:18px; }
+  .m-name { font-size: var(--t-body); font-weight: var(--w-medium); color: var(--text); }
+  .m-desc { font-size: var(--t-caption); color: var(--text-3); margin-top:2px; }
+
+  /* 滑块 */
+  .slider-row { display:grid; grid-template-columns: 120px 1fr 52px; gap: var(--s-3); align-items:center; padding: var(--s-2) 0; }
+  .slider-row .sl-label { font-size: var(--t-small); color: var(--text-2); }
+  .slider-row .sl-val { font-family: var(--font-mono); font-size: var(--t-small); color: var(--text); text-align:right; }
+  .slider {
+    -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:999px;
+    background: var(--surface-3); outline:none;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%;
+    background:#fff; border:1px solid var(--line-2); box-shadow: var(--sh-1); cursor:pointer;
+  }
+  .slider::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid var(--line-2); box-shadow: var(--sh-1); cursor:pointer; }
+
+  .key-row { display:flex; align-items:center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border:1px solid var(--line); border-radius: var(--r-3); background: var(--surface); }
+  .key-row .k-name { font-size: var(--t-small); font-weight: var(--w-medium); color: var(--text); }
+  .key-row .k-meta { font-size: var(--t-caption); color: var(--text-3); margin-top:2px; }
+
+  .mcp-row { display:flex; align-items:center; gap: var(--s-3); padding: var(--s-3); border:1px solid var(--line); border-radius: var(--r-3); background: var(--surface); margin-bottom: var(--s-2); }
+  .mcp-row .mc-name { font-size: var(--t-small); font-weight: var(--w-medium); color: var(--text); }
+  .mcp-row .mc-desc { font-size: var(--t-caption); color: var(--text-3); margin-top:2px; }
+  .mcp-row .mc-endpoint { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top:2px; }
+
+  .skill-grid { display:grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+  .skill-card { border:1px solid var(--line); border-radius: var(--r-3); padding: var(--s-3) var(--s-4); background: var(--surface); }
+  .skill-card .sc-top { display:flex; align-items:center; gap: var(--s-2); margin-bottom: var(--s-2); }
+  .skill-card .sc-ico { width:28px;height:28px;border-radius:var(--r-2); display:grid;place-items:center; background:var(--surface-2); color:var(--accent); }
+  .skill-card .sc-name { font-size: var(--t-small); font-weight: var(--w-medium); color: var(--text); }
+  .skill-card .sc-desc { font-size: var(--t-caption); color: var(--text-2); line-height:1.5; }
+
+  .empty-mini { padding: var(--s-10) var(--s-6); text-align:center; color: var(--text-3); border:1px dashed var(--line-2); border-radius: var(--r-3); }
+
+  .aside-meta { padding: var(--s-4); border-left: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-hive" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M12 2.5l7 4v9l-7 4-7-4v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5 6.5l7 4 7-4M12 10.5V21"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20l4-1 10-10-3-3L5 16l-1 4zM14 6l3 3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V4M4 20h16M8 16l3-4 3 2 4-6"/></symbol>
+    <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+    <symbol id="i-model" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></symbol>
+    <symbol id="i-tune" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M5 8h9M18 8h1M5 16h1M10 16h9"/><circle cx="16" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="16" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+    <symbol id="i-prompt" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16v10H8l-4 4zM8 10h8M8 13h5"/></symbol>
+    <symbol id="i-skill" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></symbol>
+    <symbol id="i-mcp" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 4H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h2M15 4h2a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-2M9 12h6"/></symbol>
+    <symbol id="i-cli" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 5h14v14H5zM8 9l3 3-3 3M14 15h3"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 12l16-7-7 16-2-7z"/></symbol>
+    <symbol id="i-strat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+    <symbol id="i-usage" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16M7 20V10M12 20V5M17 20v-6"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 20a6 6 0 0 1 6-6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6zM10 20a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2 0-1.5 1-2 2-2h1a3 3 0 0 0 3-3c0-4-3-9-9-9z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="11" cy="7.5" r="1" fill="currentColor"/><circle cx="15.5" cy="9" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 7a4 4 0 1 0-4 4l-6 6v3h3l1-1h2v-2h2l2-2a4 4 0 0 0 2-3.6z"/><circle cx="14" cy="7" r="1.4" fill="currentColor"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+    <symbol id="i-backup" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3M5 8h14v9a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3zM9 13l2 2 4-4"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 11v5M12 7.5h.01"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M7 15h10"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12l5 5 9-11"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <nav class="rail">
+    <a class="brand" href="#welcome" style="padding:0;justify-content:center"><svg class="brand-mark"><use href="#i-hive"/></svg></a>
+    <span class="divider" style="width:24px;margin:4px 0"></span>
+    <a class="rail-btn" href="#" title="创作"><svg><use href="#i-pen"/></svg></a>
+    <a class="rail-btn" href="#" title="执行台"><svg><use href="#i-code"/></svg></a>
+    <a class="rail-btn" href="#" title="成稿"><svg><use href="#i-doc"/></svg></a>
+    <a class="rail-btn" href="#" title="分析"><svg><use href="#i-chart"/></svg></a>
+    <span class="grow"></span>
+    <a class="rail-btn is-on" href="#" title="设置"><svg><use href="#i-set"/></svg></a>
+  </nav>
+
+  <!-- 分类导航 -->
+  <aside class="side" style="overflow-y:auto">
+    <div class="side-head"><span class="side-title">设置</span></div>
+    <div class="cat-group">
+      <div class="cat is-on" data-pane="model"><svg class="ci"><use href="#i-model"/></svg>模型</div>
+      <div class="cat" data-pane="tune"><svg class="ci"><use href="#i-tune"/></svg>推理参数</div>
+      <div class="cat" data-pane="prompt"><svg class="ci"><use href="#i-prompt"/></svg>提示词模板</div>
+      <div class="cat" data-pane="skills"><svg class="ci"><use href="#i-skill"/></svg>技能市场</div>
+      <div class="cat" data-pane="mcp"><svg class="ci"><use href="#i-mcp"/></svg>MCP 服务</div>
+      <div class="cat" data-pane="cli"><svg class="ci"><use href="#i-cli"/></svg>CLI 工具</div>
+      <div class="cat" data-pane="publish"><svg class="ci"><use href="#i-send"/></svg>发布渠道</div>
+    </div>
+    <div class="cat-group">
+      <div class="cg-title">运营</div>
+      <div class="cat" data-pane="strat"><svg class="ci"><use href="#i-strat"/></svg>策略</div>
+      <div class="cat" data-pane="usage"><svg class="ci"><use href="#i-usage"/></svg>用量统计</div>
+      <div class="cat" data-pane="users"><svg class="ci"><use href="#i-users"/></svg>成员与权限</div>
+      <div class="cat" data-pane="notify"><svg class="ci"><use href="#i-bell"/></svg>通知</div>
+    </div>
+    <div class="cat-group">
+      <div class="cg-title">系统</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-shield"/></svg>安全</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-palette"/></svg>外观</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-key"/></svg>快捷键</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-db"/></svg>数据管理</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-backup"/></svg>备份与恢复</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-info"/></svg>关于</div>
+      <div class="cat" data-pane="soon"><svg class="ci"><use href="#i-flask"/></svg>实验特性</div>
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <section class="main">
+    <header class="topbar">
+      <div class="crumb"><span>设置</span><span class="sep">/</span><strong id="crumbName">模型</strong></div>
+      <span class="grow"></span>
+      <button class="btn btn-primary btn-sm">保存更改</button>
+      <button class="icon-btn" id="tt" title="明暗"><svg id="ttI"><use href="#i-moon"/></svg></button>
+    </header>
+
+    <div class="page">
+      <div class="page-inner" style="max-width:860px">
+
+        <!-- 模型 -->
+        <div class="pane is-on" id="model">
+          <div class="pane-head"><h2>模型</h2><p>选择默认模型并管理可用模型。切换后新的任务将使用所选模型。</p></div>
+
+          <div class="section">
+            <h3>默认模型</h3>
+            <div class="model-card is-default">
+              <span class="m-ico"><svg><use href="#i-model"/></svg></span>
+              <span><div class="m-name">GPT-5.1 CodeBee</div><div class="m-desc">主模型 · 长上下文 256K · 工具调用强</div></span>
+              <span class="tag tag-accent">默认</span>
+            </div>
+            <div class="model-card">
+              <span class="m-ico"><svg><use href="#i-model"/></svg></span>
+              <span><div class="m-name">Claude Opus 4.5</div><div class="m-desc">写作与长文润色优选</div></span>
+              <button class="btn btn-outline btn-sm">设为默认</button>
+            </div>
+            <div class="model-card">
+              <span class="m-ico" style="color:var(--text-3)"><svg><use href="#i-model"/></svg></span>
+              <span><div class="m-name">本地 Qwen2.5-72B</div><div class="m-desc">离线 · 草稿与本地修订</div></span>
+              <button class="btn btn-outline btn-sm">设为默认</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>API 密钥状态</h3>
+            <div class="key-row">
+              <span class="m-ico" style="width:30px;height:30px"><svg style="width:15px;height:15px"><use href="#i-key"/></svg></span>
+              <span class="grow"><div class="k-name">OpenAI 兼容端点</div><div class="k-meta mono">sk-…a3f9 · 剩余额度 ¥ 312.40</div></span>
+              <span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>有效</span>
+            </div>
+            <div class="key-row" style="margin-top:var(--s-2)">
+              <span class="m-ico" style="width:30px;height:30px;color:var(--text-3)"><svg style="width:15px;height:15px"><use href="#i-key"/></svg></span>
+              <span class="grow"><div class="k-name">Anthropic</div><div class="k-meta mono">未配置</div></span>
+              <span class="tag tag-bad">缺失</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 推理参数 -->
+        <div class="pane" id="tune">
+          <div class="pane-head"><h2>推理参数</h2><p>全局默认采样参数，可在单个 Agent 中覆盖。</p></div>
+          <div class="section">
+            <div class="slider-row"><span class="sl-label">Temperature</span><input class="slider" type="range" min="0" max="1" step="0.01" value="0.7"><span class="sl-val">0.70</span></div>
+            <div class="slider-row"><span class="sl-label">Top P</span><input class="slider" type="range" min="0" max="1" step="0.01" value="0.9"><span class="sl-val">0.90</span></div>
+            <div class="slider-row"><span class="sl-label">Max Tokens</span><input class="slider" type="range" min="1024" max="32768" step="1024" value="16384"><span class="sl-val">16k</span></div>
+            <div class="slider-row"><span class="sl-label">上下文窗口</span><input class="slider" type="range" min="8" max="256" step="8" value="128"><span class="sl-val">128k</span></div>
+          </div>
+        </div>
+
+        <!-- 提示词模板 -->
+        <div class="pane" id="prompt">
+          <div class="pane-head"><h2>提示词模板</h2><p>预置的系统提示与角色设定，可在工作流中引用。</p></div>
+          <div class="panel card-pad">
+            <div class="row-3" style="margin-bottom:var(--s-3)"><span class="tag tag-accent">小说主编</span><span class="tag">代码审查</span><span class="tag">标书顾问</span><span class="tag">榜单分析师</span></div>
+            <p class="tiny" style="color:var(--text-2);line-height:1.6">共 12 套模板，3 套内置、9 套自定义。选中模板可在编辑器中点「插入变量」引用 <span class="mono">{book}</span> <span class="mono">{chapter}</span> 等占位符。</p>
+          </div>
+        </div>
+
+        <!-- 技能市场 -->
+        <div class="pane" id="skills">
+          <div class="pane-head"><h2>技能市场</h2><p>为不同 Agent 启用专用技能包。</p></div>
+          <div class="skill-grid">
+            <div class="skill-card"><div class="sc-top"><span class="sc-ico"><svg style="width:15px;height:15px"><use href="#i-skill"/></svg></span><span class="sc-name">大纲生成</span><span class="grow"></span><span class="switch is-on"></span></div><div class="sc-desc">从一句话题材扩成多卷大纲与章节节拍。</div></div>
+            <div class="skill-card"><div class="sc-top"><span class="sc-ico"><svg style="width:15px;height:15px"><use href="#i-skill"/></svg></span><span class="sc-name">风格仿写</span><span class="grow"></span><span class="switch is-on"></span></div><div class="sc-desc">对齐指定作者的语感与句式节奏。</div></div>
+            <div class="skill-card"><div class="sc-top"><span class="sc-ico"><svg style="width:15px;height:15px"><use href="#i-skill"/></svg></span><span class="sc-name">合规校验</span><span class="grow"></span><span class="switch is-on"></span></div><div class="sc-desc">标书要件逐条核对与废标风险预警。</div></div>
+            <div class="skill-card"><div class="sc-top"><span class="sc-ico"><svg style="width:15px;height:15px"><use href="#i-skill"/></svg></span><span class="sc-name">发布助手</span><span class="grow"></span><span class="switch"></span></div><div class="sc-desc">对接番茄 / 七猫等平台的发布与运营。</div></div>
+          </div>
+        </div>
+
+        <!-- MCP 服务 -->
+        <div class="pane" id="mcp">
+          <div class="pane-head"><h2>MCP 服务</h2><p>连接到外部工具与数据源。</p></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">filesystem</div><div class="mc-endpoint mono">npx @modelcontextprotocol/server-filesystem</div></span><span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>已连接</span><span class="switch is-on"></span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">git</div><div class="mc-endpoint mono">uvx mcp-server-git</div></span><span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>已连接</span><span class="switch is-on"></span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">postgres</div><div class="mc-endpoint mono">mcp-server-postgres · 10.0.2.15:5432</div></span><span class="tag tag-warn">未授权</span><span class="switch"></span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">browser</div><div class="mc-endpoint mono">@playwright/mcp</div></span><span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>已连接</span><span class="switch is-on"></span></div>
+        </div>
+
+        <!-- CLI 工具 -->
+        <div class="pane" id="cli">
+          <div class="pane-head"><h2>CLI 工具</h2><p>命令行入口与别名配置。</p></div>
+          <div class="log" style="font-family:var(--font-mono);font-size:12px;line-height:1.8;color:var(--text-2);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3);padding:var(--s-3) var(--s-4)">
+            <div><span class="muted">$</span> codebee task new --flow novel</div>
+            <div><span class="muted">$</span> codebee run T-2048 --phase patch</div>
+            <div><span class="muted">$</span> codebee profile switch novel</div>
+            <div><span class="muted">$</span> codebee publish fanqie --book 7699…</div>
+          </div>
+        </div>
+
+        <!-- 发布渠道 -->
+        <div class="pane" id="publish">
+          <div class="pane-head"><h2>发布渠道</h2><p>管理内容分发平台账号与默认策略。</p></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">番茄小说</div><div class="mc-desc">短故事 / 长篇 · 已绑定作者「夜行账房」</div></span><span class="tag tag-ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>已授权</span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">七猫免费小说</div><div class="mc-desc">长篇 · 待签约</div></span><span class="tag tag-warn">待处理</span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">微信读书</div><div class="mc-desc">未绑定</div></span><span class="tag">未连接</span></div>
+        </div>
+
+        <!-- 策略 -->
+        <div class="pane" id="strat">
+          <div class="pane-head"><h2>策略</h2><p>编排与评审策略的全局偏好。</p></div>
+          <div class="key-row"><span class="grow"><div class="k-name">评审席规模</div><div class="k-meta">三席制：架构 / 风险 / 交付</div></span><span class="switch is-on"></span></div>
+          <div class="key-row" style="margin-top:var(--s-2)"><span class="grow"><div class="k-name">自动续写</div><div class="k-meta">低置信度时暂停等待人工拍板</div></span><span class="switch is-on"></span></div>
+          <div class="key-row" style="margin-top:var(--s-2)"><span class="grow"><div class="k-name">发布前人工确认</div><div class="k-meta">任何上线动作需二次确认</div></span><span class="switch is-on"></span></div>
+        </div>
+
+        <!-- 用量统计 -->
+        <div class="pane" id="usage">
+          <div class="pane-head"><h2>用量统计</h2><p>本计费周期（10 月）的调用与成本。</p></div>
+          <div class="pivot" style="margin-bottom:var(--s-4)">
+            <div class="pcard"><div class="pk">本月调用</div><div class="pv">48.2k</div><div class="ptrend up">▲ 12% 环比</div></div>
+            <div class="pcard"><div class="pk">输入 Tokens</div><div class="pv">312M</div><div class="ptrend up">▲ 9%</div></div>
+            <div class="pcard"><div class="pk">输出 Tokens</div><div class="pv">86M</div><div class="ptrend up">▲ 15%</div></div>
+            <div class="pcard"><div class="pk">花费</div><div class="pv">¥ 312</div><div class="ptrend down">▼ 4%</div></div>
+          </div>
+          <div class="panel card-pad">
+            <span class="caps" style="display:block;margin-bottom:var(--s-3)">近 14 天调用量</span>
+            <div class="spark" style="height:56px">
+              <i style="--h:42%"></i><i style="--h:55%"></i><i style="--h:38%"></i><i style="--h:70%"></i><i class="peak" style="--h:100%"></i><i style="--h:62%"></i><i style="--h:48%"></i><i style="--h:80%"></i><i style="--h:58%"></i><i style="--h:66%"></i><i style="--h:44%"></i><i style="--h:72%"></i><i style="--h:50%"></i><i style="--h:60%"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- 成员与权限 -->
+        <div class="pane" id="users">
+          <div class="pane-head"><h2>成员与权限</h2><p>团队协作与角色分配。</p></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">你（所有者）</div><div class="mc-desc">全部权限</div></span><span class="avatar" style="width:26px;height:26px;font-size:10px">我</span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">编辑 · 林晚</div><div class="mc-desc">可创建任务、评审</div></span><span class="avatar" style="width:26px;height:26px;font-size:10px;background:var(--accent-2)">林</span></div>
+          <div class="mcp-row"><span class="grow"><div class="mc-name">只读 · 周野</div><div class="mc-desc">仅查看报告</div></span><span class="avatar" style="width:26px;height:26px;font-size:10px">周</span></div>
+        </div>
+
+        <!-- 通知 -->
+        <div class="pane" id="notify">
+          <div class="pane-head"><h2>通知</h2><p>任务状态与人工拍板提醒。</p></div>
+          <div class="key-row"><span class="grow"><div class="k-name">运行完成推送</div><div class="k-meta">企业微信 / 邮件</div></span><span class="switch is-on"></span></div>
+          <div class="key-row" style="margin-top:var(--s-2)"><span class="grow"><div class="k-name">需拍板时提醒</div><div class="k-meta">低置信度暂停</div></span><span class="switch is-on"></span></div>
+        </div>
+
+        <!-- 即将开放 -->
+        <div class="pane" id="soon">
+          <div class="empty-mini">
+            <svg style="width:30px;height:30px;opacity:.5;margin:0 auto 12px"><use href="#i-flask"/></svg>
+            <h4 style="font-size:var(--t-h3);color:var(--text-2)">该模块随后端接入后开放</h4>
+            <p class="tiny" style="margin-top:6px">当前为前端设计预览。接入运行时后将显示真实配置项。</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const root = document.documentElement;
+  const names = { model:'模型', tune:'推理参数', prompt:'提示词模板', skills:'技能市场', mcp:'MCP 服务', cli:'CLI 工具', publish:'发布渠道', strat:'策略', usage:'用量统计', users:'成员与权限', notify:'通知', soon:'模块' };
+  document.querySelectorAll('.cat').forEach(c => c.addEventListener('click', () => {
+    const id = c.dataset.pane;
+    if (id === 'soon' && !names[id]) return;
+    document.querySelectorAll('.cat').forEach(x => x.classList.remove('is-on'));
+    c.classList.add('is-on');
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('is-on'));
+    document.getElementById(id).classList.add('is-on');
+    document.getElementById('crumbName').textContent = names[id] || '设置';
+  }));
+  addEventListener('message', e => { if (e.data && e.data.surface) { root.setAttribute('data-surface', e.data.surface); } });
+  document.getElementById('tt').addEventListener('click', () => {
+    const paper = root.getAttribute('data-surface') === 'paper';
+    root.setAttribute('data-surface', paper ? 'ink' : 'paper');
+    document.getElementById('ttI').innerHTML = paper ? '<use href="#i-sun"/>' : '<use href="#i-moon"/>';
+  });
+</script>
+</body>
+</html>

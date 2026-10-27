@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from . import dispatch, flows
+from . import dispatch, flows, review_tiers
 
 SCHEMA_VERSION = 1
 DIFFICULTIES = ("easy", "default", "hard")
@@ -158,24 +158,38 @@ def code_workflow(task, difficulty, plan=None, mode="auto", planned=True):
 
 
 def content_workflow(task, difficulty, plan=None, mode="auto"):
-    """为非连载内容任务生成动态大纲/评审/修订策略。"""
+    """为非连载内容任务生成动态大纲/评审/修订策略。
+
+    席数与轮数的**基线来自 `review_tiers`**（数据驱动、可查、可覆盖），这个函数
+    只负责把「模式」（快/专家/手动）和「规划器建议」叠加到基线上：
+
+    * 快档压到 1 席 1 轮——用户明确说了要快；
+    * 专家档至少 2 席，三席档保持 3 席；
+    * 手动档不替用户加人（`reviewers: 0` = 「按你点的人来」）；
+    * 规划器只能在基线以内**降**（稿子确实简单时省钱），不能凭空升。
+
+    为什么改这里而不是在 pipeline 里判断类型：档位是「这个流程值几双眼睛」的
+    业务判断，不是运行时状态。放在编译期，运行链、报告、界面看到的是同一个数。
+    """
     task = task if isinstance(task, Mapping) else {}
     ttype = str(task.get("type") or "doc")
     requested_rounds = max(1, min(5, int(task.get("rounds") or 2)))
     rec = (plan or {}).get("workflow") if isinstance(plan, Mapping) else None
     rec = rec if isinstance(rec, Mapping) else {}
-    light_types = {"email", "weekly_report", "translation"}
-    deep_types = {"novel", "research", "tech_proposal", "short_drama"}
+    tier = review_tiers.tier_of(task)
+    base_seats = int(tier["seats"])
+    base_rounds = int(tier["rounds"])
 
     if ttype == "rank_scan":
-        return {"outline": True, "reviewers": 2, "review_rounds": max(2, requested_rounds),
+        return {"outline": True, "reviewers": max(2, base_seats),
+                "review_rounds": max(2, requested_rounds),
                 "reason": "选材保留独立评审与定向打磨复审，快速模式也不跳过立项门禁"}
 
     if mode == "fast":
         return {"outline": False, "reviewers": 1, "review_rounds": 1,
                 "reason": "快速模式省略独立大纲，仅保留一次快速评审"}
     if mode == "expert":
-        return {"outline": True, "reviewers": 2,
+        return {"outline": True, "reviewers": max(2, base_seats),
                 "review_rounds": min(requested_rounds, 3),
                 "reason": "专家模式启用完整大纲、多评审与修订门禁"}
     if mode != "auto":
@@ -183,38 +197,24 @@ def content_workflow(task, difficulty, plan=None, mode="auto"):
                 "review_rounds": requested_rounds,
                 "reason": "手动模式尊重用户指定的评审组与轮数"}
 
-    if ttype in light_types and difficulty != "hard":
-        return {"outline": False, "reviewers": 1, "review_rounds": 1,
-                "reason": "轻量内容省略独立大纲，只做一次快速评审"}
-
-    outline = ttype in deep_types or difficulty == "hard"
-    reviewers = 2 if outline else 1
-    # 修订回炉对全部评审型内容开放：单评审短链只省大纲与双评审，不再把修订
-    # 循环压成 1 轮——评审一挂即终局，回炉从未生效（2026-10-21 handdraw 实案、
-    # 2026-10-22 article 实案：综合 8.2 过线但单维卡线，1 轮终局连修订都没进）。
-    review_rounds = min(requested_rounds, 2)
+    reviewers = base_seats
+    review_rounds = base_rounds
+    # 规划器只能在基线以内降席（它看得到这一篇的实际长度与结构）；
+    # 升席会绕过档表，等于把成本决策交回给模型。
     try:
         if "reviewers" in rec:
-            reviewers = max(1, min(2, int(rec["reviewers"])))
+            reviewers = max(1, min(base_seats, int(rec["reviewers"])))
         if "review_rounds" in rec:
-            review_rounds = max(1, min(requested_rounds, 3,
-                                       int(rec["review_rounds"])))
+            review_rounds = max(1, min(review_rounds, int(rec["review_rounds"])))
     except (TypeError, ValueError):
         pass
-    # A short-drama season is a continuity-heavy, multi-episode deliverable.
-    # In the normal auto lane, keep the outline and independent second reader
-    # even when the generic planner recommends a lighter content workflow.
-    if ttype == "short_drama":
-        outline = True
-        reviewers = max(2, reviewers)
-        review_rounds = max(min(2, requested_rounds), review_rounds)
-    # 深度类型至少保留一轮评审，但允许规划器把双评审降成一名；高门槛强制双评审
-    # （≥8.0 即双评审：单评审官扛高门槛等于把及格线押在一个模型的手感上，
+    outline = bool(tier["outline"]) or difficulty == "hard"
+    # 高门槛强制至少双席（单评审官扛 8.0 等于把及格线押在一个模型的手感上，
     # 2026-10-22 article 实案：唯一评审给单维 7.5，综合 8.2 照样终局）。
-    if float(task.get("threshold") or 7.0) >= 8.0:
-        reviewers = 2
+    # 三席档已经是 3，不会被这条压回来。
+    if float(task.get("threshold") or 7.0) >= 8.0 or difficulty == "hard":
+        reviewers = max(2, reviewers)
     return {"outline": outline, "reviewers": reviewers,
             "review_rounds": review_rounds,
-            "reason": ("深度内容保留大纲和多轮质量门禁" if outline
-                       else "标准内容单评审，评审不过回炉修订（至多 %d 轮）"
-                       % review_rounds)}
+            "reason": ("%s；%d 席评审，至多 %d 轮修订回炉"
+                       % (tier["tier_label"], reviewers, review_rounds))}

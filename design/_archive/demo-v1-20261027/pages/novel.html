@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee 小说版 · 书架</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  /* 页面专属：只写布局 */
+  .view { display: none; }
+  .view.is-on { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+  /* ---------- 书架 ---------- */
+  .shelf-head {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--s-4);
+    margin-bottom: var(--s-6);
+  }
+  .shelf-head h1 {
+    font-size: var(--font-h1);
+    line-height: 1.15;
+    font-weight: var(--w-semi);
+    letter-spacing: -0.02em;
+  }
+  .shelf-head p {
+    margin-top: 6px;
+    font-size: var(--font-small);
+    color: var(--text-2);
+  }
+
+  .shelf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+    gap: var(--s-5);
+  }
+
+  .book {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+    text-align: left;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+  .book:hover { transform: translateY(-3px); }
+
+  /* 封面：纯 CSS，靠色相区分书，不用图片 */
+  .cover {
+    position: relative;
+    aspect-ratio: 3 / 4;
+    border-radius: var(--r-3);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    box-shadow: var(--sh-1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--s-4) var(--s-3) var(--s-3);
+    transition: box-shadow var(--dur-2) var(--ease-out);
+  }
+  .book:hover .cover { box-shadow: var(--sh-3); }
+
+  /* 书脊：一条更深的竖带，让封面像一本装订好的书 */
+  .cover::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 7px;
+    background: rgba(0, 0, 0, 0.14);
+  }
+  .cover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 80% at 78% 8%, rgba(255, 255, 255, 0.16), transparent 55%);
+    pointer-events: none;
+  }
+
+  .cover-title {
+    position: relative;
+    z-index: 1;
+    margin-left: 5px;
+    font-family: var(--font-serif);
+    font-size: 21px;
+    line-height: 1.34;
+    font-weight: var(--w-semi);
+    letter-spacing: 0.02em;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  }
+  .cover-foot {
+    position: relative;
+    z-index: 1;
+    margin-left: 5px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--s-2);
+    font-size: var(--font-label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .book-meta { display: block; padding-left: 2px; }
+  .book-name {
+    display: block;
+    font-size: var(--font-body);
+    font-weight: var(--w-medium);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .book-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--font-caption);
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .book-line {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-2);
+  }
+  .book-line .bar { flex: 1; }
+
+  .new-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    width: 100%;
+    height: 56px;
+    margin-top: var(--s-5);
+    border-radius: var(--r-3);
+    border: 1.5px dashed var(--line-strong);
+    color: var(--text-3);
+    font-size: var(--font-small);
+    transition: border-color var(--dur-2) var(--ease-out),
+      color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+  }
+  .new-card:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .new-card .ico { width: 20px; height: 20px; }
+
+  /* ---------- 书页 ---------- */
+  .book-shell { display: flex; flex: 1; min-height: 0; }
+
+  .toc {
+    width: 236px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    background: var(--bg-sunken);
+    display: flex;
+    flex-direction: column;
+  }
+  .toc-head {
+    padding: var(--s-4) var(--s-4) var(--s-2);
+  }
+  .toc-vol {
+    padding: var(--s-3) var(--s-4) 6px;
+    font-size: var(--font-label);
+    font-weight: var(--w-semi);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .toc-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-2);
+    padding: 7px var(--s-4);
+    font-size: var(--font-small);
+    color: var(--text-2);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+  .toc-item:hover { background: var(--surface-3); color: var(--text); }
+  .toc-item.is-now {
+    border-left-color: var(--accent);
+    background: var(--surface);
+    color: var(--text);
+    font-weight: var(--w-medium);
+  }
+  .toc-item .no {
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    color: var(--text-3);
+    flex-shrink: 0;
+  }
+  .toc-item .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .reading {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: var(--s-10) var(--s-8) var(--s-16);
+  }
+  .reading-inner { max-width: 660px; margin: 0 auto; }
+
+  .ch-head { margin-bottom: var(--s-8); }
+  .ch-no {
+    font-family: var(--font-mono);
+    font-size: var(--font-caption);
+    letter-spacing: 0.1em;
+    color: var(--text-3);
+  }
+  .ch-title {
+    margin-top: var(--s-2);
+    font-family: var(--font-serif);
+    font-size: var(--font-h1);
+    line-height: 1.3;
+    font-weight: var(--w-semi);
+    letter-spacing: 0.01em;
+  }
+  .ch-sub {
+    margin-top: var(--s-3);
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    font-size: var(--font-caption);
+    color: var(--text-3);
+  }
+
+  .reading .t-prose { font-size: 17px; }
+  .reading .t-prose p { text-align: justify; }
+
+  /* 右侧评审栏 */
+  .review-col {
+    width: 320px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--line);
+    background: var(--bg-sunken);
+    overflow-y: auto;
+  }
+  .rev-sec { padding: var(--s-4); border-bottom: 1px solid var(--line); }
+  .rev-sec:last-child { border-bottom: none; }
+  .rev-title {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-bottom: var(--s-3);
+    font-size: var(--font-label);
+    font-weight: var(--w-semi);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .score-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-2);
+    text-align: center;
+  }
+  .score-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .score-cell .m {
+    font-size: var(--font-label);
+    color: var(--text-3);
+  }
+  .rev-note {
+    font-size: var(--font-small);
+    line-height: var(--lh-ui);
+    color: var(--text-2);
+  }
+  .rev-note + .rev-note { margin-top: var(--s-3); }
+  .rev-note b { color: var(--text); font-weight: var(--w-medium); }
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <g id="i-book" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 3h12a1 1 0 0 1 1 1v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+      <path d="M4 17.5h15M8.5 7h6"/>
+    </g>
+    <g id="i-plus" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></g>
+    <g id="i-swap" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 8.5h13M14 5.5l3 3-3 3M20 15.5H7M10 12.5l-3 3 3 3"/>
+    </g>
+    <g id="i-sun" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2.4v2.2M12 19.4v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>
+    </g>
+    <g id="i-moon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z"/>
+    </g>
+    <g id="i-arrow-left" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.5 12h-14M11.5 5.5 5 12l6.5 6.5"/>
+    </g>
+    <g id="i-check" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12.8 4.2 4.2L19 6.6"/>
+    </g>
+    <g id="i-alert" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4.4 21 19.6H3z"/><path d="M12 10.2v4M12 16.9h.01"/>
+    </g>
+    <g id="i-quote" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.5 6.5C6.5 8 5 10.4 5 13.4c0 2.4 1.3 4.1 3.3 4.1 1.7 0 3-1.2 3-2.9 0-1.6-1.1-2.8-2.7-2.8-.3 0-.6 0-.8.1.3-1.5 1.3-2.7 2.9-3.6zM19 6.5c-3 1.5-4.5 3.9-4.5 6.9 0 2.4 1.3 4.1 3.3 4.1 1.7 0 3-1.2 3-2.9 0-1.6-1.1-2.8-2.7-2.8-.3 0-.6 0-.8.1.3-1.5 1.3-2.7 2.9-3.6z"/>
+    </g>
+    <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4v10.5M7.8 10.4 12 14.6l4.2-4.2M4.5 19.4h15"/>
+    </g>
+    <g id="i-play" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M8.4 5.6v12.8L19 12z"/></g>
+  </defs>
+</svg>
+
+<!-- ========== 书架 ========== -->
+<div class="view is-on" id="view-shelf">
+  <header class="topbar">
+    <span class="topbar-brand">
+      <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" style="color:var(--accent)">
+        <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M12 2.2 21.4 7.6v8.8L12 21.8 2.6 16.4V7.6z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12 8.4v7.2M8.9 10.2v3.6M15.1 10.2v3.6"/>
+      </svg>
+      小说版
+    </span>
+    <span class="topbar-sep"></span>
+    <span class="topbar-title">书架</span>
+    <span class="topbar-spacer"></span>
+    <div class="topbar-right">
+      <button class="btn btn-sm btn-ghost btn-icon" id="btn-theme" title="切换明暗"><svg class="ico" viewBox="0 0 24 24"><use href="#i-moon"/></svg></button>
+      <button class="btn btn-sm btn-ghost"><svg class="ico" viewBox="0 0 24 24"><use href="#i-swap"/></svg>切换产品</button>
+      <button class="btn btn-sm btn-solid"><svg class="ico" viewBox="0 0 24 24"><use href="#i-plus"/></svg>开新书</button>
+    </div>
+  </header>
+
+  <div class="main-scroll">
+    <div class="wrap">
+      <div class="shelf-head">
+        <div class="grow">
+          <h1>你的书架</h1>
+          <p>6 本 · 连载 2 本 · 已完结 2 本 · 草稿 2 本</p>
+        </div>
+        <div class="segmented">
+          <button aria-pressed="true">全部</button>
+          <button aria-pressed="false">连载</button>
+          <button aria-pressed="false">短篇</button>
+          <button aria-pressed="false">草稿</button>
+        </div>
+      </div>
+
+      <div class="shelf-grid">
+        <button class="book" data-open="1">
+          <span class="cover" style="background:linear-gradient(158deg,#2c2622 0%,#4a3b2f 58%,#6b5241 100%)">
+            <span class="cover-title">头七<br />结账人</span>
+            <span class="cover-foot"><span>连载</span><span>58 章</span></span>
+          </span>
+          <span class="book-meta">
+            <span class="book-name">头七结账人</span>
+            <span class="book-sub">卷二 · 结账日 · 22.9 万字</span>
+            <span class="book-line">
+              <span class="bar bar-accent bar-thin"><i style="width:72%"></i></span>
+              <span class="t-caption t-faint t-mono">8.1</span>
+            </span>
+          </span>
+        </button>
+
+        <button class="book" data-open="1">
+          <span class="cover" style="background:linear-gradient(158deg,#1f2a2b 0%,#2f4245 55%,#3f5a5c 100%)">
+            <span class="cover-title">死当铺<br />第九十九件</span>
+            <span class="cover-foot"><span>短篇</span><span>4,693 字</span></span>
+          </span>
+          <span class="book-meta">
+            <span class="book-name">死当铺的第九十九件心愿</span>
+            <span class="book-sub">已完结 · 曾因拖沓被拒签</span>
+            <span class="book-line">
+              <span class="bar bar-accent bar-thin"><i style="width:100%"></i></span>
+              <span class="t-caption t-faint t-mono">8.4</span>
+            </span>
+          </span>
+        </button>
+
+        <button class="book" data-open="1">
+          <span class="cover" style="background:linear-gradient(158deg,#2b1f26 0%,#4a2f3c 58%,#6d4553 100%)">
+            <span class="cover-title">停灵<br />三夜</span>
+            <span class="cover-foot"><span>短篇</span><span>12,800 字</span></span>
+          </span>
+          <span class="book-meta">
+            <span class="book-name">停灵三夜</span>
+            <span class="book-sub">已发布 · 可申请签约</span>
+            <span class="book-line">
+              <span class="bar bar-accent bar-thin"><i style="width:100%"></i></span>
+              <span class="t-caption t-faint t-mono">8.6</span>
+            </span>
+          </span>
+        </button>
+
+        <button class="book" data-open="1">
+          <span class="cover" style="background:linear-gradient(158deg,#232521 0%,#37402f 58%,#4e5b42 100%)">
+            <span class="cover-title">江边<br />旧账</span>
+            <span class="cover-foot"><span>草稿</span><span>3 章</span></span>
+          </span>
+          <span class="book-meta">
+            <span class="book-name">江边旧账</span>
+            <span class="book-sub">草稿 · 卷纲已定，正文 3 章</span>
+            <span class="book-line">
+              <span class="bar bar-accent bar-thin"><i style="width:14%"></i></span>
+              <span class="t-caption t-faint t-mono">—</span>
+            </span>
+          </span>
+        </button>
+
+        <button class="book" data-open="1">
+          <span class="cover" style="background:linear-gradient(158deg,#2a2620 0%,#453a2c 58%,#63513c 100%)">
+            <span class="cover-title">雨夜<br />代驾</span>
+            <span class="cover-foot"><span>短篇</span><span>修订中</span></span>
+          </span>
+          <span class="book-meta">
+            <span class="book-name">雨夜代驾</span>
+            <span class="book-sub">修订中 · 第 2 轮评审未过线</span>
+            <span class="book-line">
+              <span class="bar bar-accent bar-thin"><i style="width:88%"></i></span>
+              <span class="t-caption t-faint t-mono">7.2</span>
+            </span>
+          </span>
+        </button>
+
+      </div>
+
+      <button class="new-card" data-open="1">
+        <svg class="ico" viewBox="0 0 24 24"><use href="#i-plus"/></svg>
+        写一本新的
+      </button>
+
+      <!-- 书架只有一排时下方会很空，这里补一条真实的写作节奏，而不是留白 -->
+      <section class="card card-pad" style="margin-top:var(--s-6)">
+        <div class="row-between" style="margin-bottom:var(--s-4)">
+          <span class="t-label">最近 14 天</span>
+          <span class="t-caption t-faint">共 3 本在写 · 平均每次 2,410 字</span>
+        </div>
+        <div style="display:grid;grid-template-columns:auto minmax(0,220px);gap:var(--s-8);align-items:center;justify-content:space-between">
+          <div class="stat-row" style="gap:var(--s-8)">
+            <div class="stat">
+              <span class="stat-value">31,240</span>
+              <span class="stat-label">本周字数</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">9</span>
+              <span class="stat-label">连续写作天数</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">8.1</span>
+              <span class="stat-label">平均评审分</span>
+            </div>
+          </div>
+          <div class="spark">
+            <i style="height:38%"></i><i class="is-hi" style="height:62%"></i>
+            <i style="height:45%"></i><i class="is-hi" style="height:80%"></i>
+            <i style="height:55%"></i><i class="is-hi" style="height:72%"></i>
+            <i class="is-hi" style="height:100%"></i><i style="height:66%"></i>
+            <i style="height:48%"></i><i class="is-hi" style="height:88%"></i>
+            <i style="height:58%"></i><i class="is-hi" style="height:75%"></i>
+            <i class="is-now" style="height:92%"></i><i style="height:20%"></i>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 书页 ========== -->
+<div class="view" id="view-book" data-surface="paper">
+  <header class="topbar">
+    <button class="btn btn-sm btn-ghost" id="btn-back"><svg class="ico" viewBox="0 0 24 24"><use href="#i-arrow-left"/></svg>书架</button>
+    <span class="topbar-sep"></span>
+    <span class="topbar-brand">头七结账人</span>
+    <span class="topbar-title" style="margin-left:var(--s-2)">卷二 · 结账日 · 第 13 章</span>
+    <span class="topbar-spacer"></span>
+    <div class="topbar-right">
+      <button class="btn btn-sm btn-ghost btn-icon" id="btn-theme2" title="切换明暗"><svg class="ico" viewBox="0 0 24 24"><use href="#i-moon"/></svg></button>
+      <button class="btn btn-sm btn-outline"><svg class="ico" viewBox="0 0 24 24"><use href="#i-play"/></svg>续写下一章</button>
+      <button class="btn btn-sm btn-solid"><svg class="ico" viewBox="0 0 24 24"><use href="#i-download"/></svg>导出</button>
+    </div>
+  </header>
+
+  <div class="book-shell">
+    <nav class="toc">
+      <div class="toc-head">
+        <div class="row-between">
+          <span class="t-small t-strong">目录</span>
+          <span class="count">58</span>
+        </div>
+      </div>
+      <div class="toc-vol">卷一 · 头七</div>
+      <div class="toc-item"><span class="no">01</span><span class="grow">第一个来结账的人</span></div>
+      <div class="toc-item"><span class="no">02</span><span class="grow">红绳</span></div>
+      <div class="toc-item"><span class="no">03</span><span class="grow">账本上的名字</span></div>
+      <div class="toc-item"><span class="no">04</span><span class="grow">夜里十一点的钟</span></div>
+      <div class="toc-vol">卷二 · 结账日</div>
+      <div class="toc-item"><span class="no">11</span><span class="grow">掌柜回来了</span></div>
+      <div class="toc-item"><span class="no">12</span><span class="grow">红绳又出现了一次</span></div>
+      <div class="toc-item is-now"><span class="no">13</span><span class="grow">最后一页</span></div>
+      <div class="toc-item"><span class="no">14</span><span class="grow">他听见了</span></div>
+      <div class="toc-item"><span class="no">15</span><span class="grow">（待写）</span></div>
+    </nav>
+
+    <div class="reading">
+      <article class="reading-inner">
+        <div class="ch-head">
+          <div class="ch-no">第十三章</div>
+          <h1 class="ch-title">最后一页</h1>
+          <div class="ch-sub">
+            <span class="tag tag-ok"><span class="dot dot-ok"></span>评审通过 · 8.1</span>
+            <span>2,840 字</span>
+            <span>·</span>
+            <span>刚更新于 13:44</span>
+          </div>
+        </div>
+
+        <div class="t-prose">
+          <p>学徒推门进来的时候，掌柜正在擦柜台。</p>
+          <p>那块柜台已经擦了很久。学徒记得自己第一次进这间铺子，掌柜就在擦它，抹布在木面上转着一模一样的圈。那时候他以为这是规矩，后来才知道，这是掌柜在想事情。</p>
+          <p>“账本呢？”掌柜没抬头。</p>
+          <p>学徒把账本放在柜台上。他的手在抖，抖得很轻，但柜台是旧的，木头会放大抖动，所以掌柜听见了。掌柜把抹布叠成四方，压在柜角，才伸手去翻。</p>
+          <p>他翻得很慢。学徒知道他在找什么——最后那一页。那一页上只有一个名字，是三天前自己写上去的，墨迹已经干了，但学徒总觉得那地方还是湿的，像一道没有结痂的口子。</p>
+          <p>铺子里很静。外面下着雨，雨打在檐口的铁皮上,咚咚的,一声一声，像有人在很远的地方敲门。</p>
+          <p>掌柜翻到了。他停住，手指压在那三个字上面，压了很久。学徒不敢看他的脸，就盯着那只手——那只手背上有一道旧疤，从虎口一直延伸到手腕，颜色比周围的皮肉浅一些。</p>
+          <p>“你知道这上面写的是谁吗。”掌柜说。这不是问句。</p>
+          <p>学徒点了点头，又摇了摇头。他确实不知道自己写的是什么。那天夜里他喝了一点酒，铺子里的灯灭了一半，账本自己翻到了最后一页，笔就在旁边，握起来的时候手是热的。</p>
+          <p>掌柜合上了账本。</p>
+          <p>他没有发火，也没有说话，只是把账本推回给学徒，然后绕过柜台，往铺子深处走。学徒听见他的脚步声在货架之间穿行，一件一件地绕过那些当品：一只缺了角的瓷碗，一件洗得发白的嫁衣，一个上了锁的铁盒。</p>
+          <p>脚步声停了一下。</p>
+          <p>学徒抬起头。掌柜站在铺子最里面，背对着他，肩膀没有动。铺子里的灯就剩最后一盏，光只能照到掌柜的鞋跟，往上就全黑了。</p>
+          <p>“把灯灭了。”掌柜说。</p>
+          <p>学徒愣了一下。</p>
+          <p>“灭了。”掌柜又说了一遍，声音低了一点，“这一页,不能让光看见。”</p>
+        </div>
+      </article>
+    </div>
+
+    <aside class="review-col">
+      <div class="rev-sec">
+        <div class="rev-title"><svg class="ico" width="13" height="13" viewBox="0 0 24 24"><use href="#i-check"/></svg>三席评分</div>
+        <div class="score-row">
+          <div class="score-cell">
+            <div class="ring" style="--p:78"><span>7.8</span></div>
+            <span class="m">剧情</span>
+          </div>
+          <div class="score-cell">
+            <div class="ring" style="--p:82"><span>8.2</span></div>
+            <span class="m">人物</span>
+          </div>
+          <div class="score-cell">
+            <div class="ring" style="--p:83"><span>8.3</span></div>
+            <span class="m">文笔</span>
+          </div>
+        </div>
+        <div class="t-caption t-faint" style="margin-top:var(--s-3);text-align:center">
+          均分 8.1 · 通过线 7.5 · 第 2 轮通过
+        </div>
+      </div>
+
+      <div class="rev-sec">
+        <div class="rev-title"><svg class="ico" width="13" height="13" viewBox="0 0 24 24"><use href="#i-quote"/></svg>它们怎么说的</div>
+        <div class="rev-note"><b>剧情席</b>　结尾改对了。把“翻到最后一页”换成“灭了灯，不能让光看见”，同一件事从视觉转到禁令，压迫感回来了，也不再和第十二章重复。</div>
+        <div class="rev-note"><b>人物席</b>　学徒“点头又摇头”这一下很好——他终于有了自己的判断，而不是只会发抖。</div>
+        <div class="rev-note"><b>文笔席</b>　“雨打在檐口的铁皮上，咚咚的，一声一声，像有人在很远的地方敲门”可以删。全章最弱的一句，意象也旧。</div>
+      </div>
+
+      <div class="rev-sec">
+        <div class="rev-title"><svg class="ico" width="13" height="13" viewBox="0 0 24 24"><use href="#i-alert"/></svg>还欠一件事</div>
+        <div class="rev-note">卷纲要求本章不得揭示掌柜身份——当前正文仍守住了，但“手背旧疤”已经给到第 3 次暗示。第 14 章之前必须给出一次误导读者的解释，否则读者会先猜到。</div>
+      </div>
+
+      <div class="rev-sec">
+        <div class="row" style="gap:var(--s-2);flex-wrap:wrap">
+          <span class="tag">2,840 字</span>
+          <span class="tag">28 段</span>
+          <span class="tag">前情 1,190 字</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var mode = location.hash === "#ink" ? "ink" : "paper";
+
+    function apply(next, silent) {
+      mode = next;
+      document.querySelectorAll(".view").forEach(function (v) {
+        v.setAttribute("data-surface", mode);
+      });
+      root.setAttribute("data-surface", mode);
+      document.querySelectorAll("#btn-theme use, #btn-theme2 use").forEach(function (u) {
+        u.setAttribute("href", mode === "ink" ? "#i-sun" : "#i-moon");
+      });
+      if (!silent) { try { parent.postMessage({ type: "demo:surface", mode: mode }, "*"); } catch (e) {} }
+    }
+
+    apply(mode, true);
+
+    function toggle() { apply(mode === "ink" ? "paper" : "ink"); }
+    document.getElementById("btn-theme").addEventListener("click", toggle);
+    document.getElementById("btn-theme2").addEventListener("click", toggle);
+
+    window.addEventListener("message", function (e) {
+      var d = e.data || {};
+      if (d.type === "demo:set-surface") apply(d.mode, true);
+    });
+
+    var shelf = document.getElementById("view-shelf");
+    var book = document.getElementById("view-book");
+
+    function open() {
+      shelf.classList.remove("is-on");
+      book.classList.add("is-on");
+      try { parent.postMessage({ type: "demo:title", text: "CodeBee 小说版 · 第十三章 最后一页" }, "*"); } catch (e) {}
+    }
+    function back() {
+      book.classList.remove("is-on");
+      shelf.classList.add("is-on");
+      try { parent.postMessage({ type: "demo:title", text: "CodeBee 小说版 · 书架" }, "*"); } catch (e) {}
+    }
+
+    document.querySelectorAll("[data-open]").forEach(function (el) {
+      el.addEventListener("click", open);
+    });
+    document.getElementById("btn-back").addEventListener("click", back);
+
+    // 直接开书页：方便截图核对与分享单个视图
+    if (location.hash.indexOf("book") >= 0) open();
+
+    document.querySelectorAll(".toc-item").forEach(function (el) {
+      el.addEventListener("click", function () {
+        document.querySelectorAll(".toc-item").forEach(function (x) { x.classList.remove("is-now"); });
+        el.classList.add("is-now");
+      });
+    });
+
+    document.querySelectorAll(".segmented button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        b.parentNode.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", "true");
+      });
+    });
+  })();
+</script>
+</body>
+</html>

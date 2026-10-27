@@ -1,0 +1,472 @@
+/* ==========================================================================
+   base.css · 重置 + 排版基线 + 骨架布局 + 极少量工具类
+   这里只放「四个页面都必须一样」的东西。页面专属样式写在页面自己的 <style>。
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--t-body);
+  line-height: var(--lh-ui);
+  font-weight: var(--w-normal);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd, ul, ol {
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4 {
+  font-weight: var(--w-semi);
+  line-height: var(--lh-tight);
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+ul, ol {
+  list-style: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  margin: 0;
+}
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img, svg {
+  display: block;
+  max-width: 100%;
+}
+
+hr {
+  border: 0;
+  height: 1px;
+  background: var(--line);
+  margin: 0;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* 焦点：全站统一。键盘用户必须看得见，鼠标用户不打扰 */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-1);
+}
+
+/* 滚动条：细、无轨道底色，和界面同色系 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: var(--r-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--line-3);
+  background-clip: content-box;
+}
+
+/* ==========================================================================
+   排版原子
+   ========================================================================== */
+
+/* 全大写小标签。唯一的「装饰」手法：字距拉开 + 颜色衰减 */
+.caps {
+  font-size: var(--t-label);
+  line-height: 1.3;
+  font-weight: var(--w-semi);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.muted { color: var(--text-2); }
+.faint { color: var(--text-3); }
+
+.lead {
+  font-size: var(--t-lead);
+  line-height: var(--lh-body);
+  color: var(--text-2);
+}
+
+.tiny {
+  font-size: var(--t-caption);
+  line-height: var(--lh-snug);
+  color: var(--text-3);
+}
+
+/* 正文块：中文段落给足行高，首行不缩进 */
+.prose p {
+  font-size: var(--t-body-lg);
+  line-height: var(--lh-body);
+  color: var(--text-2);
+}
+.prose p + p {
+  margin-top: var(--s-3);
+}
+
+/* ==========================================================================
+   布局工具
+   ========================================================================== */
+.stack { display: flex; flex-direction: column; }
+.stack-1 { display: flex; flex-direction: column; gap: var(--s-1); }
+.stack-2 { display: flex; flex-direction: column; gap: var(--s-2); }
+.stack-3 { display: flex; flex-direction: column; gap: var(--s-3); }
+.stack-4 { display: flex; flex-direction: column; gap: var(--s-4); }
+.stack-5 { display: flex; flex-direction: column; gap: var(--s-5); }
+.stack-6 { display: flex; flex-direction: column; gap: var(--s-6); }
+.stack-8 { display: flex; flex-direction: column; gap: var(--s-8); }
+.stack-10 { display: flex; flex-direction: column; gap: var(--s-10); }
+
+.row { display: flex; align-items: center; }
+.row-1 { display: flex; align-items: center; gap: var(--s-1); }
+.row-2 { display: flex; align-items: center; gap: var(--s-2); }
+.row-3 { display: flex; align-items: center; gap: var(--s-3); }
+.row-4 { display: flex; align-items: center; gap: var(--s-4); }
+.row-6 { display: flex; align-items: center; gap: var(--s-6); }
+
+.baseline { align-items: baseline; }
+.top { align-items: flex-start; }
+.bottom { align-items: flex-end; }
+.between { justify-content: space-between; }
+.center { justify-content: center; }
+.end { justify-content: flex-end; }
+
+.grow { flex: 1 1 auto; min-width: 0; }
+.shrink-0 { flex: 0 0 auto; }
+.wrap { flex-wrap: wrap; }
+
+.truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.divider {
+  height: 1px;
+  background: var(--line);
+  flex: 0 0 auto;
+}
+.divider-v {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  flex: 0 0 auto;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   应用骨架：顶栏 +（可选）左侧图标轨 +（可选）侧栏 + 主区 +（可选）右栏
+   四个页面都用这一套，只是开关不同的槽位。
+   ========================================================================== */
+.app {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: var(--topbar-h);
+  padding: 0 var(--s-4) 0 var(--s-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: var(--z-sticky);
+}
+
+.rail {
+  grid-row: 2;
+  width: var(--rail-w);
+  border-right: 1px solid var(--line);
+  background: var(--bg-sunken);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--s-2) 0;
+  gap: var(--s-1);
+}
+
+.side {
+  grid-row: 2;
+  width: var(--side-w);
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.main {
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.aside {
+  grid-row: 2;
+  width: var(--aside-w);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 品牌标记 */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  padding-right: var(--s-2);
+}
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  color: var(--text);
+}
+.brand-name {
+  font-size: var(--t-small);
+  font-weight: var(--w-semi);
+  letter-spacing: -0.005em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.brand-ver {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  line-height: 1.4;
+}
+
+/* 顶栏里的上下文，竖线分隔，不用彩色标签 */
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+.crumb .sep {
+  color: var(--text-3);
+  opacity: 0.6;
+}
+.crumb strong {
+  font-weight: var(--w-medium);
+  color: var(--text);
+}
+
+/* 图标按钮：无边框，hover 才出面 */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: var(--h-ctl);
+  height: var(--h-ctl);
+  border-radius: var(--r-2);
+  color: var(--text-3);
+  flex: 0 0 auto;
+  transition: background var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out);
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.icon-btn.is-active {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.rail-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-2);
+  color: var(--text-3);
+  transition: color var(--dur-1) var(--ease-out),
+    background var(--dur-1) var(--ease-out);
+}
+.rail-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.rail-btn:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.rail-btn.is-on {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+/* 当前项：左侧 2px 强调竖线。全站唯一的「选中」表达方式 */
+.rail-btn.is-on::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+/* 侧栏标题区 */
+.side-head {
+  padding: var(--s-3) var(--s-3) var(--s-2);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+}
+.side-title {
+  font-size: var(--t-caption);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+  flex: 1 1 auto;
+}
+
+/* 主区内容容器 */
+.page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.page-inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--s-8) var(--s-6) var(--s-12);
+}
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-4);
+  padding-bottom: var(--s-5);
+  margin-bottom: var(--s-6);
+  border-bottom: 1px solid var(--line);
+}
+.page-title {
+  font-size: var(--t-h2);
+  font-weight: var(--w-semi);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.page-sub {
+  font-size: var(--t-small);
+  color: var(--text-2);
+  margin-top: var(--s-1);
+}

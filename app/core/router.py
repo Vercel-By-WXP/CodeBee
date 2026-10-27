@@ -972,12 +972,19 @@ def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
     return impl, "（自评：仅有实现者一个智能体可用）"
 
 
-def pick_critics(agents, ttype, stats=None, impl=None):
-    """自动内容评审组选综合分前两名（排除作者本人）。
+def pick_critics(agents, ttype, stats=None, impl=None, limit=None):
+    """自动内容评审组按综合分挑前 ``limit`` 名（排除作者本人）。
 
     旧逻辑让全部已启用 CLI 串行参与每章和全局评审；一条慢/失效链就会把
-    任务拖长数分钟。两名保留交叉判断并封顶默认调用数；手工模式不走这里。
+    任务拖长数分钟，所以必须封顶。封顶数现在由**评审档位**决定
+    （`review_tiers`：1 / 2 / 3 席），缺省仍是 ``AUTO_CRITIC_LIMIT``——
+    手工模式不走这里。
     """
+    try:
+        cap = int(limit) if limit is not None else AUTO_CRITIC_LIMIT
+    except (TypeError, ValueError):
+        cap = AUTO_CRITIC_LIMIT
+    cap = max(1, cap)
     stats = stats or history.agent_stats()
     real = [a for a in agents if a.get("mode") == "real" and
             (not impl or a["id"] != impl["id"])]
@@ -991,10 +998,10 @@ def pick_critics(agents, ttype, stats=None, impl=None):
                 safe, why = _review_separation(
                     author_identity, _review_identity(agent, ttype))
                 (isolated if safe else fallback).append((agent, why))
-            chosen = [agent for agent, _ in isolated[:AUTO_CRITIC_LIMIT]]
+            chosen = [agent for agent, _ in isolated[:cap]]
             fallback_used = []
-            if len(chosen) < AUTO_CRITIC_LIMIT:
-                count = AUTO_CRITIC_LIMIT - len(chosen)
+            if len(chosen) < cap:
+                count = cap - len(chosen)
                 fallback_used = fallback[:count]
                 chosen.extend(agent for agent, _ in fallback_used)
             note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (
@@ -1006,7 +1013,7 @@ def pick_critics(agents, ttype, stats=None, impl=None):
                                     for agent, why in fallback_used[:3])
                 note += "；同源候选兼容回退（原因：%s）" % detail
             return chosen, note
-        chosen = ranked[:AUTO_CRITIC_LIMIT]
+        chosen = ranked[:cap]
         note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (
             len(chosen), len(ranked))
         if impl and all(a.get("kind") == impl.get("kind") for a in chosen):
@@ -1014,7 +1021,7 @@ def pick_critics(agents, ttype, stats=None, impl=None):
         return chosen, note
     mocks = [a for a in agents if a.get("mode") == "mock"]
     if mocks:
-        return mocks[:2], "（无真实智能体，用内置 mock 演示）"
+        return mocks[:cap], "（无真实智能体，用内置 mock 演示）"
     if impl and impl.get("mode") == "real":
         # 只有一条 CLI 时，旧逻辑返回 agents[:2]，也就是把作者本人当评审——
         # 自评既拿不到独立意见，还会以「作者 id」计入评审人数，把一份自我确认

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CodeBee · 选一个开始</title>
+<link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <span>CodeBee</span>
+  </div>
+  <span class="top-hint" id="top-hint">选一个开始，进去之后右上角可以随时切换</span>
+</header>
+
+<main class="wrap">
+  <h1>你今天想做什么？</h1>
+  <p class="sub">同一个内核，几种产品形态。选错了也没关系——右上角随时切回来。</p>
+
+  <div class="cards" id="cards" role="list" aria-label="产品形态"></div>
+
+  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+
+  <footer class="foot">
+    <button class="link" type="button" id="btn-settings">配置模型与智能体</button>
+    <span class="foot-note">设置在全量版里：本机智能体、模型接入、编排策略、用量与备份。</span>
+  </footer>
+</main>
+
+<script src="welcome.js"></script>
+</body>
+</html>

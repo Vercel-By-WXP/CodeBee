@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee 成稿台 · 要件核对</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  /* 页面专属：只写布局 */
+  .doc-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-4);
+    padding-bottom: var(--s-5);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: var(--s-5);
+  }
+  .doc-head h1 {
+    font-size: var(--font-h3);
+    line-height: var(--lh-snug);
+    font-weight: var(--w-semi);
+    letter-spacing: -0.012em;
+  }
+  .doc-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    margin-top: 6px;
+    font-size: var(--font-caption);
+    color: var(--text-3);
+    flex-wrap: wrap;
+  }
+  .doc-meta code { font-family: var(--font-mono); color: var(--text-2); }
+
+  /* 顶部结论条：比任何表格都重要，所以放在最上面、占满宽 */
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-5);
+    border-radius: var(--r-3);
+    background: var(--bad-soft);
+    border: 1px solid color-mix(in srgb, var(--bad) 26%, transparent);
+    margin-bottom: var(--s-5);
+  }
+  .verdict-num {
+    font-family: var(--font-mono);
+    font-size: var(--font-h1);
+    font-weight: var(--w-medium);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--bad);
+    flex-shrink: 0;
+  }
+  .verdict-text { flex: 1; min-width: 0; }
+  .verdict-text b {
+    display: block;
+    font-size: var(--font-body);
+    font-weight: var(--w-semi);
+    color: var(--text);
+  }
+  .verdict-text span {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--font-small);
+    color: var(--text-2);
+    line-height: var(--lh-ui);
+  }
+
+  /* 要件分组 */
+  .group { margin-bottom: var(--s-4); }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    width: 100%;
+    padding: var(--s-3) var(--pad-card);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-3) var(--r-3) 0 0;
+    text-align: left;
+  }
+  .group-head[aria-expanded="false"] {
+    border-radius: var(--r-3);
+  }
+  .group-name {
+    font-size: var(--font-small);
+    font-weight: var(--w-semi);
+    letter-spacing: 0.01em;
+  }
+  .group-stat {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-left: auto;
+  }
+  .group-count {
+    font-family: var(--font-mono);
+    font-size: var(--font-caption);
+    color: var(--text-3);
+  }
+  .group-body {
+    border: 1px solid var(--line);
+    border-top: none;
+    border-radius: 0 0 var(--r-3) var(--r-3);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .group-body.hidden { display: none; }
+
+  .chev {
+    width: 13px;
+    height: 13px;
+    color: var(--text-3);
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+  .group-head[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+
+  /* 要件行补充 */
+  .req-src {
+    font-family: var(--font-mono);
+    font-size: var(--font-label);
+    color: var(--text-3);
+  }
+  .req-flag {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-shrink: 0;
+  }
+
+  /* 右栏 */
+  .aside-sec {
+    padding: var(--s-4);
+    border-bottom: 1px solid var(--line);
+  }
+  .aside-sec:last-child { border-bottom: none; }
+  .aside-title {
+    margin-bottom: var(--s-3);
+    font-size: var(--font-label);
+    font-weight: var(--w-semi);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .tally {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-3);
+  }
+  .tally-item {
+    padding: var(--s-3);
+    border-radius: var(--r-2);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+  }
+  .tally-v {
+    font-family: var(--font-mono);
+    font-size: var(--font-h3);
+    font-weight: var(--w-medium);
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .tally-k {
+    margin-top: 4px;
+    font-size: var(--font-label);
+    color: var(--text-3);
+  }
+  .t-bad { color: var(--bad); }
+  .t-warn { color: var(--warn); }
+  .t-ok { color: var(--ok); }
+
+  .aside-cta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+  .aside-cta .btn { width: 100%; }
+
+  /* 侧栏任务项 */
+  .task-item {
+    display: grid;
+    grid-template-columns: 6px minmax(0, 1fr);
+    gap: var(--s-2);
+    align-items: center;
+    padding: 9px var(--s-3);
+    border-radius: var(--r-2);
+    cursor: pointer;
+    transition: background var(--dur-1) var(--ease-out);
+  }
+  .task-item:hover { background: var(--surface-3); }
+  .task-item.is-active { background: var(--surface); box-shadow: var(--sh-1); }
+  .task-item .t {
+    font-size: var(--font-small);
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-item.is-active .t { color: var(--text); font-weight: var(--w-medium); }
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <g id="i-check" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12.8 4.2 4.2L19 6.6"/>
+    </g>
+    <g id="i-chevron-down" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5.5 9 6.5 6.5L18.5 9"/>
+    </g>
+    <g id="i-file-check" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M8.5 14l2 2 4-4"/>
+    </g>
+    <g id="i-alert" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4.4 21 19.6H3z"/><path d="M12 10.2v4M12 16.9h.01"/>
+    </g>
+    <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4v10.5M7.8 10.4 12 14.6l4.2-4.2M4.5 19.4h15"/>
+    </g>
+    <g id="i-eye" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M2.4 12S6 5.6 12 5.6 21.6 12 21.6 12 18 18.4 12 18.4 2.4 12 2.4 12z"/><circle cx="12" cy="12" r="2.6"/>
+    </g>
+    <g id="i-swap" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 8.5h13M14 5.5l3 3-3 3M20 15.5H7M10 12.5l-3 3 3 3"/>
+    </g>
+    <g id="i-sun" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2.4v2.2M12 19.4v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>
+    </g>
+    <g id="i-moon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z"/>
+    </g>
+    <g id="i-plus" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></g>
+    <g id="i-filter" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M3.5 5.5h17l-6.6 7.6v5.6l-3.8 1.9v-7.5z"/>
+    </g>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <span class="topbar-brand">
+      <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" style="color:var(--accent)">
+        <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" d="M12 2.2 21.4 7.6v8.8L12 21.8 2.6 16.4V7.6z"/>
+        <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12 8.4v7.2M8.9 10.2v3.6M15.1 10.2v3.6"/>
+      </svg>
+      成稿台
+    </span>
+    <span class="topbar-sep"></span>
+    <span class="topbar-title">某园区智能化系统集成 · 投标文件</span>
+    <span class="topbar-spacer"></span>
+    <div class="topbar-right">
+      <span class="tag tag-bad"><span class="dot dot-bad"></span>5 项废标风险</span>
+      <button class="btn btn-sm btn-ghost btn-icon" id="btn-theme" title="切换明暗"><svg class="ico" viewBox="0 0 24 24"><use href="#i-moon"/></svg></button>
+      <button class="btn btn-sm btn-ghost"><svg class="ico" viewBox="0 0 24 24"><use href="#i-swap"/></svg>切换产品</button>
+      <button class="btn btn-sm btn-solid"><svg class="ico" viewBox="0 0 24 24"><use href="#i-download"/></svg>导出核对单</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="side">
+      <div class="side-head">
+        <span class="t-small t-strong grow">文档任务</span>
+        <button class="btn btn-sm btn-ghost btn-icon" title="新建"><svg class="ico" viewBox="0 0 24 24"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="side-body">
+        <div class="nav-label">进行中 · 3</div>
+        <div class="task-item is-active"><span class="dot dot-bad"></span><span class="t">某园区智能化 · 投标文件</span></div>
+        <div class="task-item"><span class="dot dot-warn"></span><span class="t">机房巡检作业说明</span></div>
+        <div class="task-item"><span class="dot dot-warn"></span><span class="t">N2One 异构纳管技术方案</span></div>
+
+        <div class="nav-label">已完成 · 2</div>
+        <div class="task-item"><span class="dot dot-ok"></span><span class="t">电缆检测报告（WDZBN）</span></div>
+        <div class="task-item"><span class="dot dot-ok"></span><span class="t">第 43 周项目周报</span></div>
+      </div>
+      <div class="side-foot">
+        <div class="note" style="padding:var(--s-2) var(--s-3)">
+          要件表按流程内置：投标 18 项、方案 7 项、公文 5 项、简历 6 项。
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="main-scroll">
+        <div class="wrap">
+          <div class="doc-head">
+            <div class="grow">
+              <h1>某园区智能化系统集成 · 投标文件</h1>
+              <div class="doc-meta">
+                <span class="t-mono">t-20261027-110822-3341</span>
+                <span>·</span>
+                <span>标书师</span>
+                <span>·</span>
+                <span>正文 42 页</span>
+                <span>·</span>
+                <span>核对于 11:32</span>
+              </div>
+            </div>
+            <div class="page-head-actions">
+              <button class="btn btn-sm btn-outline" id="btn-filter"><svg class="ico" viewBox="0 0 24 24"><use href="#i-filter"/></svg>只看缺的</button>
+              <button class="btn btn-sm btn-ghost"><svg class="ico" viewBox="0 0 24 24"><use href="#i-eye"/></svg>看正文</button>
+            </div>
+          </div>
+
+          <div class="verdict">
+            <span class="verdict-num">5</span>
+            <div class="verdict-text">
+              <b>这 5 项缺了会直接废标</b>
+              <span>评委不会看完正文，他们只看这几页在不在。补齐之前，建议不要提交。</span>
+            </div>
+            <button class="btn btn-sm btn-outline">逐项去补</button>
+          </div>
+
+          <!-- 商务 -->
+          <section class="group">
+            <button class="group-head" aria-expanded="true" data-group="biz">
+              <svg class="chev" viewBox="0 0 24 24"><use href="#i-chevron-down"/></svg>
+              <span class="group-name">商务部分</span>
+              <span class="group-stat">
+                <span class="tag tag-bad">2 废标</span>
+                <span class="group-count">4 项</span>
+              </span>
+            </button>
+            <div class="group-body" id="g-biz">
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">投标函及投标函附录</div>
+                  <div class="req-meta"><span>第 1–2 页</span><span>·</span><span class="req-src">已签署</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">法定代表人身份证明及授权委托书</div>
+                  <div class="req-meta"><span>第 3–4 页</span><span>·</span><span class="req-src">授权期限覆盖投标有效期</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req is-missing">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">开标一览表</div>
+                  <div class="req-meta"><span>全文未找到</span><span>·</span><span class="req-src">招标文件第 38 页要求单独成页</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-bad">废标项</span></span>
+              </div>
+              <div class="req is-missing">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">投标保证金缴纳凭证</div>
+                  <div class="req-meta"><span>全文未找到</span><span>·</span><span class="req-src">金额应为 8 万元</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-bad">废标项</span></span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 资格 -->
+          <section class="group">
+            <button class="group-head" aria-expanded="true" data-group="qual">
+              <svg class="chev" viewBox="0 0 24 24"><use href="#i-chevron-down"/></svg>
+              <span class="group-name">资格部分</span>
+              <span class="group-stat">
+                <span class="tag tag-warn">1 废标 · 1 待补</span>
+                <span class="group-count">5 项</span>
+              </span>
+            </button>
+            <div class="group-body" id="g-qual">
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">营业执照副本</div>
+                  <div class="req-meta"><span>第 7 页</span><span>·</span><span class="req-src">在有效期内</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">电子与智能化工程专业承包资质</div>
+                  <div class="req-meta"><span>第 8 页</span><span>·</span><span class="req-src">二级 · 满足要求</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req is-partial">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">同类项目业绩证明</div>
+                  <div class="req-meta"><span>第 9–11 页</span><span>·</span><span class="req-src">要求 3 个，现附 2 个</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-warn">待补 1 个</span></span>
+              </div>
+              <div class="req is-missing">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">近三年财务审计报告</div>
+                  <div class="req-meta"><span>全文未找到</span><span>·</span><span class="req-src">第 41 页要求经审计</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-bad">废标项</span></span>
+              </div>
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">无重大违法记录声明</div>
+                  <div class="req-meta"><span>第 12 页</span><span>·</span><span class="req-src">已盖章</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 技术 -->
+          <section class="group">
+            <button class="group-head" aria-expanded="true" data-group="tech">
+              <svg class="chev" viewBox="0 0 24 24"><use href="#i-chevron-down"/></svg>
+              <span class="group-name">技术部分</span>
+              <span class="group-stat">
+                <span class="tag tag-bad">2 废标</span>
+                <span class="group-count">6 项</span>
+              </span>
+            </button>
+            <div class="group-body" id="g-tech">
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">总体技术方案</div>
+                  <div class="req-meta"><span>第 14–29 页</span><span>·</span><span class="req-src">覆盖 6 个子系统</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req is-partial">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">项目实施计划与进度表</div>
+                  <div class="req-meta"><span>第 30–31 页</span><span>·</span><span class="req-src">缺验收节点，只有开工与交付</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-warn">需补充</span></span>
+              </div>
+              <div class="req is-missing">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">拟投入人员配置表</div>
+                  <div class="req-meta"><span>全文未找到</span><span>·</span><span class="req-src">须含项目经理与安全员证书</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-bad">废标项</span></span>
+              </div>
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">售后服务与响应承诺</div>
+                  <div class="req-meta"><span>第 34 页</span><span>·</span><span class="req-src">7×24 · 2 小时到场</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req is-missing">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">培训方案</div>
+                  <div class="req-meta"><span>全文未找到</span><span>·</span><span class="req-src">无则按 5 分扣，不废标</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-warn">建议补</span></span>
+              </div>
+              <div class="req is-missing">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">技术偏离表</div>
+                  <div class="req-meta"><span>全文未找到</span><span>·</span><span class="req-src">须逐条响应招标参数</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-bad">废标项</span></span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 其他 -->
+          <section class="group">
+            <button class="group-head" aria-expanded="true" data-group="etc">
+              <svg class="chev" viewBox="0 0 24 24"><use href="#i-chevron-down"/></svg>
+              <span class="group-name">其他要求</span>
+              <span class="group-stat">
+                <span class="tag tag-warn">1 待确认</span>
+                <span class="group-count">3 项</span>
+              </span>
+            </button>
+            <div class="group-body" id="g-etc">
+              <div class="req is-partial">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">密封与签署要求</div>
+                  <div class="req-meta"><span>纸质件</span><span>·</span><span class="req-src">正本 1 份副本 4 份，骑缝章未见说明</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-warn">需确认</span></span>
+              </div>
+              <div class="req is-ok">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">电子投标文件（U 盘 / 平台上传）</div>
+                  <div class="req-meta"><span>已生成</span><span>·</span><span class="req-src">PDF 42 页 · 38 MB</span></div>
+                </div>
+                <span class="req-flag"><span class="tag tag-ok">具备</span></span>
+              </div>
+              <div class="req">
+                <span class="req-mark"><svg class="ico" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+                <div class="req-body">
+                  <div class="req-title">联合体协议书</div>
+                  <div class="req-meta"><span>不适用</span><span>·</span><span class="req-src">本项目独立投标</span></div>
+                </div>
+                <span class="req-flag"><span class="tag">不适用</span></span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <aside class="aside">
+      <div class="aside-sec">
+        <div class="aside-title">核对结果</div>
+        <div class="tally">
+          <div class="tally-item">
+            <div class="tally-v t-bad">5</div>
+            <div class="tally-k">废标风险</div>
+          </div>
+          <div class="tally-item">
+            <div class="tally-v t-warn">4</div>
+            <div class="tally-k">待补 / 待确认</div>
+          </div>
+          <div class="tally-item">
+            <div class="tally-v t-ok">8</div>
+            <div class="tally-k">已具备</div>
+          </div>
+          <div class="tally-item">
+            <div class="tally-v">1</div>
+            <div class="tally-k">不适用</div>
+          </div>
+        </div>
+        <div class="t-caption t-faint" style="margin-top:var(--s-3)">
+          18 项要件，按招标文件第 38–44 页逐条比对。不做「完整度百分比」—— 缺一项废标项，90% 和 0% 是一样的。
+        </div>
+      </div>
+
+      <div class="aside-sec">
+        <div class="aside-title">导出</div>
+        <div class="aside-cta">
+          <button class="btn btn-solid"><svg class="ico" viewBox="0 0 24 24"><use href="#i-download"/></svg>核对单（Excel）</button>
+          <button class="btn btn-outline"><svg class="ico" viewBox="0 0 24 24"><use href="#i-download"/></svg>缺项清单（给商务）</button>
+        </div>
+        <div class="t-caption t-faint" style="margin-top:var(--s-3)">
+          导出内容取正文当前状态，不含评审意见。
+        </div>
+      </div>
+
+      <div class="aside-sec">
+        <div class="aside-title">要件从哪来</div>
+        <div class="note" style="font-size:var(--font-caption)">
+          每个文档流程内置一张要件表，不是 AI 现编的。标书 18 项里 11 项是废标项，这个判断来自招标文件，不是来自模型。
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById("btn-theme");
+    var icon = btn.querySelector("use");
+
+    function apply(mode, silent) {
+      root.setAttribute("data-surface", mode);
+      icon.setAttribute("href", mode === "ink" ? "#i-sun" : "#i-moon");
+      if (!silent) { try { parent.postMessage({ type: "demo:surface", mode: mode }, "*"); } catch (e) {} }
+    }
+    apply(location.hash === "#ink" ? "ink" : "paper", true);
+    btn.addEventListener("click", function () {
+      apply(root.getAttribute("data-surface") === "ink" ? "paper" : "ink");
+    });
+    window.addEventListener("message", function (e) {
+      var d = e.data || {};
+      if (d.type === "demo:set-surface") apply(d.mode, true);
+    });
+
+    document.querySelectorAll(".group-head").forEach(function (h) {
+      h.addEventListener("click", function () {
+        var open = h.getAttribute("aria-expanded") === "true";
+        h.setAttribute("aria-expanded", open ? "false" : "true");
+        document.getElementById("g-" + h.dataset.group).classList.toggle("hidden", open);
+      });
+    });
+
+    var only = false;
+    document.getElementById("btn-filter").addEventListener("click", function () {
+      only = !only;
+      this.classList.toggle("btn-outline", !only);
+      this.classList.toggle("btn-solid", only);
+      document.querySelectorAll(".req").forEach(function (r) {
+        var keep = r.classList.contains("is-missing") || r.classList.contains("is-partial");
+        r.style.display = only && !keep ? "none" : "";
+      });
+      document.querySelectorAll(".task-item").forEach(function () {});
+    });
+  })();
+</script>
+</body>
+</html>

@@ -940,6 +940,14 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
     """
     scope = scope_override or task.get("type") or "*"
     feedback = novel_feedback.block_for(task)
+    # 平台结果回流（P1-2）：这本书在平台上被拒/被签/读者多少，是**事实**，
+    # 与上面的复盘（诊断）分开注入。取不到就整块不出现，绝不编。惰性导入：
+    # 台账坏了只损失这一个块，不能拖垮提示词拼装。
+    try:
+        from .publish import outcome as publish_outcome
+        outcome_block = publish_outcome.block_for(task)
+    except Exception:
+        outcome_block = ""
     parts, used, lesson_ids = [], [], []
 
     for p in all_packs():
@@ -984,21 +992,25 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
         lesson_part = ("### 【本项目经验记录（证据强度以条目标注为准；先结合当前正文判断，不要机械套用；方括号内为编号）】\n"
                        + "\n".join(lines))
 
-    if not parts and not lesson_part and not feedback:
+    if not parts and not lesson_part and not feedback and not outcome_block:
         return "", []
 
     header = "## 经验库（写作/工程规范 + 过往经验记录；按证据强度参考）\n\n"
     # Reserve both the attributed lessons and complete rejection records before
     # allocating the generic pack budget. Feedback must not evict lessons.
-    reserve = len(header) + len(lesson_part) + len(feedback) + 100
+    reserve = (len(header) + len(lesson_part) + len(feedback)
+               + len(outcome_block) + 120)
     budget = max(0, MAX_INJECT_CHARS - reserve)
     body = "\n\n".join(parts)
     if len(body) > budget:
         body = body[:budget] + "\n…（包区已按预算截断，优先保住项目教训）"
     body = (body + "\n\n" + lesson_part) if (body and lesson_part) else (body or lesson_part)
     text = header + body
-    if feedback:
-        text = feedback + "\n\n" + text[:max(0, MAX_INJECT_CHARS - len(feedback) - 2)]
+    # 事实在前、诊断在后：先让模型知道「这本书发生了什么」，再看「当时判定
+    # 该怎么改」。顺序反过来会让拒稿意见脱离它对应的那次结果，被读成通用规则。
+    tail = "\n\n".join(x for x in (outcome_block, feedback) if x)
+    if tail:
+        text = tail + "\n\n" + text[:max(0, MAX_INJECT_CHARS - len(tail) - 2)]
     if len(text) > MAX_INJECT_CHARS:
         text = text[:MAX_INJECT_CHARS] + "\n…（已截断）"
     if lesson_ids:

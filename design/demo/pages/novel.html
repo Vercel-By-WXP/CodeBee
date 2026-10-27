@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="paper" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 创作台</title>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../base.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+  .shelf { display: flex; flex-direction: column; padding: var(--s-2) var(--s-3) var(--s-4); gap: 2px; overflow-y: auto; }
+  .book {
+    display: grid; grid-template-columns: 30px 1fr auto; gap: var(--s-2);
+    align-items: center; padding: var(--s-2); border-radius: var(--r-2);
+    cursor: pointer; border-left: 3px solid transparent;
+    transition: background var(--dur-1);
+  }
+  .book:hover { background: var(--surface-2); }
+  .book.is-on { background: var(--accent-soft); border-left-color: var(--accent); }
+  .book-cover { width: 30px; height: 40px; border-radius: 3px; background: var(--grad); display:grid; place-items:center; color:#fff; font-size:11px; font-weight:600; flex:0 0 auto; }
+  .book-name { font-size: var(--t-small); font-weight: var(--w-medium); color: var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .book-meta { font-size: 10px; color: var(--text-3); margin-top:1px; }
+
+  /* 正文：衬线、限宽 */
+  .doc { max-width: var(--read-w); margin: 0 auto; padding: var(--s-8) var(--s-6) var(--s-16); }
+  .doc .kicker { text-align:center; margin-bottom: var(--s-6); }
+  .doc h1.chapter { font-family: var(--font-serif); font-size: 26px; font-weight: 700; line-height: 1.4; text-align:center; margin-bottom: var(--s-6); letter-spacing: 0.02em; }
+  .doc p { font-family: var(--font-serif); font-size: 17px; line-height: 1.82; color: #1c2733; margin-bottom: 1.1em; text-align: justify; }
+  .doc p .first { font-weight: 600; }
+
+  .outline { display:flex; flex-direction:column; padding: var(--s-2) var(--s-3); gap:2px; overflow-y:auto; }
+  .ol-item { display:flex; align-items:center; gap: var(--s-2); padding: 7px var(--s-2); border-radius: var(--r-2); cursor:pointer; font-size: var(--t-small); color: var(--text-2); }
+  .ol-item:hover { background: var(--surface-2); color: var(--text); }
+  .ol-item .num { font-size: 11px; color: var(--text-3); width: 18px; }
+  .ol-item.is-on { color: var(--text); font-weight: var(--w-medium); }
+
+  .stat-card { padding: var(--s-4); border-bottom: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-hive" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M12 2.5l7 4v9l-7 4-7-4v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5 6.5l7 4 7-4M12 10.5V21"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20l4-1 10-10-3-3L5 16l-1 4zM14 6l3 3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V4M4 20h16M8 16l3-4 3 2 4-6"/></symbol>
+    <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M20 20l-3.5-3.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <!-- 图标轨 -->
+  <nav class="rail">
+    <a class="brand" href="#welcome" style="padding:0;justify-content:center"><svg class="brand-mark"><use href="#i-hive"/></svg></a>
+    <span class="divider" style="width:24px;margin:4px 0"></span>
+    <a class="rail-btn is-on" href="#" title="创作"><svg><use href="#i-pen"/></svg></a>
+    <a class="rail-btn" href="#" title="执行台"><svg><use href="#i-code"/></svg></a>
+    <a class="rail-btn" href="#" title="成稿"><svg><use href="#i-doc"/></svg></a>
+    <a class="rail-btn" href="#" title="分析"><svg><use href="#i-chart"/></svg></a>
+    <span class="grow"></span>
+    <a class="rail-btn" href="#" title="设置"><svg><use href="#i-set"/></svg></a>
+  </nav>
+
+  <!-- 书架 -->
+  <aside class="side">
+    <div class="side-head">
+      <span class="side-title">我的书</span>
+      <button class="icon-btn" style="width:28px;height:28px" title="新建"><svg style="width:15px;height:15px"><use href="#i-plus"/></svg></button>
+    </div>
+    <div class="shelf">
+      <div class="book is-on">
+        <span class="book-cover">头七</span>
+        <span class="grow" style="min-width:0"><div class="book-name">头七结账人</div><div class="book-meta">58 章 · 22.9 万字</div></span>
+      </div>
+      <div class="book">
+        <span class="book-cover" style="background:var(--accent-2)">停灵</span>
+        <span class="grow" style="min-width:0"><div class="book-name">停灵三夜</div><div class="book-meta">12 章 · 4.1 万字</div></span>
+      </div>
+      <div class="book">
+        <span class="book-cover" style="background:#6b9bff">死当</span>
+        <span class="grow" style="min-width:0"><div class="book-name">死当铺的第九十九件心愿</div><div class="book-meta">9 章 · 0.5 万字</div></span>
+      </div>
+      <div class="book">
+        <span class="book-cover" style="background:#34c98e">长安</span>
+        <span class="grow" style="min-width:0"><div class="book-name">长安灯下录</div><div class="book-meta">草稿 · 1.2 万字</div></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 正文 -->
+  <section class="main">
+    <header class="topbar">
+      <div class="crumb">
+        <span>创作台</span><span class="sep">/</span>
+        <strong>头七结账人</strong><span class="sep">·</span>
+        <span>第 38 章 对账</span>
+      </div>
+      <span class="grow"></span>
+      <span class="row-2">
+        <button class="btn btn-outline btn-sm"><svg style="width:14px;height:14px"><use href="#i-book"/></svg>大纲</button>
+        <button class="btn btn-primary btn-sm">续写</button>
+        <button class="icon-btn" id="tt" title="明暗"><svg id="ttI"><use href="#i-moon"/></svg></button>
+      </span>
+    </header>
+
+    <div class="flowbar" style="display:flex;align-items:center;gap:var(--s-3);padding:var(--s-2) var(--s-4);border-bottom:1px solid var(--line);background:var(--surface)">
+      <span style="font-size:var(--t-label);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-3);font-weight:var(--w-semi)">全流程</span>
+      <div class="pipeline">
+        <span class="step is-done"><span class="n">1</span>构思</span><span class="arrow"><svg style="width:13px;height:13px;color:var(--line-2)"><use href="#i-arrow"/></svg></span>
+        <span class="step is-done"><span class="n">2</span>大纲</span><span class="arrow"><svg style="width:13px;height:13px;color:var(--line-2)"><use href="#i-arrow"/></svg></span>
+        <span class="step is-on"><span class="n">3</span>草稿</span><span class="arrow"><svg style="width:13px;height:13px;color:var(--line-2)"><use href="#i-arrow"/></svg></span>
+        <span class="step"><span class="n">4</span>评审</span><span class="arrow"><svg style="width:13px;height:13px;color:var(--line-2)"><use href="#i-arrow"/></svg></span>
+        <span class="step"><span class="n">5</span>精修</span><span class="arrow"><svg style="width:13px;height:13px;color:var(--line-2)"><use href="#i-arrow"/></svg></span>
+        <span class="step"><span class="n">6</span>成稿</span><span class="arrow"><svg style="width:13px;height:13px;color:var(--line-2)"><use href="#i-arrow"/></svg></span>
+        <span class="step"><span class="n">7</span>发布</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <article class="doc">
+        <div class="kicker"><span class="caps">第三卷 · 残账</span></div>
+        <h1 class="chapter">第三十八章　对账</h1>
+        <p><span class="first">沈</span>九算把算盘搁在膝头的时候，窗外的雨已经停了。他没抬头，先嗅了嗅空气里那点若有若无的香——不是熏香，是尸体放久了才会透出来的、带着甜味的腐朽。这味道他熟，比任何账本都诚实。</p>
+        <p>死者姓周，绸缎庄的二掌柜，昨夜亥时三刻被发现吊在后库的横梁上。官府的仵作验过，说绳痕齐整、无挣扎，判了个自缢身亡。可沈九算翻过那本没对上的账，就知道周二掌柜吊死之前，账上先死了一回。</p>
+        <p>他起身，踩着吱呀作响的楼板走到后库门口。门没锁，只虚掩着。月光从天窗漏下来，正好落在那根横梁上——梁高三尺有余，周掌柜身高六尺，踮脚也难够着绳扣的起手处。</p>
+        <p>沈九算在心里飞快地拨了一遍算珠：若是一个人吊上去，脚尖离地至少一尺；若是被人提上去，绳痕该在颈后偏左，而不是正中对着喉咙。账是假的，吊法也是假的，唯一真的，是这满屋子里越来越重的、那股甜味的腐朽。</p>
+        <p>他回头看了眼门口的捕快，那人正打着哈欠，浑然不知自己看守的不是一个死人，而是一笔至今无人能结清的旧账。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 右栏 -->
+  <aside class="aside">
+    <div class="stat-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">最近 14 天写作节奏</span>
+      <div class="spark">
+        <i style="--h:30%"></i><i style="--h:55%"></i><i style="--h:42%"></i><i style="--h:72%"></i><i class="peak" style="--h:100%"></i><i style="--h:64%"></i><i style="--h:38%"></i><i style="--h:50%"></i><i style="--h:80%"></i><i style="--h:46%"></i><i style="--h:60%"></i><i style="--h:34%"></i><i style="--h:58%"></i><i style="--h:42%"></i>
+      </div>
+      <div class="row between tiny" style="margin-top:var(--s-3)"><span class="faint">日均</span><span class="num">2,140 字</span></div>
+      <div class="row between tiny"><span class="faint">本周</span><span class="num">14,980 字</span></div>
+    </div>
+
+    <div class="stat-card">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">本章</span>
+      <div class="row between tiny" style="margin-bottom:6px"><span class="faint">字数</span><span class="num">1,286</span></div>
+      <div class="row between tiny" style="margin-bottom:6px"><span class="faint">进度</span><span class="num">38 / 58</span></div>
+      <div class="bar" style="margin-top:6px"><i style="width:65%"></i></div>
+    </div>
+
+    <div class="stat-card" style="border-bottom:0">
+      <span class="caps" style="display:block;margin-bottom:var(--s-3)">大纲</span>
+      <div class="outline">
+        <div class="ol-item"><span class="num">35</span><span class="truncate">引子 · 第一笔死账</span></div>
+        <div class="ol-item"><span class="num">36</span><span class="truncate">灯市口的风声</span></div>
+        <div class="ol-item"><span class="num">37</span><span class="truncate">绸缎庄的来客</span></div>
+        <div class="ol-item is-on"><span class="num">38</span><span class="truncate">对账</span></div>
+        <div class="ol-item"><span class="num">39</span><span class="truncate">梁上那尺距离</span></div>
+        <div class="ol-item"><span class="num">40</span><span class="truncate">捕快的哈欠</span></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const root = document.documentElement;
+  addEventListener('message', e => { if (e.data && e.data.surface) { root.setAttribute('data-surface', e.data.surface); } });
+  document.getElementById('tt').addEventListener('click', () => {
+    const paper = root.getAttribute('data-surface') === 'paper';
+    root.setAttribute('data-surface', paper ? 'ink' : 'paper');
+    document.getElementById('ttI').innerHTML = paper ? '<use href="#i-sun"/>' : '<use href="#i-moon"/>';
+  });
+</script>
+</body>
+</html>

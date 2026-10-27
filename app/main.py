@@ -39,6 +39,7 @@ if os.environ.get("TUTTI_ISOLATE_HOME", "").strip() == "1":
 from core import activity, automation, board, catalog, cloud_readiness, experts, flows, jobs, manager, market, market_remote, plugins, preview, project_permissions, project_space, registry, remote, runner, settings, sharing, store
 from core import paths
 from core import health
+from core import profile
 from core import usage as usage_ledger
 from core.http_logging import log_request_exception
 import pet
@@ -204,6 +205,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
     def _json(self, code, obj):
         self._send(code, json.dumps(obj, ensure_ascii=False))
 
+    def _redirect(self, location):
+        """302 跳转。只用于「根路径该进哪个入口」这类服务端决定，正文为空。"""
+        self._send(302, b"", "text/plain; charset=utf-8",
+                   {"Location": location}, cache_control="no-store")
+
     def _send_media(self, data, ctype):
         """媒体响应：恒带 Accept-Ranges，Range 请求回 206 分段。
 
@@ -366,7 +372,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = None
         # 静态页不设防（无敏感信息）：远程裸地址打开时由前端令牌门引导输入
         if path in ("/", "/index.html"):
-            return self._static("index.html")
+            # 首次启动（用户从没表过态）先给选择页；选过之后直接进对应入口，
+            # 之后换产品走页面右上角「切换」，不再用重定向把人拦在门口。
+            if profile.needs_chooser():
+                return self._redirect("/welcome/")
+            # 垂直形态可自带界面入口（app/ui/<dir>/index.html）；未声明则用内核默认。
+            return self._static(profile.ui_entry() or "index.html")
         # 运行预览：工作目录里网页成品的只读挂载，供 iframe/新窗口直接打开。
         # 令牌走路径段（子资源继承不了查询串），鉴权复用 remote.request_authed。
         if path == preview.BASE or path.startswith(preview.BASE + "/"):
@@ -562,7 +573,49 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 from core import bind_ledger
                 return self._json(200, bind_ledger.view())
             if path == "/api/flows":
-                return self._json(200, {"flows": flows.list_flows()})
+                # 垂直形态只暴露自己的流程；每行再挂上「它是什么 Agent」，
+                # 前端据此渲染专家入口与专属页面，不必认识 flow id。
+                from core import agents as agents_mod
+                return self._json(200, {"flows": agents_mod.decorate(
+                    profile.filter_flows(flows.list_flows()))})
+            if path == "/api/agents":
+                # 形态内的专家清单：每个 Agent 的 focus / 页面原型 / 关键指标。
+                from core import agents as agents_mod
+                q = parse_qs(urlparse(self.path).query)
+                # all=1 连草稿一起给：排查问题和开发者自用，正常路径不带它。
+                show_all = (q.get("all") or [""])[0].lower() in ("1", "true", "yes")
+                policy = profile.agent_policy()
+                data = agents_mod.describe_all(
+                    include_hidden=show_all or policy["drafts"],
+                    only=policy["only"])
+                # 形态的流程白名单仍然生效：界面里不出现的流程，专家也不列。
+                allowed = set(profile.current().get("flows") or [])
+                if allowed:
+                    data["agents"] = [a for a in data["agents"] if a["flow"] in allowed]
+                return self._json(200, data)
+            if path == "/api/review-tiers":
+                # 评审强度分档表：哪个流程给几席几轮、凭什么、相对基准贵多少。
+                # 界面上要能回答「为什么这篇是两席那篇是一席」——答不上来
+                # 的档位就是拍脑袋，用户没法信，也就没法按业务调。
+                from core import review_tiers
+                rows = review_tiers.baseline()
+                allowed = set(profile.current().get("flows") or [])
+                if allowed:
+                    rows["rows"] = [r for r in rows["rows"]
+                                    if r["flow"] in allowed]
+                return self._json(200, {"base": rows["base"],
+                                        "tiers": [{"id": k, "label": v["label"],
+                                                   "seats": v["seats"],
+                                                   "rounds": v["rounds"],
+                                                   "outline": v["outline"]}
+                                                  for k, v in review_tiers.TIERS.items()],
+                                        "rows": rows["rows"]})
+            if path == "/api/profile":
+                # 产品形态：前端据此决定导航显隐、默认流程与文案。
+                return self._json(200, profile.describe())
+            if path == "/api/profiles":
+                # 形态清单：启动器 / 版本切换器据此列出可选版本。
+                return self._json(200, profile.describe_all())
             if path == "/api/experts":
                 return self._json(200, {"experts": experts.list_experts()})
             if path == "/api/cloud/readiness":
@@ -1098,6 +1151,32 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 from core import covergen
                 return self._json(200, {"ok": True,
                                         "prompt": covergen._cover_prompt(task)})
+            m = re.match(r"^/api/tasks/([^/]+)/writing$", path)
+            if m:
+                # 已写字数：作者端最在意的一行。target 是承诺，words 是事实。
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core import writing
+                return self._json(200, writing.cached_summary(task))
+            if path == "/api/writing/counts":
+                # 书架批量取字数（?ids=a,b,c）。只回传请求的 id，避免把整个
+                # 数据目录的稿子都扫一遍。
+                from core import writing
+                query = parse_qs(urlparse(self.path).query)
+                ids = [x.strip() for x in (query.get("ids") or [""])[0].split(",")
+                       if x.strip()]
+                if not ids:
+                    return self._json(400, {"error": "ids 不能为空"})
+                tasks = [t for t in (store.get_task(i) for i in ids[:80]) if t]
+                return self._json(200, {"counts": writing.counts_for(tasks)})
+            if path == "/api/publish/stats":
+                # 发布成功率（产品级指标 ≥95%）：只统计内容动作，草稿单算。
+                from core.publish import stats as pub_stats
+                query = parse_qs(urlparse(self.path).query)
+                days = (query.get("days") or ["7"])[0]
+                task_id = (query.get("task") or [""])[0]
+                return self._json(200, pub_stats.summary(days=days, task_id=task_id))
             if path == "/api/publish":
                 # 一键发布：平台连接状态 + 最近台账（详情页发布面板）
                 from core.publish import manager as pub
@@ -1138,6 +1217,74 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 # 自动发布视图：待发清单统计 + 护栏状态 + 批量发布进度
                 from core.publish import auto as pub_auto
                 return self._json(200, pub_auto.status(m.group(1)))
+            m = re.match(r"^/api/publish/task/([^/]+)/manual-kit$", path)
+            if m:
+                # 手动发布包（人工兜底）：机器人在平台上点不动时，把建书字段和
+                # 按平台规格切好的正文原样交给作者，让他自己发一次。整条路径
+                # 只读文件、不连平台、不起浏览器——保命出口不能再出故障。
+                # ?format=txt 直接下载纯文本；默认 JSON 给界面渲染。
+                from core.publish import kit as pub_kit
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "任务不存在"})
+                q = parse_qs(urlparse(self.path).query)
+                plat = str((q.get("platform") or ["fanqie"])[0]).strip()
+                if plat not in ("fanqie", "qimao"):
+                    return self._json(400, {"error": "platform 必须是 fanqie 或 qimao"})
+                data = pub_kit.build(task, plat)
+                if str((q.get("format") or ["json"])[0]).lower() == "txt":
+                    from urllib.parse import quote as _quote
+                    return self._send(
+                        200, pub_kit.render_text(data).encode("utf-8"),
+                        ctype="text/plain; charset=utf-8",
+                        headers={"Content-Disposition":
+                                 "attachment; filename*=UTF-8''%s"
+                                 % _quote(pub_kit.filename(data))})
+                return self._json(200, data)
+            m = re.match(r"^/api/publish/task/([^/]+)/outcome$", path)
+            if m:
+                # 结果回流（P1-2）：这本书在平台上怎么了 + 下次同题材开书时
+                # 提示词里会出现什么。preview 字段是可直接 grep 的成品文本
+                # ——「回流有没有真的进提示词」不该靠读代码判断。
+                from core.publish import outcome as pub_outcome
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "任务不存在"})
+                return self._json(200, pub_outcome.view(task))
+            # ---- 成稿台（P1-1）：要件清单 + 章节树 + 定稿导出
+            if path == "/api/dossier/tasks":
+                # 只列文档类任务；按创建时间倒序，最近改的排前面。
+                from core import dossier as dossier_mod
+                rows = [t for t in store.list_tasks(limit=200)
+                        if str(t.get("type") or "") in dossier_mod.DOSSIER_FLOWS]
+                rows.sort(key=lambda t: str(t.get("created_at") or ""), reverse=True)
+                return self._json(200, {"tasks": [dossier_mod.summarize(t)
+                                                  for t in rows[:80]]})
+            m = re.match(r"^/api/dossier/task/([^/]+)/export$", path)
+            if m:
+                # 定稿导出：只读稿件拼标题，不写盘、不调模型。没有正文回 409，
+                # 而不是导出一个只有标题的空文件。
+                from core import dossier as dossier_mod
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "任务不存在"})
+                text = dossier_mod.export_text(task)
+                if not text.strip():
+                    return self._json(409, {"error": "还没有正文可导出"})
+                from urllib.parse import quote as _quote
+                return self._send(
+                    200, text.encode("utf-8"),
+                    ctype="text/plain; charset=utf-8",
+                    headers={"Content-Disposition":
+                             "attachment; filename*=UTF-8''%s"
+                             % _quote(dossier_mod.filename(task))})
+            m = re.match(r"^/api/dossier/task/([^/]+)$", path)
+            if m:
+                from core import dossier as dossier_mod
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "任务不存在"})
+                return self._json(200, dossier_mod.build(task))
             m = re.match(r"^/api/tasks/([^/]+)/git$", path)
             if m:
                 # GIT 工作台全貌（详情页「版本」页签）：仓库状态聚合 + 任务隔离态
@@ -1285,8 +1432,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     installed=(q.get("installed") or [""])[0]))
             return self._json(404, {"error": "unknown api"})
         # 静态文件：单文件或 UI 子目录文件（如 icons/icon-192.png）；
-        # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越
+        # _static 内的 parents 校验确保解析后仍在 UI_DIR 内，防穿越。
+        # 目录式写法（/welcome/）补 index.html，地址栏里看不到文件名。
         name = path.lstrip("/")
+        if name.endswith("/"):
+            name += "index.html"
         if re.match(r"^[\w.-]+(/[\w.-]+)*$", name):
             return self._static(name)
         return self._json(404, {"error": "not found"})
@@ -1490,6 +1640,22 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 for name in totals:
                     totals[name] += int(result.get(name) or 0)
             return self._json(200, totals)
+        if path == "/api/profiles/active":
+            # 运行时切换形态：欢迎页点卡片、页面右上角「切换」都打这里。
+            # 只改本进程的入口页与 flows 白名单，不重启、不换端口——
+            # 已在跑的任务用的是创建时的 flow_snapshot，不受影响。
+            body = self._body() or {}
+            want = body.get("id") if isinstance(body, dict) else ""
+            pid = profile.switch_to(want)
+            if not pid:
+                return self._json(400, {
+                    "error": "未知的形态 id",
+                    "options": [s["id"] for s in profile.list_specs()]})
+            return self._json(200, {
+                "ok": True,
+                "profile": profile.describe(),
+                "entry": profile.ui_entry() or "index.html",
+            })
         if path == "/api/tasks":
             return self._api_create_task()
         m = re.match(r"^/api/tasks/([^/]+)/selection/serial$", path)
@@ -2418,6 +2584,29 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     skipped[p] = err
             return self._json(200, {"ok": True, "started": started,
                                     "skipped": skipped})
+        m = re.match(r"^/api/publish/task/([^/]+)/outcome$", path)
+        if m:
+            # 登记平台结果（人工，唯一可信来源：站内信/后台页面）。
+            # 走 store 顶层导入，别在这里 `from core import store`（同函数
+            # 下面还有别的路由要读 store，函数内 import 会把它变成局部名）。
+            from core.publish import outcome as pub_outcome
+            tid = m.group(1)
+            task = store.get_task(tid)
+            if not task:
+                return self._json(404, {"error": "任务不存在"})
+            body = self._body() or {}
+            try:
+                pub_outcome.record(
+                    task,
+                    str(body.get("platform") or "").strip(),
+                    str(body.get("stage") or "").strip(),
+                    quote=body.get("quote") or "",
+                    note=body.get("note") or "",
+                    reads=body.get("reads"),
+                )
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, pub_outcome.view(task))
         m = re.match(r"^/api/tasks/([^/]+)/(git-merge|git-discard)$", path)
         if m:
             return self._api_git_verdict(m.group(1), m.group(2))
@@ -3899,6 +4088,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             requested = task_request.parse(body.get("goal"), workdir=body.get("workdir") or "")
             if requested:
                 body = {**body, **requested}
+        # 形态收敛必须在这里拦，不能只靠前端不显示：/api/tasks 与 webhook 共用
+        # 这条链，只过滤界面等于留了一个绕过口。已经存在的任务续跑不走这里。
+        if isinstance(body, dict) and not profile.flow_allowed(body.get("type")):
+            allow = profile.current().get("flows") or []
+            return 400, {"error": "当前版本不支持这个任务类型（可用：%s）"
+                                  % "、".join(allow)}
         try:
             task = store.create_task(body)
         except ValueError as e:
@@ -4457,8 +4652,25 @@ def main():
     parser.add_argument("--status", action="store_true", help="code-map 只输出漂移状态")
     parser.add_argument("--host", default="127.0.0.1",
                         help="监听地址；默认 127.0.0.1 仅本机；显式传 0.0.0.0 才允许局域网访问")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=None,
+                        help="监听端口；默认 8765，形态可自带 default_port")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--profile", default="",
+                        help="产品形态（%s）；留空则按 上次选择 > 交互菜单 > default 解析"
+                             % "/".join(profile.names()))
+    parser.add_argument("--list-profiles", action="store_true",
+                        help="列出已注册形态（含 data/profiles/*.json）后退出")
+    parser.add_argument("--no-profile-prompt", action="store_true",
+                        help="启动时不弹形态选择菜单（等价 %s=1）" % profile.NO_PROMPT_VAR)
+    parser.add_argument("--new-profile", default="",
+                        help="新建一个形态定义文件后退出：--new-profile bid "
+                             "--profile-name 标书版 --profile-flows bid_doc,doc")
+    parser.add_argument("--profile-name", default="", help="新形态的显示名")
+    parser.add_argument("--profile-tagline", default="", help="新形态的一句话介绍")
+    parser.add_argument("--profile-flows", default="",
+                        help="新形态可见的流程 id，逗号分隔；留空继承 --extends 形态")
+    parser.add_argument("--extends", default=profile.DEFAULT,
+                        help="新形态继承自哪个形态（默认 %s）" % profile.DEFAULT)
     parser.add_argument("--trusted-proxy", action="store_true",
                         help="服务跑在 Cloudflare Tunnel/frp 等反代后面时开启："
                              "带转发头的回源请求必须带令牌，防止本机回源被当成 127.0.0.1 豁免")
@@ -4503,6 +4715,59 @@ def main():
     parser.add_argument("--mcp-remove", default="",
                         help="预览或移除已配置 MCP 名称；配合 --commit-mcp 写入设置")
     args = parser.parse_args()
+
+    # ---- 形态：列表 / 新建 两个只读命令先处理，它们不该弹出选择菜单 ----
+    if args.list_profiles:
+        from core import agents as agents_mod
+        table = profile.describe_all()
+        print("当前：%s" % table["active"])
+        print("%-10s %-18s %-10s %-8s %s" % ("id", "名称", "流程", "专家", "来源"))
+        for row in table["profiles"]:
+            spec = profile.spec(row["id"]) or {}
+            flow_desc = "%d 个" % row["flow_count"] if row["flow_count"] is not None else "全部"
+            # 专家数按「这一版实际会看到几个」算，不是内置表有多少个
+            shown = agents_mod.describe_all(
+                include_hidden=bool(spec.get("drafts")),
+                only=spec.get("agents"))["agents"]
+            if spec.get("flows"):
+                allow = set(spec["flows"])
+                shown = [a for a in shown if a["flow"] in allow]
+            origin = "内置" if row["builtin"] else "data/profiles"
+            mark = " *" if row["active"] else "  "
+            print("%-10s %-18s %-10s %-8s %s%s"
+                  % (row["id"], row["name"], flow_desc,
+                     "%d 个" % len(shown), origin, mark))
+        print("\n新增：%s" % profile.SCAFFOLD_HINT)
+        return
+
+    if args.new_profile:
+        picked = [x.strip() for x in re.split(r"[\s,]+", args.profile_flows) if x.strip()]
+        try:
+            path = profile.scaffold(args.new_profile, name=args.profile_name,
+                                    flows=picked or None,
+                                    tagline=args.profile_tagline,
+                                    extends=args.extends)
+        except profile.ProfileError as exc:
+            raise SystemExit(str(exc))
+        print("已生成：%s" % path)
+        print("启动：python app/main.py --profile %s" % path.stem)
+        return
+
+    # 形态必须在任何 flows 渲染 / 界面入口之前定下来。
+    # 一次性 CLI 子命令（能力导出、插件、MCP、code-map）不做交互选择。
+    one_shot = bool(args.capabilities or args.run_capabilities or args.plugin_install
+                    or args.plugin_enable or args.mcp_export or args.mcp_register
+                    or args.mcp_catalog or args.mcp_install or args.mcp_remove)
+    allow_prompt = (args.command is None) and not one_shot and not args.no_profile_prompt
+    try:
+        applied, why = profile.select(args.profile, allow_prompt=allow_prompt)
+    except profile.ProfileError as exc:
+        print("[profile] %s" % exc, file=sys.stderr)
+        raise SystemExit(2)
+    print("[profile] %s · %s（来源：%s）"
+          % (profile.describe()["name"], applied, why), file=sys.stderr)
+    if args.port is None:
+        args.port = profile.default_port()
 
     if args.command == "scaffold-adapter":
         from core import adapter_scaffold

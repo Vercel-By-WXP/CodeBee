@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>蜂群 · CodeBee</title>
+<link rel="stylesheet" href="/hive/hive.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#/" id="brand-link">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l7.5 4.5v9L12 21l-7.5-4.5v-9z"/>
+        <path d="M12 8.2l3.6 2.1v4.2L12 16.6l-3.6-2.1v-4.2z"/>
+      </svg>
+    </span>
+    <span id="brand-name">CodeBee</span>
+  </a>
+  <div class="topbar-right">
+    <span id="conn-dot" class="conn-dot" title="正在连接"></span>
+    <a class="btn btn-ghost btn-switch" href="/welcome/" title="换一个产品形态">切换</a>
+    <button id="btn-refresh" class="btn btn-ghost" type="button">刷新</button>
+  </div>
+</header>
+
+<div class="shell">
+
+  <aside class="rail" aria-label="专家">
+    <div class="rail-head">
+      <p class="rail-title">专家</p>
+      <p class="rail-sub" id="rail-sub">按职责分组</p>
+    </div>
+    <nav id="rail-list" class="rail-list"></nav>
+    <p class="rail-foot">同一个内核，每个专家只管一件事。</p>
+  </aside>
+
+  <main class="stage">
+
+    <!-- 总览：所有专家 -->
+    <section id="view-hub" class="view">
+      <div class="stage-head">
+        <h1>今天找谁干活</h1>
+        <p class="stage-sub">每个专家只优化一件事。<span id="hub-count"></span></p>
+      </div>
+      <div id="hub-groups" class="groups"></div>
+    </section>
+
+    <!-- 单个专家的工作台 -->
+    <section id="view-agent" class="view hidden">
+      <div class="stage-head">
+        <a class="back" href="#/" id="btn-back">← 全部专家</a>
+        <div class="agent-head">
+          <div>
+            <p class="agent-kind" id="agent-kind">创作台</p>
+            <h1 id="agent-name">—</h1>
+            <p class="agent-focus" id="agent-focus"></p>
+          </div>
+          <button class="btn btn-primary" type="button" id="btn-start">开一个任务</button>
+        </div>
+        <dl class="agent-facts" id="agent-facts"></dl>
+      </div>
+
+      <div id="agent-panels" class="panels"></div>
+
+      <div id="agent-empty" class="empty hidden">
+        <p class="empty-title">这个专家还没干过活</p>
+        <p class="empty-sub" id="agent-empty-sub">点右上角开第一个任务，它会按自己的标准来审。</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- 通用任务表单：字段由 agent 定义驱动，不为每个流程写一套 -->
+<div id="mask" class="mask hidden" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="dlg-title">开一个任务</h2>
+      <button class="icon-btn" type="button" id="btn-close" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <label class="field">
+      <span class="label" id="dlg-goal-label">要做什么</span>
+      <textarea id="dlg-goal" rows="5"></textarea>
+      <span class="hint" id="dlg-hint"></span>
+    </label>
+    <div class="sheet-foot">
+      <p class="msg" id="dlg-msg"></p>
+      <button class="btn btn-primary" type="button" id="dlg-submit">交给它</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+<script src="/hive/hive.js"></script>
+</body>
+</html>

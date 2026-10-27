@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-surface="ink" data-density="comfy">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 设计展厅</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  .shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    height: 100vh; height: 100dvh;
+  }
+  .left {
+    border-right: 1px solid var(--line);
+    background: var(--bg-sunken);
+    display: flex; flex-direction: column;
+    padding: var(--s-4) var(--s-3); gap: var(--s-1);
+    overflow-y: auto;
+  }
+  .left h2 { font-size: var(--t-caption); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-3); margin: var(--s-2) var(--s-2) var(--s-2); }
+  .nav {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .nav button {
+    display: flex; align-items: center; gap: var(--s-3);
+    padding: var(--s-3); border-radius: var(--r-2);
+    color: var(--text-2); font-size: var(--t-small); text-align: left;
+    border-left: 3px solid transparent;
+    transition: background var(--dur-1), color var(--dur-1);
+  }
+  .nav button .ni { width: 18px; height: 18px; flex:0 0 auto; color: var(--text-3); }
+  .nav button:hover { background: var(--surface-2); color: var(--text); }
+  .nav button.is-on { background: var(--accent-soft); color: var(--text); border-left-color: var(--accent); }
+  .nav button.is-on .ni { color: var(--accent); }
+  .left-foot { margin-top: auto; padding: var(--s-3) var(--s-2); font-size: var(--t-caption); color: var(--text-3); line-height:1.5; }
+
+  .right { display: flex; flex-direction: column; min-width: 0; }
+  .top {
+    display: flex; align-items: center; gap: var(--s-3);
+    padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .top .title { font-size: var(--t-small); font-weight: var(--w-semi); }
+  .top .meta { font-size: var(--t-caption); color: var(--text-3); }
+  .frame-wrap {
+    flex: 1 1 auto; min-height: 0; overflow: auto;
+    background: var(--bg-sunken);
+    display: flex; justify-content: center; align-items: flex-start;
+    padding: var(--s-6);
+  }
+  .frame-edge {
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-4);
+    overflow: hidden;
+    box-shadow: var(--sh-pop);
+    transition: width var(--dur-3) var(--ease-in-out), height var(--dur-3) var(--ease-in-out);
+    width: 100%; height: 100%;
+  }
+  .frame-edge iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .frame-edge.w-1440 { width: 1440px; max-width: 100%; height: calc(100vh - 150px); }
+  .frame-edge.w-1024 { width: 1024px; max-width: 100%; height: 768px; }
+  .frame-edge.w-390 { width: 390px; height: 780px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-hive" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M12 2.5l7 4v9l-7 4-7-4v-9z"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5 6.5l7 4 7-4M12 10.5V21"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20l4-1 10-10-3-3L5 16l-1 4zM14 6l3 3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3h7l4 4v14H7zM14 3v4h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V4M4 20h16M8 16l3-4 3 2 4-6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/></symbol>
+    <symbol id="i-open" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M20 4l-8 8M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+  <nav class="left">
+    <a class="brand" href="#" style="padding:0 var(--s-2) var(--s-3);"><svg class="brand-mark"><use href="#i-hive"/></svg><span class="brand-name">CodeBee</span><span class="brand-ver">v0.1</span></a>
+    <h2>设计展厅</h2>
+    <div class="nav" id="nav">
+      <button data-page="welcome" data-name="欢迎页" class="is-on"><svg class="ni"><use href="#i-hive"/></svg>欢迎页</button>
+      <button data-page="workbench" data-name="执行台"><svg class="ni"><use href="#i-code"/></svg>执行台</button>
+      <button data-page="novel" data-name="创作台"><svg class="ni"><use href="#i-pen"/></svg>创作台</button>
+      <button data-page="dossier" data-name="成稿台"><svg class="ni"><use href="#i-doc"/></svg>成稿台</button>
+      <button data-page="radar" data-name="分析洞察台"><svg class="ni"><use href="#i-chart"/></svg>分析洞察台</button>
+      <button data-page="settings" data-name="设置"><svg class="ni"><use href="#i-set"/></svg>设置</button>
+    </div>
+    <div class="left-foot">
+      六页共用一套 tokens：<br>
+      paper / ink 双表面 · 蓝紫渐变身份<br>
+      圆角 8 / 12 / 16 · 1px 描边分层
+    </div>
+  </nav>
+
+  <div class="right">
+    <header class="top">
+      <div class="grow">
+        <div class="title" id="ptitle">欢迎页</div>
+        <div class="meta" id="pmeta">pages/welcome.html</div>
+      </div>
+      <div class="segmented" id="widthSeg">
+        <button data-w="1440" class="is-on">1440</button>
+        <button data-w="1024">1024</button>
+        <button data-w="390">390</button>
+      </div>
+      <button class="icon-btn" id="tt" title="明暗"><svg id="ttI"><use href="#i-sun"/></svg></button>
+      <a class="btn btn-outline btn-sm" id="openLink" href="pages/welcome.html" target="_blank"><svg style="width:14px;height:14px"><use href="#i-open"/></svg>打开</a>
+    </header>
+
+    <div class="frame-wrap">
+      <div class="frame-edge w-1440" id="edge">
+        <iframe id="frame" src="pages/welcome.html"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const root = document.documentElement;
+  const frame = document.getElementById('frame');
+  const edge = document.getElementById('edge');
+  const nav = document.getElementById('nav');
+  let surface = 'ink';
+  let userToggled = false;
+
+  // 同步明暗到 iframe（仅用户手动切换后才统一覆盖页面默认）
+  function syncSurface() {
+    if (userToggled) frame.contentWindow.postMessage({ surface }, '*');
+  }
+  document.getElementById('tt').addEventListener('click', () => {
+    userToggled = true;
+    surface = root.getAttribute('data-surface') === 'ink' ? 'paper' : 'ink';
+    root.setAttribute('data-surface', surface);
+    document.getElementById('ttI').innerHTML = surface === 'ink' ? '<use href="#i-sun"/>' : '<use href="#i-moon"/>';
+    syncSurface();
+  });
+
+  // 切换视图
+  nav.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    nav.querySelectorAll('button').forEach(b => b.classList.remove('is-on'));
+    btn.classList.add('is-on');
+    const page = btn.dataset.page;
+    document.getElementById('ptitle').textContent = btn.dataset.name;
+    document.getElementById('pmeta').textContent = 'pages/' + page + '.html';
+    document.getElementById('openLink').href = 'pages/' + page + '.html';
+    frame.src = 'pages/' + page + '.html';
+    frame.onload = syncSurface;
+  });
+
+  // 切换宽度
+  document.getElementById('widthSeg').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    document.querySelectorAll('#widthSeg button').forEach(b => b.classList.remove('is-on'));
+    btn.classList.add('is-on');
+    edge.className = 'frame-edge w-' + btn.dataset.w;
+  });
+</script>
+</body>
+</html>
