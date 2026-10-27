@@ -3,23 +3,23 @@
    目标是一眼看出「哪一项缺了」，而不是好看。 */
 
 :root {
-  --paper: #F5F4EF;
-  --card: #FFFFFF;
-  --ink: #1D2321;
-  --ink-2: #5E6663;
-  --ink-3: #98A09C;
-  --accent: #2C5A66;
-  --accent-soft: #E6EEEF;
-  --line: rgba(29, 35, 33, 0.10);
-  --line-strong: rgba(29, 35, 33, 0.18);
-  --ok: #2F7A4F;
-  --ok-soft: #E7F2EB;
-  --warn: #A97512;
-  --warn-soft: #F7EEDC;
-  --bad: #A8322B;
-  --bad-soft: #F7E7E4;
+  --paper: #f4f7fb;
+  --card: rgba(255, 255, 255, 0.92);
+  --ink: #10253d;
+  --ink-2: #4f637c;
+  --ink-3: #8499ad;
+  --accent: #2b7fd6;
+  --accent-soft: rgba(43, 127, 214, 0.10);
+  --line: rgba(16, 37, 61, 0.11);
+  --line-strong: rgba(16, 37, 61, 0.20);
+  --ok: #139878;
+  --ok-soft: rgba(19, 152, 120, 0.10);
+  --warn: #b07d18;
+  --warn-soft: rgba(176, 125, 24, 0.12);
+  --bad: #d63c55;
+  --bad-soft: rgba(214, 60, 85, 0.10);
   --serif: Georgia, "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
-  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
   --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   --r: 12px;
 }
@@ -52,7 +52,7 @@ html, body {
   gap: 16px;
   height: 60px;
   padding: 0 28px;
-  background: rgba(245, 244, 239, 0.92);
+  background: rgba(244, 247, 251, 0.92);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
@@ -114,7 +114,7 @@ html, body {
   background: var(--accent);
   color: #fff;
 }
-.btn-primary:hover { background: #244b55; }
+.btn-primary:hover { background: #1f6fc4; }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ---------- 布局 ---------- */
@@ -159,7 +159,7 @@ html, body {
 .rail-item.is-on {
   background: var(--card);
   border-color: var(--line);
-  box-shadow: 0 1px 2px rgba(29, 35, 33, 0.05);
+  box-shadow: 0 1px 2px rgba(16, 37, 61, 0.05);
 }
 .rail-item .t {
   display: block;
@@ -263,7 +263,7 @@ html, body {
 .summary .state.ok { color: var(--ok); background: var(--ok-soft); }
 .summary .state.warn { color: var(--warn); background: var(--warn-soft); }
 .summary .state.blocked { color: var(--bad); background: var(--bad-soft); }
-.summary .state.empty { color: var(--ink-3); background: rgba(29, 35, 33, 0.05); }
+.summary .state.empty { color: var(--ink-3); background: rgba(16, 37, 61, 0.05); }
 .summary .stat { font-size: 13px; color: var(--ink-2); }
 .summary .stat b { font-family: var(--mono); color: var(--ink); font-weight: 600; }
 .summary .stat.bad b { color: var(--bad); }
@@ -311,7 +311,7 @@ html, body {
   font-size: 13px;
   color: var(--ink-2);
 }
-.tree-row:hover { background: rgba(44, 90, 102, 0.05); }
+.tree-row:hover { background: rgba(43, 127, 214, 0.05); }
 .tree-row .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row .tw { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
 .tree-row.lv1 .tt { color: var(--ink); font-weight: 600; }
@@ -337,7 +337,7 @@ html, body {
   padding: 9px 8px;
   border-radius: 9px;
 }
-.chk:hover { background: rgba(44, 90, 102, 0.04); }
+.chk:hover { background: rgba(43, 127, 214, 0.04); }
 
 .chk .dot {
   flex: 0 0 auto;
@@ -355,7 +355,7 @@ html, body {
 }
 .chk.is-present .dot { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
 .chk.is-missing .dot { background: var(--bad-soft); border-color: transparent; color: var(--bad); }
-.chk.is-unknown .dot { background: rgba(29, 35, 33, 0.04); }
+.chk.is-unknown .dot { background: rgba(16, 37, 61, 0.04); }
 
 .chk-main { flex: 1; min-width: 0; }
 .chk-top {
@@ -416,4 +416,10 @@ html, body {
   .grid { grid-template-columns: 1fr; }
   .stage { padding: 20px 18px 50px; }
   .doc-head { flex-direction: column; }
+}
+/* ---------- v2 签名：输入聚焦环 ---------- */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
