@@ -1,0 +1,246 @@
+/* ==========================================================================
+   CodeBee Design Tokens · v2  "CodeBee，提质感"
+   --------------------------------------------------------------------------
+   这版不是另起炉灶，而是把现有 CodeBee（app/ui/style.css）的真实基因提纯：
+
+   继承（不废）：
+     · 中性灰底（暗 #212121 系 / 亮 #f4f7fb 系）
+     · 蓝→紫双强调：--accent #5b8cff / --accent2 #8b5cf6，这是 CodeBee 招牌
+     · 透明白面板（light: rgba(255,255,255,.88)）
+     · 1px 描边分层，border-left 3px accent 作选中标记（沿用 .bee-digest 手法）
+     · 圆润亲和（不是硬朗工业风）
+     · 字体 Segoe UI Variable + 中文回退
+
+   提质感（治 low）：
+     · 圆角收敛：原 10/14/20 → 8/12/16，更利落但仍圆润
+     · 阴影收紧：原 0 18px 48px 大扩散 → 更冷更收（去暖、降扩散、降透明）
+     · 强化"蓝紫渐变"为唯一品牌身份：品牌标记 / 主 CTA / 进度条 / 当前项用
+     · 建立严格字阶与 4px 间距节奏，层级靠字号+字重+颜色衰减，不靠阴影堆
+
+   变量名与 base/components 已约定好，改这里全站生效。
+   ========================================================================== */
+
+:root {
+  /* ---------- 间距：4 基数，全站只用这些 ---------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-14: 56px;
+  --s-16: 64px;
+  --s-20: 80px;
+
+  /* ---------- 圆角：三档 + pill。原 10/14/20 收敛为 8/12/16 ---------- */
+  --r-1: 5px;    /* 小标签、kbd、徽标、状态点容器 */
+  --r-2: 8px;    /* 控件：按钮 / 输入 / 下拉 / 分段器 */
+  --r-3: 12px;   /* 卡片、面板、列表项、表格 */
+  --r-4: 16px;   /* 只有最外层浮层与模态 */
+  --r-pill: 999px;
+
+  /* ---------- 字体：沿用 CodeBee 的 Segoe UI Variable 路线 ---------- */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI",
+    "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans CJK SC", system-ui, sans-serif;
+  /* 衬线只给稿件正文，不碰界面 */
+  --font-serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC",
+    Georgia, "SimSun", serif;
+  /* 等宽给数字、ID、代码。数字并排必须等宽 */
+  --font-mono: "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas,
+    ui-monospace, monospace;
+
+  /* ---------- 字阶：十档 ---------- */
+  --f-11: 11px;
+  --f-12: 12px;
+  --f-13: 13px;
+  --f-14: 14px;
+  --f-15: 15px;
+  --f-16: 16px;
+  --f-19: 19px;
+  --f-24: 24px;
+  --f-32: 32px;
+  --f-40: 40px;
+
+  /* ---------- 行高 ---------- */
+  --lh-tight: 1.2;
+  --lh-snug: 1.42;
+  --lh-ui: 1.55;
+  --lh-body: 1.72;
+  --lh-read: 1.82;
+
+  /* ---------- 字重 ---------- */
+  --w-normal: 400;
+  --w-medium: 500;
+  --w-semi: 600;
+  --w-bold: 700;
+
+  /* ---------- 动效：只动 transform / opacity / color ---------- */
+  --ease-out: cubic-bezier(0.22, 0.72, 0.24, 1);
+  --ease-in-out: cubic-bezier(0.5, 0, 0.2, 1);
+  --dur-1: 90ms;
+  --dur-2: 150ms;
+  --dur-3: 240ms;
+
+  /* ---------- 骨架：四个页面同一套数 ---------- */
+  --topbar-h: 52px;
+  --rail-w: 52px;
+  --side-w: 240px;
+  --aside-w: 288px;
+  --page-max: 1120px;
+  --read-w: 34em;
+
+  /* ---------- 控件高度：三档 ---------- */
+  --h-sm: 26px;
+  --h-ctl: 32px;
+  --h-lg: 38px;
+
+  --z-sticky: 20;
+  --z-pop: 40;
+  --z-modal: 60;
+}
+
+/* ==========================================================================
+   paper —— 对应 CodeBee 经典「日间」。内容型页面的默认底。
+   沿用经典 light 的调色板，只把 accent 提亮一档更精神、把阴影调冷。
+   ========================================================================== */
+[data-surface="paper"] {
+  --bg: #f4f7fb;
+  --bg-sunken: #eef3f8;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-2: #eef3f8;
+  --surface-3: #e4ecf4;
+
+  --line: rgba(21, 49, 78, 0.11);
+  --line-2: rgba(21, 49, 78, 0.20);
+  --line-3: rgba(21, 49, 78, 0.34);
+  --line-focus: rgba(22, 125, 206, 0.55);
+
+  --text: #10253d;
+  --text-2: #4f637c;
+  --text-3: #8499ad;
+  --text-inverse: #f4f7fb;
+
+  /* 蓝紫双强调 —— CodeBee 招牌 */
+  --accent: #2b7fd6;
+  --accent-2: #8b5cf6;
+  --accent-hover: #1f6fc4;
+  --accent-soft: rgba(43, 127, 214, 0.10);
+  --accent-line: rgba(43, 127, 214, 0.30);
+  --accent-fg: #ffffff;
+  /* 品牌身份渐变：蓝→紫 */
+  --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
+
+  --ok: #139878;
+  --ok-soft: rgba(19, 152, 120, 0.10);
+  --ok-line: rgba(19, 152, 120, 0.28);
+  --warn: #b07d18;
+  --warn-soft: rgba(176, 125, 24, 0.12);
+  --warn-line: rgba(176, 125, 24, 0.28);
+  --bad: #d63c55;
+  --bad-soft: rgba(214, 60, 85, 0.10);
+  --bad-line: rgba(214, 60, 85, 0.26);
+
+  /* 主按钮：近深蓝黑，不是渐变（渐变留给品牌身份本身） */
+  --btn: #142d49;
+  --btn-hover: #1e3f63;
+  --btn-fg: #ffffff;
+
+  /* 阴影收紧、调冷 */
+  --sh-1: 0 1px 2px rgba(15, 30, 55, 0.05);
+  --sh-pop: 0 12px 32px -8px rgba(15, 30, 55, 0.18), 0 2px 6px rgba(15, 30, 55, 0.05);
+  --sh-modal: 0 24px 64px -16px rgba(15, 30, 55, 0.30), 0 4px 12px rgba(15, 30, 55, 0.08);
+
+  --scrim: rgba(16, 37, 61, 0.34);
+  --grid-line: rgba(21, 49, 78, 0.055);
+  --halo: rgba(76, 99, 214, 0.07);
+}
+
+/* ==========================================================================
+   ink —— 对应 CodeBee 经典「夜间」。执行、盯屏、长时操作的默认。
+   沿用中性灰 + 亮蓝紫；面板改用半透明白叠加，比实心 #2f2f2f 更通透现代。
+   ========================================================================== */
+[data-surface="ink"] {
+  --bg: #1b1d22;
+  --bg-sunken: #15171b;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.075);
+  --surface-3: rgba(255, 255, 255, 0.115);
+
+  --line: rgba(255, 255, 255, 0.085);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --line-3: rgba(255, 255, 255, 0.26);
+  --line-focus: rgba(123, 160, 255, 0.62);
+
+  --text: #eceef1;
+  --text-2: #a8b0bb;
+  --text-3: #767e8a;
+  --text-inverse: #15171b;
+
+  --accent: #6b9bff;
+  --accent-2: #a07cf6;
+  --accent-hover: #84acff;
+  --accent-soft: rgba(107, 155, 255, 0.12);
+  --accent-line: rgba(107, 155, 255, 0.34);
+  --accent-fg: #0e1014;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
+
+  --ok: #34c98e;
+  --ok-soft: rgba(52, 201, 142, 0.12);
+  --ok-line: rgba(52, 201, 142, 0.3);
+  --warn: #f5b942;
+  --warn-soft: rgba(245, 185, 66, 0.12);
+  --warn-line: rgba(245, 185, 66, 0.3);
+  --bad: #f0566a;
+  --bad-soft: rgba(240, 86, 106, 0.12);
+  --bad-line: rgba(240, 86, 106, 0.3);
+
+  --btn: #f3f5f8;
+  --btn-hover: #ffffff;
+  --btn-fg: #15171b;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --sh-pop: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --sh-modal: 0 28px 70px -18px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+
+  --scrim: rgba(6, 8, 11, 0.66);
+  --grid-line: rgba(255, 255, 255, 0.05);
+  --halo: rgba(123, 125, 246, 0.12);
+}
+
+/* ==========================================================================
+   密度：只调纵向节奏，不改字号
+   ========================================================================== */
+[data-density="comfy"] {
+  --row-h: 42px;
+  --pad-card: var(--s-5);
+  --gap-stack: var(--s-4);
+}
+[data-density="compact"] {
+  --row-h: 34px;
+  --pad-card: var(--s-4);
+  --gap-stack: var(--s-3);
+}
+
+/* ==========================================================================
+   语义别名
+   ========================================================================== */
+:root {
+  --t-label: var(--f-11);
+  --t-caption: var(--f-12);
+  --t-small: var(--f-13);
+  --t-body: var(--f-14);
+  --t-body-lg: var(--f-15);
+  --t-lead: var(--f-16);
+  --t-h3: var(--f-19);
+  --t-h2: var(--f-24);
+  --t-h1: var(--f-32);
+  --t-display: var(--f-40);
+
+  --tracking-tight: -0.02em;
+  --tracking-caps: 0.09em;
+  --tracking-cjk: 0.01em;
+}

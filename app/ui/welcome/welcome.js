@@ -1,6 +1,7 @@
 /* 欢迎页：让用户在进产品之前先选形态。
-   数据全部来自 /api/profiles，新增一个 data/profiles/*.json 就会多一张卡，
-   这里不需要改代码。 */
+   数据全部来自 /api/profiles，新增一个 data/profiles/*.json 就会多一行，
+   这里不需要改代码。视觉按 v2 设计系统（app/ui/v2 三件套）渲染成
+   demo 定稿的「入口行」样式。 */
 
 (function () {
   "use strict";
@@ -26,7 +27,14 @@
     hive: "四原型分 tab"
   };
 
-  var MAX_CHIPS = 5;
+  var ICON = {
+    novel: "i-pen",
+    dossier: "i-doc",
+    default: "i-code",
+    hive: "i-hive"
+  };
+
+  var MAX_FLOWS = 3;
 
   var state = { profiles: [], last: "", busy: false };
 
@@ -39,7 +47,7 @@
   function msg(text, bad) {
     var box = $("msg");
     box.textContent = text || "";
-    box.className = bad ? "msg bad" : "msg";
+    box.className = bad ? "form-msg bad" : "form-msg";
   }
 
   async function api(path, opt) {
@@ -65,26 +73,20 @@
     });
   }
 
-  function chips(p) {
-    var names = p.flow_names || [];
-    var shown = names.slice(0, MAX_CHIPS);
-    var rest = names.length - shown.length;
-    var html = shown.map(function (n) {
-      return '<span class="chip">' + esc(n) + "</span>";
-    }).join("");
-    if (rest > 0) {
-      html += '<span class="chip more">+' + rest + "</span>";
+  /* 一行入口的描述：意图在前，工种清单收尾做佐证。 */
+  function desc(p) {
+    var parts = [INTENT[p.id] || "这个版本里的全部工种"];
+    var names = (p.flow_names || []).slice(0, MAX_FLOWS);
+    if (names.length) {
+      parts.push(names.join(" / "));
     }
-    if (!html) {
-      html = '<span class="chip more">全部工种</span>';
-    }
-    return '<div class="chips">' + html + "</div>";
+    return parts.join(" · ");
   }
 
-  function card(p, index) {
+  function entry(p, index) {
     var el = document.createElement("button");
     el.type = "button";
-    el.className = "card";
+    el.className = "entry";
     el.setAttribute("role", "listitem");
     /* 高亮跟着「用户上次的选择」走，不跟进程默认值走：
        首次打开时 active 一定是 default，若照它高亮，会让人以为
@@ -93,31 +95,29 @@
     el.setAttribute("aria-current", chosen ? "true" : "false");
     el.dataset.id = p.id;
 
-    var tagText = TAG[p.id] || (p.flow_count ? p.flow_count + " 个工种" : "自定义形态");
-    var intent = INTENT[p.id] || "这个版本里的全部工种";
-    var goText = chosen ? "继续 →" : "进入 →";
+    var tagText = chosen ? "上次用这个" : (TAG[p.id] || (p.flow_count ? p.flow_count + " 个工种" : "自定义形态"));
 
     el.innerHTML =
-      '<div class="card-head">' +
-        '<span class="card-key">' + (index + 1) + "</span>" +
-        '<span class="card-name">' + esc(p.name) + "</span>" +
-        '<span class="card-tag' + (chosen ? " on" : "") + '">' +
-          (chosen ? "上次用这个" : esc(tagText)) + "</span>" +
-      "</div>" +
-      '<div class="card-intent">' + esc(intent) + "</div>" +
-      (p.tagline ? '<div class="card-tagline">' + esc(p.tagline) + "</div>" : "") +
-      chips(p) +
-      '<div class="card-go">' + goText + "</div>";
+      '<span class="entry-ico"><svg viewBox="0 0 24 24"><use href="#' +
+        (ICON[p.id] || "i-hive") + '"/></svg></span>' +
+      '<span class="entry-main">' +
+        '<span class="entry-name">' + esc(p.name) +
+          '<span class="tag' + (chosen ? " tag-accent" : "") + '">' + esc(tagText) + "</span>" +
+        "</span>" +
+        '<span class="entry-desc">' + esc(desc(p)) + "</span>" +
+      "</span>" +
+      '<span class="entry-go"><kbd class="kbd">' + (index + 1) +
+        '</kbd><svg viewBox="0 0 24 24"><use href="#i-arrow"/></svg></span>';
 
     el.addEventListener("click", function () { enter(p); });
     return el;
   }
 
   function render() {
-    var box = $("cards");
+    var box = $("entries");
     box.innerHTML = "";
     state.profiles.forEach(function (p, i) {
-      box.appendChild(card(p, i));
+      box.appendChild(entry(p, i));
     });
   }
 
@@ -167,7 +167,26 @@
     enter(state.profiles[n - 1]);
   }
 
+  function wireTheme() {
+    var btn = $("theme-toggle");
+    var ico = $("theme-ico");
+    var root = document.documentElement;
+    function paint() {
+      var ink = root.getAttribute("data-surface") === "ink";
+      ico.innerHTML = ink ? '<use href="#i-sun"/>' : '<use href="#i-moon"/>';
+    }
+    paint();
+    btn.addEventListener("click", function () {
+      var ink = root.getAttribute("data-surface") === "ink";
+      var next = ink ? "paper" : "ink";
+      root.setAttribute("data-surface", next);
+      try { localStorage.setItem("wb.surface", next); } catch (e) { /* 忽略 */ }
+      paint();
+    });
+  }
+
   async function init() {
+    wireTheme();
     try {
       var data = await api("/api/profiles");
       state.profiles = sortRows(data.profiles || []);
