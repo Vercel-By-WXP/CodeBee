@@ -309,4 +309,31 @@ textarea:focus {
 .scrim {
   background: var(--scrim);
 }
+/* 顶栏：玻璃化（贴 demo 的透出底面手法） */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* 侧栏当前项：accent 软填充 + 左侧 3px 标记（demo 的 is-on 手法；
+   用内阴影画标记，不引入 border 免布局位移） */
+.qitem.active,
+.set-item.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* 图标导轨当前项 */
+.rail-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 侧栏搜索框圆角收敛 */
+.side-search {
+  border-radius: var(--r-sm);
+}
+
 } /* end ocean/classic component scope */
