@@ -129,6 +129,12 @@
   .entry-go svg { width: 18px; height: 18px; transition: transform var(--dur-2) var(--ease-out); }
   .entry:hover .entry-go { color: var(--text); }
   .entry:hover .entry-go svg { transform: translateX(3px); }
+  /* 窄屏：键盘序号与箭头列没有意义，收掉，名字不再被挤折行 */
+  @media (max-width: 480px) {
+    .entry { grid-template-columns: 40px 1fr; padding: var(--s-3) var(--s-3); }
+    .entry-go { display: none; }
+    .entry-name { flex-wrap: wrap; }
+  }
   /* 提示行（切换结果 / 错误）：不占布局，出现时才有高度 */
   .form-msg {
     max-width: 760px;
