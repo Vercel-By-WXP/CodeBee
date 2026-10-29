@@ -75,7 +75,13 @@ def _cover_prompt(task):
     """从任务与建书资料拼图像提示词：场景氛围向，不要文字（平台会自行压字）。
 
     素材优先级：章节事实抽取（真实剧情的人物/场景/意象）> 题材+简介。
-    poster-v2 借鉴：视觉元素来自 novel facts 才有「这是这本书的封面」的辨识度。"""
+    poster-v2 借鉴：视觉元素来自 novel facts 才有「这是这本书的封面」的辨识度。
+
+    生图任务（type=image）走另一条：task["image_prompt"] 是用户自己写的画面描述，
+    原样使用，不拼封面模板、不掺书名题材——否则画出来的不是他要的那张。"""
+    custom = str(task.get("image_prompt") or "").strip()
+    if custom:
+        return custom
     bm = ((task.get("book_meta") or {}).get("fanqie") or {}).get("data") or {}
     if not isinstance(bm, dict):
         bm = {}

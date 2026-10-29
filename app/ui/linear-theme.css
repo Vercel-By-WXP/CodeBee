@@ -1,0 +1,4411 @@
+/* =============================================================================
+   linear-theme.css — 工作台首页按 Linear DESIGN.md 重做
+   -----------------------------------------------------------------------------
+   规范来源：VoltAgent/awesome-design-md · design-md/linear.app/DESIGN.md
+            （已落地项目根 DESIGN.md，九段式 Stitch 规范）
+   应用范围：仅工作台首页 #page-home 及其子树；设置 / 文件 / 详情等其它页不动。
+   明暗支持：**浅色（默认）/ 深色双套配色**，跟着 html[data-theme] 走——
+            浅色＝白画布 + 极浅灰 surface；深色＝#0b0c0e 画布 + 四级 surface。
+            不再把首页钉死成深色（那样白顶栏配纯黑画布最刺眼）。
+   配色约定：Linear 原强调色是薰衣草蓝紫 #5e6ad2。按需求**去掉紫**——
+            通用/品牌强调 = 清爽蓝 #4c8dff；成稿台（原 --accent2 紫）= 青绿 #2dd4bf；
+            小说 = 琥珀 #d9a441；编码 = 绿 #27a644。四台仍有区分，但无紫。
+   层级手法：Linear 靠「四级 surface 阶梯 + 1px hairline 描边」，几乎不用投影。
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ 1. token */
+
+/* 1a. 与明暗无关的部分：圆角阶梯 + 字体栈 + 画布底色（底色取当前主题的 canvas） */
+html[data-layout="workbench"] #page-home {
+  --r-lg: 12px;
+  --r-md: 8px;
+  --r-sm: 6px;
+  --font-ui: "Inter", "Inter var", "Segoe UI Variable Text", "Segoe UI",
+    "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-display: "Inter", "Inter var", "Segoe UI Variable Display", "Segoe UI",
+    "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+
+  background: var(--lin-canvas, #fff) !important;
+  color: var(--lin-ink, #0a0b0d);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 1b. 浅色（默认）：纯白画布 + 纯白卡片，靠 1px 发丝边框分层（Vercel 的「白上白」）。
+       上一版卡片是 #f8f9fa 淡灰，五张灰块并排看着发闷、底色发脏，这一版全部转白。
+       浅色下强调色压深到 #3b74e8，白底上才够清晰。 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home {
+  --lin-canvas: #ffffff;
+  --lin-s1: #ffffff;
+  --lin-s2: #f7f8fa;
+  --lin-s3: #f1f3f5;
+  --lin-hairline: #e8eaee;
+  --lin-hairline-strong: #d6dae1;
+  --lin-ink: #0a0b0d;
+  --lin-ink-muted: #3d434b;
+  --lin-ink-subtle: #666d78;
+  --lin-ink-tertiary: #9aa1ab;
+  --lin-accent: #3b74e8;
+  --lin-accent-hover: #2f65d4;
+  --lin-teal: #0d9488;
+  --lin-amber: #b07d16;
+  --lin-green: #1a8f3c;
+  --lin-red: #d93a3f;
+
+  /* 就近覆盖全局 token：只影响本子树，不改设置等其它页 */
+  --bg: var(--lin-canvas);
+  --panel: var(--lin-s1);
+  --panel2: var(--lin-s2);
+  --panel3: var(--lin-s3);
+  --border: var(--lin-hairline);
+  --border-strong: var(--lin-hairline-strong);
+  --text: var(--lin-ink);
+  --muted: var(--lin-ink-subtle);
+  --accent: var(--lin-accent);
+  --accent2: var(--lin-teal);
+  --ok: var(--lin-green);
+  --warn: var(--lin-amber);
+  --bad: var(--lin-red);
+}
+
+/* 1c. 深色：近黑画布抬到 #0b0c0e（纯黑 #010102 太硬），保留四级 surface 阶梯 */
+html[data-layout="workbench"][data-theme="dark"] #page-home {
+  --lin-canvas: #0b0c0e;
+  --lin-s1: #141518;
+  --lin-s2: #191a1e;
+  --lin-s3: #202127;
+  --lin-hairline: #26282e;
+  --lin-hairline-strong: #383b43;
+  --lin-ink: #f7f8f8;
+  --lin-ink-muted: #d0d6e0;
+  --lin-ink-subtle: #8a8f98;
+  --lin-ink-tertiary: #62666d;
+  --lin-accent: #4c8dff;
+  --lin-accent-hover: #6fa6ff;
+  --lin-teal: #2dd4bf;
+  --lin-amber: #d9a441;
+  --lin-green: #27a644;
+  --lin-red: #e5484d;
+
+  --bg: var(--lin-canvas);
+  --panel: var(--lin-s1);
+  --panel2: var(--lin-s2);
+  --panel3: var(--lin-s3);
+  --border: var(--lin-hairline);
+  --border-strong: var(--lin-hairline-strong);
+  --text: var(--lin-ink);
+  --muted: var(--lin-ink-subtle);
+  --accent: var(--lin-accent);
+  --accent2: var(--lin-teal);
+  --ok: var(--lin-green);
+  --warn: var(--lin-amber);
+  --bad: var(--lin-red);
+}
+
+/* 首页可见时，把 main 的画布也铺成同一块底色，避免四周露另一层浅/深底。
+   ⚠️ 这里必须按主题各写一条：--lin-canvas 定义在 #page-home 上，
+   main 取不到（之前写 var(--lin-canvas, #010102) 的 fallback 会让浅色主题下也铺纯黑）。 */
+html[data-layout="workbench"]:not([data-theme="dark"]) main:has(> #page-home:not(.hidden)) {
+  background: #ffffff !important;
+}
+html[data-layout="workbench"][data-theme="dark"] main:has(> #page-home:not(.hidden)) {
+  background: #0b0c0e !important;
+}
+
+/* 台色（去紫版）：覆盖 simple-home.css 的四条 --ws-accent，同选择器但本文件后加载。
+   浅色一套（压深，白底可读）在前，深色一套在后——顺序不能换，
+   否则深色下会被浅色分支的 --ws-accent 压掉。 */
+html[data-layout="workbench"] { --ws-accent: #3b74e8; }
+html[data-layout="workbench"][data-workspace-mode="novel"] { --ws-accent: #b07d16; }
+html[data-layout="workbench"][data-workspace-mode="code"] { --ws-accent: #1a8f3c; }
+html[data-layout="workbench"][data-workspace-mode="dossier"] { --ws-accent: #0d9488; }
+html[data-layout="workbench"][data-workspace-mode="content"] { --ws-accent: #d6467a; }
+html[data-layout="workbench"][data-theme="dark"] { --ws-accent: #4c8dff; }
+html[data-layout="workbench"][data-theme="dark"][data-workspace-mode="novel"] { --ws-accent: #d9a441; }
+html[data-layout="workbench"][data-theme="dark"][data-workspace-mode="code"] { --ws-accent: #27a644; }
+html[data-layout="workbench"][data-theme="dark"][data-workspace-mode="dossier"] { --ws-accent: #2dd4bf; }
+html[data-layout="workbench"][data-theme="dark"][data-workspace-mode="content"] { --ws-accent: #f472b6; }
+
+/* 全局去紫：ocean 等皮肤的 --accent2 是 #a07cf6（紫），引导按钮、成稿台、部分组件都在用。
+   统一改青绿，第二品牌色不再带紫。用 !important 才压得过皮肤自身的 html[data-skin] 规则。 */
+html[data-layout="workbench"]:not([data-theme="dark"]) { --accent2: #0d9488 !important; }
+html[data-layout="workbench"][data-theme="dark"] { --accent2: #2dd4bf !important; }
+
+/* 浅色下的整体底色也收到纯白：顶栏、左栏、内容区同一块白，只靠发丝边框分结构。
+   原来是 #f4f7fb 的淡蓝灰，和白卡片拼在一起显得脏。深色主题不受影响。 */
+html[data-layout="workbench"]:not([data-theme="dark"]) {
+  --bg: #ffffff;
+  --sidebar: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f7f8fa;
+  --border: #e8eaee;
+}
+
+/* ------------------------------------------------------------ 2. 标题排版 */
+html[data-layout="workbench"] #page-home .rd-home-title {
+  font-family: var(--font-display);
+  font-size: 42px;
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -1.6px;
+  color: var(--lin-ink) !important;
+  margin: 0 0 10px;
+}
+html[data-layout="workbench"] #page-home .rd-home-sub {
+  font-size: 17px;
+  line-height: 1.5;
+  letter-spacing: -0.1px;
+  color: var(--lin-ink-subtle) !important;
+  max-width: 52em;
+}
+@media (max-width: 768px) {
+  html[data-layout="workbench"] #page-home .rd-home-title {
+    font-size: 30px;
+    letter-spacing: -0.9px;
+  }
+  html[data-layout="workbench"] #page-home .rd-home-sub { font-size: 15px; }
+}
+
+/* ------------------------------------------------------- 3. 大厅四张台卡 */
+html[data-layout="workbench"] #page-home .rd-mode-card {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  color: var(--lin-ink) !important;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+html[data-layout="workbench"] #page-home .rd-mode-card:hover {
+  background: var(--lin-s2) !important;
+  border-color: var(--lin-hairline-strong) !important;
+  transform: translateY(-1px);
+}
+html[data-layout="workbench"] #page-home .rd-mode-card.is-on {
+  background: var(--lin-s2) !important;
+  border-color: var(--ws-accent) !important;
+  box-shadow: inset 0 0 0 1px var(--ws-accent) !important;
+}
+html[data-layout="workbench"] #page-home .rd-mc-ico {
+  background: var(--lin-s2) !important;
+  color: var(--lin-accent) !important;
+  border-radius: 8px !important;
+}
+html[data-layout="workbench"] #page-home .rd-mode-card.is-on .rd-mc-ico {
+  background: var(--ws-accent) !important;
+  color: #fff !important;
+}
+html[data-layout="workbench"] #page-home .rd-mc-body b {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--lin-ink) !important;
+}
+html[data-layout="workbench"] #page-home .rd-mc-body small {
+  color: var(--lin-ink-subtle) !important;
+}
+
+/* ---------------------------------------------------------- 4. 输入卡/输入框 */
+html[data-layout="workbench"] #page-home .rd-input-card {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home .rd-input-card:focus-within {
+  border-color: var(--lin-accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lin-accent) 45%, transparent) !important;
+}
+/* composer 本体交还给外层卡片，去掉自己的底与边 */
+html[data-layout="workbench"] #page-home .cmp-box {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home .cmp-input,
+html[data-layout="workbench"] #page-home textarea {
+  color: var(--lin-ink) !important;
+  background: transparent !important;
+}
+html[data-layout="workbench"] #page-home .cmp-input::placeholder,
+html[data-layout="workbench"] #page-home textarea::placeholder {
+  color: var(--lin-ink-tertiary) !important;
+}
+/* 发送键：Linear 的 CTA 是 8px 圆角实心；原样式用渐变，必须同时清 background-image */
+html[data-layout="workbench"] #page-home #btn-create {
+  background: var(--lin-accent) !important;
+  background-image: none !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home #btn-create:hover {
+  background: var(--lin-accent-hover) !important;
+  background-image: none !important;
+}
+/* 输入条上的属性胶囊（类型 / +添加 / 工作目录）*/
+html[data-layout="workbench"] #page-home .cmp-pill,
+html[data-layout="workbench"] #page-home .cmp-wd {
+  background: var(--lin-s2) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  color: var(--lin-ink-muted) !important;
+  border-radius: 8px !important;
+}
+
+/* ------------------------------------------------------------ 5. 快速开始 */
+html[data-layout="workbench"] #page-home .rd-qs-btn {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 8px !important;
+  color: var(--lin-ink-muted) !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home .rd-qs-btn:hover {
+  background: var(--lin-s2) !important;
+  border-color: var(--lin-hairline-strong) !important;
+}
+html[data-layout="workbench"] #page-home .rd-qs-label {
+  color: var(--lin-ink-tertiary) !important;
+  letter-spacing: 0.4px;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------- 6. 区块标题/分隔 */
+html[data-layout="workbench"] #page-home .rd-section-head {
+  border-bottom: 1px solid var(--lin-hairline) !important;
+}
+html[data-layout="workbench"] #page-home .rd-section-head h2 {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.4px !important;
+  color: var(--lin-ink-subtle) !important;
+  text-transform: none;
+}
+html[data-layout="workbench"] #page-home .rd-link-btn {
+  color: var(--lin-ink-subtle) !important;
+}
+html[data-layout="workbench"] #page-home .rd-link-btn:hover {
+  color: var(--lin-accent) !important;
+}
+
+/* ---------------------------------------------------------- 7. 任务列表行 */
+html[data-layout="workbench"] #page-home .rd-task-list > * {
+  border-bottom: 1px solid var(--lin-hairline) !important;
+  background: transparent !important;
+}
+html[data-layout="workbench"] #page-home .rd-task-list > *:hover {
+  background: var(--lin-s1) !important;
+}
+html[data-layout="workbench"] #page-home .rd-task-name {
+  color: var(--lin-ink) !important;
+}
+html[data-layout="workbench"] #page-home .rd-task-title {
+  color: var(--lin-ink) !important;
+}
+html[data-layout="workbench"] #page-home .rd-task-meta,
+html[data-layout="workbench"] #page-home .rd-task-tag {
+  color: var(--lin-ink-subtle) !important;
+}
+
+/* --------------------------------------------------------- 8. 台内主区块卡 */
+html[data-layout="workbench"] #page-home .rd-domain-card,
+html[data-layout="workbench"] #page-home .rd-domain-new {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-card:hover,
+html[data-layout="workbench"] #page-home .rd-domain-new:hover {
+  background: var(--lin-s2) !important;
+  border-color: var(--lin-hairline-strong) !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-head b {
+  color: var(--lin-ink) !important;
+}
+
+/* ----------------------------------------------------------- 9. 工具宫格 */
+html[data-layout="workbench"] #page-home .rd-tool-grid > * {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home .rd-tool-grid > *:hover {
+  background: var(--lin-s2) !important;
+  border-color: var(--lin-hairline-strong) !important;
+}
+/* 图标底色跟着台色（去紫后由 --ws-accent 决定） */
+html[data-layout="workbench"] #page-home .rd-tool-ico {
+  color: var(--ws-accent) !important;
+  background: color-mix(in srgb, var(--ws-accent) 14%, transparent) !important;
+}
+html[data-layout="workbench"] #page-home .rd-tool-health .rd-tool-ico {
+  color: var(--lin-green) !important;
+  background: color-mix(in srgb, var(--lin-green) 14%, transparent) !important;
+}
+
+/* ------------------------------------------------------- 10. 统计四宫格 */
+html[data-layout="workbench"] #page-home .rd-ws-stats > * {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+/* --------------------------------------------------- 11. 总任务视图控件 */
+html[data-layout="workbench"] #page-home .rd-alltasks-sub {
+  color: var(--lin-ink-subtle) !important;
+}
+html[data-layout="workbench"] #page-home .rd-filter-label {
+  color: var(--lin-ink-subtle) !important;
+}
+html[data-layout="workbench"] #page-home .rd-filter-btn {
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  color: var(--lin-ink-muted) !important;
+  border-radius: 9999px !important;
+}
+html[data-layout="workbench"] #page-home .rd-filter-btn.is-on {
+  border-color: var(--lin-accent) !important;
+  color: var(--lin-accent) !important;
+  background: color-mix(in srgb, var(--lin-accent) 12%, transparent) !important;
+}
+
+/* ------------------------------------------------------ 12. 全局兜底文字色 */
+html[data-layout="workbench"] #page-home h1,
+html[data-layout="workbench"] #page-home h2,
+html[data-layout="workbench"] #page-home h3 {
+  color: var(--lin-ink);
+}
+html[data-layout="workbench"] #page-home ::selection {
+  background: color-mix(in srgb, var(--lin-accent) 28%, transparent);
+  color: inherit;
+}
+
+/* ==========================================================================
+   13. 版式 v4（2026-10-29）—— 抄大厂成熟形态，不自己发明版式
+   ---------------------------------------------------------------------------
+   参考对象（都只抄「信息怎么排」，不抄皮肤）：
+     · Vercel / Linear 的项目选择页 —— 限宽居中 + 卡片栅格 + 下方全宽「最近」列表
+     · Claude / ChatGPT 新会话页   —— 居中单列 + 一个主角输入框 + 建议卡片
+   两条铁律：
+     1) 内容宽度由「最佳阅读宽度」决定，不由屏幕宽度决定（1440 下也不摊成一整条）；
+     2) 每屏只有一个主角，其余元素降一档（少边框、少颜色、少字号）。
+   旧版问题：大厅做成两栏，左窄右更窄，右栏任务标题被压成小字；台内是「输入挤左、
+   工具占右、起手式半宽」的拼贴，重心散在三个角上。这一版全部拉回单列。
+   ========================================================================== */
+
+/* ------------------------------------------------------ 13.1 大厅：单列居中 */
+/* 内容区限宽 ---- 大厂做法：给内容一条明确的「阅读宽度」，两侧留白是刻意的 */
+html[data-layout="workbench"] #page-home:has(> #rd-lobby:not(.hidden)) > .rd-home-head,
+html[data-layout="workbench"] #page-home:has(> #rd-lobby:not(.hidden)) > #rd-lobby-recent,
+html[data-layout="workbench"] #page-home:has(> #rd-lobby:not(.hidden)) > #rd-alltasks {
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
+}
+html[data-layout="workbench"] #page-home #rd-lobby { margin-bottom: 2px; }
+html[data-layout="workbench"] #page-home #rd-lobby-title { margin-bottom: 10px !important; }
+
+/* 台卡栅格：三列（大厅限宽 1080 → 三列各 ~340px）。五台＝3+2，
+   像大厂模板库那样按行铺；auto-fit 会出现「4+1」把最后一张甩成孤岛，所以写死三列 */
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  margin-top: 30px !important;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mode-card {
+  position: relative;
+  padding: 24px 24px 22px !important;
+  min-height: 172px;
+  gap: 16px !important;
+  align-items: flex-start !important;
+  border-radius: 14px !important;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mode-card:hover {
+  transform: translateY(-2px);
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-ico {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 13px !important;
+  margin-top: 0;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-ico .ico {
+  width: 22px !important; height: 22px !important;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-body b {
+  font-size: 18px !important;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-body small {
+  font-size: 13.5px !important;
+  line-height: 1.5;
+  margin-top: 4px;
+  -webkit-line-clamp: 2 !important;
+}
+/* 关键词标签：扫一眼知道这台上装了什么，不用点进去试 */
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-tags i {
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--lin-ink-subtle);
+  background: var(--lin-s2);
+  border: 1px solid var(--lin-hairline);
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mc-go {
+  position: absolute;
+  top: 26px; right: 22px;
+  opacity: .55;
+}
+html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) .rd-mode-card:hover .rd-mc-go {
+  opacity: 1;
+}
+
+/* 「最近的活」：全宽接在台卡下面，行高给足，标题不再被挤成小字 */
+html[data-layout="workbench"] #page-home #rd-lobby-recent { margin-top: 40px; }
+html[data-layout="workbench"] #page-home #rd-lobby-recent .rd-section-head { margin-bottom: 12px; }
+html[data-layout="workbench"] #page-home #rd-lobby-recent-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 10px;
+}
+
+/* ------------------------------------------- 13.2 台内：居中单列 + 主角输入 */
+/* 台内也限宽，但比大厅窄——这一列只服务「说一句话」这件事 */
+html[data-layout="workbench"] #page-home > .rd-home-head:has(> #rd-entered-head:not(.hidden)),
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > #rd-ws-view {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* 标题左对齐：#page-home 是「列向 flex + 居中」，块级子元素会被收成内容宽度再居中，
+   看着像一块悬在中间的标题。让抬头占满整行、内部再按 900 限宽左对齐（大厂一律左对齐）。 */
+html[data-layout="workbench"] #page-home > .rd-home-head { align-items: stretch; width: 100%; }
+html[data-layout="workbench"] #page-home > .rd-home-head > #rd-lobby,
+html[data-layout="workbench"] #page-home > .rd-home-head > #rd-entered-head { width: 100%; }
+html[data-layout="workbench"] #page-home #rd-entered-head {
+  display: block;
+  text-align: left;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+html[data-layout="workbench"] #page-home #rd-entered-head .rd-back-btn { margin-bottom: 10px; }
+html[data-layout="workbench"] #page-home #rd-ws-title { font-size: 34px !important; }
+html[data-layout="workbench"] #page-home #rd-ws-sub { max-width: 60em; }
+
+html[data-layout="workbench"] #rd-ws-view {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+}
+html[data-layout="workbench"][data-workspace-mode="all"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="content"] #rd-ws-view {
+  grid-template-areas: "input" "qs" "tasks" "tools";
+}
+html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+  grid-template-areas: "domain" "input" "qs" "tasks" "tools";
+}
+
+/* 主角：输入卡。大厂这一屏的视觉重心永远是输入框，所以它最宽、最亮、圆角最大 */
+html[data-layout="workbench"] #page-home .rd-input-card {
+  padding: 8px !important;
+  border-radius: 16px !important;
+  background: var(--lin-s1) !important;
+  border: 1px solid var(--lin-hairline) !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-home .rd-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--ws-accent) 60%, var(--lin-hairline)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-accent) 12%, transparent) !important;
+}
+html[data-layout="workbench"] #page-home #rd-input-slot .cmp-box textarea,
+html[data-layout="workbench"] #page-home #rd-input-slot textarea {
+  font-size: 15.5px !important;
+  line-height: 1.65;
+  min-height: 76px;
+}
+
+/* 起手式：2×2，每张＝图标 + 一句话，说明不再挤成省略号 */
+html[data-layout="workbench"] #page-home #rd-qs-buttons {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+html[data-layout="workbench"] #page-home .rd-qs-btn.rd-start-card {
+  min-height: 78px;
+  padding: 15px 16px !important;
+  align-items: flex-start;
+  gap: 12px;
+}
+html[data-layout="workbench"] #page-home .rd-qs-btn.rd-start-card .rd-start-body b {
+  font-size: 14px;
+  line-height: 1.35;
+}
+html[data-layout="workbench"] #page-home .rd-qs-btn.rd-start-card .rd-start-body small {
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-top: 3px;
+  color: var(--lin-ink-subtle) !important;
+  white-space: normal;
+}
+
+/* 任务列表：一行一条，整行可点（大厂的活动列表形态） */
+html[data-layout="workbench"] #page-home .rd-recent-tasks { min-width: 0; margin-top: 12px; }
+html[data-layout="workbench"] #page-home #rd-recent-list {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+
+/* 工具：从「右栏一列卡」降级成一条工具条——四颗等宽，只留图标 + 名字 */
+html[data-layout="workbench"] #page-home #rd-tools { min-width: 0; margin-top: 12px; }
+html[data-layout="workbench"] #page-home #rd-tool-grid,
+html[data-layout="workbench"] #page-home .rd-tool-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+html[data-layout="workbench"] #page-home .rd-tool {
+  min-height: 46px;
+  padding: 10px 12px !important;
+  gap: 9px;
+  border-radius: 10px !important;
+}
+html[data-layout="workbench"] #page-home .rd-tool .rd-tool-text b { font-size: 13px; }
+html[data-layout="workbench"] #page-home .rd-tool .rd-tool-text i { display: none; }
+html[data-layout="workbench"] #page-home .rd-tool .rd-tool-go { display: none; }
+/* 工具条只有 46px 高，健康徽标（「正常」）会把名字挤断行——图标色已经表达状态，
+   徽标在这条里收起，要详情点进去看 */
+html[data-layout="workbench"] #page-home .rd-tool .rd-tool-badge { display: none; }
+
+/* 起手式：图标统一染上台色，卡片才有主次；上一版四个图标都是浅灰，看着像禁用 */
+html[data-layout="workbench"] #page-home .rd-qs-btn.rd-start-card .rd-start-ico {
+  color: var(--ws-accent) !important;
+  background: color-mix(in srgb, var(--ws-accent) 12%, transparent) !important;
+}
+
+/* 空状态：一块安静的提示区，不是一行孤零零的灰字 */
+html[data-layout="workbench"] #page-home .rd-empty {
+  padding: 36px 20px !important;
+  border: 1px dashed var(--lin-hairline-strong) !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  color: var(--lin-ink-subtle) !important;
+  font-size: 13.5px;
+  text-align: center;
+}
+
+/* 右栏「本台概览」：一个数都没跑过时整块收起（见 renderWsStats 的 is-empty） */
+html[data-layout="workbench"] #page-home #rd-ws-stats.is-empty { display: none !important; }
+html[data-layout="workbench"] #page-home #rd-ws-stats { margin-bottom: 14px; }
+
+/* ---------------------------------------- 13.3 总任务视图：同样限宽居中 */
+html[data-layout="workbench"] #page-home > #rd-alltasks {
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ------------------------------------------------------ 13.4 窄屏回退 */
+@media (max-width: 1180px) {
+  html[data-layout="workbench"] #page-home:has(> #rd-lobby:not(.hidden)) > .rd-home-head,
+  html[data-layout="workbench"] #page-home:has(> #rd-lobby:not(.hidden)) > #rd-lobby-recent { max-width: none; }
+  html[data-layout="workbench"] #page-home #rd-lobby-recent-list { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  html[data-layout="workbench"] #page-home #rd-mode-bar:not(.is-compact) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  html[data-layout="workbench"] #rd-ws-view { grid-template-areas: none; }
+  html[data-layout="workbench"] #page-home #rd-ws-view > * { grid-area: auto !important; }
+  html[data-layout="workbench"] #page-home #rd-qs-buttons { grid-template-columns: minmax(0, 1fr) !important; }
+  html[data-layout="workbench"] #page-home #rd-tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* ==========================================================================
+   14. 细节修正（2026-10-29 晚）
+   ---------------------------------------------------------------------------
+   ① 起手式被更早的一层压成了「一行胶囊 + 说明文字隐藏」——那正是用户说「说明按钮
+      看不懂」的根源。这里恢复成 2×2 卡片，每张都带一句「点了会发生什么」。
+   ② 输入卡在 900 宽的单列里被里面那层限宽挤成 488，居中后左右不齐，看着像没对齐。
+   ========================================================================== */
+
+/* ① 起手式：2×2 卡片，说明文字回来 */
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-quick-start {
+  display: block;
+  margin-top: 4px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card {
+  flex: none;
+  min-height: 80px;
+  padding: 15px 16px !important;
+  align-items: flex-start;
+  gap: 12px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: visible;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body b {
+  display: block;
+  font-size: 14px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body small {
+  display: block !important;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--lin-ink-subtle) !important;
+  white-space: normal;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-go { display: block; }
+
+/* ② 输入卡：占满这一列，别再被内层限宽收窄 */
+html[data-layout="workbench"] #page-home .rd-input-card,
+html[data-layout="workbench"] #page-home .rd-input-card #rd-input-slot,
+html[data-layout="workbench"] #page-home .rd-input-card .cmp-box {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+@media (max-width: 900px) {
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
+   14. 细节修正（2026-10-29 晚）
+   ---------------------------------------------------------------------------
+   ① 起手式被更早的一层压成了「一行胶囊 + 说明文字隐藏」——那正是用户说「说明按钮
+      看不懂」的根源。这里恢复成 2×2 卡片，每张都带一句「点了会发生什么」。
+   ② 输入卡在 900 宽的单列里被里面那层限宽挤成 488，居中后左右不齐，看着像没对齐。
+   ========================================================================== */
+
+/* ① 起手式：2×2 卡片，说明文字回来 */
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-quick-start {
+  display: block;
+  margin-top: 4px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card {
+  flex: none;
+  min-height: 80px;
+  padding: 15px 16px !important;
+  align-items: flex-start;
+  gap: 12px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: visible;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body b {
+  display: block;
+  font-size: 14px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body small {
+  display: block !important;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--lin-ink-subtle) !important;
+  white-space: normal;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-go { display: block; }
+
+/* ② 输入卡：占满这一列，别再被内层限宽收窄 */
+html[data-layout="workbench"] #page-home .rd-input-card,
+html[data-layout="workbench"] #page-home .rd-input-card #rd-input-slot,
+html[data-layout="workbench"] #page-home .rd-input-card .cmp-box {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+@media (max-width: 900px) {
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
+   15. 全站外壳收口（2026-10-29）—— 一起白，一起分层
+   ---------------------------------------------------------------------------
+   前面 13/14 只动了工作台首页，其它页（任务/文件/看板/设置…）还是旧皮肤的淡蓝灰，
+   切过去像换了个产品。这里把「白底 + 发丝边框 + 主次两级」推到整站外壳：
+   顶栏、左栏、抽屉、卡片全部同一块白，结构靠边框而不是靠灰底。
+   ========================================================================== */
+
+/* 15.1 浅色下补齐全局 token：ocean 皮肤的 --text/--muted 偏蓝灰，白底上发闷 */
+html[data-layout="workbench"]:not([data-theme="dark"]) {
+  --panel3: #f1f3f5;
+  --border-strong: #d6dae1;
+  --text: #0a0b0d;
+  --muted: #666d78;
+}
+
+/* 15.2 抽屉里的分组标签：日常 / 高级。分组的目的是「一屏只答三问」，
+   技术向入口收在「高级功能」后面，不再和主路径抢第一屏 */
+.side-group-label {
+  padding: 12px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--muted);
+  opacity: .7;
+  user-select: none;
+}
+.side-quick + .side-quick .side-group-label { padding-top: 6px; }
+
+/* 15.3 图标轨只留主路径：概览 / 运行记录 / 手机连接 下沉到抽屉「高级」里。
+   普通用户这一列只需要「工作台（五台）+ 任务 + 全部功能 + 设置」四类动作。 */
+html[data-layout="workbench"] .side-rail .rail-btn[data-rail-page="overview"],
+html[data-layout="workbench"] .side-rail .rail-btn[data-rail-page="runs"],
+html[data-layout="workbench"] .side-rail #btn-rail-phone { display: none !important; }
+
+/* 15.4 全站卡片语言统一：其余页面里的白卡同样去投影、走发丝边框 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .card,
+html[data-layout="workbench"]:not([data-theme="dark"]) .panel {
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+/* ==========================================================================
+   15. 全站外壳收口（2026-10-29）—— 一起白，一起分层
+   ---------------------------------------------------------------------------
+   前面 13/14 只动了工作台首页，其它页（任务/文件/看板/设置…）还是旧皮肤的淡蓝灰，
+   切过去像换了个产品。这里把「白底 + 发丝边框 + 主次两级」推到整站外壳：
+   顶栏、左栏、抽屉、卡片全部同一块白，结构靠边框而不是靠灰底。
+   ========================================================================== */
+
+/* 15.1 浅色下补齐全局 token：ocean 皮肤的 --text/--muted 偏蓝灰，白底上发闷 */
+html[data-layout="workbench"]:not([data-theme="dark"]) {
+  --panel3: #f1f3f5;
+  --border-strong: #d6dae1;
+  --text: #0a0b0d;
+  --muted: #666d78;
+}
+
+/* 15.2 抽屉里的分组标签：日常 / 高级。分组的目的是「一屏只答三问」，
+   技术向入口收在「高级功能」后面，不再和主路径抢第一屏 */
+.side-group-label {
+  padding: 12px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--muted);
+  opacity: .7;
+  user-select: none;
+}
+.side-quick + .side-quick .side-group-label { padding-top: 6px; }
+
+/* 15.3 图标轨只留主路径：概览 / 运行记录 / 手机连接 下沉到抽屉「高级」里。
+   普通用户这一列只需要「工作台（五台）+ 任务 + 全部功能 + 设置」四类动作。 */
+html[data-layout="workbench"] .side-rail .rail-btn[data-rail-page="overview"],
+html[data-layout="workbench"] .side-rail .rail-btn[data-rail-page="runs"],
+html[data-layout="workbench"] .side-rail #btn-rail-phone { display: none !important; }
+
+/* 15.4 全站卡片语言统一：其余页面里的白卡同样去投影、走发丝边框 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .card,
+html[data-layout="workbench"]:not([data-theme="dark"]) .panel {
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+/* 15.5 body 自身还留着一层淡灰（ocean 皮肤写在 body 上的硬底色），
+   主栏虽然是白的，边角与页面切换瞬间会透出来。一起收成白。 */
+html[data-layout="workbench"]:not([data-theme="dark"]) body {
+  background: #ffffff !important;
+}
+
+/* 15.5 body 自身还留着一层淡灰（ocean 皮肤写在 body 上的硬底色），
+   主栏虽然是白的，边角与页面切换瞬间会透出来。一起收成白。 */
+html[data-layout="workbench"]:not([data-theme="dark"]) body {
+  background: #ffffff !important;
+}
+
+/* ---------------------------------------------------- 16. 大厅三步说明
+   对齐 WorkBuddy 官网的叙事：说出要求 → 自主执行 → 交付成果。
+   三颗胶囊讲完「它是怎么干活的」，第一次进来的人不用点开任何页面就懂。 */
+html[data-layout="workbench"] #page-home .rd-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+html[data-layout="workbench"] #page-home .rd-steps > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid var(--lin-hairline);
+  border-radius: 9999px;
+  font-size: 12.5px;
+  color: var(--lin-ink-subtle);
+  background: var(--lin-s1);
+}
+html[data-layout="workbench"] #page-home .rd-steps > span > i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lin-accent);
+  background: color-mix(in srgb, var(--lin-accent) 12%, transparent);
+}
+
+/* ==========================================================================
+   17. 台内版式 v5（2026-10-29 三改）—— 把「一条窄带」铺满画布
+   --------------------------------------------------------------------------
+   用户原话：「这些页面好丑」。实测根因不在配色，而在宽度：
+   simple-home.css 里每个台都写了两列（minmax(0,1.72fr) minmax(320px,1fr)），
+   在 900 的内容列上再切一刀 —— 输入卡只剩 542px，右边一大片空，
+   起手式 / 任务 / 工具全挤在左边那一窄条，看着像半成品。
+   修法：内容列放宽到 1120；栅格改成「上半三块各占满两列 + 下排 任务|工具」，
+   每个块都吃满自己的列宽，页面才立得住。
+   ========================================================================== */
+
+/* 17.1 内容列：台内 1120（大厅仍是 1080） */
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > .rd-home-head,
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > #rd-ws-view {
+  max-width: 1120px !important;
+  width: 100%;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* 17.2 栅格：两列（主列 + 320 侧栏） */
+html[data-layout="workbench"] #rd-ws-view {
+  grid-template-columns: minmax(0, 1fr) 320px !important;
+  grid-template-areas: "input input" "qs qs" "tasks tools" !important;
+  gap: 24px 26px !important;
+  align-items: start !important;
+}
+html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+  grid-template-areas: "domain domain" "input input" "qs qs" "tasks tools" !important;
+}
+html[data-layout="workbench"] #rd-ws-view > * { min-width: 0; }
+
+/* 17.3 输入卡＝全页主角：白底 + 发丝边 + 只在聚焦时发光 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card {
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 16px !important;
+  background: var(--lin-s1) !important;
+  padding: 3px 3px 1px !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 14px 30px -26px rgba(16, 24, 40, .45) !important;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--lin-accent) 45%, var(--lin-hairline)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lin-accent) 10%, transparent) !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card #rd-input-slot,
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box,
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box > * {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* 17.4 起手式：一行四张（≥1180），说明文字保留 */
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-quick-start { margin-top: 0 !important; }
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lin-ink-tertiary);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-height: 96px;
+  padding: 14px 14px 13px !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--lin-s1) !important;
+  box-shadow: none !important;
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 42%, var(--lin-hairline)) !important;
+  background: color-mix(in srgb, var(--ws-accent) 3%, var(--lin-s1)) !important;
+  transform: translateY(-1px);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body b {
+  font-size: 13.5px !important;
+  font-weight: 600;
+  line-height: 1.35;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body small {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  color: var(--lin-ink-subtle) !important;
+  margin-top: 3px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-go { display: none; }
+
+/* 17.5 下排：任务在左、工具在右（大厂项目页的常规排法） */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-recent-tasks,
+html[data-layout="workbench"] #page-home #rd-ws-view > #rd-tools {
+  border: 1px solid var(--lin-hairline);
+  border-radius: 14px;
+  background: var(--lin-s1);
+  padding: 16px 16px 14px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-recent-tasks { min-height: 168px; }
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head {
+  margin-bottom: 12px !important;
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head h2 {
+  font-size: 13px !important;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lin-ink-tertiary);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head h2::after {
+  content: "";
+}
+
+/* 任务行：单列，靠发丝分隔，不再是一堆浮起来的卡片 */
+html[data-layout="workbench"] #page-home #rd-recent-list {
+  display: block !important;
+}
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item {
+  border: 0 !important;
+  border-top: 1px solid var(--lin-hairline) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 11px 4px !important;
+  transform: none !important;
+}
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item:first-child { border-top: 0 !important; }
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item:hover {
+  background: var(--lin-s2) !important;
+  border-radius: 8px !important;
+}
+
+/* 17.6 工具：右栏竖排清单，说明文字必须看得见 */
+html[data-layout="workbench"] #rd-tools .rd-tool-grid {
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool {
+  width: 100%;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 10px !important;
+  background: var(--lin-s1) !important;
+  padding: 10px 12px !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 40%, var(--lin-hairline)) !important;
+  background: color-mix(in srgb, var(--ws-accent) 3%, var(--lin-s1)) !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-ico {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  color: var(--ws-accent);
+  background: color-mix(in srgb, var(--ws-accent) 10%, transparent);
+  flex: none;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-ico .ico { width: 15px; height: 15px; }
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-text b { font-size: 13px; }
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-text i {
+  display: block !important;
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--lin-ink-subtle);
+  margin-top: 2px;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-go { opacity: 0; transition: opacity .15s; }
+html[data-layout="workbench"] #rd-tools .rd-tool:hover .rd-tool-go { opacity: .8; }
+
+/* 17.7 本台概览：一行小数字，有数才出现 */
+html[data-layout="workbench"] #page-home #rd-ws-stats {
+  display: flex !important;
+  gap: 8px;
+  margin-bottom: 12px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat {
+  flex: 1;
+  border: 1px solid var(--lin-hairline);
+  border-radius: 9px;
+  padding: 7px 9px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat b { font-size: 15px; }
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat span { font-size: 11px; color: var(--lin-ink-subtle); }
+
+/* 17.8 空状态：一行安静的话，不要虚线框（虚线在纯白上最显廉价） */
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-empty {
+  padding: 18px 2px 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  text-align: left !important;
+  font-size: 13px;
+  color: var(--lin-ink-tertiary) !important;
+}
+
+/* 17.9 未选模型不该是橙色警告（橙在蓝白页上像报错），改成主色的「待办」态 */
+html[data-layout="workbench"] #btn-prov-side.is-empty { border-color: color-mix(in srgb, var(--lin-accent) 40%, var(--lin-hairline)) !important; }
+html[data-layout="workbench"] #btn-prov-side.is-empty .nm { color: var(--lin-accent) !important; }
+html[data-layout="workbench"] #btn-prov-side.is-empty:hover { background: color-mix(in srgb, var(--lin-accent) 10%, transparent) !important; }
+
+/* 17.10 窄屏回退：单列堆叠 */
+@media (max-width: 1180px) {
+  html[data-layout="workbench"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: "input" "qs" "tasks" "tools" !important;
+  }
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-areas: "domain" "input" "qs" "tasks" "tools" !important;
+  }
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 720px) {
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
+   17. 台内版式 v5（2026-10-29 三改）—— 把「一条窄带」铺满画布
+   --------------------------------------------------------------------------
+   用户原话：「这些页面好丑」。实测根因不在配色，而在宽度：
+   simple-home.css 里每个台都写了两列（minmax(0,1.72fr) minmax(320px,1fr)），
+   在 900 的内容列上再切一刀 —— 输入卡只剩 542px，右边一大片空，
+   起手式 / 任务 / 工具全挤在左边那一窄条，看着像半成品。
+   修法：内容列放宽到 1120；栅格改成「上半三块各占满两列 + 下排 任务|工具」。
+   ========================================================================== */
+
+/* 17.1 内容列：台内 1120（大厅仍是 1080） */
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > .rd-home-head,
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > #rd-ws-view {
+  max-width: 1120px !important;
+  width: 100%;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* 17.2 栅格：两列（主列 + 320 侧栏） */
+html[data-layout="workbench"] #rd-ws-view {
+  grid-template-columns: minmax(0, 1fr) 320px !important;
+  grid-template-areas: "input input" "qs qs" "tasks tools" !important;
+  gap: 24px 26px !important;
+  align-items: start !important;
+}
+html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+  grid-template-areas: "domain domain" "input input" "qs qs" "tasks tools" !important;
+}
+html[data-layout="workbench"] #rd-ws-view > * { min-width: 0; }
+
+/* 17.3 输入卡＝全页主角：白底 + 发丝边 + 只在聚焦时发光 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card {
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 16px !important;
+  background: var(--lin-s1) !important;
+  padding: 3px 3px 1px !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 14px 30px -26px rgba(16, 24, 40, .45) !important;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--lin-accent) 45%, var(--lin-hairline)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lin-accent) 10%, transparent) !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card #rd-input-slot,
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box,
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box > * {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* 17.4 起手式：一行四张，说明文字保留 */
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-quick-start { margin-top: 0 !important; }
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lin-ink-tertiary);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-height: 96px;
+  padding: 14px 14px 13px !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--lin-s1) !important;
+  box-shadow: none !important;
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 42%, var(--lin-hairline)) !important;
+  background: color-mix(in srgb, var(--ws-accent) 3%, var(--lin-s1)) !important;
+  transform: translateY(-1px);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body b {
+  font-size: 13.5px !important;
+  font-weight: 600;
+  line-height: 1.35;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body small {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  color: var(--lin-ink-subtle) !important;
+  margin-top: 3px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-go { display: none; }
+
+/* 17.5 下排：任务在左、工具在右（大厂项目页的常规排法） */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-recent-tasks,
+html[data-layout="workbench"] #page-home #rd-ws-view > #rd-tools {
+  border: 1px solid var(--lin-hairline);
+  border-radius: 14px;
+  background: var(--lin-s1);
+  padding: 16px 16px 14px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-recent-tasks { min-height: 168px; }
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head {
+  margin-bottom: 12px !important;
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head h2 {
+  font-size: 13px !important;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lin-ink-tertiary);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head h2::after { content: ""; }
+
+/* 任务行：单列，靠发丝分隔，不再是一堆浮起来的卡片 */
+html[data-layout="workbench"] #page-home #rd-recent-list { display: block !important; }
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item {
+  border: 0 !important;
+  border-top: 1px solid var(--lin-hairline) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 11px 4px !important;
+  transform: none !important;
+}
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item:first-child { border-top: 0 !important; }
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item:hover {
+  background: var(--lin-s2) !important;
+  border-radius: 8px !important;
+}
+
+/* 17.6 工具：右栏竖排清单，说明文字必须看得见 */
+html[data-layout="workbench"] #rd-tools .rd-tool-grid {
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool {
+  width: 100%;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 10px !important;
+  background: var(--lin-s1) !important;
+  padding: 10px 12px !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 40%, var(--lin-hairline)) !important;
+  background: color-mix(in srgb, var(--ws-accent) 3%, var(--lin-s1)) !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-ico {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  color: var(--ws-accent);
+  background: color-mix(in srgb, var(--ws-accent) 10%, transparent);
+  flex: none;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-ico .ico { width: 15px; height: 15px; }
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-text b { font-size: 13px; }
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-text i {
+  display: block !important;
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--lin-ink-subtle);
+  margin-top: 2px;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-go { opacity: 0; transition: opacity .15s; }
+html[data-layout="workbench"] #rd-tools .rd-tool:hover .rd-tool-go { opacity: .8; }
+
+/* 17.7 本台概览：一行小数字，有数才出现 */
+html[data-layout="workbench"] #page-home #rd-ws-stats { display: flex !important; gap: 8px; margin-bottom: 12px !important; }
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat {
+  flex: 1;
+  border: 1px solid var(--lin-hairline);
+  border-radius: 9px;
+  padding: 7px 9px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat b { font-size: 15px; }
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat span { font-size: 11px; color: var(--lin-ink-subtle); }
+
+/* 17.8 空状态：一行安静的话，不要虚线框 */
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-empty {
+  padding: 18px 2px 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  text-align: left !important;
+  font-size: 13px;
+  color: var(--lin-ink-tertiary) !important;
+}
+
+/* 17.9 未选模型：蓝主色的「待办」态，不用橙色警告 */
+html[data-layout="workbench"] #btn-prov-side.is-empty { border-color: color-mix(in srgb, var(--lin-accent) 40%, var(--lin-hairline)) !important; }
+html[data-layout="workbench"] #btn-prov-side.is-empty .nm { color: var(--lin-accent) !important; }
+html[data-layout="workbench"] #btn-prov-side.is-empty:hover { background: color-mix(in srgb, var(--lin-accent) 10%, transparent) !important; }
+
+/* 17.10 窄屏回退：单列堆叠 */
+@media (max-width: 1180px) {
+  html[data-layout="workbench"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: "input" "qs" "tasks" "tools" !important;
+  }
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-areas: "domain" "input" "qs" "tasks" "tools" !important;
+  }
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 720px) {
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
+   17. 台内版式 v5（2026-10-29 三改）—— 把「一条窄带」铺满画布
+   --------------------------------------------------------------------------
+   用户原话：「这些页面好丑」。实测根因不在配色，而在宽度：
+   simple-home.css 里每个台都写了两列（minmax(0,1.72fr) minmax(320px,1fr)），
+   在 900 的内容列上再切一刀 —— 输入卡只剩 542px，右边一大片空，
+   起手式 / 任务 / 工具全挤在左边那一窄条，看着像半成品。
+   修法：内容列放宽到 1120；栅格改成「上半三块各占满两列 + 下排 任务|工具」。
+   ========================================================================== */
+
+/* 17.1 内容列：台内 1120（大厅仍是 1080） */
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > .rd-home-head,
+html[data-layout="workbench"] #page-home:has(> .rd-home-head > #rd-entered-head:not(.hidden)) > #rd-ws-view {
+  max-width: 1120px !important;
+  width: 100%;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* 17.2 栅格：两列（主列 + 320 侧栏） */
+html[data-layout="workbench"] #rd-ws-view {
+  grid-template-columns: minmax(0, 1fr) 320px !important;
+  grid-template-areas: "input input" "qs qs" "tasks tools" !important;
+  gap: 24px 26px !important;
+  align-items: start !important;
+}
+html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+  grid-template-areas: "domain domain" "input input" "qs qs" "tasks tools" !important;
+}
+html[data-layout="workbench"] #rd-ws-view > * { min-width: 0; }
+
+/* 17.3 输入卡＝全页主角：白底 + 发丝边 + 只在聚焦时发光 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card {
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 16px !important;
+  background: var(--lin-s1) !important;
+  padding: 3px 3px 1px !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 14px 30px -26px rgba(16, 24, 40, .45) !important;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--lin-accent) 45%, var(--lin-hairline)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lin-accent) 10%, transparent) !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card #rd-input-slot,
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box,
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box > * {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* 17.4 起手式：一行四张，说明文字保留 */
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-quick-start { margin-top: 0 !important; }
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lin-ink-tertiary);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-height: 96px;
+  padding: 14px 14px 13px !important;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--lin-s1) !important;
+  box-shadow: none !important;
+  text-align: left;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-qs-btn.rd-start-card:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 42%, var(--lin-hairline)) !important;
+  background: color-mix(in srgb, var(--ws-accent) 3%, var(--lin-s1)) !important;
+  transform: translateY(-1px);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body b {
+  font-size: 13.5px !important;
+  font-weight: 600;
+  line-height: 1.35;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-body small {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  color: var(--lin-ink-subtle) !important;
+  margin-top: 3px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-go { display: none; }
+
+/* 17.5 下排：任务在左、工具在右（大厂项目页的常规排法） */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-recent-tasks,
+html[data-layout="workbench"] #page-home #rd-ws-view > #rd-tools {
+  border: 1px solid var(--lin-hairline);
+  border-radius: 14px;
+  background: var(--lin-s1);
+  padding: 16px 16px 14px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-recent-tasks { min-height: 168px; }
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head {
+  margin-bottom: 12px !important;
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head h2 {
+  font-size: 13px !important;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--lin-ink-tertiary);
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-section-head h2::after { content: ""; }
+
+/* 任务行：单列，靠发丝分隔，不再是一堆浮起来的卡片 */
+html[data-layout="workbench"] #page-home #rd-recent-list { display: block !important; }
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item {
+  border: 0 !important;
+  border-top: 1px solid var(--lin-hairline) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 11px 4px !important;
+  transform: none !important;
+}
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item:first-child { border-top: 0 !important; }
+html[data-layout="workbench"] #page-home #rd-recent-list .rd-task-item:hover {
+  background: var(--lin-s2) !important;
+  border-radius: 8px !important;
+}
+
+/* 17.6 工具：右栏竖排清单，说明文字必须看得见 */
+html[data-layout="workbench"] #rd-tools .rd-tool-grid {
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool {
+  width: 100%;
+  border: 1px solid var(--lin-hairline) !important;
+  border-radius: 10px !important;
+  background: var(--lin-s1) !important;
+  padding: 10px 12px !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 40%, var(--lin-hairline)) !important;
+  background: color-mix(in srgb, var(--ws-accent) 3%, var(--lin-s1)) !important;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-ico {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  color: var(--ws-accent);
+  background: color-mix(in srgb, var(--ws-accent) 10%, transparent);
+  flex: none;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-ico .ico { width: 15px; height: 15px; }
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-text b { font-size: 13px; }
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-text i {
+  display: block !important;
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--lin-ink-subtle);
+  margin-top: 2px;
+}
+html[data-layout="workbench"] #rd-tools .rd-tool .rd-tool-go { opacity: 0; transition: opacity .15s; }
+html[data-layout="workbench"] #rd-tools .rd-tool:hover .rd-tool-go { opacity: .8; }
+
+/* 17.7 本台概览：一行小数字，有数才出现 */
+html[data-layout="workbench"] #page-home #rd-ws-stats { display: flex !important; gap: 8px; margin-bottom: 12px !important; }
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat {
+  flex: 1;
+  border: 1px solid var(--lin-hairline);
+  border-radius: 9px;
+  padding: 7px 9px;
+}
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat b { font-size: 15px; }
+html[data-layout="workbench"] #page-home #rd-ws-stats .rd-ws-stat span { font-size: 11px; color: var(--lin-ink-subtle); }
+
+/* 17.8 空状态：一行安静的话，不要虚线框 */
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-empty {
+  padding: 18px 2px 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  text-align: left !important;
+  font-size: 13px;
+  color: var(--lin-ink-tertiary) !important;
+}
+
+/* 17.9 未选模型：蓝主色的「待办」态，不用橙色警告 */
+html[data-layout="workbench"] #btn-prov-side.is-empty { border-color: color-mix(in srgb, var(--lin-accent) 40%, var(--lin-hairline)) !important; }
+html[data-layout="workbench"] #btn-prov-side.is-empty .nm { color: var(--lin-accent) !important; }
+html[data-layout="workbench"] #btn-prov-side.is-empty:hover { background: color-mix(in srgb, var(--lin-accent) 10%, transparent) !important; }
+
+/* 17.10 窄屏回退：单列堆叠 */
+@media (max-width: 1180px) {
+  html[data-layout="workbench"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: "input" "qs" "tasks" "tools" !important;
+  }
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-areas: "domain" "input" "qs" "tasks" "tools" !important;
+  }
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 720px) {
+  html[data-layout="workbench"] #page-home #rd-ws-view #rd-qs-buttons {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
+   18. 对齐 WorkBuddy 官网视觉语言（2026-10-29 四改）
+   --------------------------------------------------------------------------
+   值是从 www.workbuddy.cn 的样式表与实拍里取的（TDesign 基底 + 自有品牌）：
+     画布 #ffffff；极淡薄荷光晕（顶部两侧）；卡片 1px #eceef0 + 极软投影；
+     主按钮＝黑色药丸（不是蓝）；辅助项＝浅灰药丸；正文 #111 / 次要 #6b7280；
+     侧栏 #fafbfb、条目 10px 圆角、悬停浅灰、选中白底带投影。
+   只覆盖皮肤，不动 DOM 与交互，所以测试断言不受影响。
+   ========================================================================== */
+
+html[data-layout="workbench"]:not([data-theme="dark"]) {
+  --wb-line: #eceef0;
+  --wb-soft: #f7f8f9;
+  --wb-ink: #111214;
+  --wb-muted: #6b7280;
+  --wb-mint: #2fc6a0;
+  --wb-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px -20px rgba(16, 24, 40, .35);
+}
+
+/* 18.1 画布光晕：官网首屏顶部那两团薄荷色，是「WorkBuddy 味」最直接的来源 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home {
+  background:
+    radial-gradient(820px 340px at 8% -8%, rgba(64, 224, 183, .16), transparent 68%),
+    radial-gradient(720px 320px at 92% -12%, rgba(120, 228, 205, .13), transparent 70%),
+    #ffffff !important;
+}
+
+/* 18.2 主按钮：黑色药丸（官网所有 CTA 都是黑的，蓝色只做链接与选中态） */
+:is(#sub-tasks, #rd-input-slot) #btn-create.primary {
+  background: #17181a !important;
+  background-image: none !important;
+  border-color: #17181a !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .18) !important;
+}
+:is(#sub-tasks, #rd-input-slot) #btn-create.primary:hover {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+:is(#sub-tasks, #rd-input-slot) #btn-create.primary:disabled {
+  background: #d7dae0 !important;
+  border-color: #d7dae0 !important;
+  box-shadow: none !important;
+}
+
+/* 18.3 卡片语言：统一 1px 细边 + 极软投影，替换旧的重阴影 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view > .rd-input-card,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view > .rd-recent-tasks,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view > #rd-tools,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-qs-btn.rd-start-card,
+html[data-layout="workbench"]:not([data-theme="dark"]) #rd-tools .rd-tool {
+  border-color: var(--wb-line) !important;
+  box-shadow: var(--wb-shadow) !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-domain-card,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-domain-new {
+  border-color: var(--wb-line) !important;
+  box-shadow: var(--wb-shadow) !important;
+}
+
+/* 18.4 「新建编码任务」不再是虚线占位：虚线在纯白上像未完成的占位图 */
+html[data-layout="workbench"] #page-home .rd-domain-new {
+  border-style: solid !important;
+  background: var(--lin-s1) !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-ico {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  color: #111214;
+  background: var(--wb-soft);
+  border: 1px solid var(--wb-line);
+}
+
+/* 18.5 起手式图标：官网建议项是单色图标 + 浅灰底，不上台色 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  color: #3d434d !important;
+  background: var(--wb-soft) !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card:hover .rd-start-ico {
+  color: #0f1216 !important;
+  background: #eef1f3 !important;
+}
+
+/* 18.6 工作目录胶囊：官网是「贴着左边的小胶囊」，不是一条占满宽的输入框 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-wd {
+  width: auto !important;
+  max-width: 100% !important;
+  align-self: flex-start !important;
+  border-radius: 8px !important;
+  background: var(--wb-soft) !important;
+  border: 1px solid var(--wb-line) !important;
+}
+
+/* 18.7 输入区高度：别让空卡片撑成一块大白板 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card textarea {
+  min-height: 52px !important;
+  max-height: 220px;
+}
+
+/* 18.8 侧栏：浅灰底 + 圆角条目 + 选中白卡（官网左栏就是这套） */
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar {
+  background: #fafbfb !important;
+  border-right: 1px solid var(--wb-line) !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem {
+  border-radius: 9px !important;
+  color: #414750;
+  font-size: 13px !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem:hover {
+  background: #f0f2f4 !important;
+  color: #111214 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem.active,
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem[aria-current="page"] {
+  background: #fff !important;
+  color: #111214 !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem .ico {
+  color: #6b7280;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem.active .ico {
+  color: #111214;
+}
+
+/* 18.9 顶栏：一条发丝边就够了，别用灰底把整条压暗 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .topbar {
+  background: rgba(255, 255, 255, .92) !important;
+  border-bottom: 1px solid var(--wb-line) !important;
+  backdrop-filter: saturate(160%) blur(8px);
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #btn-prov-side {
+  border-radius: 999px !important;
+  background: #fff !important;
+}
+
+/* 18.10 标题：官网用「重、紧、大」的黑字，正文才轻 */
+html[data-layout="workbench"] #page-home .rd-home-title,
+html[data-layout="workbench"] #page-home #rd-ws-title {
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  color: #0b0c0e !important;
+}
+html[data-layout="workbench"] #page-home .rd-home-sub,
+html[data-layout="workbench"] #page-home #rd-ws-sub {
+  color: var(--wb-muted) !important;
+  letter-spacing: 0 !important;
+}
+
+/* 18.11 次要按钮与链接：官网是灰字，不是彩色 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home .rd-link-btn {
+  color: #6b7280 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home .rd-link-btn:hover {
+  color: #111214 !important;
+}
+
+/* ==========================================================================
+   18. 对齐 WorkBuddy 官网视觉语言（2026-10-29 四改）
+   --------------------------------------------------------------------------
+   值是从 www.workbuddy.cn 的样式表与实拍里取的（TDesign 基底 + 自有品牌）：
+     画布 #ffffff；极淡薄荷光晕（顶部两侧）；卡片 1px #eceef0 + 极软投影；
+     主按钮＝黑色药丸（不是蓝）；辅助项＝浅灰药丸；正文 #111 / 次要 #6b7280；
+     侧栏 #fafbfb、条目 10px 圆角、悬停浅灰、选中白底带投影。
+   只覆盖皮肤，不动 DOM 与交互，所以测试断言不受影响。
+   ========================================================================== */
+
+html[data-layout="workbench"]:not([data-theme="dark"]) {
+  --wb-line: #eceef0;
+  --wb-soft: #f7f8f9;
+  --wb-ink: #111214;
+  --wb-muted: #6b7280;
+  --wb-mint: #2fc6a0;
+  --wb-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px -20px rgba(16, 24, 40, .35);
+}
+
+/* 18.1 画布光晕：官网首屏顶部那两团薄荷色，是「WorkBuddy 味」最直接的来源 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home {
+  background:
+    radial-gradient(820px 340px at 8% -8%, rgba(64, 224, 183, .16), transparent 68%),
+    radial-gradient(720px 320px at 92% -12%, rgba(120, 228, 205, .13), transparent 70%),
+    #ffffff !important;
+}
+
+/* 18.2 主按钮：黑色药丸（官网所有 CTA 都是黑的，蓝色只做链接与选中态） */
+:is(#sub-tasks, #rd-input-slot) #btn-create.primary {
+  background: #17181a !important;
+  background-image: none !important;
+  border-color: #17181a !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .18) !important;
+}
+:is(#sub-tasks, #rd-input-slot) #btn-create.primary:hover {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+:is(#sub-tasks, #rd-input-slot) #btn-create.primary:disabled {
+  background: #d7dae0 !important;
+  border-color: #d7dae0 !important;
+  box-shadow: none !important;
+}
+
+/* 18.3 卡片语言：统一 1px 细边 + 极软投影，替换旧的重阴影 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view > .rd-input-card,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view > .rd-recent-tasks,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view > #rd-tools,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-qs-btn.rd-start-card,
+html[data-layout="workbench"]:not([data-theme="dark"]) #rd-tools .rd-tool {
+  border-color: var(--wb-line) !important;
+  box-shadow: var(--wb-shadow) !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-domain-card,
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-domain-new {
+  border-color: var(--wb-line) !important;
+  box-shadow: var(--wb-shadow) !important;
+}
+
+/* 18.4 「新建编码任务」不再是虚线占位：虚线在纯白上像未完成的占位图 */
+html[data-layout="workbench"] #page-home .rd-domain-new {
+  border-style: solid !important;
+  background: var(--lin-s1) !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-ico {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  color: #111214;
+  background: var(--wb-soft);
+  border: 1px solid var(--wb-line);
+}
+
+/* 18.5 起手式图标：官网建议项是单色图标 + 浅灰底，不上台色 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  color: #3d434d !important;
+  background: var(--wb-soft) !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card:hover .rd-start-ico {
+  color: #0f1216 !important;
+  background: #eef1f3 !important;
+}
+
+/* 18.6 工作目录胶囊：官网是「贴着左边的小胶囊」，不是一条占满宽的输入框 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-wd {
+  width: auto !important;
+  max-width: 100% !important;
+  align-self: flex-start !important;
+  border-radius: 8px !important;
+  background: var(--wb-soft) !important;
+  border: 1px solid var(--wb-line) !important;
+}
+
+/* 18.7 输入区高度：别让空卡片撑成一块大白板 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card textarea {
+  min-height: 52px !important;
+  max-height: 220px;
+}
+
+/* 18.8 侧栏：浅灰底 + 圆角条目 + 选中白卡（官网左栏就是这套） */
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar {
+  background: #fafbfb !important;
+  border-right: 1px solid var(--wb-line) !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem {
+  border-radius: 9px !important;
+  color: #414750;
+  font-size: 13px !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem:hover {
+  background: #f0f2f4 !important;
+  color: #111214 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem.active,
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem[aria-current="page"] {
+  background: #fff !important;
+  color: #111214 !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem .ico {
+  color: #6b7280;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #sidebar .qitem.active .ico {
+  color: #111214;
+}
+
+/* 18.9 顶栏：一条发丝边就够了，别用灰底把整条压暗 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .topbar {
+  background: rgba(255, 255, 255, .92) !important;
+  border-bottom: 1px solid var(--wb-line) !important;
+  backdrop-filter: saturate(160%) blur(8px);
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #btn-prov-side {
+  border-radius: 999px !important;
+  background: #fff !important;
+}
+
+/* 18.10 标题：官网用「重、紧、大」的黑字，正文才轻 */
+html[data-layout="workbench"] #page-home .rd-home-title,
+html[data-layout="workbench"] #page-home #rd-ws-title {
+  font-weight: 700 !important;
+  letter-spacing: -0.03em !important;
+  color: #0b0c0e !important;
+}
+html[data-layout="workbench"] #page-home .rd-home-sub,
+html[data-layout="workbench"] #page-home #rd-ws-sub {
+  color: var(--wb-muted) !important;
+  letter-spacing: 0 !important;
+}
+
+/* 18.11 次要按钮与链接：官网是灰字，不是彩色 */
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home .rd-link-btn {
+  color: #6b7280 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) #page-home .rd-link-btn:hover {
+  color: #111214 !important;
+}
+
+/* 18b. 修正：发送键（选择器要带 workbench 前缀才压得过旧规则） */
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create,
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create.primary,
+html[data-layout="workbench"] #btn-create {
+  background: #17181a !important;
+  background-image: none !important;
+  border: 1px solid #17181a !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .18) !important;
+}
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create:hover,
+html[data-layout="workbench"] #btn-create:hover {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+html[data-layout="workbench"] #btn-create:disabled,
+html[data-layout="workbench"] #btn-create[aria-disabled="true"] {
+  background: #d9dce1 !important;
+  border-color: #d9dce1 !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+/* 18c. 输入卡内边距收一档：空态不再是一大块白板 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box {
+  padding-top: 8px !important;
+  padding-bottom: 6px !important;
+}
+
+/* 18d. 「新建」卡横排：图标在左、文字在右，跟旁边的工作区卡片同一姿态 */
+html[data-layout="workbench"] #page-home .rd-domain-new {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  text-align: left !important;
+  padding: 16px !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-text {
+  align-items: flex-start !important;
+  text-align: left !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-text b { font-size: 14px; }
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-text small {
+  font-size: 12.5px;
+  color: var(--wb-muted);
+}
+
+/* 18b. 修正：发送键（选择器要带 workbench 前缀才压得过旧规则） */
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create,
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create.primary,
+html[data-layout="workbench"] #btn-create {
+  background: #17181a !important;
+  background-image: none !important;
+  border: 1px solid #17181a !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .18) !important;
+}
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create:hover,
+html[data-layout="workbench"] #btn-create:hover {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+html[data-layout="workbench"] #btn-create:disabled,
+html[data-layout="workbench"] #btn-create[aria-disabled="true"] {
+  background: #d9dce1 !important;
+  border-color: #d9dce1 !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+/* 18c. 输入卡内边距收一档：空态不再是一大块白板 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-box {
+  padding-top: 8px !important;
+  padding-bottom: 6px !important;
+}
+
+/* 18d. 「新建」卡横排：图标在左、文字在右，跟旁边的工作区卡片同一姿态 */
+html[data-layout="workbench"] #page-home .rd-domain-new {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  text-align: left !important;
+  padding: 16px !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-text {
+  align-items: flex-start !important;
+  text-align: left !important;
+}
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-text b { font-size: 14px; }
+html[data-layout="workbench"] #page-home .rd-domain-new .rd-domain-new-text small {
+  font-size: 12.5px;
+  color: var(--wb-muted);
+}
+
+/* 18e. 起手式图标：正方形内居中，别让 SVG 缩在角上（截图里像空方块） */
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  display: grid !important;
+  place-items: center !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico .ico {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* 18f. 工作目录胶囊：按内容宽（fit-content），不再拉满整条 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-wd {
+  width: fit-content !important;
+  min-width: 0 !important;
+  flex: 0 1 auto !important;
+  max-width: min(100%, 420px) !important;
+}
+
+/* 18g. 顶栏页名：官网顶栏是「小、黑、稳」，不是灰色小字 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .topbar .page-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #111214 !important;
+  letter-spacing: 0;
+}
+
+/* 18e. 起手式图标：正方形内居中，别让 SVG 缩在角上（截图里像空方块） */
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico {
+  display: grid !important;
+  place-items: center !important;
+}
+html[data-layout="workbench"] #page-home #rd-ws-view .rd-start-card .rd-start-ico .ico {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* 18f. 工作目录胶囊：按内容宽（fit-content），不再拉满整条 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-wd {
+  width: fit-content !important;
+  min-width: 0 !important;
+  flex: 0 1 auto !important;
+  max-width: min(100%, 420px) !important;
+}
+
+/* 18g. 顶栏页名：官网顶栏是「小、黑、稳」，不是灰色小字 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .topbar .page-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #111214 !important;
+  letter-spacing: 0;
+}
+
+/* 18h. 胶囊行本身不再画底：目录胶囊浮在卡片里，右边不该留一条灰带 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-pills {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+/* 18h. 胶囊行本身不再画底：目录胶囊浮在卡片里，右边不该留一条灰带 */
+html[data-layout="workbench"] #page-home #rd-ws-view > .rd-input-card .cmp-pills {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+/* ==========================================================================
+   19. 全站外壳对齐 WorkBuddy（2026-10-29 五改）
+   --------------------------------------------------------------------------
+   18 节只覆盖了工作台首页；其它页（任务 / 设置 / 看板 / 文件 / 用量…）还是旧皮肤，
+   切过去立刻出戏。这一节把同一套语言推到外壳与通用组件：
+     白底、1px #eceef0、10~12px 圆角、极软投影、黑色主按钮、浅灰侧栏条目。
+   全部走 CSS 覆盖，不改 DOM、不改类名，测试断言不受影响。
+   ========================================================================== */
+
+html[data-layout="workbench"]:not([data-theme="dark"]) body {
+  background: #ffffff !important;
+}
+
+/* 19.1 主按钮全局黑药丸（官网所有 CTA 都是黑的） */
+html[data-layout="workbench"] button.primary,
+html[data-layout="workbench"] a.primary,
+html[data-layout="workbench"] .btn.primary {
+  background: #17181a !important;
+  background-image: none !important;
+  border-color: #17181a !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .16) !important;
+}
+html[data-layout="workbench"] button.primary:hover,
+html[data-layout="workbench"] .btn.primary:hover {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+html[data-layout="workbench"] button.primary.danger,
+html[data-layout="workbench"] button.danger {
+  background: #d92d20 !important;
+  border-color: #d92d20 !important;
+}
+
+/* 19.2 设置侧栏：浅灰底 + 圆角条目 + 选中白卡（和官网左栏同一套手感） */
+html[data-layout="workbench"]:not([data-theme="dark"]) .side-settings {
+  background: #fafbfb !important;
+  border-right: 1px solid #eceef0 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item {
+  border-radius: 8px !important;
+  color: #414750 !important;
+  font-size: 13px !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item:hover {
+  background: #f0f2f4 !important;
+  color: #111214 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item.active,
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item[aria-current="page"] {
+  background: #fff !important;
+  color: #111214 !important;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-group {
+  font-size: 11px !important;
+  letter-spacing: .08em;
+  color: #9aa1ab !important;
+}
+
+/* 19.3 通用卡片：细边优先，去掉重阴影 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .cards > .card,
+html[data-layout="workbench"]:not([data-theme="dark"]) .card {
+  border: 1px solid #eceef0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04) !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .cards > .card:hover {
+  border-color: #d8dce2 !important;
+  box-shadow: 0 4px 14px -10px rgba(16, 24, 40, .35) !important;
+}
+
+/* 19.4 输入控件：细边 + 聚焦薄荷/蓝环，别再用深色描边 */
+html[data-layout="workbench"]:not([data-theme="dark"]) input[type="text"],
+html[data-layout="workbench"]:not([data-theme="dark"]) input[type="search"],
+html[data-layout="workbench"]:not([data-theme="dark"]) input[type="number"],
+html[data-layout="workbench"]:not([data-theme="dark"]) select,
+html[data-layout="workbench"]:not([data-theme="dark"]) textarea {
+  border-color: #e3e6ea !important;
+  border-radius: 8px !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) input:focus,
+html[data-layout="workbench"]:not([data-theme="dark"]) select:focus,
+html[data-layout="workbench"]:not([data-theme="dark"]) textarea:focus {
+  border-color: rgba(59, 116, 232, .55) !important;
+  box-shadow: 0 0 0 3px rgba(59, 116, 232, .10) !important;
+  outline: 0 !important;
+}
+
+/* 19.5 页面标题：统一「重、紧、黑」 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .kb-head h1,
+html[data-layout="workbench"]:not([data-theme="dark"]) .ov-head h1,
+html[data-layout="workbench"]:not([data-theme="dark"]) .page-h1 {
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  color: #0b0c0e;
+}
+
+/* 19.6 空状态：统一安静文案，不用虚线框 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .empty,
+html[data-layout="workbench"]:not([data-theme="dark"]) .empty-state {
+  border-style: solid !important;
+  border-color: #eceef0 !important;
+  border-radius: 12px !important;
+  color: #6b7280 !important;
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   19. 全站外壳对齐 WorkBuddy（2026-10-29 五改）
+   --------------------------------------------------------------------------
+   18 节只覆盖了工作台首页；其它页（任务 / 设置 / 看板 / 文件 / 用量…）还是旧皮肤，
+   切过去立刻出戏。这一节把同一套语言推到外壳与通用组件：
+     白底、1px #eceef0、10~12px 圆角、极软投影、黑色主按钮、浅灰侧栏条目。
+   全部走 CSS 覆盖，不改 DOM、不改类名，测试断言不受影响。
+   ========================================================================== */
+
+html[data-layout="workbench"]:not([data-theme="dark"]) body {
+  background: #ffffff !important;
+}
+
+/* 19.1 主按钮全局黑药丸（官网所有 CTA 都是黑的） */
+html[data-layout="workbench"] button.primary,
+html[data-layout="workbench"] a.primary,
+html[data-layout="workbench"] .btn.primary {
+  background: #17181a !important;
+  background-image: none !important;
+  border-color: #17181a !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, .16) !important;
+}
+html[data-layout="workbench"] button.primary:hover,
+html[data-layout="workbench"] .btn.primary:hover {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+html[data-layout="workbench"] button.primary.danger,
+html[data-layout="workbench"] button.danger {
+  background: #d92d20 !important;
+  border-color: #d92d20 !important;
+}
+
+/* 19.2 设置侧栏：浅灰底 + 圆角条目 + 选中白卡（和官网左栏同一套手感） */
+html[data-layout="workbench"]:not([data-theme="dark"]) .side-settings {
+  background: #fafbfb !important;
+  border-right: 1px solid #eceef0 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item {
+  border-radius: 8px !important;
+  color: #414750 !important;
+  font-size: 13px !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item:hover {
+  background: #f0f2f4 !important;
+  color: #111214 !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item.active,
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-item[aria-current="page"] {
+  background: #fff !important;
+  color: #111214 !important;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .set-group {
+  font-size: 11px !important;
+  letter-spacing: .08em;
+  color: #9aa1ab !important;
+}
+
+/* 19.3 通用卡片：细边优先，去掉重阴影 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .cards > .card,
+html[data-layout="workbench"]:not([data-theme="dark"]) .card {
+  border: 1px solid #eceef0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04) !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) .cards > .card:hover {
+  border-color: #d8dce2 !important;
+  box-shadow: 0 4px 14px -10px rgba(16, 24, 40, .35) !important;
+}
+
+/* 19.4 输入控件：细边 + 聚焦薄荷/蓝环，别再用深色描边 */
+html[data-layout="workbench"]:not([data-theme="dark"]) input[type="text"],
+html[data-layout="workbench"]:not([data-theme="dark"]) input[type="search"],
+html[data-layout="workbench"]:not([data-theme="dark"]) input[type="number"],
+html[data-layout="workbench"]:not([data-theme="dark"]) select,
+html[data-layout="workbench"]:not([data-theme="dark"]) textarea {
+  border-color: #e3e6ea !important;
+  border-radius: 8px !important;
+}
+html[data-layout="workbench"]:not([data-theme="dark"]) input:focus,
+html[data-layout="workbench"]:not([data-theme="dark"]) select:focus,
+html[data-layout="workbench"]:not([data-theme="dark"]) textarea:focus {
+  border-color: rgba(59, 116, 232, .55) !important;
+  box-shadow: 0 0 0 3px rgba(59, 116, 232, .10) !important;
+  outline: 0 !important;
+}
+
+/* 19.5 页面标题：统一「重、紧、黑」 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .kb-head h1,
+html[data-layout="workbench"]:not([data-theme="dark"]) .ov-head h1,
+html[data-layout="workbench"]:not([data-theme="dark"]) .page-h1 {
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  color: #0b0c0e;
+}
+
+/* 19.6 空状态：统一安静文案，不用虚线框 */
+html[data-layout="workbench"]:not([data-theme="dark"]) .empty,
+html[data-layout="workbench"]:not([data-theme="dark"]) .empty-state {
+  border-style: solid !important;
+  border-color: #eceef0 !important;
+  border-radius: 12px !important;
+  color: #6b7280 !important;
+  font-size: 13px;
+}
+
+/* 19.7 主栏底色：ocean 皮肤给 main 铺了 #f4f6f8（淡蓝灰），切页时整屏发脏 */
+html[data-layout="workbench"]:not([data-theme="dark"]) main {
+  background: #ffffff !important;
+}
+
+/* 19.7 主栏底色：ocean 皮肤给 main 铺了 #f4f6f8（淡蓝灰），切页时整屏发脏 */
+html[data-layout="workbench"]:not([data-theme="dark"]) main {
+  background: #ffffff !important;
+}
+
+/* ==========================================================================
+   20. 三列常驻外壳（2026-10-29 六改）—— 照 WorkBuddy 客户端骨架
+   --------------------------------------------------------------------------
+   五改之前：46px 图标轨 + **覆盖式**左抽屉。抽屉的问题很实在——导航平时看不见，
+   找一个页面要先点 ☰ 再滑出，滑出还盖住内容。WorkBuddy 的骨架是
+   「图标轨 + 常驻导航列 + 主区」三列并行，导航一直在，内容不遮。
+   本节只改骨架与左栏，不动 DOM、不改类名，所有旧断言不受影响。
+   ========================================================================== */
+@media (min-width: 901px) {
+  /* 20.1 栅格：46 图标轨 / 208 导航列 / 主区（详情面板打开再挂一列） */
+  html[data-layout="workbench"] #app,
+  html[data-layout="workbench"] body.settings-mode #app,
+  html[data-layout="workbench"] body.files-mode #app {
+    grid-template-columns: 46px var(--side-w, 208px) minmax(0, 1fr) !important;
+  }
+  html[data-layout="workbench"] body.inspector-open #app,
+  html[data-layout="workbench"] body.settings-mode.inspector-open #app,
+  html[data-layout="workbench"] body.files-mode.inspector-open #app {
+    grid-template-columns: 46px var(--side-w, 208px) minmax(0, 1fr) minmax(280px, 340px) !important;
+  }
+  /* 收起：导航列归零，图标轨留着（随时点回来） */
+  html[data-layout="workbench"] body.side-collapsed #app,
+  html[data-layout="workbench"] body.side-collapsed.settings-mode #app,
+  html[data-layout="workbench"] body.side-collapsed.files-mode #app {
+    grid-template-columns: 46px 0 minmax(0, 1fr) !important;
+  }
+  html[data-layout="workbench"] body.side-collapsed.inspector-open #app {
+    grid-template-columns: 46px 0 minmax(0, 1fr) minmax(280px, 340px) !important;
+  }
+
+  /* 20.2 左栏从「fixed 覆盖层」改回列内常驻：无蒙层、无阴影、无圆角 */
+  html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode) #sidebar {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: auto !important;
+    z-index: auto !important;
+    display: flex !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  /* 收起态整列隐藏（留 0 宽，避免内容溢出到主区上） */
+  html[data-layout="workbench"] body.side-collapsed #sidebar { display: none !important; }
+  /* 桌面端永不出蒙层：side-open 只服务窄屏覆盖抽屉 */
+  html[data-layout="workbench"] #drawer-mask { display: none !important; }
+  /* 右缘拖拽手柄在常驻列下保留（改的是 --side-w） */
+  html[data-layout="workbench"] #side-resizer { display: block; }
+}
+
+/* ------------------------------------------------------------------ 21. 左栏视觉 */
+/* 21.1 列本体：极浅灰底 + 右侧发丝线，内部三段（导航 / 任务 / 底部） */
+html[data-layout="workbench"] #sidebar {
+  background: #fbfbfc !important;
+  border-right: 1px solid var(--lin-hairline, #eceef0) !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+  font-size: 13px;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar {
+  background: #0e0f11 !important;
+  border-right-color: #1d1f23 !important;
+}
+/* 导航段自己滚，底部用量/设置永远贴底（WorkBuddy 左栏同一姿势） */
+html[data-layout="workbench"] #sidebar .side-main {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  padding: 0 !important;
+}
+html[data-layout="workbench"] #sidebar #side-projects,
+html[data-layout="workbench"] #sidebar #side-activity {
+  flex: 1 1 auto; min-height: 96px; overflow: hidden;
+  border-top: 0 !important; padding-top: 0 !important;
+}
+html[data-layout="workbench"] #sidebar #side-tasks { overflow-y: auto; overflow-x: hidden; }
+
+/* 21.2 品牌行：黑色圆角 logo 块 + 字标 + 模式胶囊 */
+html[data-layout="workbench"] #sidebar .brand-row {
+  display: flex; align-items: center; gap: 4px;
+  padding: 10px 2px 8px !important; min-height: 0;
+}
+html[data-layout="workbench"] #sidebar .brand {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 6px !important;
+  border-radius: 8px;
+  overflow: hidden;
+}
+html[data-layout="workbench"] #sidebar .brand::before {
+  content: "C";
+  flex: none;
+  width: 22px; height: 22px; border-radius: 7px;
+  display: grid; place-items: center;
+  background: #17181a; color: #fff;
+  font-size: 13px; font-weight: 800; line-height: 1;
+  letter-spacing: 0;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .brand::before {
+  background: #f4f5f7; color: #101113;
+}
+html[data-layout="workbench"] #sidebar .brand:hover { background: #f0f2f4; }
+html[data-layout="workbench"] #sidebar .brand-name {
+  font-size: 14px !important; font-weight: 700; letter-spacing: -.01em;
+}
+html[data-layout="workbench"] #sidebar .brand-mode {
+  padding: 1px 6px; border-radius: 5px;
+  background: #eef0f3; color: #4b5563;
+  font-size: 10.5px; font-weight: 600; line-height: 16px;
+}
+html[data-layout="workbench"] #sidebar .brand-caret { width: 13px; height: 13px; opacity: .45; }
+
+/* 21.3 新任务：全宽描边按钮（不打黑，黑色留给主区的发送键） */
+html[data-layout="workbench"] #sidebar .new-task {
+  width: 100%; height: 32px;
+  margin: 0 0 6px !important;
+  padding: 0 9px !important;
+  gap: 8px;
+  border: 1px solid #e3e6ea !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  color: #1f2328 !important;
+  font-size: 13px; font-weight: 600;
+  box-shadow: 0 1px 1px rgba(16, 24, 40, .03);
+}
+html[data-layout="workbench"] #sidebar .new-task:hover {
+  background: #f6f7f8 !important; border-color: #d5d9df !important;
+}
+html[data-layout="workbench"] #sidebar .new-task .ico { width: 15px; height: 15px; opacity: .75; }
+html[data-layout="workbench"] #sidebar .new-task .kbd {
+  color: #9aa1ab; font-size: 10.5px; border-color: #e5e7eb;
+}
+
+/* 21.4 分组标签：11px 灰、留白靠 margin 不靠分割线 */
+html[data-layout="workbench"] #sidebar .side-group-label {
+  padding: 0 8px !important;
+  margin: 12px 0 4px !important;
+  color: #9aa1ab !important;
+  font-size: 11px !important; font-weight: 600;
+  letter-spacing: .02em; text-transform: none;
+}
+html[data-layout="workbench"] #sidebar .side-quick {
+  display: block !important;
+  margin: 0 !important;
+  gap: 0;
+}
+/* hidden 必须真的消失：上面几条用的是 display:block !important，
+   会盖掉 .hidden{display:none}（「高级」组因此一直展开、台导航在通用台也露头） */
+html[data-layout="workbench"] #sidebar .hidden,
+html[data-layout="workbench"] #sidebar .side-quick.hidden,
+html[data-layout="workbench"] #sidebar .side-ws-nav.hidden,
+html[data-layout="workbench"] #sidebar .side-activity.hidden {
+  display: none !important;
+}
+/* 「高级」组里的组标签与上面的「高级功能」开关同名，去掉重复 */
+html[data-layout="workbench"] #sidebar #side-more > .side-group-label { display: none !important; }
+
+/* 21.5 导航项：30px 行高、8px 圆角、选中浅灰底 + 深色字（不再用台色染字） */
+html[data-layout="workbench"] #sidebar .qitem {
+  width: 100%;
+  min-height: 30px !important;
+  height: 30px;
+  padding: 0 8px !important;
+  gap: 8px;
+  border-radius: 7px !important;
+  color: #41474f !important;
+  font-size: 13px !important;
+  font-weight: 450;
+  background: transparent;
+}
+html[data-layout="workbench"] #sidebar .qitem .ico { width: 15px; height: 15px; opacity: .62; color: inherit !important; }
+html[data-layout="workbench"] #sidebar .qitem:hover { background: #f0f2f4 !important; color: #111214 !important; }
+html[data-layout="workbench"] #sidebar .qitem:hover .ico { opacity: .85; }
+html[data-layout="workbench"] #sidebar .qitem.active,
+html[data-layout="workbench"] #sidebar .qitem[aria-current="page"] {
+  background: #eceef1 !important;
+  color: #0b0c0e !important;
+  font-weight: 600;
+}
+html[data-layout="workbench"] #sidebar .qitem.active .ico,
+html[data-layout="workbench"] #sidebar .qitem[aria-current="page"] .ico {
+  color: var(--ws-accent, #4c8dff) !important;
+  opacity: 1;
+}
+html[data-layout="workbench"] #sidebar .qitem .nav-badge { margin-left: auto; }
+
+/* 21.6 台专属导航：**左栏不再重复**。这四条（看板/产出文件/预览与验证/通道体检）
+   本来就在主区右栏「本台常用」卡里一张一行，左栏再列一遍等于同一件事三个入口
+   （图标轨 + 左栏 + 右栏）。台的身份由品牌行模式胶囊 + 图标轨高亮 + 台色承载。 */
+html[data-layout="workbench"] #sidebar #side-ws-nav { display: none !important; }
+
+/* 21.7 设置导航列：标题行 + 搜索框 + 条目，全部收到 208px */
+html[data-layout="workbench"] #sidebar .side-settings { padding: 10px 8px 12px !important; }
+html[data-layout="workbench"] #sidebar .settings-nav-head { padding: 0 4px 8px !important; }
+html[data-layout="workbench"] #sidebar .settings-nav-head strong { font-size: 14px; font-weight: 700; }
+html[data-layout="workbench"] #sidebar .settings-search-wrap { margin-bottom: 8px; }
+html[data-layout="workbench"] #sidebar .set-group {
+  margin: 12px 0 4px !important; padding: 0 8px !important;
+  color: #9aa1ab !important; font-size: 11px !important; font-weight: 600;
+  letter-spacing: .02em; text-transform: none;
+}
+html[data-layout="workbench"] #sidebar .set-item {
+  min-height: 30px !important; height: 30px;
+  padding: 0 8px !important; gap: 8px;
+  border-radius: 7px !important;
+  color: #41474f !important; font-size: 13px !important; font-weight: 450;
+}
+html[data-layout="workbench"] #sidebar .set-item .ico { width: 15px; height: 15px; opacity: .62; }
+html[data-layout="workbench"] #sidebar .set-item:hover { background: #f0f2f4 !important; color: #111214 !important; }
+html[data-layout="workbench"] #sidebar .set-item.active {
+  background: #eceef1 !important; color: #0b0c0e !important; font-weight: 600;
+}
+html[data-layout="workbench"] #sidebar .set-item.active .ico { color: var(--ws-accent, #4c8dff) !important; opacity: 1; }
+
+/* 21.8 底部：用量条 + 三颗按钮贴底，上缘一条发丝线 */
+html[data-layout="workbench"] #sidebar .side-usage {
+  margin: 8px 0 0 !important;
+  padding: 8px !important;
+  border: 1px solid #eceef0 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  text-align: left;
+}
+html[data-layout="workbench"] #sidebar .side-usage:hover { background: #f6f7f8 !important; }
+html[data-layout="workbench"] #sidebar .su-label { font-size: 10.5px; color: #9aa1ab; }
+html[data-layout="workbench"] #sidebar .su-cost { font-size: 12px; font-weight: 700; color: #1f2328; }
+html[data-layout="workbench"] #sidebar .su-tok { font-size: 10.5px; color: #9aa1ab; }
+html[data-layout="workbench"] #sidebar .side-foot {
+  margin-top: 6px !important;
+  padding: 6px 0 8px !important;
+  border-top: 1px solid var(--lin-hairline, #eceef0) !important;
+  gap: 2px;
+}
+html[data-layout="workbench"] #sidebar .foot-btn {
+  width: 30px; height: 30px; border-radius: 7px; color: #6b7280;
+}
+html[data-layout="workbench"] #sidebar .foot-btn:hover { background: #f0f2f4; color: #111214; }
+html[data-layout="workbench"] #sidebar .foot-prov {
+  height: 30px; border-radius: 7px; font-size: 12px; color: #6b7280;
+}
+html[data-layout="workbench"] #sidebar .foot-prov:hover { background: #f0f2f4; color: #111214; }
+/* 未选厂商：只是「一件事没做」，用琥珀字提示就够，别画成输入框 */
+html[data-layout="workbench"] #sidebar #btn-prov-side {
+  border: 0 !important;
+  background: transparent !important;
+  color: #6b7280 !important;
+}
+html[data-layout="workbench"] #sidebar #btn-prov-side.is-empty {
+  border: 0 !important;
+  background: #fff7ed !important;
+}
+html[data-layout="workbench"] #sidebar #btn-prov-side.is-empty .nm { color: #b45309 !important; }
+html[data-layout="workbench"] #sidebar #btn-prov-side.is-empty:hover { background: #fef3c7 !important; }
+
+/* 21.9 去重：设置已在底部齿轮，日常组里那颗不再重复出现（DOM 保留，快捷键照旧） */
+html[data-layout="workbench"] #sidebar #btn-q-settings { display: none !important; }
+
+/* ------------------------------------------------------------------ 22. 顶栏 */
+/* 22.1 单行 48px：左页名、右动作，白底 + 发丝下缘，不再半透明模糊 */
+html[data-layout="workbench"] #mainwrap .topbar {
+  min-height: 48px !important;
+  height: 48px;
+  padding: 0 16px !important;
+  gap: 10px;
+  background: #fff !important;
+  border-bottom: 1px solid var(--lin-hairline, #eceef0) !important;
+  backdrop-filter: none !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #mainwrap .topbar {
+  background: #0b0c0e !important;
+  border-bottom-color: #1d1f23 !important;
+}
+html[data-layout="workbench"] #mainwrap .page-title {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #111214 !important;
+  letter-spacing: -.01em;
+}
+html[data-layout="workbench"] #mainwrap .crumb-root { font-size: 12px; color: #9aa1ab; }
+/* 22.2 动作簇：28px 方形图标、hover 浅灰，不做胶囊描边 */
+html[data-layout="workbench"] #mainwrap .top-actions { gap: 2px; }
+html[data-layout="workbench"] #mainwrap .top-actions .pill.icon-only {
+  width: 28px; height: 28px;
+  min-width: 28px; min-height: 28px;
+  padding: 0 !important;
+  border-radius: 7px;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #4b5563;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #mainwrap .top-actions .pill.icon-only:hover {
+  background: #f0f2f4 !important; color: #111214;
+}
+html[data-layout="workbench"] #mainwrap .top-actions .pill.icon-only .ico { width: 16px; height: 16px; }
+html[data-layout="workbench"] #mainwrap .top-actions .conn {
+  font-size: 11px; color: #9aa1ab; padding: 0 4px;
+}
+html[data-layout="workbench"] #mainwrap .conn::before { width: 5px; height: 5px; }
+
+/* ==========================================================================
+   23. 二级页统一页头（2026-10-29 六改）
+   --------------------------------------------------------------------------
+   现状：任务/看板/概览有自己的 h1，其余十几个子页是「卡片头里一个小 h2」，
+   切过去像掉进后台管理页。本节把两种形态拉平：
+     · 有 .panel-head 的页 → 用 .is-page-head 变成页头（22px 标题 + 一句白话 + 右侧动作）；
+     · 什么都没的页 → .pg-lead（24px 标题 + 一句白话）。
+   页头副标题的文案由 app.js 的 PAGE_LEADS 注入（i18n 走 t()）。
+   ========================================================================== */
+
+/* 23.0 设置态 / 文件态左栏只留一套导航（常驻列把 display 抬高了，这里补回落） */
+html[data-layout="workbench"] body.settings-mode #sidebar .side-main,
+html[data-layout="workbench"] body.files-mode #sidebar .side-main { display: none !important; }
+html[data-layout="workbench"] body:not(.settings-mode) #sidebar .side-settings,
+html[data-layout="workbench"] body.files-mode #sidebar .side-settings { display: none !important; }
+html[data-layout="workbench"] body.settings-mode #sidebar .side-settings { display: flex !important; }
+html[data-layout="workbench"] body.settings-mode #mainwrap > main { padding: 0 !important; }
+
+/* 23.1 内容列：离开左栏贴边，统一呼吸（原来只靠 main 的 16px，标题几乎贴栏） */
+html[data-layout="workbench"] #page-settings {
+  padding: 22px 28px 48px;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* 23.2 页头：标题 / 副标题 / 动作 三件套，用栅格定位不依赖 DOM 顺序 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: 16px;
+  padding: 0 0 14px !important;
+  margin: 0 0 16px !important;
+  border-bottom: 1px solid var(--lin-hairline, #eceef0) !important;
+  background: none !important;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > h2 {
+  grid-column: 1; grid-row: 1;
+  margin: 0 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: -.022em;
+  line-height: 1.25;
+  color: #0b0c0e;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .pg-sub {
+  grid-column: 1; grid-row: 2;
+  margin: 6px 0 0 !important;
+  font-size: 13px; line-height: 1.55;
+  color: #6b7280;
+  max-width: 62ch;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .actions {
+  grid-column: 3; grid-row: 1 / span 2;
+  align-self: end; justify-self: end;
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 !important;
+}
+/* 页头里其它零散元素（面包屑/计数/筛选）一律贴右，别把标题挤到第二行 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > *:not(h2):not(.pg-sub):not(.actions):not(.hhelp) {
+  grid-column: 3; grid-row: 1; align-self: end; justify-self: end;
+}
+
+/* 23.3 页头里的破坏性动作：平时幽灵描边，hover 才见红 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head .actions .danger {
+  background: #fff !important;
+  background-image: none !important;
+  border: 1px solid #e3e6ea !important;
+  color: #b42318 !important;
+  box-shadow: none !important;
+  font-weight: 550 !important;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head .actions .danger:hover {
+  background: #fef3f2 !important;
+  border-color: #f5c2bd !important;
+  color: #912018 !important;
+}
+
+/* 23.4 通用按钮高度：页头与工具栏里的一律 30px，别一小一大 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head .actions button,
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head .actions .btn {
+  height: 30px; padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+/* 23.5 列表：行与行之间用发丝线，不再每行一张小卡（运行记录/用量/数据页同款） */
+html[data-layout="workbench"] #page-settings .list > .row,
+html[data-layout="workbench"] #page-settings .list > .item {
+  border-radius: 10px;
+}
+
+/* 23.6 表格：去掉竖线，只留行分隔（官网所有表格都这样） */
+html[data-layout="workbench"] #page-settings table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+html[data-layout="workbench"] #page-settings table th {
+  text-align: left;
+  font-size: 11.5px; font-weight: 600;
+  color: #8b929c;
+  letter-spacing: .01em;
+  border-bottom: 1px solid var(--lin-hairline, #eceef0);
+  padding: 8px 10px;
+}
+html[data-layout="workbench"] #page-settings table td {
+  border-bottom: 1px solid #f2f3f5;
+  padding: 9px 10px;
+}
+html[data-layout="workbench"] #page-settings table tr:last-child td { border-bottom: 0; }
+
+/* 23.7 深色下同一套层级（别让白底规则把深色页照成纯白） */
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel-head.is-page-head { border-bottom-color: #1d1f23 !important; }
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel-head.is-page-head > h2 { color: #f4f5f7; }
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel-head.is-page-head > .pg-sub { color: #9aa1ab; }
+
+/* ==========================================================================
+   24. 内容细节：看板 / 列表 / 卡片（2026-10-29 六改）
+   --------------------------------------------------------------------------
+   页头拉平以后，剩下的丑集中在「卡片长得像表单、列看起来像表格」。
+   本节只做三件事：统一 1px 发丝边、统一 9~12px 圆角、把重复信息降级成灰字。
+   ========================================================================== */
+
+/* 24.1 看板：列做浅灰槽，卡做白片；列头降级成小灰字 + 数字胶囊 */
+html[data-layout="workbench"] #page-settings .kanban-board { gap: 14px; }
+html[data-layout="workbench"] #page-settings .kb-col {
+  background: #f8f9fa !important;
+  border: 1px solid #eef0f2 !important;
+  border-radius: 12px !important;
+  padding: 10px !important;
+}
+html[data-layout="workbench"] #page-settings .kb-col-head {
+  padding: 2px 2px 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #5b6270 !important;
+  letter-spacing: .01em;
+}
+html[data-layout="workbench"] #page-settings .kb-col-head b {
+  min-width: 20px; height: 18px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; background: #eceef1;
+  color: #6b7280 !important; font-size: 11px !important; font-weight: 600 !important;
+}
+html[data-layout="workbench"] #page-settings .kb-col[data-col="review"] .kb-col-head { color: #b45309 !important; }
+html[data-layout="workbench"] #page-settings .kb-card {
+  background: #fff !important;
+  border: 1px solid #e8eaee !important;
+  border-radius: 9px !important;
+  padding: 9px 11px !important;
+  margin-bottom: 8px !important;
+  box-shadow: 0 1px 1px rgba(16, 24, 40, .03) !important;
+}
+html[data-layout="workbench"] #page-settings .kb-card:hover {
+  border-color: #cfd5dd !important;
+  box-shadow: 0 2px 8px -4px rgba(16, 24, 40, .18) !important;
+}
+/* 同名重跑的「另有 N 次」：降级成右对齐灰字，不要整行抢戏 */
+html[data-layout="workbench"] #page-settings .kanban-board .kb-more {
+  width: auto !important;
+  align-self: flex-end;
+  margin: -3px 2px 8px auto !important;
+  padding: 1px 6px !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  color: #9aa1ab !important;
+}
+html[data-layout="workbench"] #page-settings .kanban-board .kb-more:hover { background: #eef0f2 !important; color: #4b5563 !important; }
+html[data-layout="workbench"] #page-settings .kb-empty {
+  margin: auto; padding: 18px 0;
+  color: #b0b6bf !important; font-size: 12px;
+}
+
+/* 24.2 运行记录列表：行=白片 + 发丝边，行内左状态条只给「失败/等你决定」 */
+html[data-layout="workbench"] #page-settings #run-list .run-row,
+html[data-layout="workbench"] #page-settings #run-list > * {
+  border-radius: 10px !important;
+}
+html[data-layout="workbench"] #page-settings #run-list .run-row:hover { border-color: #cfd5dd !important; }
+
+/* 24.3 通用小卡片：设置首页六张卡 / 工具卡 / 统计卡同一套「白底 + 发丝 + 12px 圆角」 */
+html[data-layout="workbench"] #page-settings .sh-card,
+html[data-layout="workbench"] #page-settings .mgmt-panel,
+html[data-layout="workbench"] #page-settings .opanel,
+html[data-layout="workbench"] #page-settings .cards > .card {
+  border: 1px solid #eceef0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .03) !important;
+}
+html[data-layout="workbench"] #page-settings .sh-card:hover,
+html[data-layout="workbench"] #page-settings .cards > .card:hover {
+  border-color: #d8dce2 !important;
+  box-shadow: 0 6px 18px -14px rgba(16, 24, 40, .5) !important;
+}
+
+/* 24.4 表单/输入：设置页里的输入统一 34px 高、8px 圆角，和按钮同一档 */
+html[data-layout="workbench"] #page-settings input[type="text"]:not(.hp-in),
+html[data-layout="workbench"] #page-settings input[type="password"]:not(.hp-in),
+html[data-layout="workbench"] #page-settings input[type="search"]:not(.hp-in),
+html[data-layout="workbench"] #page-settings select {
+  height: 32px;
+  font-size: 12.5px;
+  border-radius: 8px !important;
+}
+
+/* 24.5 深色：同一套层级，别让白底规则照成纯白 */
+html[data-layout="workbench"][data-theme="dark"] #page-settings .kb-col {
+  background: #131417 !important; border-color: #1f2126 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .kb-card,
+html[data-layout="workbench"][data-theme="dark"] #page-settings .sh-card,
+html[data-layout="workbench"][data-theme="dark"] #page-settings .cards > .card {
+  background: #16181c !important; border-color: #23262b !important;
+}
+
+/* ==========================================================================
+   25. 控件收尾：分段控件 / 帮助钮 / 重复说明（2026-10-29 六改）
+   ========================================================================== */
+/* 25.1 分段控件：灰槽 + 白色滑块（选中态别再用亮蓝，页面里最跳的那块该是内容） */
+html[data-layout="workbench"] #page-settings .seg {
+  background: #f2f3f5 !important;
+  border: 1px solid #e8eaee !important;
+  border-radius: 9px !important;
+  padding: 2px !important;
+  gap: 2px !important;
+}
+html[data-layout="workbench"] #page-settings .seg-btn {
+  border-radius: 7px !important;
+  padding: 3px 11px !important;
+  font-size: 12.5px !important;
+  color: #6b7280 !important;
+  background: none !important;
+}
+html[data-layout="workbench"] #page-settings .seg-btn:hover { color: #111214 !important; }
+html[data-layout="workbench"] #page-settings .seg-btn.active {
+  background: #fff !important;
+  color: #0b0c0e !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .10), 0 0 0 1px rgba(16, 24, 40, .04) !important;
+}
+
+/* 25.2 页头右侧的「这是什么」帮助钮：跟动作按钮同高，别单独立一根细线 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head {
+  /* 三列：标题区 / 帮助钮 / 动作组。帮助钮没出现的页，中间那列宽 0，不影响排版 */
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .hhelp {
+  grid-column: 2; grid-row: 1 / span 2; align-self: center; justify-self: end;
+  width: 24px; height: 24px;
+  margin: 0 10px 0 0 !important;
+  border-radius: 6px;
+}
+
+/* 25.3 页头已经用一句话说清「这页干什么」了，紧跟着的旧 hint 就是同一句话说第二遍 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head.has-lead + .hint {
+  display: none !important;
+}
+
+/* 25.4 页头动作组垂直居中：原先 align-self:end 会贴着副标题往下掉 */
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .actions {
+  align-self: center !important;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .hhelp { align-self: center; }
+
+/* ==========================================================================
+   26. 页内控件：分类胶囊 / 破坏性按钮（2026-10-29 六改）
+   ========================================================================== */
+/* 26.1 分类胶囊（模型接入等页）：白底细边，选中浅灰底，跟分段控件同一套 */
+html[data-layout="workbench"] #page-settings .cat-chip {
+  height: 26px !important;
+  padding: 0 10px !important;
+  border: 1px solid #e8eaee !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  color: #6b7280 !important;
+  font-size: 12px !important;
+}
+html[data-layout="workbench"] #page-settings .cat-chip:hover { color: #111214 !important; border-color: #d5d9df !important; }
+html[data-layout="workbench"] #page-settings .cat-chip.active {
+  background: #f2f3f5 !important;
+  border-color: #dfe3e8 !important;
+  color: #0b0c0e !important;
+  font-weight: 600 !important;
+}
+
+/* 26.2 破坏性按钮：白底红字（平时安静），hover 才铺浅红。
+   整块红太重，一页里出现两三个红块会把「主操作」彻底盖掉。 */
+html[data-layout="workbench"] #page-settings .panel button.danger,
+html[data-layout="workbench"] #page-settings .panel button.primary.danger,
+html[data-layout="workbench"] #page-settings .panel .btn.danger {
+  background: #fff !important;
+  background-image: none !important;
+  border: 1px solid #e3e6ea !important;
+  color: #b42318 !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #page-settings .panel button.danger:hover,
+html[data-layout="workbench"] #page-settings .panel button.primary.danger:hover {
+  background: #fef3f2 !important;
+  border-color: #f5c2bd !important;
+  color: #912018 !important;
+}
+
+/* ==========================================================================
+   27. 窄屏兜底（2026-10-29 六改）
+   --------------------------------------------------------------------------
+   三列常驻与页头栅格都写在 min-width:901px / 桌面形态里，但 23 节的
+   .is-page-head 是全局的——窄屏必须退回单列，否则标题被动作组挤成竖条。
+   ========================================================================== */
+@media (max-width: 700px) {
+  html[data-layout="workbench"] #page-settings { padding: 16px 14px 40px; }
+  html[data-layout="workbench"] #page-settings .panel-head.is-page-head {
+    grid-template-columns: minmax(0, 1fr) !important;
+    row-gap: 8px;
+  }
+  html[data-layout="workbench"] #page-settings .panel-head.is-page-head > h2 { grid-column: 1; grid-row: 1; font-size: 19px !important; }
+  html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .pg-sub { grid-column: 1; grid-row: 2; }
+  html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .hhelp {
+    grid-column: 1; grid-row: 3; justify-self: start; margin: 0 !important;
+  }
+  html[data-layout="workbench"] #page-settings .panel-head.is-page-head > .actions {
+    grid-column: 1; grid-row: 4; justify-self: start; align-self: start;
+    flex-wrap: wrap;
+  }
+}
+
+/* ==========================================================================
+   28. 字号层级（2026-10-29 六改）
+   --------------------------------------------------------------------------
+   23 节把页头 h2 抬到 22px 以后，页内小节标题（「恢复（导入备份包）」「每日清理」）
+   也跟着 22px —— 一眼看过去三个同级大标题，层级等于没有。这里把页内 h2 压回 16px，
+   只有 .is-page-head 里的 h2 保留 22px。
+   ========================================================================== */
+html[data-layout="workbench"] #page-settings .subpage h2 {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  letter-spacing: -.01em;
+  color: #14161a;
+}
+html[data-layout="workbench"] #page-settings .subpage h3 {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: #262b33;
+}
+html[data-layout="workbench"] #page-settings .panel-head.is-page-head > h2 {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: #0b0c0e !important;
+}
+/* 页内说明文字：统一灰、统一行高，别一段深一段浅 */
+html[data-layout="workbench"] #page-settings .subpage .hint,
+html[data-layout="workbench"] #page-settings .subpage .muted,
+html[data-layout="workbench"] #page-settings .subpage .sub {
+  color: #6b7280 !important;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+/* 深色：字号规则同样要跟主题走 */
+html[data-layout="workbench"][data-theme="dark"] #page-settings .subpage h2 { color: #e9eaec !important; }
+html[data-layout="workbench"][data-theme="dark"] #page-settings .subpage h3 { color: #d4d7db !important; }
+
+/* ==========================================================================
+   29. 深色兜底（2026-10-29 六改）
+   --------------------------------------------------------------------------
+   20~28 节大量规则按浅色写死了白底/深字。默认主题是浅色，但换肤开关还在，
+   点了夜间不能一半白一半黑：这里只补「被写死的地方」，其余继续跟主题变量走。
+   ========================================================================== */
+html[data-layout="workbench"][data-theme="dark"] #sidebar .brand-mode {
+  background: #1c1e22 !important; color: #a6adb8 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .new-task {
+  background: #16181c !important;
+  border-color: #262930 !important;
+  color: #e6e8ea !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .new-task:hover {
+  background: #1c1f24 !important; border-color: #33373f !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .new-task .kbd {
+  color: #7c838d !important; border-color: #2a2d33 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .qitem,
+html[data-layout="workbench"][data-theme="dark"] #sidebar .set-item { color: #b6bcc6 !important; }
+html[data-layout="workbench"][data-theme="dark"] #sidebar .qitem:hover,
+html[data-layout="workbench"][data-theme="dark"] #sidebar .set-item:hover {
+  background: #1a1c20 !important; color: #f2f4f7 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .qitem.active,
+html[data-layout="workbench"][data-theme="dark"] #sidebar .qitem[aria-current="page"],
+html[data-layout="workbench"][data-theme="dark"] #sidebar .set-item.active {
+  background: #23262b !important; color: #ffffff !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .side-group-label,
+html[data-layout="workbench"][data-theme="dark"] #sidebar .set-group { color: #7c838d !important; }
+html[data-layout="workbench"][data-theme="dark"] #sidebar .side-usage {
+  background: #14161a !important; border-color: #23262b !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar .side-usage:hover { background: #1a1c20 !important; }
+html[data-layout="workbench"][data-theme="dark"] #sidebar .su-cost { color: #e6e8ea !important; }
+html[data-layout="workbench"][data-theme="dark"] #sidebar .foot-btn,
+html[data-layout="workbench"][data-theme="dark"] #sidebar .foot-prov { color: #9aa1ab !important; }
+html[data-layout="workbench"][data-theme="dark"] #sidebar .foot-btn:hover,
+html[data-layout="workbench"][data-theme="dark"] #sidebar .foot-prov:hover {
+  background: #1a1c20 !important; color: #f2f4f7 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #sidebar #btn-prov-side.is-empty { background: #1f1a12 !important; }
+html[data-layout="workbench"][data-theme="dark"] #sidebar #btn-prov-side.is-empty .nm { color: #e0a458 !important; }
+
+/* 页头 / 分段 / 胶囊 / 破坏性按钮：深色下不能留白底 */
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel-head.is-page-head .actions .danger,
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel button.danger,
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel button.primary.danger {
+  background: #14161a !important;
+  border-color: #2a2d33 !important;
+  color: #ff8a80 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .panel button.danger:hover {
+  background: #2a1618 !important; border-color: #5d2a2a !important; color: #ffb4ab !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .seg {
+  background: #17191d !important; border-color: #262930 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .seg-btn { color: #9aa1ab !important; }
+html[data-layout="workbench"][data-theme="dark"] #page-settings .seg-btn.active {
+  background: #2a2d33 !important; color: #fff !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .cat-chip {
+  background: #14161a !important; border-color: #262930 !important; color: #b6bcc6 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .cat-chip.active {
+  background: #262930 !important; color: #fff !important; border-color: #383c44 !important;
+}
+html[data-layout="workbench"][data-theme="dark"] #page-settings .kb-col-head b {
+  background: #22252a !important; color: #9aa1ab !important;
+}
+/* ==========================================================================
+   30. 任务详情右栏（rail）：动作区 / 分区入口 / 任务动态（2026-10-29 七改）
+   右栏只有 276px，原来七颗按钮平铺两列、字号被挤到 12px 以下，
+   「删除记录」还是 60px 的碎块挂在末尾 —— 一眼看不出哪个是主操作。
+   ========================================================================== */
+@media (min-width: 901px) {
+  /* 30.1 主操作独占一行，次要操作两列等宽，删除类整行安静右对齐。
+     规则顺序有意义：主操作排第一行，剩下的按钮自然按 2 列流下去。 */
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 0 !important;
+  }
+  /* 用 flex 而不是 grid：次要按钮按 calc(50% - 3px) 排两列，
+     末行只剩一颗时会自己长满整行，不会留半格空洞。 */
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button {
+    flex: 1 1 calc(50% - 3px);
+    width: auto !important;
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button.primary,
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button.danger {
+    flex-basis: 100%;
+  }
+  /* 删除/取消这类不可逆动作：不是主路径，做成「一行灰字」，hover 才见红 */
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button.danger:not(.primary) {
+    flex-basis: 100%;
+    min-height: 26px;
+    margin-top: 2px;
+    padding-top: 8px;
+    border: 0;
+    border-top: 1px solid #eef0f3;
+    border-radius: 0;
+    background: transparent;
+    background-image: none;
+    color: #8a9099;
+    font-size: 12px;
+    text-align: right;
+  }
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button.danger:not(.primary):hover {
+    color: var(--bad, #d92d20);
+    background: transparent;
+  }
+  /* 两颗图标钮（••• 与任务动态）不参与等分，贴右排成一行 */
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > .rd-more-toggle,
+  html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > .rd-context-toggle {
+    flex: none;
+    width: 32px !important;
+    min-height: 30px;
+  }
+
+  /* 30.2 分区入口：两列「图标 + 名称 + 徽章」的方块行。
+     原来五条纯文字行铺满整块，像一份没写完的清单。 */
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eef0f3;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 0;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 9px;
+    border: 1px solid #eceef1;
+    border-radius: 8px;
+    background: #fff;
+    color: #3d424a;
+    font-size: 12.5px;
+    text-align: left;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill .ico {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    color: #9aa0a8;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill > b {
+    flex: none;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #f0f1f3;
+    color: #52585f;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill:hover {
+    border-color: #d9dde2;
+    background: #fafbfc;
+    color: #111214;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill.on {
+    border-color: color-mix(in srgb, var(--ws-accent) 34%, #e4e7eb);
+    background: color-mix(in srgb, var(--ws-accent) 7%, #fff);
+    color: #111214;
+    font-weight: 600;
+  }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill.on .ico { color: var(--ws-accent); }
+  html[data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-back {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 30px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    font-size: 12.5px;
+  }
+
+  /* 30.3 任务动态：小节标题当 11px 灰标签，行与行之间只留发丝线；
+     长诊断文本限高三行（详情正文里有完整版，这里只是提示）。 */
+  html[data-layout="workbench"] #rd-rail > .rd-context { font-size: 12.5px; }
+  html[data-layout="workbench"] #rd-rail > .rd-context .rd-context-section > summary {
+    padding: 6px 0;
+    color: #6b7280;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+  html[data-layout="workbench"] #rd-rail > .rd-context .rd-context-row {
+    padding: 5px 0;
+    border-top: 1px solid #f1f2f4;
+    color: #3d424a;
+    line-height: 1.5;
+  }
+  html[data-layout="workbench"] #rd-rail > .rd-context .rd-context-row > span:first-child { color: #6b7280; }
+  html[data-layout="workbench"] #rd-rail > .rd-context .rd-context-row > span:last-child {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-align: right;
+  }
+}
+
+/* 30.4 深色兜底：右栏两颗「白底」控件（分区入口方块、静默删除钮）在夜间必须换色，
+   否则整块右栏里只有它们两块白得刺眼。 */
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill {
+  border-color: #2f343a;
+  background: #1a1d21;
+  color: #d5d8dc;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill .ico { color: #8b929a; }
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill > b { background: #2a2f35; color: #c9ced4; }
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill:hover { background: #22262b; border-color: #3a4046; color: #fff; }
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > #rd-chat-nav .cn-pill.on {
+  border-color: color-mix(in srgb, var(--ws-accent) 55%, #2f343a);
+  background: color-mix(in srgb, var(--ws-accent) 16%, #1a1d21);
+  color: #fff;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button.danger:not(.primary) {
+  border-top-color: #2c3137 !important;
+  background: transparent !important;
+  background-image: none !important;
+  color: #8b929a !important;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button.danger:not(.primary):hover { color: #ff7b6e !important; }
+
+/* ==========================================================================
+   31. 任务页的「最近的活」（2026-10-29 七改）
+   这页只有一张输入卡，页名叫任务却一个任务都不列；补一条最近清单，
+   行标记复用侧栏 .stask，所以只需要管容器与小标题。
+   ========================================================================== */
+html[data-layout="workbench"] #sub-tasks .tasks-recent {
+  width: 100%;
+  margin: 14px 0 0;
+  flex: none;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 8px;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-head h2 {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 12px;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-all:hover { background: #f3f4f6; color: #111214; }
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-all .ico { width: 12px; height: 12px; }
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-list {
+  border: 1px solid #e8eaee;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .stask {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-top: 1px solid #f1f2f4;
+  cursor: pointer;
+  font-size: 13px;
+  color: #26282c;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .tr-list > .stask:first-child { border-top: 0; }
+html[data-layout="workbench"] #sub-tasks .tasks-recent .stask:hover { background: #fafbfc; }
+html[data-layout="workbench"] #sub-tasks .tasks-recent .stask > .t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-layout="workbench"] #sub-tasks .tasks-recent .stask > .tm {
+  flex: none;
+  color: #9aa0a8;
+  font-size: 12px;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-tasks .tasks-recent .tr-list {
+  border-color: #2c3036;
+  background: #16181b;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-tasks .tasks-recent .stask {
+  border-top-color: #23262b;
+  color: #e6e8ea;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-tasks .tasks-recent .stask:hover { background: #1d2024; }
+/* ==========================================================================
+   32. 文件浏览（files-mode 侧栏树）：折叠标记与行距（2026-10-29 七改）
+   原来折叠箭头是 9px 的「▸」字形再旋转 90°，在 12.5px 行里糊成一个小横杠；
+   换成 CSS 三角形，展开/收起只转 90°。
+   ========================================================================== */
+html[data-layout="workbench"] details.sf-dir > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  flex: none;
+  border-left: 5px solid #9aa0a8;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform .12s ease;
+}
+html[data-layout="workbench"] details.sf-dir[open] > summary::before { transform: rotate(90deg); }
+html[data-layout="workbench"] details.sf-dir > summary,
+html[data-layout="workbench"] a.sf-file {
+  min-height: 28px;
+  border-radius: 7px;
+  font-size: 12.5px;
+}
+html[data-layout="workbench"] details.sf-dir > summary:hover,
+html[data-layout="workbench"] a.sf-file:hover { background: #f3f4f6; }
+html[data-layout="workbench"] a.sf-file i,
+html[data-layout="workbench"] details.sf-dir > summary > i { font-variant-numeric: tabular-nums; }
+/* ==========================================================================
+   33. 知识库卡片：摘要限高三行（2026-10-29 七改）
+   每条知识都塞着 6~10 行正文摘录，两列一铺就是满屏文字墙，
+   扫标题找东西这件事被彻底埋掉。摘要只留三行，点进去看全文。
+   ========================================================================== */
+html[data-layout="workbench"] #page-settings #kb-cards .card .note {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #5b6169;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+html[data-theme="dark"][data-layout="workbench"] #page-settings #kb-cards .card .note { color: #a9b0b8; }
+/* ==========================================================================
+   34. 记忆中心：每条记忆限高（2026-10-29 七改）
+   项目记忆原样铺全文（含 <details><summary> 之类的原始片段），三列一铺
+   整页就是几屏滚动都读不完的文字；这里每条只留四行，扫标题判断即可。
+   ========================================================================== */
+html[data-layout="workbench"] #sub-memory .rd-memory-row pre {
+  max-height: 5.6em;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #4a5058;
+  -webkit-mask-image: linear-gradient(#000 72%, transparent);
+  mask-image: linear-gradient(#000 72%, transparent);
+}
+html[data-layout="workbench"] #sub-memory .rd-memory-row { padding: 10px 0; }
+html[data-layout="workbench"] #sub-memory .rd-memory-row > div:first-child strong { font-size: 13px; }
+html[data-layout="workbench"] #memory-projects.cards {
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  align-items: start;
+  gap: 14px;
+}
+html[data-layout="workbench"] #sub-memory .memory-project-head { margin-bottom: 2px; }
+html[data-layout="workbench"] #sub-memory .rd-memory-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+html[data-theme="dark"][data-layout="workbench"] #sub-memory .rd-memory-row pre { color: #a9b0b8; }
+
+/* ==========================================================================
+   35. 运行记录：组次数徽章 / 耗时 / 明确的展开按钮（2026-10-29 八改）
+   --------------------------------------------------------------------------
+   改前：一行只有「标题 + 状态 + 相对时间」，同一任务压着 28 次重跑时，
+   底下那句「另有 28 次记录」是 11px 灰字按钮，几乎看不出能点；
+   行内也没有耗时——用户判断「这条是不是卡死了」缺最要紧的那一个数。
+   ========================================================================== */
+
+/* 35.1 工具条：一行灰字工具条，别再像第二行正文 */
+html[data-layout="workbench"] #sub-runs .run-tools {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 10px; padding: 0 2px;
+  font-size: 12px; color: #8a9099;
+}
+html[data-layout="workbench"] #sub-runs .run-tools .toggle {
+  color: #5b6270; font-size: 12px; gap: 5px;
+}
+html[data-layout="workbench"] #sub-runs .run-tools .n { color: #9aa1ab; }
+html[data-layout="workbench"] #sub-runs .run-tools button {
+  height: 26px; padding: 0 10px; font-size: 12px;
+}
+
+/* 35.2 行：白片 + 发丝边；信息区吃满，右侧「耗时 / 状态 / 时间」等宽成列 */
+html[data-layout="workbench"] #sub-runs #run-list .item {
+  padding: 10px 13px !important;
+  margin-bottom: 8px;
+  border: 1px solid #e8eaee !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 1px rgba(16, 24, 40, .02);
+}
+html[data-layout="workbench"] #sub-runs #run-list .item:hover {
+  border-color: #cfd5dd !important; background: #fff !important;
+}
+html[data-layout="workbench"] #sub-runs #run-list .item .t { width: 100%; gap: 9px; }
+html[data-layout="workbench"] #sub-runs #run-list .item .rt .name { font-size: 13px; gap: 6px; }
+html[data-layout="workbench"] #sub-runs #run-list .item .rt .desc {
+  font-size: 11.5px; color: #8a9099; line-height: 1.45;
+}
+html[data-layout="workbench"] #sub-runs #run-list .item .chip {
+  flex: none; height: 20px; padding: 0 8px;
+  font-size: 11px; line-height: 20px; border-radius: 999px;
+}
+/* 耗时：等宽数字、右对齐，和下面的相对时间对齐成一列，扫读时不会跳 */
+html[data-layout="workbench"] #sub-runs #run-list .item .rspan {
+  flex: none; min-width: 56px; text-align: right;
+  font-size: 11.5px; color: #8a9099;
+  font-variant-numeric: tabular-nums;
+}
+html[data-layout="workbench"] #sub-runs #run-list .item .time {
+  min-width: 54px; font-size: 11.5px; color: #9aa1ab;
+  font-variant-numeric: tabular-nums;
+}
+/* 组次数徽章：告诉用户「这一行代表 N 次运行」 */
+html[data-layout="workbench"] #sub-runs #run-list .rgcount {
+  flex: none; height: 16px; padding: 0 5px; border-radius: 5px;
+  background: #f2f3f5; color: #6b7280;
+  font-size: 10.5px; font-weight: 600; line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 35.3 展开按钮：虚线胶囊 + 箭头，一眼看出是「能点开的东西」 */
+html[data-layout="workbench"] #sub-runs #run-list .run-group-more {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 26px; margin: -2px 0 12px 25px; padding: 0 9px;
+  border: 1px dashed #dcdfe4; border-radius: 7px;
+  background: #fff; color: #5b6270;
+  font-size: 11.5px; cursor: pointer;
+  transition: border-color .15s, color .15s, background-color .15s;
+}
+html[data-layout="workbench"] #sub-runs #run-list .run-group-more:hover {
+  border-color: #c2c9d2; background: #f8f9fa; color: #111214;
+}
+html[data-layout="workbench"] #sub-runs #run-list .run-group-more .ico {
+  width: 12px; height: 12px; opacity: .65;
+  transition: transform .15s;
+}
+html[data-layout="workbench"] #sub-runs #run-list .run-group-more.is-open .ico { transform: rotate(180deg); }
+
+/* 35.4 展开出来的子行：缩进 + 左侧引线，读起来是「同一条的其它几次」 */
+html[data-layout="workbench"] #sub-runs #run-list .item.run-child {
+  margin-left: 25px !important;
+  padding: 8px 12px !important;
+  border-left: 2px solid #eaedf1 !important;
+  border-radius: 0 10px 10px 0 !important;
+  opacity: .92;
+}
+html[data-layout="workbench"] #sub-runs #run-list .item.run-child .rt .name { font-weight: 500; font-size: 12.5px; }
+html[data-layout="workbench"] #sub-runs #run-list .item.run-child .rt .desc { display: none; }
+
+/* 35.5 深色：白片换夜间片，发丝边别亮成白线 */
+html[data-theme="dark"][data-layout="workbench"] #sub-runs #run-list .item {
+  background: #16181c !important; border-color: #23262b !important;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-runs #run-list .item:hover { border-color: #33383f !important; }
+html[data-theme="dark"][data-layout="workbench"] #sub-runs #run-list .item.run-child { border-left-color: #262a30 !important; }
+html[data-theme="dark"][data-layout="workbench"] #sub-runs #run-list .rgcount { background: #23262b; color: #9aa1ab; }
+html[data-theme="dark"][data-layout="workbench"] #sub-runs #run-list .run-group-more {
+  background: #16181c; border-color: #2c3137; color: #9aa1ab;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-runs #run-list .run-group-more:hover {
+  background: #1c1f24; border-color: #3a4046; color: #e8eaed;
+}
+
+/* ==========================================================================
+   36. 看板卡片：标题两行封顶、底部一行元信息（2026-10-29 八改）
+   --------------------------------------------------------------------------
+   改前每张卡高低不一（标题长的两行、短的半行），一列扫下去找不到节奏；
+   类型标签、状态胶囊、时间挤在 65% 宽度里，右边空着。
+   ========================================================================== */
+
+html[data-layout="workbench"] #sub-kanban .kb-card {
+  display: flex; flex-direction: column; gap: 6px;
+  width: 100%; text-align: left;
+  padding: 10px 11px !important;
+}
+html[data-layout="workbench"] #sub-kanban .kb-card-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12.5px; font-weight: 600; line-height: 1.42; color: #111214;
+  word-break: break-word;
+}
+html[data-layout="workbench"] #sub-kanban .kb-card-meta {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0; font-size: 11px; color: #9aa1ab;
+}
+html[data-layout="workbench"] #sub-kanban .kb-card-meta .kb-type {
+  flex: none; height: 17px; padding: 0 5px; border-radius: 4px;
+  background: #f2f3f5; color: #6b7280;
+  font-size: 10.5px; font-style: normal; line-height: 17px;
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html[data-layout="workbench"] #sub-kanban .kb-card-meta .chip {
+  flex: none; height: 17px; padding: 0 7px;
+  font-size: 10.5px; line-height: 17px; border-radius: 999px;
+}
+/* 时间推到最右，和状态胶囊分开，别糊成一串 */
+html[data-layout="workbench"] #sub-kanban .kb-card-meta small {
+  margin-left: auto; font-size: 10.5px; color: #b0b6bf;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+html[data-layout="workbench"] #sub-kanban .kb-card-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+html[data-layout="workbench"] #sub-kanban .kb-card-flags .kb-flag {
+  height: 17px; padding: 0 6px; border-radius: 4px;
+  background: #fff7ed; color: #b45309; border: 1px solid #fde4c8;
+  font-size: 10.5px; font-style: normal; line-height: 15px;
+}
+html[data-layout="workbench"] #sub-kanban .kb-card-flags .kb-flag.blocker {
+  background: #fef2f2; color: #b42318; border-color: #fbd9d5;
+}
+html[data-layout="workbench"] #sub-kanban .kb-blocker-text {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11px; color: #8a9099; line-height: 1.45;
+}
+/* 列：上下都要能滚，别让长列把整页撑高 */
+html[data-layout="workbench"] #sub-kanban .kb-col { display: flex; flex-direction: column; }
+html[data-layout="workbench"] #sub-kanban .kb-col-body,
+html[data-layout="workbench"] #sub-kanban .kb-cards {
+  display: flex; flex-direction: column; min-height: 0;
+}
+html[data-layout="workbench"] #sub-kanban .kb-empty {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 64px; border: 1px dashed #e5e7eb; border-radius: 8px;
+  color: #b0b6bf !important; font-size: 11.5px;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-kanban .kb-card-title { color: #e8eaed; }
+html[data-theme="dark"][data-layout="workbench"] #sub-kanban .kb-card-meta .kb-type {
+  background: #23262b; color: #9aa1ab;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-kanban .kb-empty { border-color: #23262b; }
+
+/* ==========================================================================
+   37. 设置里的长表单：字段成列、说明收窄、参数两列排（2026-10-29 八改）
+   --------------------------------------------------------------------------
+   改前：每个设置项一个 input 拉满 850px 宽，标签在上、说明在下，
+   一页「机制与策略」18 个数字框要滚三屏；说明文字全是同一种灰、同一种大小，
+   读起来像法律条文。
+   ========================================================================== */
+
+/* 37.1 小节标题：上留白 + 发丝线，长页才有「段」的概念 */
+html[data-layout="workbench"] #page-settings .subpage h3.sec-title {
+  margin: 26px 0 10px; padding-top: 16px;
+  border-top: 1px solid #eef0f2;
+  font-size: 13px; font-weight: 600; color: #111214;
+  letter-spacing: .01em;
+}
+html[data-layout="workbench"] #page-settings .subpage h3.sec-title:first-of-type {
+  margin-top: 16px; padding-top: 0; border-top: 0;
+}
+
+/* 37.2 字段：标签 12.5/600，说明 11.5 灰且限宽 720（一行别超过 60 字） */
+html[data-layout="workbench"] #page-settings .subpage .field { margin: 18px 0; }
+html[data-layout="workbench"] #page-settings .subpage .field > label:not(.toggle) {
+  display: block; margin-bottom: 6px;
+  font-size: 12.5px; font-weight: 600; color: #2b2f36;
+}
+html[data-layout="workbench"] #page-settings .subpage p.hint,
+html[data-layout="workbench"] #page-settings .subpage .hint {
+  max-width: 760px;
+  font-size: 11.5px; line-height: 1.62; color: #8a9099;
+}
+html[data-layout="workbench"] #page-settings .subpage .field > p.hint { margin: 4px 0 8px; }
+
+/* 37.3 单行控件别拉满：文本/下拉最长 560，数字 120；成排按钮跟在后面 */
+html[data-layout="workbench"] #page-settings .subpage .field > input[type="text"],
+html[data-layout="workbench"] #page-settings .subpage .field > input[type="password"],
+html[data-layout="workbench"] #page-settings .subpage .field > select,
+html[data-layout="workbench"] #page-settings .subpage .input-row > input[type="text"],
+html[data-layout="workbench"] #page-settings .subpage .input-row > select {
+  max-width: 560px;
+}
+html[data-layout="workbench"] #page-settings .subpage input[type="number"] {
+  max-width: 130px;
+}
+/* 说明性单选框组：整段收一点字号，别和正文抢 */
+html[data-layout="workbench"] #page-settings .subpage .toggle { font-size: 12.5px; line-height: 1.5; }
+
+/* 37.4 参数表（机制与策略 18 项 / 挑战者同一套）：两列排，行高压到 34px */
+html[data-layout="workbench"] #st-weights,
+html[data-layout="workbench"] #st-ch-weights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 32px;
+  max-width: 760px;
+}
+html[data-layout="workbench"] #st-weights > .input-row,
+html[data-layout="workbench"] #st-ch-weights > .input-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 96px auto;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  height: 34px;
+  border-bottom: 1px solid #f2f3f5;
+}
+html[data-layout="workbench"] #st-weights > .input-row > span:first-child,
+html[data-layout="workbench"] #st-ch-weights > .input-row > span:first-child {
+  min-width: 0 !important;
+  font-size: 12px; color: #3f4550;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html[data-layout="workbench"] #st-weights > .input-row > input,
+html[data-layout="workbench"] #st-ch-weights > .input-row > input {
+  width: 96px !important; max-width: 96px !important;
+  height: 26px !important; font-size: 12px;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+html[data-layout="workbench"] #st-weights > .input-row > .hint,
+html[data-layout="workbench"] #st-ch-weights > .input-row > .hint {
+  font-size: 10.5px; color: #b0b6bf; white-space: nowrap;
+  max-width: none;
+}
+html[data-theme="dark"][data-layout="workbench"] #st-weights > .input-row,
+html[data-theme="dark"][data-layout="workbench"] #st-ch-weights > .input-row {
+  border-bottom-color: #22262b;
+}
+html[data-theme="dark"][data-layout="workbench"] #st-weights > .input-row > span:first-child,
+html[data-theme="dark"][data-layout="workbench"] #st-ch-weights > .input-row > span:first-child {
+  color: #c9ced4;
+}
+html[data-theme="dark"][data-layout="workbench"] #page-settings .subpage h3.sec-title {
+  border-top-color: #22262b; color: #e8eaed;
+}
+
+/* 37.5 模型评测：失败运行清单回收成可滚区块（7 条同因失败，原本铺到整屏） */
+html[data-layout="workbench"] #eb-failed-runs {
+  max-height: 264px; overflow: auto;
+  border: 1px solid #eef0f2; border-radius: 9px;
+  background: #fcfcfd;
+  padding: 4px;
+}
+html[data-layout="workbench"] #eb-failed-runs > * {
+  padding: 8px 10px !important;
+  border-bottom: 1px solid #f2f3f5;
+  border-radius: 6px;
+}
+html[data-layout="workbench"] #eb-failed-runs > *:last-child { border-bottom: 0; }
+html[data-theme="dark"][data-layout="workbench"] #eb-failed-runs {
+  background: #131417; border-color: #23262b;
+}
+html[data-theme="dark"][data-layout="workbench"] #eb-failed-runs > * { border-bottom-color: #22262b; }
+
+/* 37.6 窄屏：参数表回单列，控件放满 */
+@media (max-width: 1180px) {
+  html[data-layout="workbench"] #st-weights,
+  html[data-layout="workbench"] #st-ch-weights { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   38. 左栏项目树 + 运行记录总数（2026-10-29 八改）
+   ========================================================================== */
+
+/* 38.1 「共 N 次运行」贴右：它是背景信息，不该挤在操作按钮旁边 */
+html[data-layout="workbench"] #sub-runs .run-tools .rall {
+  margin-left: auto; font-size: 11.5px; color: #b0b6bf;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 38.2 项目树：目录名带父段后（solo_e2e_aid…/ws）一行更长，行高给到 24px 才好扫；
+ * 名字一律省略号收尾，别把右侧计数与拖动把手顶出栏外。 */
+html[data-layout="workbench"] #sidebar #side-tasks details.sdir > summary {
+  height: 24px; gap: 5px;
+}
+html[data-layout="workbench"] #sidebar #side-tasks details.sdir > summary > .t {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 500;
+}
+html[data-layout="workbench"] #sidebar #side-tasks details.sdir > summary > .cnt {
+  flex: none; margin-left: auto; padding-left: 6px;
+  font-size: 10.5px; color: #b0b6bf; font-variant-numeric: tabular-nums;
+}
+/* 树的滚动条收细：目录多时常驻，粗条会顶掉一列文字 */
+html[data-layout="workbench"] #sidebar #side-tasks::-webkit-scrollbar { width: 8px; }
+html[data-layout="workbench"] #sidebar #side-tasks::-webkit-scrollbar-thumb {
+  background: #dfe2e6; border-radius: 4px; border: 2px solid transparent; background-clip: content-box;
+}
+html[data-layout="workbench"] #sidebar #side-tasks::-webkit-scrollbar-thumb:hover { background: #c8cdd4; background-clip: content-box; }
+html[data-theme="dark"][data-layout="workbench"] #sidebar #side-tasks::-webkit-scrollbar-thumb {
+  background: #2c3137; background-clip: content-box;
+}
+html[data-theme="dark"][data-layout="workbench"] #sidebar #side-tasks details.sdir > summary > .t { color: #c9ced4; }
+html[data-theme="dark"][data-layout="workbench"] #sub-runs .run-tools .rall { color: #6b7280; }
+
+/* ==========================================================================
+   39. 任务详情「步骤」「成果」两个分区（2026-10-29 八改）
+   --------------------------------------------------------------------------
+   步骤页改前三块平级白卡（文件检查点 / 项目记忆 / 任务画像）压着一条步骤列表，
+   卡片边界比内容还抢眼；任务画像里那串「能力基线 84, writing 匹配 +3.0…」
+   是 11px 连排技术串，一整行看不下去。
+   成果页改前只有一个 1px 边框的大容器，正文和页面底色同色，读起来没有「文档感」。
+   ========================================================================== */
+
+/* 39.1 步骤页顶部三块：不是并列工具卡，是「这次运行的检查项」——
+ * 统一成扁平小节（发丝线分区 + 小标签），步骤列表才是主角 */
+html[data-layout="workbench"] #rd-pane-steps > section.rd-checkpoints,
+html[data-layout="workbench"] #rd-pane-steps > section.rd-project-memory,
+html[data-layout="workbench"] #rd-pane-steps > .rd-routing {
+  margin: 0 0 14px !important;
+  padding: 0 0 14px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #eef0f2 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-layout="workbench"] #rd-pane-steps > section.rd-checkpoints:last-of-type,
+html[data-layout="workbench"] #rd-pane-steps > .rd-routing:last-of-type { border-bottom: 0 !important; }
+/* 小节标题：12px 小标签，右侧动作按钮降到 11.5 */
+html[data-layout="workbench"] #rd-pane-steps .rd-checkpoints-head,
+html[data-layout="workbench"] #rd-pane-steps .rd-routing-head {
+  margin-bottom: 8px !important; gap: 8px;
+}
+html[data-layout="workbench"] #rd-pane-steps .rd-checkpoints-head strong,
+html[data-layout="workbench"] #rd-pane-steps .rd-routing-title,
+html[data-layout="workbench"] #rd-pane-steps .rd-project-memory h3,
+html[data-layout="workbench"] #rd-pane-steps .rd-project-memory strong {
+  font-size: 12.5px !important; font-weight: 600 !important; color: #2b2f36 !important;
+}
+html[data-layout="workbench"] #rd-pane-steps .rd-checkpoints p,
+html[data-layout="workbench"] #rd-pane-steps .rd-checkpoints .hint,
+html[data-layout="workbench"] #rd-pane-steps .rd-project-memory p,
+html[data-layout="workbench"] #rd-pane-steps .rd-project-memory .hint {
+  font-size: 11.5px !important; line-height: 1.62 !important; color: #8a9099 !important;
+  max-width: 760px;
+}
+html[data-layout="workbench"] #rd-pane-steps .rd-checkpoints-head .ghost,
+html[data-layout="workbench"] #rd-pane-steps .rd-project-memory .ghost {
+  height: 26px; padding: 0 10px; font-size: 11.5px;
+}
+
+/* 39.2 任务画像与调度：技术串按「一行一条”排，行距放开；两栏（实现 / 评审）各自成块 */
+html[data-layout="workbench"] #rd-pane-steps .rd-routing { display: block; }
+html[data-layout="workbench"] #rd-pane-steps .rd-routing-spec {
+  font-size: 11.5px !important; color: #9aa1ab !important;
+  overflow: visible; white-space: normal; line-height: 1.6;
+}
+html[data-layout="workbench"] #rd-pane-steps .rd-routing-caps {
+  font-size: 11.5px !important; line-height: 1.85 !important; color: #6b7280 !important;
+  font-variant-numeric: tabular-nums;
+  max-width: 720px;
+}
+/* 连排的评分串里，「·」是天然断点：给每个 span 之间留一点空隙，眼睛才有落点 */
+html[data-layout="workbench"] #rd-pane-steps .rd-routing-caps span { margin-right: 8px; }
+html[data-layout="workbench"] #rd-pane-steps .rd-route-role-head {
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px dashed #eef0f2;
+  font-size: 11.5px;
+}
+
+/* 39.3 步骤列表：白片 + 发丝边；序号方块、角色、执行者、摘要、耗时排成可扫的列 */
+html[data-layout="workbench"] #rd-pane-steps .steps { gap: 6px; margin-top: 4px; }
+html[data-layout="workbench"] #rd-pane-steps .step {
+  padding: 9px 12px !important;
+  border: 1px solid #e8eaee !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  font-size: 12.5px !important;
+  gap: 10px;
+}
+html[data-layout="workbench"] #rd-pane-steps .step:hover { border-color: #cfd5dd !important; background: #fff !important; }
+html[data-layout="workbench"] #rd-pane-steps .step .n {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: #f4f5f7; border: 0;
+  font-size: 10.5px; color: #6b7280;
+}
+html[data-layout="workbench"] #rd-pane-steps .step .role { flex: 0 0 84px; font-size: 12px; font-weight: 600; color: #111214; }
+html[data-layout="workbench"] #rd-pane-steps .step .who { flex: 0 0 104px; font-size: 11.5px; color: #8a9099; }
+html[data-layout="workbench"] #rd-pane-steps .step .sum { font-size: 11.5px; color: #6b7280; }
+html[data-layout="workbench"] #rd-pane-steps .step .dur {
+  font-size: 11px; color: #9aa1ab; font-variant-numeric: tabular-nums;
+}
+html[data-layout="workbench"] #rd-pane-steps .step .chip { flex: none; height: 19px; padding: 0 7px; font-size: 10.5px; line-height: 19px; }
+
+/* 39.4 成果页：报告当文档读——白卡 + 18px 内边距 + 正文 13/1.75 */
+html[data-layout="workbench"] #rd-pane-result .sec-title {
+  margin: 6px 0 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #9aa1ab;
+}
+html[data-layout="workbench"] #rd-pane-result .report {
+  padding: 20px 24px 22px !important;
+  border: 1px solid #e8eaee !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .03);
+  font-size: 13px; line-height: 1.75; color: #2b2f36;
+}
+html[data-layout="workbench"] #rd-pane-result .report h1 {
+  font-size: 17px !important; margin: 0 0 12px !important; padding-bottom: 10px !important;
+  border-bottom: 1px solid #eef0f2 !important; color: #111214;
+}
+html[data-layout="workbench"] #rd-pane-result .report h2 {
+  font-size: 14px !important; margin: 22px 0 8px !important; color: #111214;
+}
+html[data-layout="workbench"] #rd-pane-result .report h3,
+html[data-layout="workbench"] #rd-pane-result .report h4 {
+  font-size: 13px !important; margin: 16px 0 6px !important; color: #2b2f36;
+}
+html[data-layout="workbench"] #rd-pane-result .report p,
+html[data-layout="workbench"] #rd-pane-result .report li { margin: 7px 0; font-size: 13px; line-height: 1.75; }
+html[data-layout="workbench"] #rd-pane-result .report ul { padding-left: 20px; }
+html[data-layout="workbench"] #rd-pane-result .report code {
+  font-size: 12px; padding: 1px 5px; border-radius: 4px;
+}
+
+/* 39.5 执行结果卡：白底 + 左侧状态色竖条；黄色警示条降级成灰底细线，
+ * 让「失败」这一个结论独占视线，而不是红黄两块抢 */
+html[data-layout="workbench"] #rd-pane-result .rd-outcome {
+  margin-bottom: 18px !important;
+  padding: 14px 16px 14px 18px !important;
+  border: 1px solid #e8eaee !important;
+  border-left: 3px solid #d92d20 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+}
+html[data-layout="workbench"] #rd-pane-result .rd-outcome .outcome-summary {
+  font-size: 12.5px; line-height: 1.65; color: #2b2f36;
+}
+html[data-layout="workbench"] #rd-pane-result .rd-outcome .outcome-error {
+  margin-top: 8px; padding: 8px 10px;
+  border-radius: 7px; background: #fef3f2;
+  font-size: 12px; line-height: 1.6;
+}
+html[data-layout="workbench"] #rd-pane-result .rd-outcome .outcome-meta { font-size: 11.5px; gap: 10px; }
+html[data-layout="workbench"] #rd-pane-result .rd-outcome .outcome-title { font-size: 13.5px; }
+
+/* 39.6 深色兜底 */
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-steps > section.rd-checkpoints,
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-steps > section.rd-project-memory,
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-steps > .rd-routing {
+  border-bottom-color: #22262b !important;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-steps .step,
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .report,
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .rd-outcome {
+  background: #16181c !important; border-color: #23262b !important;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .rd-outcome { border-left-color: #d92d20 !important; }
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-steps .step .n { background: #23262b; color: #9aa1ab; }
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-steps .step .role { color: #e8eaed; }
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .report { color: #c9ced4; }
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .report h1,
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .report h2 { color: #f2f4f6; }
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .rd-outcome .outcome-error {
+  background: rgba(217, 45, 32, .12);
+}
+
+/* ==========================================================================
+   40. 收尾：表单宽度 / 设置分组标签 / 看板高度 / 候选模型网格（2026-10-29 八改）
+   ========================================================================== */
+
+/* 40.1 行内输入框尊重自己的 width（挑战者名字写死 160px，却被 flex 拉成 560） */
+html[data-layout="workbench"] #page-settings .subpage .input-row > input[type="text"],
+html[data-layout="workbench"] #page-settings .subpage .input-row > input[type="password"] {
+  flex: 0 1 auto;
+}
+/* 40.2 设置左栏的分组标签：11px 灰字太弱，长列表里分不清段落 */
+html[data-layout="workbench"] #sidebar .set-group {
+  margin: 16px 0 4px; padding: 0 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+  color: #9aa1ab; text-transform: none;
+}
+html[data-layout="workbench"] #sidebar .set-group:first-of-type { margin-top: 6px; }
+html[data-theme="dark"][data-layout="workbench"] #sidebar .set-group { color: #6b7280; }
+
+/* 40.3 看板高度：新壳顶栏 48 + 页头 62 + 上下留白，留 176 刚好一屏不出双滚动条 */
+html[data-layout="workbench"] #page-settings .kanban-board {
+  height: calc(100vh - 176px);
+  min-height: 380px;
+}
+
+/* 40.4 模型评测：候选模型 14+ 条单行排下来要滚两屏，改三列勾选网格 */
+html[data-layout="workbench"] #eb-cands {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 18px;
+  max-width: 980px;
+}
+html[data-layout="workbench"] #eb-cands > label {
+  display: flex !important;
+  align-items: center; gap: 7px;
+  height: 26px; min-width: 0;
+  font-size: 11.5px; color: #3f4550;
+  cursor: pointer;
+}
+html[data-layout="workbench"] #eb-cands > label > span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html[data-layout="workbench"] #eb-cands > label:hover { color: #111214; }
+html[data-theme="dark"][data-layout="workbench"] #eb-cands > label { color: #c9ced4; }
+
+/* 40.5 内置样题：行高压到「一行标题 + 一行说明」，四条才占 190px 而不是 260 */
+html[data-layout="workbench"] #eb-samples { display: flex; flex-direction: column; gap: 6px; }
+html[data-layout="workbench"] #eb-samples > .item {
+  padding: 9px 12px !important;
+  border: 1px solid #e8eaee !important; border-radius: 9px !important;
+  background: #fff !important;
+}
+html[data-layout="workbench"] #eb-samples > .item .name { font-size: 12.5px; font-weight: 600; }
+html[data-layout="workbench"] #eb-samples > .item .desc { font-size: 11.5px; color: #8a9099; margin-top: 3px; line-height: 1.5; }
+html[data-theme="dark"][data-layout="workbench"] #eb-samples > .item {
+  background: #16181c !important; border-color: #23262b !important;
+}
+
+/* 40.6 影子对账报告：JSON 一行铺到底，给等宽字体和小灰底，一眼区分「数据」与「说明」 */
+html[data-layout="workbench"] #st-report {
+  max-width: 900px;
+  font-size: 11.5px; line-height: 1.7; color: #8a9099;
+  overflow-wrap: anywhere;
+}
+html[data-layout="workbench"] #st-adopt-history > * {
+  font-family: var(--mono); font-size: 11px; color: #9aa1ab;
+  padding: 4px 6px; border-radius: 5px;
+}
+html[data-layout="workbench"] #st-adopt-history > *:hover { background: #f6f7f9; }
+
+/* 40.7 执行结果里的黄色警示条：不要整块黄底（和下面的红色结论抢），改灰底 + 左侧细线 */
+html[data-layout="workbench"] #rd-pane-result .outcome-warn {
+  margin-top: 10px !important;
+  padding: 8px 10px 8px 12px !important;
+  border: 0 !important;
+  border-left: 2px solid #e0a100 !important;
+  border-radius: 0 6px 6px 0 !important;
+  background: #fafafa !important;
+  color: #6b5b2a !important;
+  font-size: 11.5px !important;
+  line-height: 1.6 !important;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .outcome-warn {
+  background: #1b1d21 !important; color: #c8b483 !important;
+}
+
+/* 40.8 窄屏：候选模型回两列，再窄回一列 */
+@media (max-width: 1180px) {
+  html[data-layout="workbench"] #eb-cands { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  html[data-layout="workbench"] #eb-cands { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   41. 菜单分类与「每个菜单更简单」（2026-10-29 八改）
+   --------------------------------------------------------------------------
+   用户要求：「菜单分类更细，一眼就懂，每个菜单配置更简单」。
+   三件事：
+     ① 左栏快捷导航从「高级」一坨拆成「查看 / 工具」两类；
+     ② 设置左栏分组换成白话（跑任务 / 挑模型 / 接外部 / 记住东西 / 软件）；
+     ③ 每个设置页只露常用几项，其余折进一条可展开的「还有 N 项更细的设置」。
+   ========================================================================== */
+
+/* 41.1 左栏分组标签：同一栏里出现两组时要能分清（原来是「日常 / 高级」两种） */
+html[data-layout="workbench"] #sidebar .side-group-label {
+  margin: 14px 0 4px;
+  padding: 0 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+  color: #a0a7b1;
+}
+html[data-layout="workbench"] #sidebar .side-group-label:first-of-type { margin-top: 6px; }
+html[data-layout="workbench"] #sidebar .side-more .side-group-label { margin-top: 12px; }
+html[data-layout="workbench"] #sidebar .side-more .side-group-label:first-child { margin-top: 2px; }
+html[data-theme="dark"][data-layout="workbench"] #sidebar .side-group-label { color: #6b7280; }
+
+/* 41.2 设置左栏：分组之间加一条极淡分隔，21 项读起来才成段 */
+html[data-layout="workbench"] #sidebar .set-group + .set-item { margin-top: 0; }
+html[data-layout="workbench"] #sidebar #set-advanced .set-group:not(:first-child) {
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid #f0f2f4;
+}
+html[data-theme="dark"][data-layout="workbench"] #sidebar #set-advanced .set-group:not(:first-child) {
+  border-top-color: #22262b;
+}
+
+/* 41.3 折叠块：一条虚线胶囊，点开才展开；展开后里面的小节照旧 */
+html[data-layout="workbench"] #page-settings .adv-fold {
+  margin: 18px 0 6px;
+  border: 1px dashed #dfe3e8;
+  border-radius: 10px;
+  background: #fcfcfd;
+}
+html[data-layout="workbench"] #page-settings .adv-fold > summary {
+  list-style: none;
+  display: flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 14px;
+  font-size: 12px; font-weight: 500; color: #5b6270;
+  cursor: pointer; user-select: none;
+}
+html[data-layout="workbench"] #page-settings .adv-fold > summary::-webkit-details-marker { display: none; }
+html[data-layout="workbench"] #page-settings .adv-fold > summary::after {
+  content: ""; width: 6px; height: 6px; margin-left: 2px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px); opacity: .6;
+  transition: transform .15s;
+}
+html[data-layout="workbench"] #page-settings .adv-fold[open] > summary::after {
+  transform: rotate(-135deg) translateY(-1px);
+}
+html[data-layout="workbench"] #page-settings .adv-fold > summary:hover { color: #111214; }
+html[data-layout="workbench"] #page-settings .adv-fold[open] { background: transparent; border-style: solid; border-color: #eef0f2; }
+html[data-layout="workbench"] #page-settings .adv-fold[open] > summary {
+  border-bottom: 1px solid #f2f3f5; height: 34px;
+}
+/* 展开后的内容缩进一点，视觉上从属上面那条 */
+html[data-layout="workbench"] #page-settings .adv-fold > .field { padding: 0 14px; margin: 14px 0; }
+html[data-layout="workbench"] #page-settings .adv-fold > .field:first-of-type { margin-top: 4px; }
+html[data-layout="workbench"] #page-settings .adv-fold > .field:last-child { margin-bottom: 14px; }
+html[data-theme="dark"][data-layout="workbench"] #page-settings .adv-fold {
+  background: #131417; border-color: #2c3137;
+}
+html[data-theme="dark"][data-layout="workbench"] #page-settings .adv-fold[open] { border-color: #23262b; }
+html[data-theme="dark"][data-layout="workbench"] #page-settings .adv-fold > summary { color: #9aa1ab; }
+html[data-theme="dark"][data-layout="workbench"] #page-settings .adv-fold[open] > summary { border-bottom-color: #22262b; }
+
+/* ==========================================================================
+   42. 钩子 / 记忆中心：单卡铺满、卡片等高内滚（2026-10-29 八改）
+   ========================================================================== */
+
+/* 42.1 钩子：.cards 是 auto-fill 栅格，只有一条钩子时卡片只占 340px 一列，
+ * 命令输入框被压成一截。钩子是一行一条的表单，本来就该整行。 */
+html[data-layout="workbench"] #hooks-list {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 10px;
+}
+html[data-layout="workbench"] #hooks-list .hook-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border-color: #e8eaee;
+  background: #fff;
+}
+html[data-layout="workbench"] #hooks-list .hook-card .hook-cmd { font-size: 12px; }
+html[data-layout="workbench"] #hooks-list .hook-card .hook-foot { gap: 10px; }
+/* 「保存钩子」贴在内容右下方，别单独留在左边缘像一个孤儿按钮 */
+html[data-layout="workbench"] #sub-hooks > .panel.wide > .actions {
+  display: flex; justify-content: flex-end;
+  margin: 6px 0 0 !important;
+}
+
+/* 42.2 记忆中心：三列卡片高度差能拉到几百像素（31 条 vs 2 条），
+ * 让卡片等高、卡内滚动，页面只滚一屏。标题行吸顶，滚到哪都知道在哪个项目。 */
+html[data-layout="workbench"] #sub-memory #memory-projects {
+  align-items: stretch !important;
+}
+html[data-layout="workbench"] #sub-memory .memory-project-card {
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid #e8eaee; border-radius: 12px;
+  background: #fff;
+}
+html[data-layout="workbench"] #sub-memory .memory-project-card .memory-project-head {
+  position: sticky; top: -12px; z-index: 2;
+  margin: -12px -14px 4px !important;
+  padding: 10px 14px 8px;
+  background: #fff;
+  border-bottom: 1px solid #f2f3f5;
+}
+/* 每条记忆之间一条发丝线，别让两段摘要连成一片 */
+html[data-layout="workbench"] #sub-memory .rd-memory-row + .rd-memory-row {
+  border-top: 1px solid #f4f5f7;
+}
+/* 行内动作（恢复 / 归档 / 查看注入预览）降成灰字，hover 才有边界，
+ * 否则一列里十几个按钮比内容还显眼 */
+html[data-layout="workbench"] #sub-memory .rd-memory-actions .ghost,
+html[data-layout="workbench"] #sub-memory .rd-memory-actions button {
+  height: 24px; padding: 0 8px;
+  font-size: 11px; color: #8a9099;
+  border-color: #eceef1; background: #fff;
+}
+html[data-layout="workbench"] #sub-memory .rd-memory-actions .ghost:hover,
+html[data-layout="workbench"] #sub-memory .rd-memory-actions button:hover {
+  color: #111214; border-color: #d3d8de;
+}
+html[data-layout="workbench"] #sub-memory .memory-project-card::-webkit-scrollbar { width: 8px; }
+html[data-layout="workbench"] #sub-memory .memory-project-card::-webkit-scrollbar-thumb {
+  background: #e2e5e9; border-radius: 4px; border: 2px solid transparent; background-clip: content-box;
+}
+html[data-theme="dark"][data-layout="workbench"] #hooks-list .hook-card,
+html[data-theme="dark"][data-layout="workbench"] #sub-memory .memory-project-card {
+  background: #16181c; border-color: #23262b;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-memory .memory-project-card .memory-project-head {
+  background: #16181c; border-bottom-color: #22262b;
+}
+html[data-theme="dark"][data-layout="workbench"] #sub-memory .rd-memory-row + .rd-memory-row {
+  border-top-color: #22262b;
+}
+
+/* ==========================================================================
+   43. 禅道 / 模型调度：单卡铺满 + 重复说明只说一次（2026-10-29 八改）
+   ========================================================================== */
+
+/* 43.1 禅道产品档案：.cards 的 auto-fill 栅格只有一张卡时只占 ~280px，
+ * 里面十来个输入框全被压成「E:\GitLab\… 选择…」一截。产品卡本质是表单，整行。 */
+html[data-layout="workbench"] #zt-profiles {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 12px;
+}
+html[data-layout="workbench"] #zt-profiles .zt-prof {
+  padding: 14px 16px;
+  border: 1px solid #e8eaee; border-radius: 10px;
+  background: #fff;
+}
+html[data-layout="workbench"] #zt-profiles .zt-prof .head { margin-bottom: 8px; }
+html[data-layout="workbench"] #zt-profiles .zt-grid { gap: 10px 20px; }
+html[data-layout="workbench"] #zt-profiles .zt-mrs { border-top-color: #eef0f2; }
+html[data-theme="dark"][data-layout="workbench"] #zt-profiles .zt-prof {
+  background: #16181c; border-color: #23262b;
+}
+
+/* 43.2 模型调度：六个 runtime 卡里「默认不需要绑定…」是同一段话，连排六遍等于没有。
+ * 只留第一张卡的那一段（.card 的直系 p.hint），其余几张卡只看字段本身。 */
+html[data-layout="workbench"] #sub-bindings .cards > .card + .card > p.hint {
+  display: none;
+}
+/* 六张卡里也重复的「按难度自动选模型 / 保存」：把保存按钮降成幽灵，
+ * 主操作让给页面右上那颗「生成推荐指定方案」 */
+html[data-layout="workbench"] #sub-bindings .cards > .card > .ops button {
+  height: 28px; font-size: 11.5px;
+}
+
+/* 43.3 模型调度：供应商下拉拉满 650px 只是空长，收到 420；卡间距收紧一档 */
+html[data-layout="workbench"] #sub-bindings .cards { gap: 10px; grid-template-columns: minmax(0, 1fr); }
+html[data-layout="workbench"] #sub-bindings .cards > .card { padding: 12px 14px; }
+html[data-layout="workbench"] #sub-bindings .cards > .card .field > select,
+html[data-layout="workbench"] #sub-bindings .cards > .card .field > input[type="text"] {
+  max-width: 420px;
+}
+html[data-layout="workbench"] #sub-bindings .cards > .card .field { margin: 10px 0; }
+
+/* ==========================================================================
+   44. 浏览器（预览与发布）与插件市场（2026-10-29 九改）
+   --------------------------------------------------------------------------
+   浏览器页空态：.wb-stage-canvas 的 accent 5% 径向渐变 + .wb-empty 自己又叠
+   一层 accent 12% 圆晕，两片叠成一大坨蓝紫光，占掉整块画布；而空态本身又因
+   flex 拉伸撑满高度，底部还挂着一条 32px 的空脚注带。
+   插件市场：搜索筛选条夹在「本地插件」与「内置」中间，读起来像分隔带；
+   同排卡片内容行数不同时「安装」按钮错位。
+   ========================================================================== */
+
+/* 44.1 画布底色只留点阵，不再铺色晕 */
+html[data-layout="workbench"] .wb-stage-canvas {
+  background: none;
+}
+/* 44.2 空态收成一张居中小卡：不再撑满、不再发光 */
+html[data-layout="workbench"] .wb-empty {
+  align-self: center;
+  width: auto;
+  max-width: 420px;
+  margin: auto;
+  padding: 30px 30px 28px;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--wb-line);
+  border-radius: 14px;
+  box-shadow: var(--wb-shadow);
+}
+html[data-layout="workbench"] .wb-empty-mark {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--wb-line);
+  border-radius: 12px;
+  background: var(--wb-soft);
+  color: #9aa1ab;
+}
+html[data-layout="workbench"] .wb-empty-mark .ico { width: 20px; height: 20px; }
+html[data-layout="workbench"] .wb-empty h3 { margin: 6px 0 0; font-size: 15px; font-weight: 650; }
+html[data-layout="workbench"] .wb-empty p { font-size: 12.5px; line-height: 1.7; color: #8a919b; }
+/* 44.3 没选任务时，底部那条空脚注带整条收起 */
+html[data-layout="workbench"] .wb-stage.is-empty .wb-stage-foot { display: none; }
+
+/* 44.4 插件市场：筛选条自成一条带子，长列表滚动时贴顶 */
+html[data-layout="workbench"] #sub-market .mk-tools {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 14px 0 4px;
+  padding: 8px 10px;
+  background: var(--wb-soft);
+  border: 1px solid var(--wb-line);
+  border-radius: 10px;
+}
+html[data-layout="workbench"] #sub-market .mk-tools > input[type="search"] { flex: 1 1 200px; min-width: 160px; }
+html[data-layout="workbench"] #sub-market .mk-tools > select { flex: 0 0 auto; max-width: 200px; }
+/* 44.5 市场卡片：等高，操作行沉底（两张本地插件卡「安装」按钮以前一高一低） */
+html[data-layout="workbench"] #sub-market .mk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+html[data-layout="workbench"] #sub-market .mk-card .ops { margin-top: auto; padding-top: 4px; }
+html[data-layout="workbench"] #sub-market .mk-card .note { margin: 0; }
+/* 44.6 空态底部「最近任务」：直接给三个可点任务，不用再去右上角下拉框里翻 */
+html[data-layout="workbench"] .wb-empty-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--wb-line);
+}
+html[data-layout="workbench"] .wb-empty-recent.hidden { display: none; }
+html[data-layout="workbench"] .wb-empty-recent-label {
+  margin-bottom: 4px;
+  color: #9aa1ab;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+html[data-layout="workbench"] .wb-empty-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+html[data-layout="workbench"] .wb-empty-recent-item:hover { background: var(--wb-soft); }
+html[data-layout="workbench"] .wb-empty-recent-item .n {
+  flex: 1;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-layout="workbench"] .wb-empty-recent-item .m {
+  color: #9aa1ab;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+/* 44.7 市场卡片跨行等高：grid 每行高度独立，内置区第一行 185px、第二行 223px，
+ * 两行底边对不齐，看着像加载了一半。1fr 让所有行按最高行取齐。 */
+html[data-layout="workbench"] #sub-market .mk-grid {
+  grid-auto-rows: 1fr;
+}
+html[data-layout="workbench"] #sub-market .mk-card { height: 100%; }
+/* 筛选条贴住它管的那个列表（下面是「内置」标题），与上方「本地插件」拉开 */
+html[data-layout="workbench"] #sub-market .mk-tools {
+  margin-top: 22px;
+  margin-bottom: 0;
+}
+
+/* 44.8 报告里的打分明细（`implementer: 能力基线 74, …` 四行长串）收成一行 + 展开 */
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy {
+  color: var(--text);
+  font-weight: 600;
+}
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: #9aa1ab;
+}
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more > summary {
+  cursor: pointer;
+  list-style: none;
+  color: #9aa1ab;
+  font-size: 11.5px;
+}
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more > summary::-webkit-details-marker { display: none; }
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more > summary:hover { color: var(--accent); }
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more > summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 6px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid #b0b6bf;
+  vertical-align: middle;
+  transition: transform .15s;
+  transform-origin: 2px 50%;
+}
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more[open] > summary::before { transform: rotate(90deg); }
+html[data-layout="workbench"] #rd-pane-result .report .sc-tidy-more > div {
+  margin-top: 4px;
+  padding: 6px 9px;
+  border-left: 2px solid #e3e6ea;
+  color: #8a919b;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+
+/* 44.9 对话流里的 CLI 原始事件流：默认收成一行，点开才铺开 */
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold {
+  border: 1px solid var(--wb-line);
+  border-radius: 9px;
+  background: var(--wb-soft);
+}
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  color: #6b7280;
+  font-size: 11.5px;
+  cursor: pointer;
+  list-style: none;
+}
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold > summary::-webkit-details-marker { display: none; }
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid #b0b6bf;
+  transition: transform .15s;
+  transform-origin: 2px 50%;
+}
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold[open] > summary::before { transform: rotate(90deg); }
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold > summary:hover { color: var(--accent); }
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold > summary > span {
+  margin-left: auto;
+  color: #b0b6bf;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+}
+html[data-layout="workbench"] #rd-chat-flow .chat-raw-fold > .chat-body {
+  max-height: 320px;
+  overflow: auto;
+  padding: 0 11px 8px;
+  border-top: 1px solid var(--wb-line);
+}
+
+/* 44.10 设置首页七张卡：2 列栅格最后落单的一张拉满整行，别留半个空位 */
+html[data-layout="workbench"] #sub-__home .sh-grid > .sh-card:last-child:nth-child(odd) {
+  grid-column: span 2;
+}
+
+/* 44.11 深色兜底：--wb-line / --wb-soft 过去只在浅色档定义，深色下 var() 取不到值，
+ * 上面这些新块会退化成「无边框 + 透明底」。这里把这两个变量补进深色档。 */
+html[data-theme="dark"][data-layout="workbench"] {
+  --wb-line: #2b3036;
+  --wb-soft: #1a1d21;
+}
+html[data-theme="dark"][data-layout="workbench"] #rd-pane-result .report .sc-tidy-more > div {
+  border-left-color: #2b3036;
+  color: #8b929a;
+}
+html[data-theme="dark"][data-layout="workbench"] .wb-empty-mark { color: #8b929a; }
+html[data-theme="dark"][data-layout="workbench"] .wb-empty p { color: #8b929a; }
+html[data-theme="dark"][data-layout="workbench"] .wb-empty-recent-label,
+html[data-theme="dark"][data-layout="workbench"] .wb-empty-recent-item .m { color: #7d848d; }
+html[data-theme="dark"][data-layout="workbench"] #sub-market .mk-tools { background: #1a1d21; }
+
+/* 44.12 深色下的主按钮：浅色档是「黑色药丸」，深色画布上等于黑底黑字——
+ * 插件市场的「安装」、任务页的「发送」在夜间都只剩一个轮廓。深色翻成浅药丸。 */
+html[data-theme="dark"][data-layout="workbench"] button.primary:not(.danger),
+html[data-theme="dark"][data-layout="workbench"] a.primary:not(.danger),
+html[data-theme="dark"][data-layout="workbench"] .btn.primary:not(.danger) {
+  background: #e8eaed !important;
+  background-image: none !important;
+  border-color: #e8eaed !important;
+  color: #111214 !important;
+  box-shadow: none !important;
+}
+html[data-theme="dark"][data-layout="workbench"] button.primary:not(.danger):hover,
+html[data-theme="dark"][data-layout="workbench"] .btn.primary:not(.danger):hover {
+  background: #f6f7f8 !important;
+  border-color: #f6f7f8 !important;
+}

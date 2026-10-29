@@ -32,6 +32,9 @@
 <link rel="stylesheet" href="atlas.css">
   <link rel="stylesheet" href="mobile-shell.css">
   <link rel="stylesheet" href="theme-v2.css">
+  <!-- 简化版首页（2026-10-28）：模式卡片 + 收起的次要入口。放最后，覆盖前面各层。 -->
+  <link rel="stylesheet" href="simple-home.css">
+  <link rel="stylesheet" href="linear-theme.css">
   <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。默认布局=工作台。 -->
@@ -139,6 +142,10 @@
 
   <!-- Codex 式一级导航：保留原有侧栏功能，增加一条可快速切换主视图的窄轨道。 -->
   <nav class="side-rail" aria-label="主导航" data-i18n-aria="主导航">
+    <!-- workbench 布局：这条 46px 图标轨就是「台切换器」——大厅 + 四个台各一颗。
+         原来 216px 的整条左栏（项目树/快捷导航/用量条）在台内页几乎全是主区信息的
+         重复，收进「全部功能」（rail 底部菜单键）按需滑出，画布还给内容。 -->
+    <div id="rail-ws" class="rail-ws" role="tablist" aria-label="工作台" data-i18n-aria="工作台"></div>
     <button type="button" class="rail-btn active" data-rail-page="tasks" title="任务" aria-label="任务" data-i18n-title="任务" data-i18n-aria="任务" onclick="exitSettings()">
       <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
     </button>
@@ -148,16 +155,19 @@
     <button type="button" class="rail-btn" data-rail-page="runs" title="运行记录" aria-label="运行记录" data-i18n-title="运行记录" data-i18n-aria="运行记录" onclick="switchTab('runs')">
       <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
     </button>
-    <button type="button" class="rail-btn" data-rail-page="automation" title="自动化" aria-label="自动化" data-i18n-title="自动化" data-i18n-aria="自动化" onclick="switchTab('automation')">
-      <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
-    </button>
-    <button type="button" class="rail-btn" id="btn-rail-browser" data-rail-page="browser" title="浏览器" aria-label="浏览器" data-i18n-title="浏览器" data-i18n-aria="浏览器" onclick="switchTab('browser', 'main')">
-      <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
-    </button>
     <span class="rail-spacer"></span>
-    <button type="button" class="rail-btn" title="切换产品形态" aria-label="切换产品形态" data-i18n-title="切换产品形态" data-i18n-aria="切换产品形态" onclick="location.href='/welcome/'">
-      <svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>
+    <!-- 左栏开合：workbench 桌面端左栏是常驻导航列（46 图标轨 + 208 列 + 主区），
+         这颗键用作「收起 / 展开」；窄屏仍是覆盖式抽屉。状态记在本机。 -->
+    <button type="button" class="rail-btn" id="btn-rail-menu" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏"
+            data-i18n-title="收起 / 展开侧栏" data-i18n-aria="收起 / 展开侧栏" aria-controls="sidebar" aria-expanded="true"
+            onclick="toggleSideDrawer()">
+      <svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg>
     </button>
+    <!-- 「切换产品形态」入口已下线：它把用户 whole-page 甩进 v2 的 /welcome/ 选形态页，
+         与「一个工作台 + 四个台签」的模型重复且割裂。切换形态统一走大厅的四张台卡。
+         v2 独立页（welcome/novel/dossier/radar/hive）已整体删除，形态差异改由统一工
+         作台的四个台（通用/小说/成稿/编码）承载；原 profile 的 ui 字段已回落空，复用
+         统一工作台。-->
     <button type="button" class="rail-btn" id="btn-rail-phone" title="手机连接" aria-label="手机连接" data-i18n-title="手机连接" data-i18n-aria="手机连接">
       <svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg>
     </button>
@@ -173,7 +183,7 @@
       <div class="brand-row">
         <button id="btn-brand" class="brand" type="button" title="切换工作模式" aria-label="切换工作模式" data-i18n-title="切换工作模式" data-i18n-aria="切换工作模式" aria-haspopup="menu" aria-controls="brand-menu" aria-expanded="false" onclick="toggleBrandMenu()">
           <span class="brand-name">CodeBee</span>
-          <span id="brand-mode" class="brand-mode" data-i18n="聊天">聊天</span>
+          <span id="brand-mode" class="brand-mode" data-i18n="通用">通用</span>
           <svg class="ico brand-caret" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
         </button>
         <button id="btn-notify-toggle" class="brand-tool" title="打开活动视图" aria-label="打开活动视图" data-i18n-title="打开活动视图" data-i18n-aria="打开活动视图"
@@ -188,63 +198,107 @@
         </button>
       </div>
       <div id="brand-menu" class="brand-menu hidden" role="menu" aria-label="工作模式" data-i18n-aria="工作模式">
-        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="work" onclick="pickWorkspaceMode('work')">
-          <span><b data-i18n="工作">工作</b><small data-i18n="写作、调研、文档与翻译">写作、调研、文档与翻译</small></span>
+        <button type="button" class="brand-menu-item selected" role="menuitemradio" aria-checked="true" data-workspace-mode="all" onclick="pickWorkspaceMode('all')">
+          <span><b data-i18n="通用">通用</b><small data-i18n="样样都要：写作、编码、调研、成稿一把抓">样样都要：写作、编码、调研、成稿一把抓</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>
-        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="develop" onclick="pickWorkspaceMode('develop')">
-          <span><b data-i18n="开发">开发</b><small data-i18n="编码、调试、测试与评审">编码、调试、测试与评审</small></span>
+        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="novel" onclick="pickWorkspaceMode('novel')">
+          <span><b data-i18n="小说">小说</b><small data-i18n="选题、连载、短篇与扫榜">选题、连载、短篇与扫榜</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>
-        <button type="button" class="brand-menu-item selected" role="menuitemradio" aria-checked="true" data-workspace-mode="chat" onclick="pickWorkspaceMode('chat')">
-          <span><b data-i18n="聊天">聊天</b><small data-i18n="直接问答、头脑风暴与日常对话">直接问答、头脑风暴与日常对话</small></span>
+        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="dossier" onclick="pickWorkspaceMode('dossier')">
+          <span><b data-i18n="成稿">成稿</b><small data-i18n="标书、方案、周报、合同">标书、方案、周报、合同</small></span>
+          <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
+        </button>
+        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="content" onclick="pickWorkspaceMode('content')">
+          <span><b data-i18n="内容">内容</b><small data-i18n="公众号、小红书、短视频、短剧与配图">公众号、小红书、短视频、短剧与配图</small></span>
+          <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
+        </button>
+        <button type="button" class="brand-menu-item" role="menuitemradio" aria-checked="false" data-workspace-mode="code" onclick="pickWorkspaceMode('code')">
+          <span><b data-i18n="编码">编码</b><small data-i18n="编写代码、调试、测试与评审">编写代码、调试、测试与评审</small></span>
           <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
         </button>
       </div>
       <button id="btn-new-task" class="new-task">
         <svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg>
-        <span class="nt-label">新聊天</span><span class="kbd" aria-hidden="true">N</span>
+        <span class="nt-label" data-i18n="新任务">新任务</span><span class="kbd" aria-hidden="true">N</span>
       </button>
       <!-- 快捷导航：只放最常用的全局页（data-page 是页面 id 真源）。
            点它们只换主栏内容，左栏任务树原地不动（app.js switchTab 的 main 形态）；
            对应入口已从下面设置导航移除，同一页不再两处重复。 -->
+      <div class="side-group-label" data-i18n="日常">日常</div>
       <div class="side-quick">
         <!-- 工作台入口：仅 workbench 布局显示（该布局下 rail 已移除，这里是主页唯一常驻入口） -->
         <button class="qitem rd-qitem-home" id="btn-q-home" data-page="home" title="工作台" data-i18n-title="工作台">
           <svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg>
           <span data-i18n="工作台">工作台</span>
         </button>
-        <button class="qitem" id="btn-q-overview" data-page="overview" title="概览" data-i18n-title="概览">
+        <!-- 总任务视图：四个工作台的任务汇总到一屏，跨工作台找活干不用逐台翻 -->
+        <button class="qitem" id="btn-q-alltasks" type="button" title="全部任务" data-i18n-title="全部任务"
+                onclick="showAllTasks()">
+          <svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>
+          <span data-i18n="全部任务">全部任务</span>
+          <span class="nav-badge hidden" id="nav-badge-alltasks"></span>
+        </button>
+        <button class="qitem" id="btn-q-settings" type="button" title="设置" data-i18n-title="设置"
+                onclick="document.getElementById('btn-settings').click()">
+          <svg class="ico" aria-hidden="true"><use href="#i-gear"></use></svg>
+          <span data-i18n="设置">设置</span>
+        </button>
+        <!-- 高级：把技术向入口收起来。普通用户日常只用「工作台 / 全部任务 / 设置」，
+             概览/看板/自动化/浏览器/体检这些排在第一屏会把主路径挤没。 -->
+        <button class="qitem side-more-toggle" id="btn-side-more" type="button"
+                aria-expanded="false" aria-controls="side-more" title="高级功能" data-i18n-title="高级功能"
+                onclick="toggleSideMore()">
+          <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+          <span data-i18n="高级功能">高级功能</span>
+        </button>
+      </div>
+      <div class="side-quick side-more hidden" id="side-more">
+        <div class="side-group-label" data-i18n="查看">查看</div>
+        <button class="qitem" id="btn-q-overview" data-page="overview" title="概览：今天干了什么、花了多少" data-i18n-title="概览：今天干了什么、花了多少">
           <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
           <span data-i18n="概览">概览</span>
         </button>
-        <button class="qitem" id="btn-q-runs" data-page="runs" title="运行记录" data-i18n-title="运行记录">
+        <button class="qitem" id="btn-q-runs" data-page="runs" title="运行记录：每一次跑的明细与日志" data-i18n-title="运行记录：每一次跑的明细与日志">
           <svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg>
           <span data-i18n="运行记录">运行记录</span>
           <span class="nav-badge hidden" id="nav-badge-runs"></span>
         </button>
-        <button class="qitem" id="btn-q-kanban" data-page="kanban" title="看板" data-i18n-title="看板">
+        <button class="qitem" id="btn-q-kanban" data-page="kanban" title="看板：所有任务按进度分列，一眼看谁卡住了" data-i18n-title="看板：所有任务按进度分列，一眼看谁卡住了">
           <svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>
           <span data-i18n="看板">看板</span>
         </button>
-        <button class="qitem" id="btn-q-automation" data-page="automation" title="自动化" data-i18n-title="自动化">
+        <div class="side-group-label" data-i18n="工具">工具</div>
+        <button class="qitem" id="btn-q-automation" data-page="automation" title="自动化：按时间自动跑固定任务" data-i18n-title="自动化：按时间自动跑固定任务">
           <svg class="ico" aria-hidden="true"><use href="#i-calendar-days"></use></svg>
           <span data-i18n="自动化">自动化</span>
         </button>
-        <button class="qitem" id="btn-q-browser" data-page="browser" title="浏览器" data-i18n-title="浏览器">
+        <button class="qitem" id="btn-q-browser" data-page="browser" title="浏览器：让它在网页上自己点" data-i18n-title="浏览器：让它在网页上自己点">
           <svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg>
           <span data-i18n="浏览器">浏览器</span>
         </button>
         <!-- 通道体检（2026-10-23 自设置导航升入）：看一眼通道状态不再绕设置，
              主页快捷入口卡与这颗共用 switchTab('availability') 一条链路 -->
-        <button class="qitem" id="btn-q-availability" data-page="availability" title="通道体检" data-i18n-title="通道体检">
+        <button class="qitem" id="btn-q-availability" data-page="availability" title="通道体检：模型和命令行 AI 通不通" data-i18n-title="通道体检：模型和命令行 AI 通不通">
           <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
           <span data-i18n="通道体检">通道体检</span>
         </button>
       </div>
+      <!-- 台专属导航（2026-10-28）：进了「小说/成稿/编码」台，左栏换成该台的常用去处。
+           条目与主页工具区同源（WORKSPACE_MODES[mode].tools → WS_TOOL_LIB），
+           同一件事只有一种说法，也不会出现假入口。通用台（什么都干）不显示，保持原样。 -->
+      <div id="side-ws-nav" class="side-ws-nav hidden"></div>
       <div id="side-projects" class="side-section tasks">
         <div class="side-label-row">
-          <div data-i18n="项目" class="side-label">项目</div>
+          <!-- 标题行兼折叠开关：项目树里全是 workdir 名（ws / persisted / workdir），
+               对普通用户是纯噪音。默认收起，点标题展开，选择记在本机。 -->
+          <button type="button" class="side-label side-fold-btn" id="btn-side-fold"
+                  aria-expanded="true" aria-controls="side-tasks" onclick="toggleSideFold()"
+                  title="展开 / 收起项目" data-i18n-title="展开 / 收起项目">
+            <svg class="ico side-fold-ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+            <span id="side-projects-label" data-i18n="项目">项目</span>
+          </button>
           <button id="btn-side-expand" class="foot-btn notify-toggle" title="展开全部" aria-label="展开全部"
                   data-i18n-title="展开全部" data-i18n-aria="展开全部">
             <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
@@ -330,33 +384,46 @@
       </label>
       <div id="settings-search-empty" class="settings-search-empty hidden" data-i18n="没有匹配的设置">没有匹配的设置</div>
       <!-- 概览 / 运行记录 / 自动化 / 通道体检已升为左栏快捷导航（见 .side-quick），此处不再重复挂条目 -->
-      <div data-i18n="工作流" class="set-group">工作流</div>
-      <button class="set-item active" data-sub="tasks" data-search="任务 新建 提示词 运行 编排 工作流 task prompt run workflow"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span data-i18n="任务">任务</span></button>
-      <div data-i18n="集成" class="set-group">集成</div>
-      <button class="set-item" data-sub="hooks" data-search="钩子 hooks 生命周期 脚本 自动化 hook lifecycle script automation"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="钩子">钩子</span></button>
-      <button class="set-item" data-sub="zentao" data-search="禅道 zentao bug 缺陷 修复 issue bug fix"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><span data-i18n="禅道">禅道</span></button>
-      <button class="set-item" data-sub="__wxdigest" data-search="微信群聊汇报 微信 群聊 摘要 消息 wechat group chat summary"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="微信群聊汇报">微信群聊汇报</span></button>
-      <div data-i18n="智能体与模型" class="set-group">智能体与模型</div>
-      <button class="set-item" data-sub="agents" data-search="本机智能体 cli agent 安装 命令行 local agents install"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="本机智能体">本机智能体</span></button>
-      <button class="set-item" data-sub="models" data-search="模型接入 供应商 API 密钥 provider models api keys"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="模型接入">模型接入</span></button>
-      <button class="set-item" data-sub="bindings" data-search="模型调度 路由 绑定 降级 fallback routing binding"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="模型调度（可选）">模型调度（可选）</span></button>
-      <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
-      <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
-      <button class="set-item" data-sub="strategy" data-search="机制与策略 路由 权重 挑战者 影子 对账 evolver strategy weights challenger shadow routing"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="机制与策略">机制与策略</span></button>
-      <div data-i18n="知识与扩展" class="set-group">知识与扩展</div>
-      <button class="set-item" data-sub="atlas" data-search="记忆图谱 星图 atlas 可视化 搜索 注入 治理 memory atlas visualization"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="记忆图谱">记忆图谱</span></button>
-      <button class="set-item" data-sub="memory" data-search="记忆中心 记忆 全局 项目 memory center global project"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="记忆中心">记忆中心</span></button>
-      <button class="set-item" data-sub="skills" data-search="经验库 技能 skill 规范 教训 skills guidelines lessons"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="经验库">经验库</span></button>
-      <button class="set-item" data-sub="knowledge" data-search="知识库 记忆 搜索 知识 knowledge memory search"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="知识库">知识库</span></button>
-      <button class="set-item" data-sub="market" data-search="插件市场 插件 MCP 扩展 安装 plugin extension install"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><span data-i18n="插件市场">插件市场</span></button>
-      <div data-i18n="用量与数据" class="set-group">用量与数据</div>
-      <button class="set-item" data-sub="usage" data-search="用量统计 token 成本 台账 调用 usage costs ledger"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg><span data-i18n="用量统计">用量统计</span></button>
-      <button class="set-item" data-sub="data" data-search="数据与备份 导入 导出 恢复 清理 data backup import export restore"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><span data-i18n="数据与备份">数据与备份</span></button>
-      <div data-i18n="外观与软件" class="set-group">外观与软件</div>
-      <button class="set-item" data-sub="appearance" data-search="皮肤 外观 主题 语言 明暗 字体 桌面蜜蜂 语音 口述 词表 麦克风 appearance theme language dark light font voice dictation lexicon mic"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="皮肤">皮肤</span></button>
-      <button id="btn-guide" class="set-item" data-sub="__guide" data-search="帮助中心 指南 文档 教程 help guide docs"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg><span data-i18n="帮助中心">帮助中心</span></button>
-      <button id="btn-about" class="set-item" data-sub="about" data-search="关于与更新 版本 更新 诊断 报告 about version update diagnostics"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="关于与更新">关于与更新</span></button>
-      <button id="btn-phone" class="set-item" data-sub="__phone" data-search="手机连接 远程 手机 phone remote"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg><span data-i18n="手机连接">手机连接</span></button>
+      <div data-i18n="日常" class="set-group">日常</div>
+      <button class="set-item" data-sub="models" data-search="模型接入 供应商 API 密钥 provider models api keys" title="挑一家供应商、填密钥、打开要用的模型——三步就能干活" data-i18n-title="挑一家供应商、填密钥、打开要用的模型——三步就能干活"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="模型接入">模型接入</span></button>
+      <button class="set-item" data-sub="market" data-search="插件市场 插件 MCP 扩展 安装 plugin extension install" title="装别人做好的能力包：写作规范、工程守则、MCP 工具" data-i18n-title="装别人做好的能力包：写作规范、工程守则、MCP 工具"><svg class="ico" aria-hidden="true"><use href="#i-blocks"></use></svg><span data-i18n="插件市场">插件市场</span></button>
+      <button class="set-item" data-sub="tasks" data-search="任务 新建 提示词 运行 编排 工作流 task prompt run workflow" title="新建任务时默认用哪个流程、发到哪个目录、要不要评审" data-i18n-title="新建任务时默认用哪个流程、发到哪个目录、要不要评审"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span data-i18n="任务">任务</span></button>
+      <button class="set-item" data-sub="usage" data-search="用量统计 token 成本 台账 调用 usage costs ledger" title="每天用掉多少 token、折多少钱，按模型分开算" data-i18n-title="每天用掉多少 token、折多少钱，按模型分开算"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg><span data-i18n="用量统计">用量统计</span></button>
+      <button class="set-item" data-sub="appearance" data-search="皮肤 外观 主题 语言 明暗 字体 桌面蜜蜂 语音 口述 词表 麦克风 appearance theme language dark light font voice dictation lexicon mic" title="深色浅色、字号、语言，点一下立刻生效" data-i18n-title="深色浅色、字号、语言，点一下立刻生效"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="皮肤">皮肤</span></button>
+      <button class="set-item" data-sub="data" data-search="数据与备份 导入 导出 恢复 清理 data backup import export restore" title="把全部数据导出成一个文件；换电脑时导入回来" data-i18n-title="把全部数据导出成一个文件；换电脑时导入回来"><svg class="ico" aria-hidden="true"><use href="#i-library"></use></svg><span data-i18n="数据与备份">数据与备份</span></button>
+      <button id="btn-guide" class="set-item" data-sub="__guide" data-search="帮助中心 指南 文档 教程 help guide docs" title="不会用的时候先看这里" data-i18n-title="不会用的时候先看这里"><svg class="ico" aria-hidden="true"><use href="#i-rocket"></use></svg><span data-i18n="帮助中心">帮助中心</span></button>
+      <button id="btn-set-more" class="set-more" type="button" aria-expanded="false" aria-controls="set-advanced" onclick="toggleSetMore()">
+        <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+        <span data-i18n="高级设置">高级设置</span>
+        <i id="set-more-count">14</i>
+      </button>
+      <!-- 高级区按「你要干的那件事」分组，不按代码模块分：
+           跑任务 / 挑模型 / 接外部 / 记住东西 / 软件本身。每组 2~5 条，
+           名字都用白话，不用产品内部叫法。 -->
+      <div id="set-advanced" class="hidden">
+        <div data-i18n="跑任务" class="set-group">跑任务</div>
+        <button class="set-item" data-sub="orch" data-search="编排设置 编排者 并发 工作目录 MCP ACP 命令授权 推送通知 orchestrator concurrency workspace command authorization notifications" title="一次并行几个、文件放哪、允许执行什么命令" data-i18n-title="一次并行几个、文件放哪、允许执行什么命令"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="编排设置">编排设置</span></button>
+        <button class="set-item" data-sub="hooks" data-search="钩子 hooks 生命周期 脚本 自动化 hook lifecycle script automation" title="任务开始/结束时自动跑一段脚本" data-i18n-title="任务开始/结束时自动跑一段脚本"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="钩子">钩子</span></button>
+
+        <div data-i18n="挑模型" class="set-group">挑模型</div>
+        <button class="set-item" data-sub="agents" data-search="本机智能体 cli agent 安装 命令行 local agents install" title="看看电脑上装了哪些命令行 AI，能不能用" data-i18n-title="看看电脑上装了哪些命令行 AI，能不能用"><svg class="ico" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="本机智能体">本机智能体</span></button>
+        <button class="set-item" data-sub="bindings" data-search="模型调度 路由 绑定 降级 fallback routing binding" title="哪个活交给哪个模型、挂了换谁上" data-i18n-title="哪个活交给哪个模型、挂了换谁上"><svg class="ico" aria-hidden="true"><use href="#i-link"></use></svg><span data-i18n="模型调度（可选）">模型调度（可选）</span></button>
+        <button class="set-item" data-sub="evalbench" data-search="模型评测 基准 测试 榜单 model evaluation benchmark test leaderboard" title="同一道题让几个模型各答一遍，比一比再决定用谁" data-i18n-title="同一道题让几个模型各答一遍，比一比再决定用谁"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="模型评测">模型评测</span></button>
+        <button class="set-item" data-sub="strategy" data-search="机制与策略 路由 权重 挑战者 影子 对账 evolver strategy weights challenger shadow routing" title="选模型的打分规则；改坏了可以一键恢复默认" data-i18n-title="选模型的打分规则；改坏了可以一键恢复默认"><svg class="ico" aria-hidden="true"><use href="#i-workflow"></use></svg><span data-i18n="机制与策略">机制与策略</span></button>
+
+        <div data-i18n="接外部" class="set-group">接外部</div>
+        <button id="btn-phone" class="set-item" data-sub="__phone" data-search="手机连接 远程 手机 phone remote" title="用手机遥控这台电脑上的任务" data-i18n-title="用手机遥控这台电脑上的任务"><svg class="ico" aria-hidden="true"><use href="#i-phone"></use></svg><span data-i18n="手机连接">手机连接</span></button>
+        <button class="set-item" data-sub="zentao" data-search="禅道 zentao bug 缺陷 修复 issue bug fix" title="把禅道上的单子拉过来修，修完回写" data-i18n-title="把禅道上的单子拉过来修，修完回写"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><span data-i18n="禅道">禅道</span></button>
+        <button class="set-item" data-sub="__wxdigest" data-search="微信群聊汇报 微信 群聊 摘要 消息 wechat group chat summary" title="把微信群里的消息汇成摘要" data-i18n-title="把微信群里的消息汇成摘要"><svg class="ico" aria-hidden="true"><use href="#i-bee"></use></svg><span data-i18n="微信群聊汇报">微信群聊汇报</span></button>
+
+        <div data-i18n="记住东西" class="set-group">记住东西</div>
+        <button class="set-item" data-sub="memory" data-search="记忆中心 记忆 全局 项目 memory center global project" title="它记住的偏好和项目背景，可以改可以删" data-i18n-title="它记住的偏好和项目背景，可以改可以删"><svg class="ico" aria-hidden="true"><use href="#i-sigma"></use></svg><span data-i18n="记忆中心">记忆中心</span></button>
+        <button class="set-item" data-sub="atlas" data-search="记忆图谱 星图 atlas 可视化 搜索 注入 治理 memory atlas visualization" title="把记忆画成一张图，看看都连着什么" data-i18n-title="把记忆画成一张图，看看都连着什么"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg><span data-i18n="记忆图谱">记忆图谱</span></button>
+        <button class="set-item" data-sub="knowledge" data-search="知识库 记忆 搜索 知识 knowledge memory search" title="放进去的文档，做任务时会被翻出来用" data-i18n-title="放进去的文档，做任务时会被翻出来用"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="知识库">知识库</span></button>
+        <button class="set-item" data-sub="skills" data-search="经验库 技能 skill 规范 教训 skills guidelines lessons" title="踩过的坑写成规矩，下次自动遵守" data-i18n-title="踩过的坑写成规矩，下次自动遵守"><svg class="ico" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="经验库">经验库</span></button>
+        <div data-i18n="软件" class="set-group">软件</div>
+        <button id="btn-about" class="set-item" data-sub="about" data-search="关于与更新 版本 更新 诊断 报告 about version update diagnostics" title="版本、更新、体检报告" data-i18n-title="版本、更新、体检报告"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="关于与更新">关于与更新</span></button>
+      </div>
     </div>
     <!-- 右缘拖拽手柄：常规视图与设置视图共用，调的是整个左栏宽度 -->
     <div id="side-resizer" title="拖动调宽 · 双击复原" data-i18n-title="拖动调宽 · 双击复原"></div>
@@ -365,7 +432,10 @@
   <!-- ================= 主栏 ================= -->
   <div id="mainwrap">
     <header class="topbar">
-      <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏" data-i18n-aria="收起 / 展开侧栏" data-i18n-title="收起 / 展开侧栏">
+      <!-- workbench 布局下这颗是「左抽屉开关」（左栏不再占列，见 simple-home.css 末段）；
+           其余布局仍是原来的挤压式折叠。aria-expanded 由 toggleSideDrawer 维护。 -->
+      <button id="btn-menu" class="icon-btn" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏" data-i18n-aria="收起 / 展开侧栏" data-i18n-title="收起 / 展开侧栏"
+              aria-controls="sidebar" aria-expanded="false">
         <svg class="ico ico-lg" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
       <button id="upd-pill" class="pill upd-pill hidden" onclick="suApply()" title="发现新版本，点击升级" aria-label="发现新版本，点击升级" data-i18n-title="发现新版本，点击升级" data-i18n-aria="发现新版本，点击升级">
@@ -378,7 +448,21 @@
         <span id="crumb-root" class="crumb-root hidden" aria-hidden="true"></span>
         <div data-i18n="任务" id="page-title" class="page-title">任务</div>
       </div>
+      <!-- 台专属招牌动作：进了台，顶栏直接给这个台最该干的一件事（小说=扫榜、成稿=要件核对、编码=看板）。
+           条目取 WS_TOOL_LIB 里该台第 1 项，与左栏/工具区同源，不新增说法。 -->
+      <button id="btn-ws-action" class="ws-action hidden" type="button" onclick="wsTopAction()">
+        <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+        <span id="btn-ws-action-txt"></span>
+      </button>
       <div id="health-banner" class="health-banner hidden" onclick="healthBannerClick()" title="供应商健康告警" aria-label="供应商健康告警" data-i18n-title="供应商健康告警" data-i18n-aria="供应商健康告警"></div>
+      <!-- 没选模型＝任务跑不起来，这是唯一真会让普通用户卡住的状态。左栏收进抽屉以后
+           不能再靠左下角那颗小按钮提醒，改在顶栏常驻一颗警示 pill（renderOrchSide 维护显隐）。 -->
+      <button id="btn-model-pill" class="pill model-pill hidden" type="button" onclick="switchTab('orch')"
+              title="还没选模型，任务跑不起来。点击从已接入的厂商里选一个"
+              data-i18n-title="还没选模型，任务跑不起来。点击从已接入的厂商里选一个">
+        <svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>
+        <span data-i18n="选择模型">选择模型</span>
+      </button>
       <div class="top-actions">
         <button id="ctrl-pill" class="pill ctrl icon-only hidden" onclick="ctrlClick()" title="多端控制权" aria-label="多端控制权" data-i18n-aria="多端控制权" data-i18n-title="多端控制权"><svg class="ico" aria-hidden="true"><use href="#i-unlock"></use></svg></button>
         <div id="op-wrap" class="op-wrap">
@@ -390,24 +474,43 @@
             <div id="op-list" class="op-list" aria-live="polite"></div>
           </div>
         </div>
-        <!-- 任务驾驶舱大屏：新标签页打开 /board.html，令牌与主界面共用 localStorage（orch.token） -->
-        <button id="btn-board" class="pill icon-only" type="button" onclick="openBoard()" title="任务大屏" aria-label="任务大屏" data-i18n-title="任务大屏" data-i18n-aria="任务大屏"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg></button>
-        <!-- 语言快捷切换：语言名用母语写死（中文/English），刻意不做 i18n——任何母语的人都要能读懂并选中 -->
-        <div class="lang-wrap">
-          <button id="btn-lang" class="pill icon-only" type="button" onclick="toggleLangMenu()" title="语言 / Language" aria-label="切换语言" aria-haspopup="listbox" aria-controls="lang-menu" data-i18n-title="语言 / Language" data-i18n-aria="切换语言"><svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg></button>
-          <div id="lang-menu" class="lang-menu hidden" role="listbox" aria-label="语言 / Language" data-i18n-aria="语言 / Language">
-            <button type="button" class="lang-item" role="option" data-lang="zh" onclick="pickLang('zh')"><span>中文</span><svg class="ico li-check" aria-hidden="true"><use href="#i-check"></use></svg></button>
-            <button type="button" class="lang-item" role="option" data-lang="en" onclick="pickLang('en')"><span>English</span><svg class="ico li-check" aria-hidden="true"><use href="#i-check"></use></svg></button>
+        <!-- 二级操作统一收进「⋯ 更多」：任务大屏 / 并排浏览器 / 皮肤 / 状态栏 / 语言。
+             真按钮原件留在 #top-more-src（display:none），菜单行只负责 .click() 触发它们——
+             id、事件绑定、aria 状态、CSS 守卫全部照旧，只是不再占顶栏位置。 -->
+        <div class="top-more-wrap">
+          <button id="btn-top-more" class="pill icon-only" type="button" onclick="toggleTopMore()" title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false" aria-controls="top-more" data-i18n-title="更多" data-i18n-aria="更多"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></button>
+          <div id="top-more" class="top-more hidden" role="menu" aria-label="更多" data-i18n-aria="更多">
+            <div class="tm-kicker" data-i18n="工具与外观">工具与外观</div>
+            <button type="button" class="tm-item" role="menuitem" onclick="topMoreDo('board')"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg><span data-i18n="任务大屏">任务大屏</span></button>
+            <button type="button" class="tm-item" role="menuitem" onclick="topMoreDo('browser')"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span data-i18n="并排浏览器">并排浏览器</span></button>
+            <button type="button" class="tm-item" role="menuitem" onclick="topMoreDo('status')"><svg class="ico" aria-hidden="true"><use href="#i-rail-right"></use></svg><span data-i18n="收起 / 展开状态栏">收起 / 展开状态栏</span></button>
+            <button type="button" class="tm-item" role="menuitem" onclick="topMoreDo('insp')"><svg class="ico" aria-hidden="true"><use href="#i-panel"></use></svg><span data-i18n="任务详情">任务详情</span></button>
+            <button type="button" class="tm-item" role="menuitem" onclick="topMoreDo('skin')"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="换皮肤">换皮肤</span></button>
+            <div class="tm-kicker" data-i18n="语言">语言</div>
+            <button type="button" class="tm-item" role="menuitem" data-lang-row="zh" onclick="topMoreDo('lang-zh')"><svg class="ico" aria-hidden="true"><use href="#i-lang"></use></svg><span>中文</span></button>
+            <button type="button" class="tm-item" role="menuitem" data-lang-row="en" onclick="topMoreDo('lang-en')"><svg class="ico" aria-hidden="true"><use href="#i-lang"></use></svg><span>English</span></button>
+          </div>
+          <div id="top-more-src" class="top-more-src">
+            <!-- 任务驾驶舱大屏：新标签页打开 /board.html，令牌与主界面共用 localStorage（orch.token） -->
+            <button id="btn-board" class="pill icon-only" type="button" onclick="openBoard()" title="任务大屏" aria-label="任务大屏" data-i18n-title="任务大屏" data-i18n-aria="任务大屏"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg></button>
+            <!-- 语言快捷切换：语言名用母语写死（中文/English），刻意不做 i18n——任何母语的人都要能读懂并选中 -->
+            <div class="lang-wrap">
+              <button id="btn-lang" class="pill icon-only" type="button" onclick="toggleLangMenu()" title="语言 / Language" aria-label="切换语言" aria-haspopup="listbox" aria-controls="lang-menu" data-i18n-title="语言 / Language" data-i18n-aria="切换语言"><svg class="ico" aria-hidden="true"><use href="#i-globe"></use></svg></button>
+              <div id="lang-menu" class="lang-menu hidden" role="listbox" aria-label="语言 / Language" data-i18n-aria="语言 / Language">
+                <button type="button" class="lang-item" role="option" data-lang="zh" onclick="pickLang('zh')"><span>中文</span><svg class="ico li-check" aria-hidden="true"><use href="#i-check"></use></svg></button>
+                <button type="button" class="lang-item" role="option" data-lang="en" onclick="pickLang('en')"><span>English</span><svg class="ico li-check" aria-hidden="true"><use href="#i-check"></use></svg></button>
+              </div>
+            </div>
+            <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
+            <!-- 状态栏开合：只在 workbench 布局桌面端出现（CSS 守卫），与左侧菜单的
+                 顶栏开合钮对称；收起后列宽同步归零，见 redesign-layout.css -->
+            <button id="btn-status-rail" class="pill icon-only" type="button" aria-controls="status-sidebar" aria-pressed="false" title="收起 / 展开状态栏" aria-label="收起 / 展开状态栏" data-i18n-title="收起 / 展开状态栏" data-i18n-aria="收起 / 展开状态栏"><svg class="ico" aria-hidden="true"><use href="#i-rail-right"></use></svg></button>
+            <button id="btn-browser-split" class="pill icon-only" type="button" onclick="toggleBrowserSplit()" title="并排打开浏览器" aria-label="并排打开浏览器" aria-pressed="false" data-i18n-title="并排打开浏览器" data-i18n-aria="并排打开浏览器"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></button>
           </div>
         </div>
-        <button id="btn-skin" class="pill icon-only" title="皮肤 / 换肤：多套配色，各含日间与夜间" aria-label="皮肤 / 换肤" data-i18n-aria="皮肤 / 换肤" data-i18n-title="皮肤 / 换肤：多套配色，各含日间与夜间"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg></button>
         <button id="btn-theme" class="pill icon-only" title="切换日间 / 夜间主题" aria-label="切换日间 / 夜间主题" data-i18n-aria="切换日间 / 夜间主题" data-i18n-title="切换日间 / 夜间主题"><svg class="ico" aria-hidden="true"><use href="#i-moon"></use></svg></button>
-        <!-- 状态栏开合：只在 workbench 布局桌面端出现（CSS 守卫），与左侧菜单的
-             顶栏开合钮对称；收起后列宽同步归零，见 redesign-layout.css -->
-        <button id="btn-status-rail" class="pill icon-only" type="button" aria-controls="status-sidebar" aria-pressed="false" title="收起 / 展开状态栏" aria-label="收起 / 展开状态栏" data-i18n-title="收起 / 展开状态栏" data-i18n-aria="收起 / 展开状态栏"><svg class="ico" aria-hidden="true"><use href="#i-rail-right"></use></svg></button>
         <!-- 详情面板开关：贴动作组最右 = 紧挨面板弹出的那一侧，空间映射一致 -->
         <button id="btn-insp" class="pill icon-only" type="button" onclick="toggleInspector()" title="打开任务详情" aria-label="打开任务详情" data-i18n-title="打开任务详情" data-i18n-aria="打开任务详情"><svg class="ico" aria-hidden="true"><use href="#i-panel"></use></svg></button>
-        <button id="btn-browser-split" class="pill icon-only" type="button" onclick="toggleBrowserSplit()" title="并排打开浏览器" aria-label="并排打开浏览器" aria-pressed="false" data-i18n-title="并排打开浏览器" data-i18n-aria="并排打开浏览器"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg></button>
         <div data-i18n="连接中…" id="conn" class="conn">连接中…</div>
       </div>
     </header>
@@ -430,10 +533,56 @@
     <!-- ================= 主页（workbench 布局专属，默认隐藏） ================= -->
     <section id="page-home" class="page rd-home hidden">
       <div class="rd-home-head">
-        <div class="rd-home-date" id="rd-home-date"></div>
-        <h1 class="rd-home-title" data-i18n="把今天要完成的事，交给 CodeBee。">把今天要完成的事，交给 CodeBee。</h1>
-        <p class="rd-home-sub" data-i18n="拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。">拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。</p>
+        <div class="rd-home-toprow">
+          <div class="rd-home-date" id="rd-home-date"></div>
+          <!-- 总任务视图入口：与日期同行、靠右，不占工作台卡片的位置 -->
+          <div id="rd-mode-entry"></div>
+        </div>
+        <!-- 大厅（未进入任何工作台）：只说一句「选一个」，下面是四张台卡。
+             参考设计展厅的入口页——不摆输入框、不摆工具，先让人做选择。 -->
+        <div id="rd-lobby" class="rd-lobby">
+          <h1 class="rd-home-title" id="rd-lobby-title" data-i18n="今天做哪类活？">今天做哪类活？</h1>
+          <p class="rd-home-sub" id="rd-lobby-sub" data-i18n="说出你要什么，它自己拆步骤、调用工具，把能直接用的结果交给你。五个台只是分工不同，随时能换。">说出你要什么，它自己拆步骤、调用工具，把能直接用的结果交给你。五个台只是分工不同，随时能换。</p>
+          <!-- 三步说明（对齐 WorkBuddy 官网的「说出要求 → 执行任务 → 交付成果」）：
+               普通用户第一次进来只关心「我该做什么、它会做什么」，三句话讲完，不用看文档 -->
+          <div class="rd-steps" aria-hidden="true">
+            <span><i>1</i>说出你要什么</span>
+            <span><i>2</i>它自己拆步骤、调工具</span>
+            <span><i>3</i>交付能直接用的结果</span>
+          </div>
+        </div>
+        <!-- 台内标题：进去以后换成这个台自己的问候语，并给一条退回大厅的路 -->
+        <div id="rd-entered-head" class="rd-entered-head hidden">
+          <button type="button" class="rd-back-btn" id="btn-rd-back" onclick="leaveWorkspace()">
+            <svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+            <span data-i18n="全部工作台">全部工作台</span>
+          </button>
+          <h1 class="rd-home-title" id="rd-ws-title">把今天要完成的事，交给 CodeBee。</h1>
+          <p class="rd-home-sub" id="rd-ws-sub">拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。</p>
+        </div>
+        <!-- 工作模式：大厅里是四张大卡（点一张＝进那个台）；台内自动收成一行台签，
+             随时可换台。按钮由 app.js 的 renderModeBar() 按 WORKSPACE_MODES 渲染。 -->
+        <div class="rd-mode-bar" id="rd-mode-bar" role="tablist" aria-label="工作台" data-i18n-aria="工作台"></div>
       </div>
+
+      <!-- 大厅底部：最近的活。只摆四张台卡会剩半屏空白，而「接着上次没做完的继续」
+           正是打开工具后最常做的一件事——选台和续活不该是两条路。 -->
+      <div id="rd-lobby-recent" class="hidden">
+        <div class="rd-section-head">
+          <h2 data-i18n="最近的活">最近的活</h2>
+          <button class="rd-link-btn" onclick="showAllTasks()"><span data-i18n="全部任务">全部任务</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+        </div>
+        <div id="rd-lobby-recent-list" class="rd-task-list"></div>
+      </div>
+
+      <!-- ============ 工作台视图：进去某个台以后只干这一摊 ============
+           默认隐藏——首屏停在大厅（选台），JS 的 paintHomeEntered() 按状态切换。 -->
+      <div id="rd-ws-view" class="hidden">
+
+      <!-- 台内主区块：进台看到的是「另一张页」，不是同一页换个配色——
+           小说＝书架 / 成稿＝交付单 / 编码＝工程现场 / 通用＝不摆（先说事）。
+           由 renderWsDomain() 按台渲染，占据满宽主位。 -->
+      <div id="rd-ws-domain" class="rd-ws-domain hidden"></div>
 
       <!-- 任务输入卡：真表单 composer 由 showHome 原样搬入（工作台入口）。
            新聊天入口走任务表单页本身（居中问候+类型页签+composer 的简洁形态） -->
@@ -452,61 +601,68 @@
         </div>
       </div>
 
-      <!-- 快捷入口：重要但不在侧栏常驻的能力。通道体检带实时健康摘要，
-           省得为了看一眼通道状态先绕进设置。 -->
-      <div class="rd-tools">
+      <!-- 工作台工具：每个工作台一组自己的入口（app.js 的 renderWorkbenchTools()
+           按 WORKSPACE_MODES[mode].tools 渲染）。常驻显示、不折叠——切台时这一整组换掉，
+           是「四台各干各的」最直观的一处。每一项都落到真实子页或真实动作，不放占位入口。 -->
+      <div class="rd-tools" id="rd-tools">
+        <!-- 本台概览：右栏顶部的四个真数字（参考稿右栏的「用量」四宫格）。
+             全部从 runs 现算，不编造指标。 -->
+        <div id="rd-ws-stats" class="rd-ws-stats"></div>
         <div class="rd-section-head">
-          <h2 data-i18n="快捷入口">快捷入口</h2>
+          <!-- 后缀「工具」由 CSS 按语言挂（中文紧贴、英文带空格），不拼在 DOM 里 -->
+          <h2><span id="rd-tools-mode" data-i18n="通用">通用</span></h2>
         </div>
-        <div class="rd-tool-grid">
-          <button type="button" class="rd-tool rd-tool-health" id="rd-tool-avail" onclick="switchTab('availability')">
-            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg></span>
-            <span class="rd-tool-text">
-              <b data-i18n="通道体检">通道体检</b>
-              <i id="rd-avail-summary" data-i18n="厂商、模型与 CLI 的实时可用性">厂商、模型与 CLI 的实时可用性</i>
-            </span>
-            <span class="rd-tool-badge" id="rd-avail-badge"></span>
-            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-          </button>
-          <button type="button" class="rd-tool" onclick="switchTab('evalbench')">
-            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg></span>
-            <span class="rd-tool-text">
-              <b data-i18n="模型评测">模型评测</b>
-              <i data-i18n="跑基准、看榜单，挑选合适的模型">跑基准、看榜单，挑选合适的模型</i>
-            </span>
-            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-          </button>
-          <button type="button" class="rd-tool" onclick="switchTab('atlas')">
-            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg></span>
-            <span class="rd-tool-text">
-              <b data-i18n="记忆图谱">记忆图谱</b>
-              <i data-i18n="检索、注入预演与记忆治理">检索、注入预演与记忆治理</i>
-            </span>
-            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-          </button>
-          <button type="button" class="rd-tool" onclick="switchTab('usage')">
-            <span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-coin"></use></svg></span>
-            <span class="rd-tool-text">
-              <b data-i18n="用量统计">用量统计</b>
-              <i data-i18n="Token、费用与调用趋势">Token、费用与调用趋势</i>
-            </span>
-            <svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-          </button>
-        </div>
+        <div class="rd-tool-grid" id="rd-tool-grid"></div>
       </div>
 
-      <!-- 最近任务 -->
+      <!-- 本工作台的任务：只列属于当前工作台的任务（按类型白名单判定），
+           四个工作台各看各的；跨工作台的全量清单进右侧「全部任务」。 -->
       <div class="rd-recent-tasks">
         <div class="rd-section-head">
-          <h2 data-i18n="最近任务">最近任务</h2>
-          <button class="rd-link-btn" onclick="switchTab('tasks')"><span data-i18n="查看全部">查看全部</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+          <h2 id="rd-recent-title" data-i18n="最近任务">最近任务</h2>
+          <button class="rd-link-btn" onclick="showAllTasks()"><span data-i18n="全部任务">全部任务</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
         </div>
         <div id="rd-recent-list" class="rd-task-list"></div>
       </div>
+      </div><!-- /rd-ws-view -->
+
+      <!-- ============ 总任务视图：所有工作台的任务汇总，可按工作台/状态筛 ============ -->
+      <section id="rd-alltasks" class="rd-alltasks hidden" aria-label="全部任务" data-i18n-aria="全部任务">
+        <div class="rd-alltasks-head">
+          <p class="rd-alltasks-sub" data-i18n="四个工作台的任务都在这里；按工作台或状态筛，点一行进详情。">四个工作台的任务都在这里；按工作台或状态筛，点一行进详情。</p>
+        </div>
+        <div class="rd-filter-row">
+          <span class="rd-filter-label" data-i18n="工作台">工作台</span>
+          <div id="rd-alltasks-ws" class="rd-filters" role="group" aria-label="按工作台筛选" data-i18n-aria="按工作台筛选"></div>
+        </div>
+        <div class="rd-filter-row">
+          <span class="rd-filter-label" data-i18n="状态">状态</span>
+          <div id="rd-alltasks-status" class="rd-filters" role="group" aria-label="按状态筛选" data-i18n-aria="按状态筛选"></div>
+        </div>
+        <div id="rd-alltasks-list" class="rd-task-list rd-alltasks-list"></div>
+        <button type="button" id="rd-alltasks-more" class="rd-link-btn rd-alltasks-more hidden" onclick="allTasksMore()">
+          <span data-i18n="加载更多">加载更多</span><svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+        </button>
+      </section>
     </section>
 
     <!-- ================= 设置页（导航在左栏，内容为居中窄栏） ================= -->
     <section id="page-settings" class="page">
+      <!-- 设置首页（2026-10-28）：进来的第一屏不再是一堆技术表单，而是六件「你可能想改的事」。
+           每张卡只有一句白话 + 一行当前状态；点进去才是具体设置。默认落地页由 enterSettings 定。 -->
+      <div id="sub-__home" class="subpage">
+        <div class="sh-head">
+          <h1 class="sh-title" data-i18n="设置">设置</h1>
+          <p class="sh-sub" data-i18n="常用的几件事都在下面；不确定的项别改，默认就是对的。">常用的几件事都在下面；不确定的项别改，默认就是对的。</p>
+        </div>
+        <div class="sh-grid" id="sh-grid"></div>
+        <div class="sh-foot">
+          <span data-i18n="找不到要改的？">找不到要改的？</span>
+          <button type="button" class="rd-link-btn" onclick="focusSettingsSearch()"><span data-i18n="搜一下">搜一下</span></button>
+          <span class="sh-dot">·</span>
+          <button type="button" class="rd-link-btn" onclick="welcomeOpen()"><span data-i18n="看新手引导">看新手引导</span></button>
+        </div>
+      </div>
       <!-- 概览首页：日期 → 一句话概览 → KPI 卡 → 趋势 + 快捷入口 → 最近运行。
            全页数据来自真实台账（/api/usage）与运行记录（/api/state），无占位假数。 -->
       <!-- 看板（2026-10-22 multica 视角落地）：issue 式任务组织——按生命周期
@@ -515,7 +671,7 @@
       <div id="sub-kanban" class="subpage hidden">
         <div class="kb-head">
           <h1 class="kb-title" data-i18n="看板">看板</h1>
-          <p class="kb-sub" data-i18n="按生命周期组织的任务；待裁决列集中看阻塞汇报与分支裁决">按生命周期组织的任务；待裁决列集中看阻塞汇报与分支裁决</p>
+          <p class="kb-sub" data-i18n="所有任务按「还没开始 / 正在做 / 等你决定 / 做完了」分列，点一张看详情。">所有任务按「还没开始 / 正在做 / 等你决定 / 做完了」分列，点一张看详情。</p>
         </div>
         <div id="kanban-board" class="kanban-board"></div>
       </div>
@@ -651,15 +807,12 @@
                   </button>
                   <div id="type-menu" class="type-menu hidden" role="listbox" aria-label="任务类型" data-i18n-aria="任务类型"></div>
                 </div>
-                <select id="f-expert" class="expert-pick" aria-label="专家模板" data-i18n-aria="专家模板" title="可选：套用专家工作方法与交付约束" data-i18n-title="可选：套用专家工作方法与交付约束">
-                  <option value="">通用执行</option>
-                </select>
               </div>
               <div class="att-strip">
                 <div class="cmp-add-wrap">
                   <button type="button" class="ghost small cmp-add-btn" id="btn-attach" title="添加文件、浏览器、目标与工具" data-i18n-title="添加文件、浏览器、目标与工具" aria-haspopup="menu" aria-expanded="false" aria-controls="cmp-add-menu"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="添加">添加</span></button>
                   <div id="cmp-add-menu" class="cmp-add-menu hidden" role="menu" aria-label="添加" data-i18n-aria="添加">
-                    <div class="cmp-capability-searchbar"><input id="cmp-capability-search" type="search" placeholder="搜索插件、技能、智能体、文件和会话" data-i18n-ph="搜索插件、技能、智能体、文件和会话" aria-label="搜索插件、技能、智能体、文件和会话" data-i18n-aria="搜索插件、技能、智能体、文件和会话"><div class="cmp-capability-filters" role="group" aria-label="分类" data-i18n-aria="分类"><button type="button" data-capability-filter="all" data-i18n="全部">全部</button><button type="button" data-capability-filter="plugin" data-i18n="插件">插件</button><button type="button" data-capability-filter="skill" data-i18n="技能">技能</button><button type="button" data-capability-filter="agent" data-i18n="智能体">智能体</button><button type="button" data-capability-filter="file" data-i18n="文件">文件</button><button type="button" data-capability-filter="chat" data-i18n="会话">会话</button></div></div>
+                    <div class="cmp-capability-searchbar"><input id="cmp-capability-search" type="search" placeholder="搜索插件、技能、智能体、文件和会话" data-i18n-ph="搜索插件、技能、智能体、文件和会话" aria-label="搜索插件、技能、智能体、文件和会话" data-i18n-aria="搜索插件、技能、智能体、文件和会话"><div class="cmp-capability-filters" role="group" aria-label="分类" data-i18n-aria="分类"><button type="button" data-capability-filter="common" data-i18n="常用">常用</button><button type="button" data-capability-filter="all" data-i18n="全部">全部</button><button type="button" data-capability-filter="file" data-i18n="文件">文件</button><button type="button" data-capability-filter="chat" data-i18n="会话">会话</button><button type="button" data-capability-filter="plugin" data-i18n="插件">插件</button><button type="button" data-capability-filter="skill" data-i18n="技能">技能</button><button type="button" data-capability-filter="agent" data-i18n="智能体">智能体</button></div></div>
                     <div class="cmp-add-kicker" data-i18n="添加到任务">添加到任务</div>
                     <button type="button" class="cmp-add-item" data-add-action="file" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span><b data-i18n="文件和文件夹">文件和文件夹</b><small data-i18n="上传文件，或选择一个文件夹">上传文件，或选择一个文件夹</small></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="workflow" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="工作流">工作流</b><small data-i18n="选择任务流程">选择任务流程</small></span></button>
@@ -667,35 +820,53 @@
                     <button type="button" class="cmp-add-item" data-add-action="goal" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span><b data-i18n="目标">目标</b><small data-i18n="设置需要多轮推进的长目标">设置需要多轮推进的长目标</small></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="plan" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="计划模式">计划模式</b><small id="cmp-plan-hint" data-i18n="开启计划模式">开启计划模式</small></span><span class="cmp-add-check" id="cmp-plan-check" aria-hidden="true"></span></button>
                     <button type="button" class="cmp-add-item" data-add-action="draw" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span><b data-i18n="绘图">绘图</b><small data-i18n="绘制草图并作为附件添加">绘制草图并作为附件添加</small></span></button>
+                    <!-- 主输入行原先并排挤着「类型 / 专家模板 / 编排模式 / 思考程度 / 添加 / 发送」六个控件，
+                         普通人根本不知道该动哪个。后三项下沉到这里：原件与 id 全保留（取值、联动、
+                         refreshEstimate 一律照旧），默认值本来就能直接跑。 -->
+                    <div class="cmp-add-divider"></div>
+                    <div class="cmp-add-kicker" data-i18n="运行设置">运行设置</div>
+                    <div class="cmp-add-settings">
+                      <div class="cas-row">
+                        <span class="cas-label" data-i18n="编排模式">编排模式</span>
+                        <span class="cmp-sel" data-i18n-title="编排模式" title="编排模式">
+                          <select id="f-mode" class="cmp-sel-native" aria-label="编排模式" data-i18n-aria="编排模式">
+                            <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
+                            <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
+                            <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
+                            <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+                          </select>
+                          <span class="cmp-sel-face" id="f-mode-face" data-i18n="自动">自动</span>
+                          <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                        </span>
+                      </div>
+                      <div class="cas-row">
+                        <span class="cas-label" data-i18n="思考程度">思考程度</span>
+                        <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
+                          <select id="f-thinking" class="cmp-sel-native" aria-label="思考程度" data-i18n-aria="思考程度">
+                            <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
+                            <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
+                            <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
+                            <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
+                          </select>
+                          <span class="cmp-sel-face" id="f-thinking-face" data-i18n="标准">标准</span>
+                          <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                        </span>
+                      </div>
+                      <div class="cas-row">
+                        <span class="cas-label" data-i18n="专家模板">专家模板</span>
+                        <select id="f-expert" class="expert-pick" aria-label="专家模板" data-i18n-aria="专家模板" title="可选：套用专家工作方法与交付约束" data-i18n-title="可选：套用专家工作方法与交付约束">
+                          <option value="">通用执行</option>
+                        </select>
+                      </div>
+                    </div>
                     <div class="cmp-add-divider"></div>
                     <div id="cmp-capability-items"></div>
                   </div>
                 </div>
               </div>
-              <!-- 右组（参考主流输入框）：编排/思考/对话模型偏好 + 发送。
-                   pill 用透明原生 select 覆盖，点哪儿都弹原生下拉；短名由
-                   syncCmpSelFace 同步。2026-09-21 用户拍板「整理到对话框里」。 -->
+              <!-- 右组（参考主流输入框）：只留「对话模型偏好（仅直接执行时出现）+ 发送」。
+                   编排模式 / 思考程度 / 专家模板已下沉到左下「＋ 添加」的运行设置，主输入行不再挤六个控件。 -->
               <div class="cmp-send">
-                <span class="cmp-sel" data-i18n-title="编排模式" title="编排模式">
-                  <select id="f-mode" class="cmp-sel-native" aria-label="编排模式" data-i18n-aria="编排模式">
-                    <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
-                    <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
-                    <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
-                    <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
-                  </select>
-                  <span class="cmp-sel-face" id="f-mode-face" data-i18n="自动">自动</span>
-                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-                </span>
-                <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
-                  <select id="f-thinking" class="cmp-sel-native" aria-label="思考程度" data-i18n-aria="思考程度">
-                    <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
-                    <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
-                    <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
-                    <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
-                  </select>
-                  <span class="cmp-sel-face" id="f-thinking-face" data-i18n="标准">标准</span>
-                  <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-                </span>
                 <!-- 厂商/模型 pill（仅「直接执行」类型显示）：点开厂商→模型两级
                      钻取菜单，选定写回隐藏 select 真源 -->
                 <span class="cmp-sel hidden" id="f-direct-wrap" data-i18n-title="对话模型（可选）" title="对话模型（可选）">
@@ -815,6 +986,9 @@
           </details>
         </div>
       </div>
+        <!-- 「最近的活」：这页叫任务，原来只有一张输入卡，进来一个任务都不列。
+             行标记复用侧栏的 .stask，点击沿用 sideRowActivate，状态/时间口径完全一致。 -->
+        <section id="tasks-recent" class="tasks-recent" aria-label="最近的任务" data-i18n-aria="最近的任务"></section>
       </div>
 
       <!-- 运行记录 -->
@@ -886,13 +1060,22 @@
         <div id="rd-context" class="rd-context hidden" aria-label="任务动态" data-i18n-aria="任务动态"></div>
         <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
           <button id="rd-tab-chat" class="rd-tab" role="tab" aria-controls="rd-pane-chat" aria-selected="false" tabindex="-1" data-tab="chat" data-i18n="对话"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-chat"></use></svg>对话<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-steps" class="rd-tab" role="tab" aria-controls="rd-pane-steps" aria-selected="false" tabindex="-1" data-tab="steps" data-i18n="步骤"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-tasks"></use></svg>步骤<span class="rd-badge hidden"></span></button>
           <button id="rd-tab-result" class="rd-tab" role="tab" aria-controls="rd-pane-result" aria-selected="false" tabindex="-1" data-tab="result" data-i18n="成果"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-file-text"></use></svg>成果<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-preview" class="rd-tab" role="tab" aria-controls="rd-pane-preview" aria-selected="false" tabindex="-1" data-tab="preview" data-i18n="预览"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-clapper"></use></svg>预览<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-git" class="rd-tab" role="tab" aria-controls="rd-pane-git" aria-selected="false" tabindex="-1" data-tab="git" data-i18n="Git"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>Git<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-bible" class="rd-tab" role="tab" aria-controls="rd-pane-bible" aria-selected="false" tabindex="-1" data-tab="bible" data-i18n="圣经"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-book"></use></svg>圣经<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-bookmeta" class="rd-tab" role="tab" aria-controls="rd-pane-bookmeta" aria-selected="false" tabindex="-1" data-tab="bookmeta" data-i18n="作品信息"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-idcard"></use></svg>作品信息<span class="rd-badge hidden"></span></button>
+          <!-- 低频分区收进「更多」：蜂巢/预览/Git/圣经/作品信息。按钮原件仍在 #rd-tabs 内，
+               所以 applyRdTabs 的显隐与徽标查询、点击委托、键盘切换全部照旧。 -->
+          <div class="rd-tabs-more-wrap" id="rd-tabs-more-wrap">
+            <button type="button" id="rd-tabs-more-btn" class="rd-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="rd-tabs-more" onclick="toggleRdTabsMore()">
+              <span id="rd-tabs-more-label" data-i18n="更多">更多</span><svg class="ico chev" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+            </button>
+            <div id="rd-tabs-more" class="rd-tabs-more hidden" role="none">
+              <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-preview" class="rd-tab" role="tab" aria-controls="rd-pane-preview" aria-selected="false" tabindex="-1" data-tab="preview" data-i18n="预览"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-clapper"></use></svg>预览<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-git" class="rd-tab" role="tab" aria-controls="rd-pane-git" aria-selected="false" tabindex="-1" data-tab="git" data-i18n="Git"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>Git<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-bible" class="rd-tab" role="tab" aria-controls="rd-pane-bible" aria-selected="false" tabindex="-1" data-tab="bible" data-i18n="设定集"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-book"></use></svg>设定集<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-bookmeta" class="rd-tab" role="tab" aria-controls="rd-pane-bookmeta" aria-selected="false" tabindex="-1" data-tab="bookmeta" data-i18n="作品信息"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-idcard"></use></svg>作品信息<span class="rd-badge hidden"></span></button>
+            </div>
+          </div>
         </div>
         <!-- 直连任务「对话为主」导航：常规页签条收起（chat-mode），这里给按需打开
              其它分区的小按钮 + 非对话分区时的「返回对话」入口 -->
@@ -919,6 +1102,10 @@
                Enter 默认排队；发送菜单可选择立即发送并引导；已结束自动续跑新一轮。 -->
           <div id="rd-pane-chat" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-chat" data-pane="chat">
             <div id="rd-chat" class="rd-chat hidden">
+              <!-- 诊断条（2026-10-28）：详情页第一眼要回答「怎么了 / 我该做什么」。
+                   一句话结论 + 一个主按钮，由 renderRunDiag() 按 run 状态与错误文本现算；
+                   技术细节仍留在下面的时间线里，不必读也能操作。 -->
+              <div id="rd-diag" class="rd-diag hidden"></div>
               <div id="rd-chat-flow" class="rd-chat-flow"></div>
               <div id="rd-chat-run-status" class="rd-chat-run-status hidden" aria-live="polite">
                 <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
@@ -1255,6 +1442,10 @@
           <h2 data-i18n="智能体目录">智能体目录</h2>
           <button class="hhelp" data-help-topic="models" title="这是什么？点开看帮助" data-i18n-title="这是什么？点开看帮助" aria-label="帮助" data-i18n-aria="帮助"><svg class="ico" aria-hidden="true"><use href="#i-help"></use></svg></button>
           <div class="actions">
+            <div class="seg" id="cli-mode-seg" role="group" aria-label="CLI 管理模式" title="简单：固定三大订阅生态，探测到即启用；高级：完整 19 行目录">
+              <button type="button" class="seg-btn" data-ui-level="simple" onclick="setUiLevel('simple')" data-i18n="简单">简单</button>
+              <button type="button" class="seg-btn" data-ui-level="advanced" onclick="setUiLevel('advanced')" data-i18n="高级">高级</button>
+            </div>
             <button data-i18n="一键升级全部" id="btn-catalog-upgrade-all" class="primary">一键升级全部</button>
             <button data-i18n="写入推荐默认模型（可选）" id="btn-catalog-autobind" class="ghost">写入推荐默认模型（可选）</button>
             <button data-i18n="重新加载 catalog" id="btn-reload-catalog" class="ghost">重新加载 catalog</button>
@@ -2030,7 +2221,7 @@
           <h3 class="sec-title"><span data-i18n="皮肤">皮肤</span> <span class="tag" id="skin-cur"></span></h3>
           <div id="skin-grid" class="skin-grid"></div>
           <h3 class="sec-title" data-i18n="桌面蜜蜂">桌面蜜蜂</h3>
-          <label class="toggle"><input id="set-pet" type="checkbox" onchange="savePet(this.checked)"> <span data-i18n="在桌面角落养一只蜜蜂，实时汇报蜂群动态">在桌面角落养一只蜜蜂，实时汇报蜂群动态</span></label>
+          <label class="toggle"><input id="set-pet" type="checkbox" onchange="savePet(this.checked)"> <span data-i18n="在桌面角落养一只蜜蜂，实时汇报CodeBee动态">在桌面角落养一只蜜蜂，实时汇报CodeBee动态</span></label>
           <div id="pet-mode" class="seg" role="group" aria-label="显示模式" data-i18n-aria="显示模式">
             <button class="seg-btn" data-pmode="always" data-i18n="常驻显示">常驻显示</button>
             <button class="seg-btn" data-pmode="tasks_only" data-i18n="仅任务运行时出现">仅任务运行时出现</button>
@@ -2087,21 +2278,9 @@
         </div>
       </div>
 
-      <!-- 文件夹浏览（侧栏文件夹右键「查看文件」）：左侧目录树，右侧文件 chips -->
-      <div id="sub-files" class="subpage hidden">
-        <div class="panel wide">
-          <div class="panel-head">
-            <h2 data-i18n="查看文件">查看文件</h2>
-            <div class="files-crumb" id="files-crumb"></div>
-          </div>
-          <div class="files-page">
-            <aside class="files-tree" id="files-tree"></aside>
-            <div class="files-main">
-              <div id="files-list" class="files-list"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- 文件浏览已统一走侧栏 files-mode（#sf-tree / #sf-body，openFolderFiles 驱动）。
+           这里曾有一份 #sub-files 目录树页面，没有任何 JS 往里渲染、也没有入口，
+           打开就是一块空白，2026-10-29 随死代码一起删除。 -->
 
       <div id="sub-browser" class="subpage hidden">
         <div class="wb-shell">
@@ -2139,6 +2318,7 @@
                   <div class="wb-empty-mark"><svg class="ico" aria-hidden="true"><use href="#i-clapper"></use></svg></div>
                   <h3 data-i18n="选择一个任务开始">选择一个任务开始</h3>
                   <p data-i18n="从右上角选择任务，预览成品或查看运行日志。">从右上角选择任务，预览成品或查看运行日志。</p>
+                  <div class="wb-empty-recent hidden" id="wb-empty-recent"></div>
                 </div>
                 <div class="wb-paper hidden" id="wb-paper"></div>
                 <iframe id="wb-frame" class="wb-frame hidden" title="任务预览" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>

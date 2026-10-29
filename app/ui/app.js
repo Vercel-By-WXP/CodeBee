@@ -15,28 +15,188 @@ const S = { state: null, catalog: null, catSig: "", providers: null, bindings: n
 // 第二批运营能力的轻量 UI 缓存；后端接口不存在时各面板仍保持可用。
 const UI_FEATURES = { reviewPolicy: null, templates: null, analytics: null, analyticsDays: 1, interventions: [], cliDiscovery: null };
 
-/* 工作/开发/聊天是界面场景偏好，共用任务和引擎，不改变现有任务的执行参数。 */
-const WORKSPACE_MODE_KEY = "orch.workspace-mode.v1";
+/* 四大方向＝工作台的四种产品模式：共用任务与引擎，只切换「快速开始」芯片、
+   问候语与默认流程类型，不改变已建任务的执行参数，也不换页面。
+   2026-10-28 重构：模式从「工作/开发/聊天」改为产品方向（通用/小说/成稿/编码），
+   在左侧栏品牌下拉里自由切换，取代原来的独立欢迎页。 */
+const WORKSPACE_MODE_KEY = "orch.workspace-mode.v2";
 const WORKSPACE_MODES = {
-  work: { label: t("工作"), defaultType: "direct", quick: ["direct", "doc", "research", "translation"],
-    greeting: t("把想法变成成果"), hint: t("写作、调研、文档与翻译，从这里开始。") },
-  develop: { label: t("开发"), defaultType: "code", quick: ["code", "defect_retro", "tech_proposal", "direct"],
-    greeting: t("今天想构建什么？"), hint: t("编写代码、调试问题、运行测试与评审变更。") },
-  chat: { label: t("聊天"), defaultType: "direct", quick: ["direct"],
-    greeting: t("想聊点什么？"), hint: t("直接问答、头脑风暴与日常对话，从这里开始。") },
+  /* types = 该模式可选的流程白名单（"*" = 不收敛）。除「通用」外，类型下拉与
+     类型菜单都只列白名单内的流程 —— 模式不只是换个问候语，而是真收窄可用类型。
+     desc = 首页模式卡上的一句话（普通用户靠这句话判断「我该选哪个」）。 */
+  all: { label: "通用", icon: "i-blocks", desc: t("写作、编码、调研、成稿，什么都能干"),
+    /* tags = 大厅巨卡底部的关键词。用户扫一眼就知道这个台装了什么，不用点进去试。 */
+    tags: ["写作", "编码", "调研", "成稿"],
+    defaultType: "direct", types: "*", quick: ["direct", "doc", "research", "translation", "code"],
+    /* tools = 工作台工具区（见 WS_TOOL_LIB）。通用台放四件跨向体检工具。 */
+    tools: ["health", "eval", "atlas", "usage"],
+    greeting: t("今天要完成什么？"), hint: t("一句话说清目标，我拆步骤、派给合适的人、跑完把结果给你。"),
+    starts: [
+      // 通用台的第一张不能是小说专属（「继续修订第 11–20 章」），这里放「接着上次的活」
+      { label: t("接着上次的活"), icon: "i-refresh", desc: t("上次停下的地方往下做"),
+        suggest: "接着上次没做完的任务继续，先说清进度再往下做。" },
+      { label: t("修掉失败的活"), icon: "i-refresh", desc: t("先查清为什么失败"),
+        suggest: "修复最近的失败任务，分析根因并生成补丁。" },
+      { label: t("写本周周报"), icon: "i-chart", desc: t("进展、问题、下周计划"),
+        suggest: "生成本周编排质量与成本周报。" },
+      { label: t("看看我改了什么"), icon: "i-clip-check", desc: t("审一遍未提交的改动"),
+        suggest: "审阅未提交的改动，给出重构建议。" },
+    ] },
+  novel: { label: "小说", icon: "i-book-open", desc: t("写小说、短篇、连载、短剧"),
+    tags: ["短篇", "连载", "扫榜", "剧本"],
+    defaultType: "short_story", quick: ["short_story", "serial_novel", "novel", "rank_scan"],
+    /* 小说台工具：选题 → 写 → 连更 → 沉淀素材，围着「把一本书写下去」排。 */
+    tools: ["scan", "publish", "daily", "library"],
+    /* 内容创作口径：小说/短篇/连载/短剧/自媒体/短视频脚本/手绘视频/扫榜选材 */
+    types: ["direct", "novel", "short_story", "serial_novel", "short_drama", "article", "video_script", "handdraw_video", "rank_scan"],
+    greeting: t("今天写哪一段？"), hint: t("给个题材或一句话，我出结构、写正文、盯节奏。"),
+    starts: [
+      { label: t("写个短篇开头"), icon: "i-feather", desc: t("三千字内，开头抓人"),
+        suggest: "写一个都市悬疑短篇的开头，三千字内，开头要抓住人。" },
+      { label: t("续写下一章"), icon: "i-book-open", desc: t("人设和伏笔不断线"),
+        suggest: "按上一章的节奏续写连载的下一章，保持人设与伏笔。" },
+      { label: t("扫榜找选题"), icon: "i-search", desc: t("给三个能写的方向"),
+        suggest: "扫一遍榜单，分析当下热门题材，给我三个可写的选题。" },
+      { label: t("评审最新一章"), icon: "i-clip-check", desc: t("挑节奏和钩子的问题"),
+        suggest: "评审最新一章，指出节奏与钩子的问题并给修改建议。" },
+    ] },
+  dossier: { label: "成稿", icon: "i-file-text", desc: t("标书、方案、周报、简历、翻译"),
+    tags: ["标书", "方案", "周报", "翻译"],
+    defaultType: "bid_doc", quick: ["bid_doc", "tech_proposal", "doc", "presentation", "weekly_report", "email", "resume", "translation"],
+    /* 成稿台工具：交稿前查要件 → 套模板 → 预览交付 → 留痕，围着「按时交对稿」排。 */
+    tools: ["checklist", "templates", "deliver", "runs"],
+    /* 商务成稿口径：标书/方案/文档/演示/周报/邮件/简历/调研/演讲/翻译 */
+    types: ["direct", "doc", "bid_doc", "tech_proposal", "presentation", "weekly_report", "email", "resume", "research", "speech", "translation"],
+    greeting: t("今天交哪份稿？"), hint: t("把文件和要求丢进来，我按要件成稿，交之前再核一遍。"),
+    starts: [
+      { label: t("起草标书要点"), icon: "i-file-text", desc: t("覆盖商务与技术评分项"),
+        suggest: "起草一份技术标书的要点提纲，覆盖商务与技术评分项。" },
+      { label: t("写一份技术方案"), icon: "i-blocks", desc: t("背景、对比、落地"),
+        suggest: "写一份技术方案文档，含背景、方案对比与落地步骤。" },
+      { label: t("写本周周报"), icon: "i-news", desc: t("进展、问题、下周计划"),
+        suggest: "生成本周工作周报，按进展、问题、下周计划三块写。" },
+      { label: t("翻译一份文档"), icon: "i-lang", desc: t("保留术语和格式"),
+        suggest: "把这份文档翻译成英文，保留术语与格式。" },
+    ] },
+  code: { label: "编码", icon: "i-code", desc: t("写代码、修 Bug、审改动"),
+    tags: ["代码", "修 Bug", "复盘"],
+    defaultType: "code", quick: ["code", "defect_retro", "tech_proposal", "direct"],
+    /* 编码台工具：盯着「谁卡住了、改了什么、跑得通不通」三件事。 */
+    tools: ["board", "files", "verify", "health"],
+    /* 工程口径：代码/缺陷复盘/技术方案（方案既属成稿也属工程） */
+    types: ["direct", "code", "defect_retro", "tech_proposal"],
+    greeting: t("今天改哪块代码？"), hint: t("说清要改什么、或者哪段报错，我改、跑测试，再把验证结果给你。"),
+    starts: [
+      { label: t("修一个 Bug"), icon: "i-refresh", desc: t("先定位原因再动代码"),
+        suggest: "修复最近的失败任务，分析根因并生成补丁。" },
+      { label: t("审我的改动"), icon: "i-git-branch", desc: t("看 diff 给建议"),
+        suggest: "审阅未提交的改动，给出重构建议。" },
+      { label: t("做一个新功能"), icon: "i-code", desc: t("先设计再写，带测试"),
+        suggest: "实现一个功能：先给设计再写代码，附单元测试。" },
+      { label: t("补上单元测试"), icon: "i-clip-check", desc: t("覆盖边界和异常"),
+        suggest: "给这个模块补单元测试，覆盖边界与异常路径。" },
+    ] },
+  content: { label: "内容", icon: "i-news", desc: t("自媒体：公众号、小红书、短视频、短剧"),
+    tags: ["公众号", "小红书", "短视频", "短剧"],
+    defaultType: "article",
+    quick: ["article", "video_script", "short_drama", "handdraw_video", "image"],
+    /* 内容台工具：配图在前（这行最缺的是图），再是发布、素材、用量。 */
+    tools: ["image", "publish", "library", "usage"],
+    types: ["direct", "article", "video_script", "short_drama", "handdraw_video", "image", "doc"],
+    greeting: t("今天发什么？"), hint: t("说清平台和主题，我出标题、正文和配图，改两句就能发。"),
+    starts: [
+      { label: t("写一篇公众号"), icon: "i-news", desc: t("标题、小标题、结尾都给"),
+        suggest: "写一篇公众号文章。主题：……。读者：……。要求标题抓人、有小标题、结尾有行动号召，能直接发。" },
+      { label: t("写小红书笔记"), icon: "i-hash", desc: t("口语化，带话题标签"),
+        suggest: "写一篇小红书笔记。主题：……。口语化、分段短、带 5 个话题标签。" },
+      { label: t("写短视频脚本"), icon: "i-clapper", desc: t("前 3 秒钩子 + 分镜"),
+        suggest: "写一条 60 秒短视频脚本：开头 3 秒必须抓人，给分镜表和口播稿。" },
+      { label: t("生成一张配图"), icon: "i-palette", desc: t("说清画面，直接出图"),
+        type: "image",
+        suggest: "生成一张图片：画面主体是……，风格是……，用在……（横版/竖版）。" },
+    ] },
 };
-let workspaceChoice = { mode: "chat", types: {} };
+
+/* 工作台工具区的条目库（2026-10-28）。
+   与 quick（快速开始：把一句成形指令填进输入框）分工不同：这里放「去某个页面办事」
+   或「直接起一件活」的入口。硬规矩——每一项都必须落到真实存在的子页或真实动作上，
+   宁可不放，也不放假入口（假入口比没有更糟）。
+   label/desc 存中文源串、渲染时才 t()：这样切语言能重算，不会像顶层 t() 那样定死。 */
+const WS_TOOL_LIB = {
+  /* —— 跨向通用 —— */
+  health:  { label: "通道体检", desc: "谁还能用、谁掉线了", icon: "i-gauge", page: "availability", live: true },
+  eval:    { label: "模型评测", desc: "测一测，哪个模型更合适", icon: "i-chart", page: "evalbench" },
+  atlas:   { label: "记忆图谱", desc: "翻旧账，找以前的内容", icon: "i-layers", page: "atlas" },
+  usage:   { label: "用量统计", desc: "这个月花了多少", icon: "i-coin", page: "usage" },
+  /* —— 小说台 —— */
+  scan:    { label: "扫榜选题", desc: "看看榜单上什么火", icon: "i-search",
+             create: "rank_scan", suggest: "扫一遍榜单，分析当下热门题材，给我三个可写的选题。" },
+  publish: { label: "预览与发布", desc: "先看看成品，再发出去", icon: "i-rocket", page: "browser" },
+  daily:   { label: "连载日更", desc: "定时按章推进，断更前先提醒", icon: "i-calendar-days", page: "automation" },
+  library: { label: "素材与知识", desc: "人物、伏笔、往期章节", icon: "i-library", page: "knowledge" },
+  /* —— 成稿台 —— */
+  checklist: { label: "要件核对", desc: "逐条比对，列出缺什么", icon: "i-clip-check",
+               create: "bid_doc", suggest: "逐条核对这份招标文件的要件，列出缺项与风险点，给出补齐清单。" },
+  templates: { label: "模板与往期", desc: "模板、往期成稿、术语表", icon: "i-file-text", page: "knowledge" },
+  deliver:   { label: "预览与交付", desc: "检查格式，然后交出去", icon: "i-rocket", page: "browser" },
+  runs:      { label: "交付记录", desc: "每份稿子都去了哪", icon: "i-history", page: "runs" },
+  /* —— 编码台 —— */
+  board:   { label: "看板", desc: "卡住的和等你决定的", icon: "i-tasks", page: "kanban" },
+  files:   { label: "产出文件", desc: "这次产出的文件在哪", icon: "i-folder", page: "files" },
+  verify:  { label: "预览与验证", desc: "在真浏览器里跑一遍", icon: "i-browser", page: "browser" },
+  /* —— 内容台 —— */
+  image:   { label: "生成图片", desc: "说清画面，直接出图", icon: "i-palette",
+             create: "image", suggest: "生成一张图片：画面主体是……，风格是……，用在……（横版/竖版）。" },
+};
+
+let workspaceChoice = { mode: "all", types: {} };
 let workspaceHasChoice = false;
 try {
   const saved = JSON.parse(localStorage.getItem(WORKSPACE_MODE_KEY) || "null");
   if (saved && Object.prototype.hasOwnProperty.call(WORKSPACE_MODES, saved.mode)) {
     workspaceChoice.mode = saved.mode;
     workspaceHasChoice = true;
-    for (const mode of ["work", "develop", "chat"]) {
+    for (const mode of Object.keys(WORKSPACE_MODES)) {
       if (saved.types && typeof saved.types[mode] === "string") workspaceChoice.types[mode] = saved.types[mode];
     }
   }
 } catch (e) { /* 不可用或损坏的本机偏好回落聊天模式 */ }
+
+/* 大厅 / 台内两态（2026-10-28）。大厅只摆四张台卡，点一张才「进台」——进去才有输入框、
+   快速开始、本台工具与本台任务。进过台就记下来：刷新后仍停在你上次那个台，
+   不用每次打开都重新选一遍；点「全部工作台」退回大厅并记住这个选择。 */
+const WS_ENTERED_KEY = "orch.ws-entered.v1";
+let homeEntered = false;
+try { homeEntered = localStorage.getItem(WS_ENTERED_KEY) === "1"; } catch (e) { homeEntered = false; }
+
+function setHomeEntered(on) {
+  homeEntered = !!on;
+  try { localStorage.setItem(WS_ENTERED_KEY, homeEntered ? "1" : "0"); } catch (e) { /* 隐私模式忽略 */ }
+}
+window.setHomeEntered = setHomeEntered;
+
+/* 模式收敛判据：某模式是否允许某流程。
+   - 「通用」types === "*" → 全量放行；
+   - 自定义流程（builtin === false）恒放行：用户自己建的流程不该被模式藏掉；
+   - 其余按白名单。 */
+function modeAllowsFlow(mode, flow) {
+  if (!flow) return false;
+  const def = WORKSPACE_MODES[mode] || WORKSPACE_MODES.all;
+  if (!def.types || def.types === "*") return true;
+  if (flow.builtin === false) return true;
+  return def.types.indexOf(flow.id) >= 0;
+}
+
+/* 当前模式下可见的流程列表（类型下拉 / 类型菜单共用同一份，保证两处不打架）。 */
+function flowsForMode(mode) {
+  const m = mode || workspaceChoice.mode;
+  return (S.flows || []).filter((f) => modeAllowsFlow(m, f));
+}
+
+/* 当前模式下某流程是否可选（用于恢复记忆选择时校验）。 */
+function flowAllowedHere(id) {
+  return modeAllowsFlow(workspaceChoice.mode, flowById(id));
+}
 
 /* ---------------------------------------------------------- 工作台（预览与发布） */
 const WB_STORAGE_KEY = "orch.workbench.v1";
@@ -127,6 +287,36 @@ function wbConsoleHtml(run) {
   return html;
 }
 
+/* 空态直接摆三个最近任务：选任务原来只有右上角一个下拉框，用户站在整块空白
+ * 画布上不知道去哪选（2026-10-29 九改）。点一下就等于选任务。 */
+function wbFillEmptyRecent() {
+  const box = $("wb-empty-recent");
+  if (!box) return;
+  // 同标题任务常常重复（同一个任务反复重跑会留下同名副本），三条都叫一个名字
+  // 等于没给选择；按创建时间倒序先去重标题，再取三条。
+  const byNewest = wbTaskList().slice().sort((a, b) =>
+    String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  const seen = {};
+  const list = [];
+  byNewest.forEach((x) => {
+    const key = String(x.title || x.id);
+    if (seen[key]) return;
+    seen[key] = 1;
+    list.push(x);
+  });
+  const top = list.slice(0, 3);
+  if (!top.length) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = '<span class="wb-empty-recent-label">' + esc(t("最近任务")) + "</span>" +
+    top.map((x) => '<button type="button" class="wb-empty-recent-item" data-wb-task="' + esc(x.id) + '">' +
+      '<span class="n">' + esc(x.title || x.id) + "</span>" +
+      '<span class="m">' + esc(relTime(x.created_at) || "") + "</span></button>").join("");
+  box.classList.remove("hidden");
+}
+
 function wbDraw() {
   wbPvSeq++;
   wbNpSeq++;
@@ -173,10 +363,15 @@ function wbDraw() {
   const stageActions = $("wb-stage-actions");
   const footHint = $("wb-foot-hint");
   const footMeta = $("wb-foot-meta");
-  
+
+  // 空态时底部脚注带整条收起（CSS 认 .wb-stage.is-empty），否则是一条 32px 空带
+  const stageBox = $("wb-stage");
+  if (stageBox) stageBox.classList.toggle("is-empty", !task);
+
   if (!task) {
     wbPreviewReset();
     if (empty) empty.classList.remove("hidden");
+    wbFillEmptyRecent();
     if (stageLabel) stageLabel.querySelector("span[data-i18n]").textContent = t("预览");
     if (stageNote) stageNote.textContent = "";
     if (stageActions) stageActions.innerHTML = "";
@@ -570,6 +765,15 @@ function wbBind() {
   document.querySelectorAll("[data-wb-view]").forEach((btn) => {
     btn.addEventListener("click", () => wbSetView(btn.dataset.wbView));
   });
+
+  // 空态里的「最近任务」按钮是每次重画的，走容器委托
+  const recent = $("wb-empty-recent");
+  if (recent) {
+    recent.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-wb-task]");
+      if (btn && btn.dataset.wbTask) wbSetTask(btn.dataset.wbTask);
+    });
+  }
   
   wbView = wbState.view || "preview";
   wbDraw();
@@ -588,6 +792,9 @@ async function loadFlows() {
     S.flows = r.flows || [];
   } catch (e) { S.flows = []; }
   renderTypeOptions();
+  // 流程目录到位之前 workspaceOfTask 无法归类（flowById 全空 → 一律落「通用」），
+  // 那段时间画出去的主页任务列表必然是空的。目录一到就补画一次。
+  paintHomeSafe(0);
 }
 
 async function loadExperts() {
@@ -631,36 +838,42 @@ function flowIconHtml(f) {
 }
 
 function flowDesc(f) {
-  if (f.id === "rank_scan") return t("四平台选材 → 评审打磨 → 标准输入 → 新开连载");
-  if (f.id === "short_drama") return t("项目圣经 → 分集大纲 → 逐场对白剧本 → 连续性与集尾钩子评审（Markdown，不生成视频）");
+  if (f.id === "rank_scan") return t("四平台挑素材、打磨、定稿开更");
+  if (f.id === "short_drama") return t("定设定、写分集大纲、逐场对白（不生成视频）");
   if (f.engine === "direct") return t("单智能体直达（快）");
-  if (f.engine === "code") return t("实现 → 验证 →（复杂任务进）评审");
+  if (f.engine === "code") return t("先写代码、自动验证，复杂任务再请人复检");
   // 连载与单稿件同引擎，描述必须区分：连载强调逐章与断点续跑
-  if (f.serial) return t("大纲 → 逐章起草评审 → 合并（可续跑）");
-  if (f.story) return t("起草 → 字数闸 → 评审修订（单篇）");
-  return t("起草 → 多维评审 → 门禁");
+  if (f.serial) return t("先定大纲，再一章章写，可随时续写");
+  if (f.story) return t("写稿、卡字数、改到过关");
+  return t("写稿、多方面检查、达标才交付");
 }
 
 function renderTypeOptions() {
   const sel = $("f-type");
   if (!sel || !S.flows) return;
-  const prev = sel.value;  sel.innerHTML = (S.flows || []).map((f) => {
+  const prev = sel.value;
+  // 只有当前模式白名单内的流程才进下拉（通用模式 = 全量）
+  const list = flowsForMode();
+  sel.innerHTML = list.map((f) => {
     return '<option value="' + esc(f.id) + '">' + esc(t(f.name)) + t("（") + flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>";
   }).join("");
+  const modeDef = WORKSPACE_MODES[workspaceChoice.mode];
   // 保住用户手动选择（typeTouched）；出厂默认 direct 不算选择——prefs 迟到
   // 竞态下要让位给偏好记忆，否则「上次类型」永远恢复不了（高负载下实测）
-  if (prev && flowById(prev) && (S.typeTouched || prev !== "direct")) sel.value = prev;
-  // 偏好记忆：上次创建用的类型优先于出厂默认「直接执行」（老数据/已删流程回落）
-  else if (!workspaceHasChoice && S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)) {
+  if (prev && flowAllowedHere(prev) && (S.typeTouched || prev !== "direct")) {
+    sel.value = prev;
+  // 偏好记忆：上次创建用的类型优先于出厂默认「直接执行」（老数据/已删流程回落）。
+  // 模式收敛后还要过白名单——否则「小说」模式会被上次的 code 类型打回通用。
+  } else if (!workspaceHasChoice && S.lastPrefs && S.lastPrefs.type && flowById(S.lastPrefs.type)
+      && flowAllowedHere(S.lastPrefs.type)) {
     sel.value = S.lastPrefs.type;
-    workspaceChoice.mode = flowById(sel.value).engine === "code" ? "develop" : "work";
-  }
-  // 明确选择场景后恢复各自类型；已删除的记忆回落场景默认，再回落首项。
-  else {
-    const preferred = workspaceChoice.types[workspaceChoice.mode] || WORKSPACE_MODES[workspaceChoice.mode].defaultType;
-    const fallback = WORKSPACE_MODES[workspaceChoice.mode].defaultType;
-    if (flowById(preferred)) sel.value = preferred;
-    else if (flowById(fallback)) sel.value = fallback;
+    workspaceChoice.mode = flowById(sel.value).engine === "code" ? "code" : "all";
+  // 明确选择场景后恢复各自类型；已删除的记忆回落场景默认，再回落首项（三者均需在白名单内）
+  } else {
+    const preferred = workspaceChoice.types[workspaceChoice.mode];
+    if (preferred && flowAllowedHere(preferred)) sel.value = preferred;
+    else if (flowById(modeDef.defaultType) && flowAllowedHere(modeDef.defaultType)) sel.value = modeDef.defaultType;
+    else if (list.length) sel.value = list[0].id;
   }
   applyTaskPreferenceDefaults();
   renderTypeMenu();
@@ -673,7 +886,7 @@ function refreshTypeTranslations() {
   const sel = $("f-type");
   if (!sel || !S.flows) return;
   const current = sel.value;
-  sel.innerHTML = (S.flows || []).map((f) =>
+  sel.innerHTML = flowsForMode().map((f) =>
     '<option value="' + esc(f.id) + '">' + esc(t(f.name)) + t("（") +
     flowDesc(f) + (f.builtin ? "" : t(" · 自定义")) + t("）") + "</option>").join("");
   sel.value = current;
@@ -885,12 +1098,23 @@ window.toggleModelMenu = toggleModelMenu;
   });
 })();
 
+/* 类型菜单顶部的模式口径提示：解释「为什么只剩这几个类型」，并给一键回通用。
+   通用模式不收敛，故不显示。 */
+function typeScopeHtml() {
+  const def = WORKSPACE_MODES[workspaceChoice.mode];
+  if (!def.types || def.types === "*") return "";
+  return '<div class="type-scope"><span>' +
+    esc(t("「{0}」模式只列 {1} 个相关类型", t(def.label), String(flowsForMode().length))) + "</span>" +
+    '<button type="button" onclick="pickWorkspaceMode(\'all\')">' + esc(t("看全部")) + "</button></div>";
+}
+
 /* 类型选择的可见层：带黑白图标的按钮 + 弹出菜单。原生 <option> 渲染不了 SVG，
  * 所以隐藏 select 只当值真源（既有联动/测试全部照旧），外观全靠这层。 */
 function renderTypeMenu() {
   const menu = $("type-menu");
   if (!menu || !S.flows) return;
-  menu.innerHTML = (S.flows || []).map((f) => {
+  // 与 #f-type 同源：只列当前模式白名单内的流程
+  menu.innerHTML = flowsForMode().map((f) => {
     const est = S.flowEstimates && S.flowEstimates[f.id];
     return '<button type="button" class="type-item" role="option" data-v="' + esc(f.id) + '" onclick="pickType(\'' + jsq(f.id) + '\')">' +
     '<span class="ti-ico" aria-hidden="true">' + flowIconHtml(f) + "</span>" +
@@ -902,8 +1126,10 @@ function renderTypeMenu() {
     '<svg class="ico ti-check" aria-hidden="true"><use href="#i-check"></use></svg>' +
     "</button>";
   }).join("")
-    /* 底部固定入口：管理流程替代原工具条上的「管理」按钮（简化 composer 工具行） */
-    + '<div class="type-menu-foot"><button type="button" class="type-item" onclick="manageFlowsFromMenu()">' +
+    /* 底部固定入口：管理流程替代原工具条上的「管理」按钮（简化 composer 工具行）
+       模式口径提示放在 sticky 容器内——否则类型一多、菜单滚动后提示就滚走了 */
+    + '<div class="type-menu-foot">' + typeScopeHtml()
+    + '<button type="button" class="type-item" onclick="manageFlowsFromMenu()">' +
     '<span class="ti-ico" aria-hidden="true"><svg class="ico"><use href="#i-gear"></use></svg></span>' +
     '<span class="ti-body"><span class="ti-name">' + esc(t("管理任务类型…")) + "</span></span></button></div>";
   syncTypeBtn();
@@ -1124,7 +1350,9 @@ function recommendTaskType(goal) {
     ["rank_scan", /(扫榜|热门题材|榜单分析|排行榜)/i],
   ];
   const hit = rules.find((x) => x[1].test(s));
-  return hit && flowById(hit[0]) ? hit[0] : "";
+  // 模式收敛：建议的类型不在当前模式白名单时宁可不建议，也不偷偷把下拉换成
+  // 一个用户此刻看不到的类型（否则「小说」模式下写标书会被塞进成稿类型）。
+  return hit && flowById(hit[0]) && flowAllowedHere(hit[0]) ? hit[0] : "";
 }
 
 /* 快捷类型 chips（Composer 框下方）：内置流程一键选定，选中态跟 #f-type 走 */
@@ -1132,7 +1360,8 @@ function renderQuickChips() {
   const box = $("cmp-quick");
   if (!box || !S.flows) return;
   const cur = ($("f-type") || {}).value;
-  const list = WORKSPACE_MODES[workspaceChoice.mode].quick.map(flowById).filter(Boolean);
+  const list = WORKSPACE_MODES[workspaceChoice.mode].quick
+    .map(flowById).filter((f) => f && modeAllowsFlow(workspaceChoice.mode, f));
   box.innerHTML = list.map((f) =>
     '<button type="button" class="cmp-chip' + (f.id === cur ? " on" : "") +
     '" onclick="pickQuickType(\'' + jsq(f.id) + '\')">' + flowIconHtml(f) +
@@ -2223,6 +2452,35 @@ function fmtModel(m) {
 /* 极简 Markdown 渲染（标题/加粗/行内码/列表/表格/代码块）。
  * 围栏代码块走 codeBlockHTML（行号表格+高亮+代码主题）：裸 <pre> 只有
  * --log-bg 底色没配浅字，暖色皮肤里深底配深字根本读不了。 */
+/* 报告里的「implementer: 能力基线 74, coding 匹配 +7.0, 绑定单点无备胎 (+0),
+ * 无历史记录, 在线 0/9 验收成功 (-8.0), P95 17.9s (-0.0), 均价 $0.0000 (-0.0),
+ * 样本层 exact, 总分 73.0」是模型打分明细，一条占四行且没人读得下去。
+ * 压成「implementer：总分 73.0」，明细折进展开（2026-10-29 九改）。 */
+function tidyScoreLines(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll("li, p").forEach((el) => {
+    if (el.dataset.scTidy || (el.closest && el.closest("details"))) return;
+    const txt = (el.textContent || "").trim();
+    if ((txt.match(/[，,]/g) || []).length < 3) return;
+    const m = txt.match(/^([^:：]{1,20})[:：]\s*([\s\S]+)$/);
+    if (!m) return;
+    const score = (m[2].match(/总分\s*([\d.]+)/) || [])[1];
+    if (!score) return;
+    el.dataset.scTidy = "1";
+    el.innerHTML = '<span class="sc-tidy">' + esc(m[1]) + "：" + esc(t("总分")) + " " + esc(score) +
+      '</span><details class="sc-tidy-more"><summary>' + esc(t("打分明细")) + "</summary>" +
+      "<div>" + esc(m[2]) + "</div></details>";
+  });
+}
+
+/* 报告统一从这进 DOM：md2html 出来的打分明细在这里收敛一次 */
+function rdSetReport(html) {
+  const box = $("rd-report");
+  if (!box) return;
+  box.innerHTML = html;
+  tidyScoreLines(box);
+}
+
 function md2html(md) {
   const lines = String(md || "").split(/\r?\n/);
   let html = [], inCode = false, codeBuf = null, inTable = false, listOpen = false;
@@ -2367,10 +2625,28 @@ function saveBrowserNotifyPreference() {
   paintBrowserNotify();
 }
 
+/* 主页列表的安全重绘。
+ * 首帧 applyState 常常比脚本解析到 WS_TASK_SHAPE / WS_WRITING 这些 const 更早，
+ * 那一枪会在 TDZ 上抛错；而之后 SSE 只在状态变化时推帧、ETag 也多半回 304，
+ * 两条路都不会再触发重绘 —— 页面就永远停在第一帧的空态（实测：27 条本台任务
+ * 显示「这个工作台还没有任务」）。失败后按 0/120/400/1200ms 退避重试，
+ * 脚本解析完（几百毫秒）就能补上；renderHome 自带签名比对，重试不会抖动。 */
+function paintHomeSafe(attempt) {
+  try { renderHome(); return true; }
+  catch (e) {
+    const delays = [0, 120, 400, 1200];
+    if (attempt < delays.length) setTimeout(() => paintHomeSafe(attempt + 1), delays[attempt]);
+    return false;
+  }
+}
+
 /* ---------------------------------------------------------- 状态同步：SSE 实时 + 轮询降级 */
 /* 应用 /api/state 或 SSE 推送的状态载荷 */
 function applyState(d) {
   if (!d || typeof d !== "object") return;
+  // 尾部任何一次渲染抛错都不该让主页列表停在空态（首帧常见：常量还在 TDZ）。
+  // 这里在最前面就挂一个下一宏任务的补画，抛错也照样会执行；renderHome 幂等。
+  setTimeout(() => { paintHomeSafe(0); }, 0);
   clearStateRetry();
   // A slower /api/state response can finish after a newer SSE frame. The
   // version is monotonic on the desktop and prevents that stale snapshot from
@@ -2402,7 +2678,10 @@ function applyState(d) {
   ovMaybeRefresh();     // 停在概览页时：概览语与最近运行跟着这次状态一起刷新
   memoryCenterMaybeRefresh();
   updateStatusSidebar(); // 暖色皮肤状态侧栏
-  if (S.tab === "home") renderHome();   // 停在主页时：最近任务列表跟着刷新
+  // 每帧状态都重画主页列表：renderHome 内部按签名字符串比对，内容没变就不重写 DOM，
+  // 所以这里不必先判断「主页是否开着」。原来只在 S.tab === "home" 时刷，而刷新/重开
+  // 后是「恢复上次工作台」直接显示主页、没经过 switchTab → 列表永远停在第 1 帧的空态。
+  paintHomeSafe(0);
   if (S.tab === "kanban") renderKanban();   // 停在看板页时：列/卡随状态帧刷新（阻塞出现即挪待裁决列）
   if (S.tab === "browser") {
     browserRenderTaskContext();
@@ -3254,6 +3533,10 @@ async function refreshState() {
       // A conditional 304 is a successful state check once a cached snapshot
       // exists; do not keep an old mobile backoff alive forever.
       clearStateRetry();
+      // 304 表示「数据没变」，但界面不一定画对了：首帧那一枪可能因为常量还在
+      // TDZ 而断在半路（renderHome 里的一串渲染都在这条链上）。这里补一次，
+      // 每个函数都自带签名比对，内容没变就是空转，不会抖。
+      try { renderHome(); } catch (e) { /* 渲染异常不影响状态检查本身 */ }
       return true;
     }
     // Never let an unexpected first-frame 304 strand a mobile page with no
@@ -3635,10 +3918,63 @@ function startCtrlHeartbeat() {
   });
 }
 
+/* 任务页（#sub-tasks）的「最近的活」。
+   这页名字叫任务，原来内容只有一张输入卡：从图标轨点进来看到一片空白，
+   想找刚才那活儿还得回工作台。这里按最近活动倒序列 6 条，
+   行标记与侧栏任务树同款（.stask + sideRowActivate），状态字形/相对时间口径一致。 */
+function renderTasksRecent() {
+  const host = $("tasks-recent");
+  if (!host) return;
+  const page = $("sub-tasks");
+  if (page && page.classList.contains("hidden")) return;   // 没显示就别算
+  // 这页的 .form 是绝对定位 + 手算居中的（标题/提示都在里面），清单同样塞进 .form
+  // 才能跟着一起居中；挂在 #sub-tasks 外面会被那块满高输入卡盖住。
+  const form = page && page.querySelector(".form");
+  const cmpBox = form && form.querySelector(".cmp-box");
+  if (cmpBox) {
+    // 输入卡在移动端/工作台会被搬来搬去，且它自己会被再次 append 到 .form 末尾；
+    // 所以每次都把清单「钉」在输入卡后面，而不是 append 到 .form 尾部。
+    if (host.previousElementSibling !== cmpBox) cmpBox.after(host);
+  } else if (form && host.parentElement !== form) {
+    form.appendChild(host);
+  }
+  const latest = (S.state && S.state.task_latest) || {};
+  const tasks = ((S.state && S.state.tasks) || []).slice();
+  const when = (x) => {
+    const lr = latest[x.id];
+    return String((lr && (lr.started_at || lr.created_at)) || x.created_at || "");
+  };
+  tasks.sort((a, b) => when(b).localeCompare(when(a)));
+  const shown = tasks.slice(0, 6);
+  if (!shown.length) { host.innerHTML = ""; host.dataset.sig = ""; return; }
+  const sig = JSON.stringify(shown.map((x) => [x.id, x.title, (latest[x.id] || {}).status, when(x)]));
+  if (host.dataset.sig === sig && host.children.length) return;
+  host.dataset.sig = sig;
+  host.innerHTML = '<div class="tr-head"><h2>' + esc(t("最近的活")) + "</h2>" +
+    '<button type="button" class="ghost small tr-all" onclick="showAllTasks()">' + esc(t("全部任务")) +
+    '<svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button></div>' +
+    '<div class="tr-list">' + shown.map((x) => {
+      const lr = latest[x.id] || null;
+      return '<div class="stask" tabindex="0" role="button" data-key="' + esc(x.id) +
+        '" data-task="' + esc(x.id) + '" data-run="' + esc(lr ? lr.id : "") +
+        '" data-status="' + esc(lr ? lr.status : "") + '">' +
+        staskGlyph(lr ? lr.status : "") +
+        '<span class="t">' + esc(x.title || x.id) + "</span>" +
+        '<span class="tm">' + esc(when(x) ? relTime(when(x)) : "") + "</span></div>";
+    }).join("") + "</div>";
+  if (!host.dataset.bound) {
+    host.dataset.bound = "1";
+    host.addEventListener("click", (e) => {
+      const row = e.target.closest(".stask");
+      if (row) sideRowActivate(row);
+    });
+  }
+}
+
 function render() {
-  renderImplSelects();
-  renderRunList();
+  renderImplSelects();  renderRunList();
   renderSideTasks();
+  renderTasksRecent();
   CodeBeeActivity.render();
   renderRunDetail();
   renderChangeSummary();
@@ -3989,8 +4325,10 @@ function keyListHtml(p) {
       ? '<span class="tag">' + t("已停用") + "</span>"
       : (k.cooling
          ? '<span class="tag warn" title="' + esc(k.last_error || "") + '">' + t("冷却中") + "</span>" : "");
+    // 原来直接把 <HTTPError 401: 'Unauthorized'> 这类原文摆出来，谁看得懂。
+    // 这里翻成一句人话，原文挪到 title（要看排查细节的人悬停就有）。
     const err = k.last_error
-      ? '<span class="hint warn" title="' + esc(k.last_error) + '">✗ ' + esc(k.last_error.slice(0, 40)) + "</span>" : "";
+      ? '<span class="hint warn" title="' + esc(k.last_error) + '">✗ ' + esc(keyErrHuman(k.last_error)) + "</span>" : "";
     const inUse = k.enabled && !k.cooling && k.key === p.api_key;
     return '<div class="krow' + (k.enabled ? "" : " off") + '" draggable="true" data-kid="' + esc(k.id) + '">' +
       '<span class="drag" title="' + t("拖动调整调用顺序") + '"><svg class="ico" aria-hidden="true"><use href="#i-grip"></use></svg></span>' +
@@ -4012,6 +4350,19 @@ function keyListHtml(p) {
     '<button class="ghost small" onclick="promptAddKey(\'' + jsq(p.id) + '\')">＋ ' + t("添加密钥") + "</button></div>" +
     (rows || '<div class="hint" style="padding:4px 8px">' + t("尚未配置密钥") + "</div>") +
     "</div>";
+}
+
+/* 密钥报错说人话（2026-10-28）：把 HTTP 状态码翻成「你该做什么」。
+   判定只认常见的几种；认不出来就说「用不了」，原文始终留在 title 里。 */
+function keyErrHuman(raw) {
+  const low = String(raw || "").toLocaleLowerCase();
+  if (/401|unauthorized|invalid.?api.?key|认证|未授权/.test(low)) return t("密钥不对，检查一下");
+  if (/403|forbidden|禁止/.test(low)) return t("这个密钥没有权限用它");
+  if (/429|rate.?limit|too many/.test(low)) return t("调用太频繁，等一会再试");
+  if (/quota|balance|insufficient|额度|余额|欠费/.test(low)) return t("余额不足，充值或换一个");
+  if (/timeout|timed out|超时/.test(low)) return t("连不上，超时了");
+  if (/404|not.?found|找不到/.test(low)) return t("地址或模型名不对");
+  return t("用不了，点开看原因");
 }
 
 function bindKeyRowDnD(pid, root) {
@@ -5156,7 +5507,7 @@ function cmpAddAction(action) {
 
 // The menu reflects the backend directory; loading failures never fabricate
 // installed plugins. Selected capability instructions are kept out of the goal.
-let cmpCapabilityFilter = "all";
+let cmpCapabilityFilter = "common";
 let cmpReferenceContext = [];
 let cmpReferencePending = 0;
 let cmpWorkspaceFiles = [];
@@ -5197,9 +5548,30 @@ function cmpRenderCapabilityMenu() {
   const match = row => !query || [row.display_name, row.name, row.description, row.short_description]
     .join(" ").toLowerCase().includes(query);
   const allRows = cmpCapabilityRows();
+  // 常用：给新手的「够用」视图——只列插件（已装好的那几个）+ 工作区文件 + 会话，
+  // 把六百多条英文/技术技能与智能体藏到「技能 / 智能体 / 全部」标签下，点了才展开。
+  const showKind = (kind) =>
+    cmpCapabilityFilter === "all" ||
+    (cmpCapabilityFilter === "common" && kind === "plugin") ||
+    cmpCapabilityFilter === kind;
+  let html = "";
+  if (["all", "common", "file"].includes(cmpCapabilityFilter)) {
+    const files = cmpWorkspaceFiles.filter(row => match({ name: row.name }));
+    html += '<div class="cmp-add-kicker">' + esc(t("工作区文件")) + '</div>';
+    html += files.map(row => '<button type="button" class="cmp-add-item" data-add-workspace-file="' + esc(row.name) + '" role="menuitem">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-file-text"></use></svg><span><b>' + esc(row.name) + '</b></span></button>').join("") ||
+      '<p class="cmp-capability-empty">' + esc(cmpWorkspaceFilesBusy ? t("正在读取工作区…") : cmpWorkspaceFilesError || t("选择工作目录后可引用文件")) + '</p>';
+  }
+  if (["all", "common", "chat"].includes(cmpCapabilityFilter)) {
+    const tasks = ((S.state || {}).tasks || []).filter(row => match({ name: row.title, description: row.goal }));
+    html += '<div class="cmp-add-kicker">' + esc(t("会话")) + '</div>' + tasks.map(row =>
+      '<button type="button" class="cmp-add-item" data-add-chat="' + esc(row.id) + '" role="menuitem">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span><b>' + esc(row.title || row.id) + '</b>' +
+      '<small>' + esc(row.goal || "") + '</small></span></button>').join("");
+  }
   const groups = [["plugin", t("插件")], ["skill", t("技能")], ["agent", t("智能体")]];
-  let html = groups.map(([kind, title]) => {
-    if (!["all", kind].includes(cmpCapabilityFilter)) return "";
+  html += groups.map(([kind, title]) => {
+    if (!showKind(kind)) return "";
     const rows = allRows.filter(x => x.kind === kind && match(x));
     if (!rows.length) return "";
     return '<div class="cmp-add-kicker">' + esc(t(title)) + ' · ' + rows.length + '</div>' + rows.map(row => {
@@ -5217,20 +5589,6 @@ function cmpRenderCapabilityMenu() {
         '<em class="cmp-capability-state">' + esc(status) + '</em><span class="cmp-add-check" aria-hidden="true"></span></button>';
     }).join("");
   }).join("");
-  if (["all", "file"].includes(cmpCapabilityFilter)) {
-    const files = cmpWorkspaceFiles.filter(row => match({ name: row.name }));
-    html += '<div class="cmp-add-kicker">' + esc(t("工作区文件")) + '</div>';
-    html += files.map(row => '<button type="button" class="cmp-add-item" data-add-workspace-file="' + esc(row.name) + '" role="menuitem">' +
-      '<svg class="ico" aria-hidden="true"><use href="#i-file-text"></use></svg><span><b>' + esc(row.name) + '</b></span></button>').join("") ||
-      '<p class="cmp-capability-empty">' + esc(cmpWorkspaceFilesBusy ? t("正在读取工作区…") : cmpWorkspaceFilesError || t("选择工作目录后可引用文件")) + '</p>';
-  }
-  if (["all", "chat"].includes(cmpCapabilityFilter)) {
-    const tasks = ((S.state || {}).tasks || []).filter(row => match({ name: row.title, description: row.goal }));
-    html += '<div class="cmp-add-kicker">' + esc(t("会话")) + '</div>' + tasks.map(row =>
-      '<button type="button" class="cmp-add-item" data-add-chat="' + esc(row.id) + '" role="menuitem">' +
-      '<svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg><span><b>' + esc(row.title || row.id) + '</b>' +
-      '<small>' + esc(row.goal || "") + '</small></span></button>').join("");
-  }
   if (!html) html = '<p class="cmp-capability-empty">' + esc(t("没有匹配的内容")) + '</p>';
   if (!S.capabilities) html = '<p class="cmp-capability-empty">' + esc(cmpCapabilitiesError || t("正在读取能力目录…")) + '</p>' + html;
   box.innerHTML = html;
@@ -6586,28 +6944,74 @@ function renderRunList() {
     (pickable.size && selN === pickable.size ? " checked" : "") +
     ' onchange="toggleAllRunSel(this.checked)">' + t(" 全选") + '</label>' +
     '<span class="n">' + (selN ? t("已选 ") + selN + t(" 条") : t("勾选可批量删除")) + "</span>" +
+    // 一页只列 30 条、同名重跑还折成组，右上角不写总数的话用户会以为「就这几条」
+    '<span class="rall">' + t("共 " + allRuns.length + " 次运行") + "</span>" +
     (selN ? '<button class="danger small" onclick="deleteSelectedRuns()">' + t("删除所选") + '</button>' +
             '<button class="ghost small" onclick="clearRunSel()">' + t("取消选择") + '</button>' : "") +
     "</div>";
-  box.innerHTML = tools + runs.map((r) => {
+  // 同一任务反复重跑会在列表里排成一串同名记录（2026-10-28 实况：12 条
+  // 「拆分回归连载 · 失败」副标题一模一样，翻三屏没别的信息）。按任务聚合成
+  // 一条，其余折进「另有 N 次」；点开才逐条列出，删除/勾选语义不变。
+  S.runGroups = S.runGroups || {};
+  // 聚合键用标题：重跑会新建 task，task_id 各不相同，但用户眼里就是同一个活儿
+  const groupKey = (r) => String(r.title || r.task_id || "?");
+  const grouped = new Map();
+  runs.forEach((r) => {
+    const k = groupKey(r);
+    if (!grouped.has(k)) grouped.set(k, []);
+    grouped.get(k).push(r);
+  });
+  const shown = [];
+  grouped.forEach((list, key) => {
+    shown.push({ run: list[0], more: S.runGroups[key] ? list.slice(1) : [], rest: S.runGroups[key] ? [] : list.slice(1), key });
+  });
+  // 组间距按「最近一次」的时间排序，保持和原来一样的倒序观感
+  const rows = [];
+  shown.forEach((g) => {
+    rows.push({ run: g.run, group: g });
+    g.more.forEach((r) => rows.push({ run: r, inGroup: true }));
+  });
+  box.innerHTML = tools + rows.map(({ run: r, group, inGroup }) => {
     const can = runDeletable(r);
     // 行结构照参考站的「主副标题 + 右侧状态与相对时间」：标题与摘要竖排成一块，
     // 状态点用侧栏同款字形（staskGlyph），时间用相对档（完整时间戳挪进悬停提示）
-    const sub = String(r.summary || r.error || (r.step_count ? r.step_count + t(" 个步骤") : "")).trim();
-    return '<div class="item" onclick="openRun(\'' + jsq(r.id) + '\')">' +
+    // 副标题不再原样铺后端诊断串（「…（编排者未配置/不可用），已中止以免空模板写全书 |
+    // 自动续跑止损：连续两次失败原因相同，不再重试」——一屏全红字技术噪声）
+    const rawSub = String(r.summary || r.error || "").trim();
+    const sub = ((r.status === "failed" && chatErrCause(rawSub)) || rawSub ||
+      (r.step_count ? r.step_count + t(" 个步骤") : "")).trim();
+    // 同一任务的第 2..N 次重跑折进组里，组行要能看出「这不是唯一一次」——
+    // 否则用户看到一行失败记录，根本不知道底下还压着 28 次重跑。
+    const gTotal = group ? 1 + group.rest.length + group.more.length : 0;
+    // 耗时：只在有起止时间时给（排队中的记录没有，别显示 0 秒骗人）
+    const span = runSpan(r);
+    return '<div class="item' + (inGroup ? " run-child" : "") + '" onclick="openRun(\'' + jsq(r.id) + '\')">' +
       '<div class="t">' +
       '<input type="checkbox" class="rcheck"' + (S.selRuns[r.id] ? " checked" : "") + (can ? "" : " disabled") +
       ' title="' + (can ? t("勾选以批量删除") : t("运行中的记录不可删除，请先取消")) + '"' +
       ' onclick="event.stopPropagation()" onchange="toggleRunSel(\'' + jsq(r.id) + '\', this.checked)">' +
       '<span class="rglyph">' + staskGlyph(r.status || "") + "</span>" +
       '<div class="rt">' +
-      '<span class="name">' + esc(r.title) + runKindTag(r.kind) + "</span>" +
+      '<span class="name">' + esc(r.title) + runKindTag(r.kind) +
+      (gTotal > 1 ? '<span class="rgcount" title="' + esc(t("同一任务共 " + gTotal + " 次运行")) + '">× ' + gTotal + "</span>" : "") +
+      "</span>" +
       (sub ? '<span class="desc">' + esc(t(sub)) + "</span>" : "") +
       "</div>" +
+      (span ? '<span class="rspan" title="' + esc(t("耗时")) + '">' + esc(span) + "</span>" : "") +
       '<span class="chip ' + esc(r.status || "") + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="time" title="' + esc(r.created_at) + '">' + esc(relTime(r.created_at)) + "</span>" +
       '<button class="danger small" title="' + (can ? t("删除该记录") : t("运行中的记录不可删除，请先取消")) + '"' + (can ? "" : " disabled") +
-      ' onclick="event.stopPropagation(); deleteRun(\'' + jsq(r.id) + '\')">' + t("删除") + '</button></div></div>';
+      ' onclick="event.stopPropagation(); deleteRun(\'' + jsq(r.id) + '\')">' + t("删除") + '</button></div></div>' +
+      // 组行下面挂「另有 N 次」：不点开就只占一行，点开逐条展开（再点收起）
+      (group && (group.rest.length || group.more.length)
+        ? '<button type="button" class="run-group-more' + (group.more.length ? " is-open" : "") +
+          '" onclick="event.stopPropagation(); toggleRunGroup(\'' + jsq(group.key) + '\')">' +
+          (group.more.length
+            ? esc(t("收起这 " + (group.more.length + 1) + " 次记录"))
+            : esc(t("另有 " + group.rest.length + " 次记录"))) +
+          '<svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>' +
+          "</button>"
+        : "");
   }).join("");
 }
 
@@ -6626,6 +7030,24 @@ function relTime(s, now) {
   return m[2] + "-" + m[3];
 }
 
+/* 运行耗时（中文紧凑档）："2026-10-29 10:56:44" → "1 分 26 秒" / "3 小时 5 分"。
+ * 只在起止时间都齐、且顺序正常时才返回，排队中/运行中的记录一律给空串——
+ * 列表里出现「0 秒」比不显示更误导。 */
+function runSpan(r) {
+  const parse = (s) => {
+    const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : 0;
+  };
+  const a = parse(r && r.started_at), b = parse(r && r.ended_at);
+  if (!a || !b || b <= a) return "";
+  const sec = Math.round((b - a) / 1000);
+  if (sec < 60) return sec + t(" 秒");
+  const mi = Math.floor(sec / 60);
+  if (mi < 60) return mi + t(" 分") + (sec % 60 ? " " + (sec % 60) + t(" 秒") : "");
+  const h = Math.floor(mi / 60);
+  return h + t(" 小时") + (mi % 60 ? " " + (mi % 60) + t(" 分") : "");
+}
+
 /* 任务行状态字形（ZCode 桌面端式样）：进行中旋转✻ / 完成绿点 / 失败红点 /
  * 取消橙点 / 排队空圈 / 从未运行暗点 */
 function staskGlyph(status) {
@@ -6639,10 +7061,22 @@ function staskGlyph(status) {
 }
 
 /* 工作目录 → 展示名：取路径末段（Windows/Linux 分隔符都吃）；空或盘符根回落全路径。
- * demo-workdir 与 demo-workdir\qimao-20k 是不同目录，末段名不同，不会误合并。 */
+ * demo-workdir 与 demo-workdir\qimao-20k 是不同目录，末段名不同，不会误合并。
+ * 但「末段是通用名」时（ws / workdir / persisted / workspace 这类容器目录），
+ * 左栏会连着出现四行一模一样的「ws」，用户没法区分是哪个项目的 ws —— 这类补上
+ * 父段末字，写成「solo_e2e_aid…/ws」。父段也没有就不补，宁可短也别乱。 */
+const GENERIC_DIR_TAIL = new Set(["ws", "workdir", "workspace", "persisted", "data", "tmp",
+  "temp", "projects", "project", "repo", "src", "app", "out", "output", "build", "dist"]);
 function dirName(p) {
   const parts = String(p || "").split(/[\\/]+/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : (String(p || "") || "—");
+  if (!parts.length) return String(p || "") || "—";
+  const tail = parts[parts.length - 1];
+  if (!GENERIC_DIR_TAIL.has(tail.toLowerCase()) || parts.length < 2) return tail;
+  const parent = parts[parts.length - 2];
+  // 盘符（C:）和过短的名字拼上去没意义，不如只显示末段
+  if (/^[A-Za-z]:$/.test(parent) || parent.length < 3) return tail;
+  const head = parent.length > 12 ? parent.slice(0, 12) + "…" : parent;
+  return head + "/" + tail;
 }
 
 /* 文件夹折叠态持久化：会话内以 DOM 为准，跨刷新靠 localStorage 记回上次展开的目录集合 */
@@ -6844,6 +7278,28 @@ function mobileNewTask(dir) {
  * （git_state=isolated）、审批待批（approval_pending）。数据与侧栏同源
  * （/api/state），无独立请求。 */
 const KB_TERMINAL = { done: 1, failed: 1, cancelled: 1, timeout: 1 };
+/* 看板单卡：折叠后「组首 / 子行」两处复用。 */
+function kbCardHtml(cd, colKey, inGroup) {
+  return '<button type="button" class="kb-card' + (cd.status === "running" ? " running" : "") +
+    (colKey === "review" ? " attention" : "") + (inGroup ? " is-child" : "") + '"' +
+    ' data-task="' + esc(cd.id) + '" data-run="' + esc(cd.runId) + '"' +
+    ' data-status="' + esc(cd.status) + '" title="' + esc(cd.title) + '">' +
+    '<span class="kb-card-title">' + esc(cd.title) + "</span>" +
+    '<span class="kb-card-meta">' +
+    (cd.type ? '<i class="kb-type">' + esc(cd.type) + "</i>" : "") +
+    statusChip(cd.status || t("未运行")) +
+    (cd.time ? "<small>" + esc(relTime(cd.time)) + "</small>" : "") +
+    "</span>" +
+    ((cd.blockers || cd.verdict || cd.approval)
+      ? '<span class="kb-card-flags">' +
+        (cd.blockers ? '<i class="kb-flag blocker">' + esc(t("阻塞")) + " " + cd.blockers + "</i>" : "") +
+        (cd.verdict ? '<i class="kb-flag">' + esc(t("分支待裁决")) + "</i>" : "") +
+        (cd.approval ? '<i class="kb-flag">' + esc(t("待审批")) + "</i>" : "") +
+        "</span>" : "") +
+    (cd.blockerText ? '<span class="kb-blocker-text">' + esc(cd.blockerText) + "</span>" : "") +
+    "</button>";
+}
+
 function renderKanban() {
   const box = $("kanban-board");
   if (!box) return;
@@ -6882,35 +7338,46 @@ function renderKanban() {
   });
   Object.keys(buckets).forEach((k) =>
     buckets[k].sort((a, b) => String(b.time || "").localeCompare(String(a.time || ""))));
+  S.kbGroups = S.kbGroups || {};
   box.innerHTML = cols.map((c) => {
     const cards = buckets[c.key];
-    return '<div class="kb-col" data-col="' + c.key + '">' +
-      '<div class="kb-col-head"><span>' + esc(c.label) + '</span><b>' + cards.length + "</b></div>" +
-      '<div class="kb-col-body">' +
-      (cards.length ? cards.map((cd) =>
-        '<button type="button" class="kb-card' + (cd.status === "running" ? " running" : "") +
-        (c.key === "review" ? " attention" : "") + '"' +
-        ' data-task="' + esc(cd.id) + '" data-run="' + esc(cd.runId) + '"' +
-        ' data-status="' + esc(cd.status) + '" title="' + esc(cd.title) + '">' +
-        '<span class="kb-card-title">' + esc(cd.title) + "</span>" +
-        '<span class="kb-card-meta">' +
-        (cd.type ? '<i class="kb-type">' + esc(cd.type) + "</i>" : "") +
-        statusChip(cd.status || t("未运行")) +
-        (cd.time ? "<small>" + esc(relTime(cd.time)) + "</small>" : "") +
-        "</span>" +
-        ((cd.blockers || cd.verdict || cd.approval)
-          ? '<span class="kb-card-flags">' +
-            (cd.blockers ? '<i class="kb-flag blocker">' + esc(t("阻塞")) + " " + cd.blockers + "</i>" : "") +
-            (cd.verdict ? '<i class="kb-flag">' + esc(t("分支待裁决")) + "</i>" : "") +
-            (cd.approval ? '<i class="kb-flag">' + esc(t("待审批")) + "</i>" : "") +
-            "</span>" : "") +
-        (cd.blockerText ? '<span class="kb-blocker-text">' + esc(cd.blockerText) + "</span>" : "") +
-        "</button>").join("")
-        : '<div class="kb-empty">' + esc(t("暂无任务")) + "</div>") +
-      "</div>" +
+    // 同名卡折叠：重跑会新建 task，看板原来是 142 张一模一样的「run a command」
+    // 排队等人滚到手断（2026-10-28 实况）。每类只留最近一张，其余点开才列出。
+    const groups = new Map();
+    cards.forEach((cd) => {
+      const k = String(cd.title || cd.id || "?");
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(cd);
+    });
+    const body = cards.length
+      ? Array.from(groups.entries()).map(([k, list]) => {
+        const gk = c.key + "::" + k;
+        const open = !!S.kbGroups[gk];
+        return kbCardHtml(list[0], c.key, false) +
+          (list.length > 1
+            ? '<button type="button" class="kb-more" onclick="toggleKanbanGroup(\'' +
+              jsq(c.key) + '\',\'' + jsq(k) + '\')">' +
+              (open ? esc(t("收起这 " + list.length + " 次")) : esc(t("另有 " + (list.length - 1) + " 次"))) +
+              "</button>" +
+              (open ? list.slice(1).map((cd) => kbCardHtml(cd, c.key, true)).join("") : "")
+            : "");
+      }).join("")
+      : '<div class="kb-empty">' + esc(t("暂无任务")) + "</div>";
+    // 列头数字＝看得见的卡片数（groups.size），不是原始 task 数：本列收了 142 条重跑但
+    // 只折成 7 张卡，写「142」新手会数出 7 张、以为界面坏了（同「失败任务显 0%」一类）。
+    return '<div class="kb-col' + (cards.length ? "" : " is-empty") + '" data-col="' + c.key + '">' +
+      '<div class="kb-col-head"><span>' + esc(c.label) + '</span><b>' + groups.size + "</b></div>" +
+      '<div class="kb-col-body">' + body + "</div>" +
       "</div>";
   }).join("");
 }
+
+window.toggleKanbanGroup = function (col, title) {
+  S.kbGroups = S.kbGroups || {};
+  const k = col + "::" + title;
+  S.kbGroups[k] = !S.kbGroups[k];
+  renderKanban();
+};
 
 /* 看板卡片点击：一次绑定长期生效（innerHTML 整块重建也不丢监听） */
 function bindKanbanOnce() {
@@ -6928,8 +7395,14 @@ function renderSideTasks() {
   if (!box) return;
   const runs = ((S.state && S.state.runs) || []).slice(0, 40);
   // 「最近任务」面板已移除：归档找回走侧栏——开关打开时已归档任务灰显回原文件夹
+  // 台内只列本台任务：进了「小说」台，左栏不该还堆着编码任务（这是「整个界面换了」
+  // 的一半信号）。停在别处（设置/详情页）不过滤——那时左栏是导航，突然少一半会让人迷路。
+  const focusWs = (homeEntered && homeView !== "all" && S.tab === "home"
+    && document.documentElement.dataset.layout === "workbench"
+    && !document.body.classList.contains("settings-mode")) ? workspaceChoice.mode : "all";
   const tasks = ((S.state && S.state.tasks) || [])
-    .concat(S.showArchived ? ((S.state && S.state.archived_tasks) || []) : []);
+    .concat(S.showArchived ? ((S.state && S.state.archived_tasks) || []) : [])
+    .filter((task) => focusWs === "all" || workspaceOfTask(task) === focusWs);
   const latest = (S.state && S.state.task_latest) || {};
   const archivedIds = archivedTaskIds();
   const tasksById = {};
@@ -6942,7 +7415,7 @@ function renderSideTasks() {
     tasks.map((t) => [t.id, t.title, t.workdir, t.git_state || ""]),
     Object.keys(latest).map((k) => [k, latest[k].id, latest[k].status]),
     Object.keys(attn).map((k) => [k, (attn[k].blocker || {}).count || 0, !!attn[k].approval_pending]),
-    S.detailRunId, S.detailTaskKey, archivedIds.size, S.showArchived, S.sideQ || "",
+    S.detailRunId, S.detailTaskKey, archivedIds.size, S.showArchived, S.sideQ || "", focusWs,
   ]);
   if (sig === S.sideSig && box.children.length) return;
   S.sideSig = sig;
@@ -7812,7 +8285,7 @@ function drawTaskDetail(key, runs, appendFrom) {
       $("rd-report").innerHTML = '<div class="hint">' + esc(msg) + "</div>";
     };
     if (S.taskReport && S.taskReport.key === key && S.taskReport.runId === latest.id) {
-      $("rd-report").innerHTML = S.taskReport.html; return;
+      rdSetReport(S.taskReport.html); return;
     }
     if (latest.status === "done" || latest.report) {
       try {
@@ -7824,7 +8297,7 @@ function drawTaskDetail(key, runs, appendFrom) {
         const html2 = md2html(md);
         if (S.detailTaskKey !== key) return;   // 拉取期间切了详情：过期报告不落缓存/不落盘
         S.taskReport = { key, runId: latest.id, html: html2 };
-        $("rd-report").innerHTML = html2;
+        rdSetReport(html2);
       } catch (e) {
         // 拉取失败不再静默留白（手机端「报告空空」的来源之一）：给可见提示，
         // 不落缓存，下一轮轮询签名变化时自动重试
@@ -7866,6 +8339,13 @@ async function deleteRun(id) {
   if (S.detailRunId === id) closeRun();
   poll();
 }
+
+/* 同一任务的运行记录折叠：默认只展示最近一次，其余点开才列出 */
+window.toggleRunGroup = function (key) {
+  S.runGroups = S.runGroups || {};
+  S.runGroups[key] = !S.runGroups[key];
+  renderRunList();
+};
 
 /* 运行记录批量删除 / 一键全部清除 */
 function toggleRunSel(id, on) {
@@ -7931,7 +8411,7 @@ async function cancelAllRuns() {
 }
 window.cancelAllRuns = cancelAllRuns;
 
-/* 蜂群级暂停：保留每个 run 的上下文和消息，只在下一步闸门统一挂起。 */
+/* CodeBee级暂停：保留每个 run 的上下文和消息，只在下一步闸门统一挂起。 */
 async function pauseAllRuns() {
   const btn = $("btn-pause-all");
   if (!btn || btn.classList.contains("busy")) return;
@@ -8059,7 +8539,8 @@ function applyRdTabs() {
   const _chatPaneIn = document.querySelector('#run-detail .rd-pane[data-pane="chat"]');
   const chatWasHidden = !_chatPaneIn || _chatPaneIn.classList.contains("hidden");
   if (!S.rdTab || !avail[S.rdTab]) {
-    S.rdTab = ["chat", "hive", "steps", "result", "preview", "git", "bible", "bookmeta"]
+    // 优先落在常驻的三个页签上：自动选卡不该把用户丢进「更多」里的低频分区
+    S.rdTab = ["chat", "steps", "result", "hive", "preview", "git", "bible", "bookmeta"]
       .find((k) => avail[k]) || "steps";
   }
   document.querySelectorAll("#rd-tabs .rd-tab").forEach((b) => {
@@ -8095,7 +8576,42 @@ function applyRdTabs() {
       chatForceBottom = false;
     }
   }
+  syncRdTabsMore();
 }
+
+/* 详情页签「更多」：对话/步骤/成果常驻，蜂巢/预览/Git/圣经/作品信息收进下拉。
+   三个页签之外的分区被 applyRdTabs 判为不可用时，整个「更多」自动消失；
+   当前分区恰好在「更多」里时，按钮直接显示该分区名并高亮，避免"切了看不见在哪"。 */
+function syncRdTabsMore() {
+  const wrap = $("rd-tabs-more-wrap"), panel = $("rd-tabs-more"), btn = $("rd-tabs-more-btn");
+  if (!wrap || !panel || !btn) return;
+  const inner = Array.from(panel.querySelectorAll(".rd-tab"));
+  const visible = inner.filter((b) => !b.classList.contains("hidden"));
+  wrap.classList.toggle("hidden", visible.length === 0);
+  const activeInner = visible.find((b) => b.dataset.tab === S.rdTab);
+  btn.classList.toggle("active", !!activeInner);
+  const label = $("rd-tabs-more-label");
+  if (label) {
+    const text = activeInner ? activeInner.textContent.trim() : t("更多");
+    if (label.textContent !== text) label.textContent = text;
+  }
+  if (!activeInner) toggleRdTabsMore(false);
+}
+
+function toggleRdTabsMore(force) {
+  const panel = $("rd-tabs-more"), btn = $("rd-tabs-more-btn");
+  if (!panel) return;
+  const show = force != null ? !!force : panel.classList.contains("hidden");
+  if (show && btn) {
+    // 标签条是横向滚动容器（overflow 会裁掉哨兵），所以下拉用 fixed + 实测坐标贴合按钮
+    const r = btn.getBoundingClientRect();
+    panel.style.left = Math.round(r.left) + "px";
+    panel.style.top = Math.round(r.bottom + 6) + "px";
+  }
+  panel.classList.toggle("hidden", !show);
+  if (btn) btn.setAttribute("aria-expanded", String(show));
+}
+window.toggleRdTabsMore = toggleRdTabsMore;
 
 /* 直连任务「对话为主」布局：收起常规页签条，右上角一排小胶囊按需打开
  * 蜂巢/步骤/成果等分区；离开对话时给「返回对话」入口（用户 2026-09-17 拍板：
@@ -8112,7 +8628,11 @@ function renderChatNav() {
   renderChatContext(direct);
   if (!direct) { nav.classList.add("hidden"); nav.innerHTML = ""; return; }
   const labels = { hive: t("蜂巢"), steps: t("步骤"), result: t("成果"),
-    preview: t("预览"), git: "Git", bible: t("圣经"), bookmeta: t("作品信息") };
+    preview: t("预览"), git: "Git", bible: t("设定集"), bookmeta: t("作品信息") };
+  // 图标跟顶部页签同一套（#rd-tabs 里每个 tab 自带 use href），这里只补字形：
+  // 右栏里五条纯文字行看不出「这几条是入口」，加个图标才认得出来。
+  const icons = { hive: "#i-bee", steps: "#i-tasks", result: "#i-file-text",
+    preview: "#i-clapper", git: "#i-git-branch", bible: "#i-book", bookmeta: "#i-idcard" };
   const avail = rdTabAvail();
   let pills = "";
   for (const k of ["preview", "hive", "steps", "result", "git", "bible", "bookmeta"]) {
@@ -8120,7 +8640,9 @@ function renderChatNav() {
     // 徽章直接镜像隐藏页签上的（蜂巢在岗数/步骤数/待裁决/成果数），不另设状态源
     const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="' + k + '"] .rd-badge');
     pills += '<button class="cn-pill' + (S.rdTab === k ? " on" : "") +
-      '" onclick="rdChatNavGo(\'' + k + '\')">' + labels[k] +
+      '" onclick="rdChatNavGo(\'' + k + '\')">' +
+      '<svg class="ico" aria-hidden="true"><use href="' + icons[k] + '"></use></svg>' +
+      "<span>" + labels[k] + "</span>" +
       (badge && badge.textContent ? "<b>" + esc(badge.textContent) + "</b>" : "") + "</button>";
   }
   nav.innerHTML = (S.rdTab !== "chat"
@@ -8157,6 +8679,34 @@ function executionConfigHtml(run) {
   return '<details class="rd-context-section" data-config-details><summary>' + esc(t("配置来源")) + '</summary>' +
     '<div class="hint">' + esc(t("任务选择：") + label(selection.source)) + '</div>' +
     ((selection.overrides || []).length ? '<div class="hint">' + esc(t("已被覆盖：") + selection.overrides.join(", ")) + '</div>' : "") + rows + actual + '</details>';
+}
+
+/* 右栏「进度」里每个步骤的按钮文字。step.summary 常常是整段原始输出
+ * （`{"type":"thread.started",…}` 或 `[[CODEBEE:BLOCKER]] …` 全文），直接塞进
+ * 126px 宽的按钮会把右栏撑成一面代码墙。全文仍留在 title 悬停里。 */
+const STEP_STREAM_LABEL = {
+  "thread.started": "开始执行",
+  "turn.started": "开始回合",
+  "turn.completed": "结束回合",
+  "item.started": "开始处理",
+  "item.completed": "处理完成",
+  error: "执行报错",
+};
+function stepChipText(step) {
+  const raw = String((step && step.summary) || "").trim();
+  const role = String((step && step.role) || "").trim();
+  if (!raw) return role || t("步骤");
+  if (raw.startsWith("{")) {
+    const m = raw.match(/"type"\s*:\s*"([^"]+)"/);
+    const hit = m && STEP_STREAM_LABEL[m[1]];
+    return hit ? t(hit) : t("执行输出");
+  }
+  const clean = raw.replace(/\[\[CODEBEE:[A-Z]+\]\]\s*/i, "").replace(/\s+/g, " ").trim();
+  if (/\[\[CODEBEE:BLOCKER\]\]/i.test(raw)) {
+    const short = clean.slice(0, 14);
+    return t("阻塞：") + short + (clean.length > 14 ? "…" : "");
+  }
+  return clean.slice(0, 18) + (clean.length > 18 ? "…" : "");
 }
 
 function renderChatContext(direct) {
@@ -8217,12 +8767,14 @@ function renderChatContext(direct) {
   if (box.dataset.signature === sig) { box.classList.remove("hidden"); return; }
   box.dataset.signature = sig;
   const icon = name => '<svg class="ico" aria-hidden="true"><use href="#i-' + name + '"></use></svg>';
-  let html = '<div class="rd-context-section"><div class="rd-context-heading"><span>' +
+  // 最简模式：右栏只留「进度」一条人话，Git/子智能体/终端/来源/配置来源这些
+  // 工程字段整体折进一个「技术细节」——不删能力，只是默认不摊开（2026-10-28）
+  let techHtml = '<div class="rd-context-section"><div class="rd-context-heading"><span>' +
     esc(project) + '</span><button type="button" class="rd-context-icon" data-context-action="git" title="' +
     esc(t("打开 Git 工作台")) + '" aria-label="' + esc(t("打开 Git 工作台")) + '">···</button></div>';
   const add = changes.add_total, del = changes.del_total;
   if (branch || add != null || del != null) {
-    html += '<button type="button" class="rd-context-row" data-context-action="git">' + icon("file-text") +
+    techHtml += '<button type="button" class="rd-context-row" data-context-action="git">' + icon("file-text") +
       '<span>' + esc(t("变更")) + '</span><span class="rd-context-spacer"></span>' +
       (add != null ? '<b class="rd-context-add">+' + Number(add) + '</b>' : "") +
       (del != null ? '<b class="rd-context-del">-' + Number(del) + '</b>' : "") + '</button>' +
@@ -8232,21 +8784,22 @@ function renderChatContext(direct) {
       '<span>' + esc(t("提交或推送")) + '</span>' +
       (wb && wb.ahead > 0 ? '<span class="rd-context-muted">↑' + wb.ahead + '</span>' : "") + '</button>';
   } else {
-    html += '<div class="rd-context-muted rd-context-empty">' + esc(t("暂无 Git 变更")) + '</div>';
+    techHtml += '<div class="rd-context-muted rd-context-empty">' + esc(t("暂无 Git 变更")) + '</div>';
   }
-  html += '</div>';
+  techHtml += '</div>';
+  let html = "";
   if (total) {
-    html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("进程")) +
+    html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("进度")) +
       '<span>' + done + '/' + total + '</span></div><div class="rd-context-steps">' +
       steps.slice(0, 8).map(step => '<button type="button" class="rd-context-step ' +
         esc(step.status || "") + '" data-context-action="step" data-step-n="' + Number(step.n || 0) +
         '" title="' + esc(step.summary || step.role || "") + '"><span class="rd-context-dot"></span>' +
-        '<span>' + esc(step.summary || step.role || t("步骤")) + '</span></button>').join("") +
+        '<span>' + esc(stepChipText(step)) + '</span></button>').join("") +
       '</div>' + (steps.length > 8 ? '<button type="button" class="rd-context-link" data-context-action="steps">' +
         esc(t("查看全部")) + '</button>' : "") + '</div>';
   }
   if (agents.size) {
-    html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("子智能体")) + '</div>' +
+    techHtml += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("子智能体")) + '</div>' +
       '<button type="button" class="rd-context-row rd-context-agent" data-context-action="steps">' +
       icon("sun") + '<span>' + agentDone + ' ' + esc(t("完成")) + '</span>' +
       (agentRunning ? '<span class="rd-context-muted">' + agentRunning + ' ' + esc(t("运行中")) + '</span>' : '') +
@@ -8257,12 +8810,12 @@ function renderChatContext(direct) {
     const end = Date.parse(String(run.ended_at || "").replace(" ", "T"));
     const seconds = Number.isFinite(start) ? Math.max(0, Math.floor(((Number.isFinite(end) ? end : Date.now()) - start) / 1000)) : 0;
     const duration = seconds >= 60 ? Math.floor(seconds / 60) + t("分") + Math.round(seconds % 60) + t("秒") : seconds + t("秒");
-    html += '<div class="rd-context-section rd-context-terminal"><button type="button" class="rd-context-row" data-context-action="terminal"' +
+    techHtml += '<div class="rd-context-section rd-context-terminal"><button type="button" class="rd-context-row" data-context-action="terminal"' +
       (withLog ? ' data-log-rel="' + esc(withLog.log) + '" data-log-run="' + esc(runId) + '"' : "") + '>' +
       '<span>' + esc(t("终端")) + '</span><span class="rd-context-muted">' + esc(duration) +
       (current ? ' · ' + esc(t("运行中")) : "") + '</span></button></div>';
   }
-  html += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("来源")) +
+  techHtml += '<div class="rd-context-section"><div class="rd-context-subhead">' + esc(t("来源")) +
     '<button type="button" class="rd-context-icon" data-context-action="attach" title="' +
       esc(t("添加附件")) + '" aria-label="' + esc(t("添加附件")) + '">' + icon("plus") + '</button>' +
     '</div><div class="rd-context-sources">' + (atts.length ? atts.map((att, i) =>
@@ -8273,8 +8826,11 @@ function renderChatContext(direct) {
       '<span class="rd-context-muted rd-context-empty">' + esc(t("暂无附件")) + '</span>') + '</div>' +
     (atts.length > 3 ? '<button type="button" class="rd-context-link" data-context-action="all-sources">' +
       icon("link") + esc(t("查看全部")) + '</button>' : "") + '</div>';
-  html += executionConfigHtml(run);
+  techHtml += executionConfigHtml(run);
   const configOpen = !!box.querySelector('[data-config-details][open]');
+  const techOpen = !!box.querySelector(".rd-context-tech[open]");
+  html += '<details class="rd-context-tech"' + (techOpen ? " open" : "") + '><summary>' +
+    esc(t("技术细节")) + '</summary>' + techHtml + '</details>';
   box.innerHTML = html;
   if (configOpen && box.querySelector('[data-config-details]')) box.querySelector('[data-config-details]').open = true;
   if (box.dataset.sourcesExpanded === "true") {
@@ -8403,7 +8959,7 @@ async function rdLoadReport(id, token) {
   if (!run || !(run.status === "done" || run.report)) return;
   state.report = true;
   const cached = _rdReportCache.get(id);
-  if (cached) { $("rd-report").innerHTML = cached; return; }
+  if (cached) { rdSetReport(cached); return; }
   $("rd-report").innerHTML = '<div class="hint" role="status">' + esc(t("正在读取报告…")) + "</div>";
   try {
     const r = await fetch("/api/runs/" + encodeURIComponent(id) + "/report", { headers: authHeaders() });
@@ -8415,6 +8971,7 @@ async function rdLoadReport(id, token) {
     _rdReportCache.set(id, html);
     if (_rdReportCache.size > 3) _rdReportCache.delete(_rdReportCache.keys().next().value);
     $("rd-report").innerHTML = html;
+    tidyScoreLines($("rd-report"));
   } catch (e) {
     if (rdCurrent(id, token)) {
       state.report = false;
@@ -8477,6 +9034,99 @@ function renderRunDetailSteps(run, token) {
   renderBatch();
 }
 
+/* ---------------------------------------------------------------- 任务详情「三问」
+   把用户当傻瓜的第二步：打开详情，第一眼必须能回答三件事，其余都可以不看——
+     ① 怎么了（一句话结论，不是报错原文）
+     ② 我该做什么（一个按钮，不是一排操作）
+     ③ 结果在哪（失败就说没有产物，别让他翻时间线找）
+   判定只认历史里出现过的真实失败形态（未配模型 / 密钥与模型名错 / 额度 / 超时），
+   判不出来就老实说「这次没跑通」，绝不编一个具体原因。 */
+function runDiagOf(run) {
+  const st = String((run && run.status) || "");
+  const parts = [run && run.error, run && run.note];
+  ((run && run.steps) || []).forEach((x) => { parts.push(x && x.note, x && x.summary); });
+  const blob = parts.filter(Boolean).join(" ").toLocaleLowerCase();
+  const has = (...ws) => ws.some((w) => blob.includes(w.toLowerCase()));
+
+  if (st === "running") {
+    return { tone: "run", title: "正在做", desc: "不用守着，做完会告诉你；想看进展就往下拉。" };
+  }
+  if (st === "paused" || run.paused) {
+    return { tone: "warn", title: "它停下来等你决定", desc: "继续跑还是改目标，点下面这个按钮或右边「继续任务」。", act: { label: "继续跑", kind: "retry" } };
+  }
+  if (st === "done") return null;   // 做完了不用解释，状态已经写着了
+
+  if (has("未配置", "不可用", "未选择", "没有可用", "no provider")) {
+    return {
+      tone: "warn",
+      title: "还没选模型，它没法开工",
+      desc: "CodeBee 要靠你选的大模型来干活。选好再回来点「继续任务」，就能接着跑。",
+      act: { label: "去选模型", kind: "models" },
+    };
+  }
+  if (has("406", "not acceptable", "401", "403", "unauthorized", "invalid api key", "无效的密钥")) {
+    return {
+      tone: "warn",
+      title: "模型接口拒绝了这次请求",
+      desc: "多半是密钥失效，或者模型名填错了。改好以后再点「继续任务」。",
+      act: { label: "检查模型设置", kind: "models" },
+    };
+  }
+  if (has("额度", "余额", "欠费", "quota", "insufficient", "balance")) {
+    return {
+      tone: "warn",
+      title: "模型账户的额度用完了",
+      desc: "充值，或者换一个还能用的模型，然后点「继续任务」。",
+      act: { label: "换个模型", kind: "models" },
+    };
+  }
+  if (has("超时", "timeout", "timed out")) {
+    return {
+      tone: "warn",
+      title: "模型太久没回应，超时了",
+      desc: "网络慢或者这个模型当时太忙；直接再来一次，或者换个更快的模型。",
+      act: { label: "继续任务", kind: "retry" },
+    };
+  }
+  return {
+    tone: "bad",
+    title: "这次没跑通",
+    desc: "具体过程在下面，看不懂也没关系——最省事的做法是点「继续任务」再来一遍。",
+    act: { label: "继续任务", kind: "retry" },
+  };
+}
+
+function renderRunDiag(run) {
+  const box = $("rd-diag");
+  if (!box) return;
+  const d = runDiagOf(run);
+  if (!d) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+  // 按钮只在对应操作真的可用时才给，否则点了没反应比不给更糟
+  let actHtml = "";
+  if (d.act) {
+    const ok = d.act.kind === "models" ? true : !!(($("btn-retry") || {}).offsetParent);
+    if (ok) actHtml = '<button type="button" class="rd-diag-act" onclick="rdDiagAct(\'' + d.act.kind + '\')">' + esc(t(d.act.label)) + "</button>";
+  }
+  box.className = "rd-diag is-" + d.tone;
+  // 图标集里没有 alert/activity：运行中用时钟、需要你处理用问号、彻底失败用叉
+  const ico = d.tone === "run" ? "i-clock" : d.tone === "warn" ? "i-help" : "i-x";
+  box.innerHTML =
+    '<span class="rd-diag-ico"><svg class="ico" aria-hidden="true"><use href="#' + ico + '"></use></svg></span>' +
+    '<span class="rd-diag-text"><b>' + esc(t(d.title)) + "</b><small>" + esc(t(d.desc)) + "</small></span>" +
+    actHtml;
+}
+
+function rdDiagAct(kind) {
+  if (kind === "models") { switchTab("models"); return; }
+  if (kind === "retry") {
+    const btn = $("btn-retry");
+    if (btn && btn.offsetParent) { btn.click(); return; }
+    const alt = $("btn-resume-now");
+    if (alt && alt.offsetParent) alt.click();
+  }
+}
+window.rdDiagAct = rdDiagAct;
+
 async function renderRunDetail() {
   const id = S.detailRunId;
   if (S.detailTaskKey) { renderTaskDetail(); return; }   // 任务级详情（轮询也会走到这里刷新）
@@ -8489,6 +9139,7 @@ async function renderRunDetail() {
   if (!run) return;
   if (!rdCurrent(id, token) || fetchSeq !== S._rdFetchSeq) return;   // 拉取期间已切走/被更新请求取代
   $("rd-title").textContent = run.title;
+  renderRunDiag(run);   // 顶部三问：怎么了 / 怎么办 / 结果在哪
   const chip = $("rd-status");
   chip.className = "chip " + run.status + (run.paused
     ? " pause-" + (run.pause_phase || "requested") : "") +
@@ -12775,6 +13426,11 @@ function bindDirector() {
 let chatRunId = null;
 let chatAtts = [];
 let chatTimelineItems = [];   // renderChat 每次重建时间线时刷新；复制/编辑重发按索引回查
+/* 系统审计注记（后端以 who=本机 写进对话流，如「评审资源调度：…」）：
+ * 它不是用户说的话，也不是排队要发的话——渲染弱化成一行淡字，且不进排队区。
+ * 2026-10-28 实况：一个失败任务底部挂了 4 条带「引导/✕」的同文注记，用户完全看不懂。 */
+const chatSysNote = (item) => !!(item && item.kind === "user" &&
+  String(item.who || "").trim() === "本机");
 let chatSending = false;
 
 function chatCloseSendMenu() {
@@ -12953,6 +13609,8 @@ function chatFailureParts(raw) {
   const m = text.match(/^([^；;\n]{1,80}?)[；;]\s*stderr\/stdout\s*[:：]\s*([\s\S]*)$/)
     || text.match(/^(退出码\s*-?\d+|超时|取消|任务总时限已到|输出停滞[^；;\n]*)[；;]\s*([\s\S]*)$/);
   if (m) { head = m[1].trim(); rest = m[2].trim(); }
+  // head 被 80 字截断时常常只剩半个「（超时」，补上右括号，标题别像没写完
+  if ((head.match(/（/g) || []).length > (head.match(/）/g) || []).length) head += "）";
   let code = "", reason = head;
   const cm = head.match(/^退出码\s*(-?\d+)$/);
   if (cm) { code = cm[1]; reason = ""; }
@@ -12975,8 +13633,27 @@ function chatFailBodyHTML(p) {
   return raw || diag ? '<div class="chat-fail-body">' + raw + diag + "</div>" : "";
 }
 
+/* 失败详情默认收起（2026-10-28）：一条失败任务的对话流里常有 4~5 张同形红卡，
+   每张都摊着 stderr 原文，一屏全是技术噪声。结论已经由顶部诊断条给出，
+   这里只保留「哪一步、什么时候、什么原因」一行，要看原文再点开。 */
+function chatFailBodyWrap(p, extra) {
+  const body = chatFailBodyHTML(p);
+  if (!body && !extra) return "";
+  return '<details class="chat-fail-more"><summary>' + esc(t("看原文")) + "</summary>" +
+    body + (extra || "") + "</details>";
+}
+
 function chatFailCodeChip(code) {
   return code ? '<span class="chat-fail-code">' + esc(t("退出码")) + " " + esc(code) + "</span>" : "";
+}
+
+/* 失败原因在标题旁只留一句短的：后端诊断串常有四五十字，原样铺出来会把
+ * 时间/执行者挤到下一行。全量文本进 title，悬停可读。 */
+function chatFailReasonHtml(p) {
+  const r = String((p && p.reason) || "").trim();
+  if (!r) return "";
+  const shown = r.length > 38 ? r.slice(0, 38) + "…" : r;
+  return '<span class="chat-fail-reason" title="' + esc(r) + '">' + esc(shown) + "</span>";
 }
 
 /* 单个失败步骤：红卡把「执行失败」从正文里的一个词提成状态标题，退出码
@@ -12988,9 +13665,9 @@ function chatFailCardHTML(it, idx, raw) {
     '<div class="chat-fail-head">' +
     '<span class="chat-fail-title">' + CHAT_ICON_WARN + esc(t("执行失败")) + "</span>" +
     chatFailCodeChip(p.code) +
-    (p.reason ? '<span class="chat-fail-reason">' + esc(p.reason) + "</span>" : "") +
+    chatFailReasonHtml(p) +
     '<span class="chat-fail-meta">' + esc(chatMetaLine(it)) + chatCopyAction(idx) + "</span>" +
-    "</div>" + chatFailBodyHTML(p) + "</div>";
+    "</div>" + chatFailBodyWrap(p) + "</div>";
 }
 
 /* 连续同文失败合并：同一 CLI 同一报错连发三次时，报错只写一遍，逐次尝试
@@ -13006,13 +13683,12 @@ function chatFailGroupHTML(list, idx) {
   return '<div class="chat-fail-card chat-fail-group">' +
     '<div class="chat-fail-head">' +
     '<span class="chat-fail-title">' + CHAT_ICON_WARN +
-    esc(t("同一失败连续 {0} 次", list.length)) + "</span>" +
+    esc(t("连续失败 {0} 次").replace("{0}", list.length)) + "</span>" +
     chatFailCodeChip(p.code) +
-    (p.reason ? '<span class="chat-fail-reason">' + esc(p.reason) + "</span>" : "") +
+    chatFailReasonHtml(p) +
     '<span class="chat-fail-meta">' + esc(String(first.who || "").trim()) +
     chatCopyAction(idx) + "</span>" +
-    "</div>" + chatFailBodyHTML(p) +
-    '<ul class="chat-fail-attempts">' + rows + "</ul></div>";
+    "</div>" + chatFailBodyWrap(p, '<ul class="chat-fail-attempts">' + rows + "</ul>") + "</div>";
 }
 
 /* 评审裁定从「一整段 JSON/摘要正文」改成结构卡：均分 + 维度分数一行，
@@ -13622,7 +14298,21 @@ async function renderChat(run, active) {
     chatWorkspaceSyncLayout();
   }
   const continueNote = $("rd-chat-continue-note");
-  if (continueNote) continueNote.classList.toggle("hidden", !!active);
+  if (continueNote) {
+    // 这句话原来不管成没成都写「本轮已完成」——失败任务下面紧跟着「已完成」，
+    // 新手会以为「失败了但完成了？」。按真实结果换措辞：失败/超时/取消都如实说。
+    const noteSpan = continueNote.querySelector("[data-i18n]");
+    if (noteSpan) {
+      const key = run.status === "cancelled" ? "这一轮已取消，可以继续对话"
+        : (run.status === "failed" || run.status === "timeout") ? "这一轮没跑通，可以继续对话"
+          : "本轮已完成，可以继续对话";
+      if (noteSpan.getAttribute("data-i18n") !== key) {
+        noteSpan.setAttribute("data-i18n", key);
+        noteSpan.textContent = t(key);
+      }
+    }
+    continueNote.classList.toggle("hidden", !!active);
+  }
   if (chatRunId !== run.id) {
     chatRunId = run.id; chatAtts = []; drawChatAtts(); chatSig = ""; chatLiveSig = "";
     chatForceBottom = true;
@@ -13779,19 +14469,39 @@ function drawChatFlow(run, data, active) {
   // 失败墙，报错正文一模一样却抄三遍）。只合并完全相邻且清理后正文一致的
   // 失败步骤；孤立失败仍单独成卡，细节不丢。
   const failKey = (it) => (it.kind === "agent" && it.status === "failed")
-    ? chatCleanText(it.text).replace(/\s+/g, " ").trim() : "";
+    // 归一化：括号里的东西每次都不一样（超时/未配置、Reconnecting 2/5、request id、
+    // 秒数），逐字比对永远合不上——2026-10-28 一个任务因此连出 4 张同义红卡。
+    // 剥掉括注与数字后取前 24 字当"同一类失败"的判据，逐次明细仍留在合并卡里。
+    ? chatCleanText(it.text).replace(/（[^（）]*）/g, "").replace(/\([^()]*\)/g, "")
+      .replace(/\d+/g, "#").replace(/\s+/g, " ").trim().slice(0, 24) : "";
+  // 系统注记（who=本机，如「评审资源调度：…」）是编排审计行，不是用户发言。
+  // 它夹在两次重试之间会把连续失败切断，于是同一条错误在时间线里排成失败墙，
+  // 每张卡下面还挂着一条看不懂的「引导」记录（2026-10-28 实况：一个任务里
+  // 4 张一样的红卡 + 4 条一样的注记）。分组时允许穿越注记，穿越的注记一并省掉。
+  const isSysNote = chatSysNote;
   const failGroups = new Map(), failMembers = new Set();
   for (let i = 0; i < items.length;) {
     const key = failKey(items[i]);
     if (!key) { i++; continue; }
     let j = i + 1;
-    while (j < items.length && failKey(items[j]) === key) j++;
-    if (j - i >= 2) {
-      failGroups.set(i, items.slice(i, j));
-      for (let q = i; q < j; q++) failMembers.add(q);
+    const members = [i], notes = [];
+    while (j < items.length) {
+      if (isSysNote(items[j])) { notes.push(j); j++; continue; }
+      if (failKey(items[j]) !== key) break;
+      members.push(j); j++;
+    }
+    if (members.length >= 2) {
+      failGroups.set(i, members.map(k => items[k]));
+      members.forEach(k => failMembers.add(k));
+      notes.forEach(k => failMembers.add(k));
     }
     i = j;
   }
+  // 没被失败组吞掉的系统注记（前后不是失败步骤的那种）也不逐行摊开：
+  // 全部收进第一条位置的一个折叠组，默认收起——一屏只留「跑成什么样」。
+  const noteIdx = [];
+  items.forEach((it, idx) => { if (isSysNote(it) && !failMembers.has(idx)) noteIdx.push(idx); });
+  const noteHead = noteIdx.length ? noteIdx[0] : -1;
   let html = items.map((it, idx) => {
     if (failMembers.has(idx))
       return failGroups.get(idx) ? chatFailGroupHTML(failGroups.get(idx), idx) : "";
@@ -13815,6 +14525,17 @@ function drawChatFlow(run, data, active) {
         "</div></div></div>";
     }
     if (it.kind === "user") {
+      // 系统注记（who=本机）不是用户说的话：不占「我」的气泡，也不逐条摊开，
+      // 全部收进一处折叠组（默认收起），免得用户以为是自己发的
+      if (isSysNote(it)) {
+        if (idx !== noteHead) return "";
+        const all = noteIdx.map(k => String(items[k].text || "").trim()).filter(Boolean);
+        if (!all.length) return "";
+        return '<div class="chat-row"><details class="chat-sysnote-group"><summary>' +
+          esc(t("系统记录")) + " ×" + all.length + "</summary>" +
+          all.map(x => '<div class="chat-sysnote-line">' + esc(x) + "</div>").join("") +
+          "</details></div>";
+      }
       if (!it.consumed && it.id && it.run) return "";
       // 用户消息：右侧浅灰圆角块，元信息与动作落在块外下方。
       // 附件胶囊可点开预览：data-att 带 _attachments/ 相对路径（老数据裸文件名
@@ -13859,7 +14580,11 @@ function drawChatFlow(run, data, active) {
     // 完整原文在该步日志里（复制按钮同口径走 verdictDigestText，见复制处理器）
     const rawBody = chatCleanText(it.text);
     const digest = rawBody && it.status !== "running" ? verdictDigestData(rawBody) : null;
-    const body = digest ? verdictDigestText(rawBody, true) : rawBody;
+    let body = digest ? verdictDigestText(rawBody, true) : rawBody;
+    // 「步骤未正常收尾（取消/中断自动恢复）」是 runner 的占位措辞，读起来像报错，
+    // 其实只是上一轮被打断——换成一句人话（2026-10-28）
+    if (it.status === "cancelled" && /步骤未正常收尾/.test(body))
+      body = t("这一步没跑完（上一轮被打断）");
     // 失败步骤换成红卡：退出码/原因成标题栏，原始 stderr 与后端诊断分行。
     // 连续同文失败在 map 入口已合并，这里接的是孤立失败。
     if (it.status === "failed" && rawBody) return chatFailCardHTML(it, idx, rawBody);
@@ -13868,7 +14593,15 @@ function drawChatFlow(run, data, active) {
     // 实时预览（stream 累计值）；两者皆无才是等待提示。终态无正文不再渲染
     // 正文行——占位话并进元信息行，失败串场时每轮少占一行（2026-10-22 用户反馈）
     const liveText = it.status === "running" ? String(it.stream || "").trim() : "";
-    const bodySection = body ? '<div class="chat-body">' + chatBodyHTML(body) + "</div>"
+    // CLI 原始事件流（整段 `{"type":"thread.started",…}`）不是「回复正文」：
+    // 一次运行常有 4 条，铺在对话流里就是 1800px 的代码墙。折成一条默认收起的
+    // 「CLI 原始输出」（2026-10-29 九改）。
+    const rawStream = /^\s*\{\s*"type"\s*:/.test(body) && body.length > 300;
+    const bodySection = rawStream
+      ? '<details class="chat-raw-fold"><summary>' + esc(t("CLI 原始输出")) +
+        '<span>' + esc(t("共 {0} 字符", body.length)) + "</span></summary>" +
+        '<div class="chat-body">' + chatBodyHTML(body) + "</div></details>"
+      : body ? '<div class="chat-body">' + chatBodyHTML(body) + "</div>"
       : (liveText ? '<div class="chat-body chat-live-text">' + esc(liveText.slice(-4000)) + "</div>"
       : (it.status === "running"
         ? '<div class="chat-body chat-live-status"><span class="chat-live-dot"></span>' +
@@ -13896,7 +14629,7 @@ function drawChatFlow(run, data, active) {
       (it.status === "failed" || it.status === "cancelled" ? "" : t("完成")), it.note].filter(Boolean).join(" · ");
     // 助手正文与工具活动共用左缘，不再为头像预留一列。
     return '<div class="chat-row">' +
-      '<div class="chat-bubble agent">' +
+      '<div class="chat-bubble agent' + (it.status ? " is-" + esc(it.status) : "") + '">' +
       (stepMeta ? '<div class="chat-step-meta">' + esc(stepMeta) + "</div>" : "") +
       // 执行过程（思考/工具活动/CLI 日志）只在步骤执行中展示：终态气泡只留
       // 结果正文，过程明细去「步骤」页签回看（2026-10-22 用户拍板）
@@ -14161,7 +14894,18 @@ function chatResultHTML(run, res) {
   const icon = ok ? "#i-check" : (partial ? "#i-gauge" : "#i-x");
   const label = partial ? t("本轮部分完成") : (ok ? t("本轮完成") : (bad ? t("本轮失败") : t("已取消")));
   const meta = [];
-  if (res.executor) meta.push('<span class="cr-pill">' + esc(res.executor) + "</span>");
+  if (res.executor) {
+    // 编排者的「能力基线 74，coding 匹配 +7.0，…，总分 73.0」是后台打分明细，
+    // 整串摊在结果卡上会占满一行且没人读得下去：只留总分，明细进悬停。
+    const execRaw = String(res.executor);
+    if ((execRaw.match(/[，,]/g) || []).length >= 3) {
+      const score = (execRaw.match(/总分\s*([\d.]+)/) || [])[1];
+      meta.push('<span class="cr-pill quiet" title="' + esc(execRaw) + '">' +
+        esc(t("编排者")) + (score ? " · " + esc(t("总分")) + " " + esc(score) : "") + "</span>");
+    } else {
+      meta.push('<span class="cr-pill">' + esc(execRaw) + "</span>");
+    }
+  }
   const calls = Array.isArray(res.calls) ? res.calls : [];
   calls.forEach((call) => {
     const channelLabel = call.cli === "builtin" ? t("调用通道") : t("调用 CLI");
@@ -14180,27 +14924,64 @@ function chatResultHTML(run, res) {
   if (res.turns) meta.push('<span class="cr-pill quiet">' + res.turns + " " + t("轮对话") + "</span>");
   if (res.duration_s != null) meta.push('<span class="cr-pill quiet">' + chatDurTxt(res.duration_s) + "</span>");
   const files = res.files || [];
+  // 失败原因说人话：原文（后端诊断串，带「编排者/作者模型均未返回可用大纲…」这类
+  // 内部措辞）折进「看原始原因」，标题下只留一句用户能懂的结论（2026-10-28）
+  const errRaw = String(res.error || "").trim();
+  const errHuman = errRaw ? chatErrHuman(errRaw) : "";
+  const errBlock = ((bad || partial) && errRaw)
+    ? '<div class="cr-err">' +
+      (errHuman ? '<b>' + esc(errHuman) + '</b>' : esc(errRaw)) +
+      (errHuman ? '<details class="cr-err-more"><summary>' + esc(t("看原始原因")) + "</summary>" +
+        '<div>' + esc(errRaw) + "</div></details>" : "") +
+      "</div>"
+    : "";
   return '<div class="chat-row">' +
     '<span class="chat-avatar" aria-hidden="true"><svg class="ico"><use href="' + icon + '"></use></svg></span>' +
     '<div class="chat-result' + (partial ? " partial" : ok ? "" : bad ? " bad" : " off") + '">' +
     '<div class="cr-head"><svg class="ico" aria-hidden="true"><use href="' + icon + '"></use></svg>' +
     esc(label) + "</div>" +
     (meta.length ? '<div class="cr-meta">' + meta.join("") + "</div>" : "") +
-    ((bad || partial) && res.error ? '<div class="cr-err">' + esc(res.error) + "</div>" : "") +
+    errBlock +
     '<div class="cr-files">' + (files.length
       ? '<div class="cr-files-title">' + esc(t("产出文件")) + '<b class="cr-count">' + files.length + "</b></div>" +
         chatFileGrid(run, files)
       : '<div class="cr-files-title">' + esc(t("无文件产出")) + "</div>") + "</div>" +
-    (bad ? '<button class="ghost cr-steps" onclick="rdChatNavGo(\'steps\')">' +
-      esc(t("查看执行步骤")) + "</button>" : "") +
+    (bad ? '<div class="cr-acts">' +
+      (errHuman && /模型/.test(errHuman)
+        ? '<button class="ghost cr-steps" onclick="rdDiagAct(\'models\')">' + esc(t("去选模型")) + "</button>"
+        : "") +
+      '<button class="ghost cr-steps" onclick="rdChatNavGo(\'steps\')">' +
+      esc(t("查看执行步骤")) + "</button></div>" : "") +
     "</div></div>";
+}
+
+/* 失败原因 → 一句人话。判不出来就返回空串（宁可不解释，也不编原因）。
+ * 两个口径：短句进列表副标题，整句进对话结果卡。 */
+function chatErrCause(raw) {
+  const s = String(raw || "");
+  if (!s) return "";
+  if (/未配置|不可用|未返回可用|no model|not configured/i.test(s))
+    return t("还没有可用的模型，选一个再跑一次就行。");
+  if (/超时|timeout|timed out/i.test(s))
+    return t("等太久没回应（超时），可以重试或换个模型。");
+  if (/额度|余额|quota|insufficient|401|403|429/i.test(s))
+    return t("密钥或额度有问题，去模型接入检查一下。");
+  if (/服务重启|中断/.test(s)) return t("服务重启把它打断了，再跑一次就行。");
+  return "";
+}
+function chatErrHuman(raw) {
+  const cause = chatErrCause(raw);
+  return cause ? t("这次没写成：") + cause : "";
 }
 
 function chatDurTxt(s) {
   s = Math.round(Number(s) || 0);
   if (s < 60) return s + " " + t("秒");
   const m = Math.floor(s / 60), r = s % 60;
-  return m + " " + t("分") + (r ? " " + r + " " + t("秒") : "");
+  // 超过一小时改用「小时 + 分」：直接显示「1536 分 4 秒」，新手要自己心算 25 小时。
+  if (m < 60) return m + " " + t("分") + (r ? " " + r + " " + t("秒") : "");
+  const h = Math.floor(m / 60), mm = m % 60;
+  return h + t(" 小时") + (mm ? " " + mm + " " + t("分") : "");
 }
 
 /* 代码/编排任务的确定性结果摘要：报告是长文，步骤是过程，用户还需要一眼
@@ -14865,7 +15646,8 @@ function renderChatQueue(items, run = S.lastRun || {}) {
   const box = $("rd-chat-queue");
   if (!box) return;
   const pending = items.map((item, index) => ({ item, index }))
-    .filter(({ item }) => item.kind === "user" && !item.consumed && item.id && item.run);
+    .filter(({ item }) => item.kind === "user" && !item.consumed && item.id && item.run
+      && !chatSysNote(item));
   const active = ["running", "queued"].includes(run.status);
   const signature = JSON.stringify([pending, active, typeof getLang === "function" ? getLang() : "zh"]);
   if (box.dataset.queueSignature === signature) return;
@@ -15404,6 +16186,158 @@ window.addEventListener("storage", (event) => {
 });
 
 /* 暖色皮肤主页：渲染日期 + 最近任务（数据全部来自 S.state.runs，无假数） */
+/* ============================================ 台专属任务形态（2026-10-28）
+   四个台的任务列表原来都是同一张卡：标题 + 步骤百分比。小说看不出「写到第几章、多少字」，
+   编码看不出「这是哪个仓库」，成稿看不出「交的是哪份稿」——用户等于没进台。
+   这里按台换口径，数据只用真字段：`/api/state` 的 task + `/api/writing/counts` 的字数。
+   字数接口对 workdir 已删的任务回 `known:false`，这时一律显示「—」，
+   绝不折算成 0 字——一本写了两万字的书显示 0 字，比不显示更误导。 */
+const WS_TASK_SHAPE = { novel: "book", dossier: "doc", content: "doc", code: "repo", all: "step" };
+
+const WS_WRITING = { at: 0, busy: false, data: {} };
+
+function wsWritingOf(id) { return (id && WS_WRITING.data[id]) || null; }
+
+/* 批量取字数：缓存 60 秒，回来补画一次。业务上只按台要（只有小说/成稿台用得上），
+   通用台和编码台不发起这个请求。 */
+function wsWritingFetch(ids) {
+  const miss = (ids || []).filter((id) => id && !WS_WRITING.data[id]);
+  if (!miss.length || WS_WRITING.busy) return;
+  if (Date.now() - WS_WRITING.at < 60000) return;
+  WS_WRITING.busy = true;
+  WS_WRITING.at = Date.now();
+  api("/api/writing/counts?ids=" + encodeURIComponent(miss.slice(0, 20).join(",")),
+      { busy: false, operation: false })
+    .then((d) => {
+      const counts = (d && d.counts) || {};
+      Object.keys(counts).forEach((k) => { WS_WRITING.data[k] = counts[k]; });
+      renderHome();
+    })
+    .catch(() => {})
+    .then(() => { WS_WRITING.busy = false; });
+}
+
+function fmtWords(n) {
+  const v = Number(n) || 0;
+  if (v >= 10000) return (v / 10000).toFixed(1).replace(/\.0$/, "") + t(" 万");
+  return String(v);
+}
+
+/* 「23.1 万字」：万与字之间不留空格，中间那一格是数字与量级之间的断句，
+   再接一个「 字」会变成「23.1 万 字」。 */
+function fmtWordsZh(n) { return fmtWords(n) + t("字"); }
+
+/* 工作目录末段＝仓库名。编码台要靠它认出「这条任务动的是哪个项目」。 */
+function wsRepoName(workdir) {
+  const parts = String(workdir || "").replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+function wsTaskRow(kind, r, wsLabel) {
+  const task = taskById(r.task_id) || {};
+  const st = r.status || "";
+  const tone = st === "running" ? "run" : (st === "queued" || st === "cancelled") ? "wait"
+    : (st === "failed" || st === "timeout") ? "bad" : "ok";
+  const label = st === "running" ? t("运行中") : st === "queued" ? t("排队中")
+    : st === "failed" ? t("失败") : st === "timeout" ? t("超时")
+    : st === "cancelled" ? t("已取消") : t("已完成");
+  const glyph = tone === "run" ? '<span class="rd-task-spin" aria-hidden="true"></span>'
+    : tone === "wait" ? '<span class="rd-task-pause" aria-hidden="true"><i></i><i></i></span>'
+    : '<svg class="ico" aria-hidden="true"><use href="#i-' + (tone === "ok" ? "check" : "x") + '"></use></svg>';
+  const total = r.step_count || 0;
+  const step = (r.current_step && r.current_step.n) || 0;
+  const rawPct = total ? r.progress : (r.progress != null ? r.progress : null);
+  let pct = rawPct == null ? null : Math.min(100, Math.max(0, Math.round(Number(rawPct) || 0)));
+  const time = relTime(r.created_at || r.started_at || "");
+  const flow = r.flow_name || r.flow || "";
+  const title = esc(r.title || task.title || r.id || "");
+  const bits = [];
+  let tag = "";
+
+  if (kind === "book") {
+    // 小说：第几章 · 已写/目标字数 · 多久前
+    const c = wsWritingOf(r.task_id);
+    const known = !!(c && c.known);
+    const chapters = known && c.chapters ? c.chapters : 0;
+    const target = known && c.target ? Number(c.target) || 0 : 0;
+    // 读不到就说一次「字数 —」，不要「章数 — · 字数 —」连报两个空
+    // 失败/取消/超时的任务本来就没写成，「字数 —」既占位又误导（用户会问
+    // 「为什么是横杠」），这类只留「多久前」；其余读不到字数才诚实标「字数 —」
+    const dead = st === "failed" || st === "cancelled" || st === "timeout";
+    if (known) {
+      bits.push(fmtWordsZh(c.words));
+      // 章数放标题旁的彩色标签，meta 里不再重复「第 58 章」
+      tag = chapters ? chapters + t(" 章") : "";
+    } else if (!dead) {
+      bits.push(t("字数 —"));
+    }
+    if (target) {
+      bits.push(t("目标 ") + fmtWordsZh(target));
+      if (known) pct = Math.min(100, Math.round((Number(c.words) || 0) / target * 100));
+    }
+    if (time) bits.push(time);
+  } else if (kind === "doc") {
+    // 成稿：交的是什么稿 · 进度 · 多久前。类型名走流程定义的中文标签，
+    // 不回显 doc / bid_doc 这种内部 id（用户看不懂），也去掉 manuscript.md 这类文件名。
+    const fd = task.type ? flowById(task.type) : null;
+    // 流程对象的中文名在 .name（不是 .label，.label 是入口页的页签名）
+    const kindName = flow || (fd && t(fd.name)) || "";
+    if (total) bits.push(t("第 ") + step + "/" + total + t(" 步"));
+    if (time) bits.push(time);
+    // 类型名只作彩色标签；兜底成「成稿」两个字时没有信息量，不挂
+    tag = (kindName && kindName !== t("成稿")) ? kindName : "";
+  } else if (kind === "repo") {
+    // 编码：动的哪个仓库 · 第几步 · 多久前。标题里已经写了仓库名就不再挂标签，避免「xworkspace workspace」
+    const repo = wsRepoName(task.workdir);
+    if (!repo) bits.push(t("未设目录"));
+    if (total) bits.push(t("第 ") + step + "/" + total + t(" 步"));
+    if (time) bits.push(time);
+    // 仓库名作彩色标签；标题里已经带了这个词就不再重复（「gworkspace workspace」）
+    const rawTitle = String(r.title || task.title || "");
+    tag = (repo && repo.length >= 3 && rawTitle.indexOf(repo) < 0) ? repo : "";
+  } else {
+    // 通用台保持原样：流程 · 第几步（时间由上面的 clock 前缀给，这里不再重复）
+    bits.push(flow);
+    if (total) bits.push(t("第 ") + step + "/" + total + t(" 步"));
+  }
+
+  // 分隔点只出现在「有前文」的项前面：通用台前面有 clock+time，其余台第一项就是开头，
+  // 再挂一个点会变成「· 字数 —」这种孤立标点。
+  const items = bits.filter(Boolean);
+  const metaHtml = (time && kind === "step"
+      ? '<svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"></use></svg><span>' + esc(time) + "</span>"
+      : "")
+    + items.map((x, i) => {
+      const lead = (kind === "step" || i > 0) ? '<span class="rd-m3-dot"></span>' : "";
+      return lead + "<span>" + esc(String(x)) + "</span>";
+    }).join("");
+  const tagHtml = tag ? '<span class="rd-task-tag">' + esc(String(tag)) + "</span>" : "";
+  // 跨台兜底列表才挂台名（本台列表里挂「小说」是废话）；放在标题前的弱标签位
+  const wsHtml = wsLabel ? '<span class="rd-task-ws">' + esc(String(wsLabel)) + "</span>" : "";
+  const pctText = pct == null ? "—" : pct + "%";
+  // 失败/取消/超时/排队中的任务都没有「进度」可言：旁边挂一条 0% 的空进度条，新手会读成
+  // 「一点没做 / 卡住坏了」（和之前「失败任务显示 字数 —」同一个病）。「排队中」三个字
+  // 已经说清还没开始，「失败」也说清了没跑完，再挂 0% 空条纯属添乱。没跑满 100% 的部分
+  // 进度仍保留（跑到第 3/5 步才失败是有信息量的），只有 0% 或未知才整条撤掉。
+  const noProgress = st === "failed" || st === "cancelled" || st === "timeout" || st === "queued";
+  const showPct = !(noProgress && (pct == null || pct === 0));
+
+  return '<button type="button" class="rd-task-item ws-' + esc(kind) + '" onclick="homeOpenRun(\'' + jsq(r.id || "") + '\')">'
+    + '<span class="rd-task-ico ' + tone + '">' + glyph + "</span>"
+    + '<span class="rd-task-info">'
+    + '<span class="rd-task-title">' + wsHtml + '<span class="rd-task-name">' + title + "</span>" + tagHtml + "</span>"
+    + '<span class="rd-meta3">' + metaHtml + "</span>"
+    + "</span>"
+    + '<span class="rd-task-side ' + tone + '">'
+    + '<span class="rd-task-chip">' + esc(label) + "</span>"
+    + (showPct
+      ? '<span class="rd-task-track"><i style="width:' + (pct == null ? 0 : pct) + '%"></i></span>'
+        + '<span class="rd-task-pct">' + pctText + "</span>"
+      : "")
+    + "</span>"
+    + "</button>";
+}
+
 function renderHome() {
   const dateEl = $("rd-home-date");
   if (dateEl) {
@@ -15414,48 +16348,42 @@ function renderHome() {
 
   // 快捷入口里的通道体检摘要：复用体检页缓存，60 秒内不重复请求
   homeHealthRefresh();
+  // 台内主区块跟着任务状态走（新任务进来、跑完、失败都会变），这块也要在轮询里刷新
+  renderWsDomain();
 
   // 卡头目录/分支展示已随主页假身一并移除：主页直接载真表单 composer，
   // 工作目录与分支信息由 composer 自身的 cmp-wd 行与 git 行承载。
 
   const listEl = $("rd-recent-list");
   if (!listEl) return;
-  const runs = (S.state && S.state.runs) || [];
-  const recent = runs.slice(0, 5);
+  // 只列当前工作台的任务（通用 = 全部）：四个工作台各看各的，跨台汇总走「全部任务」
+  const mode = workspaceChoice.mode;
+  const runs = runsForWorkspace(mode);
+  // 首页露最近 6 条：左栏退场后主列有余量，3 条会让下半屏空掉；再多走「全部任务」
+  // 同一任务反复重跑别霸屏：每个任务只留最近一次（2026-10-28 实况：一屏 6 条
+  // 全是同一个失败任务的 6 次重试，看不到别的活儿）
+  const seenTask = new Set();
+  const recent = runs.filter((r) => {
+    const k = String(r.title || r.task_id || "?");
+    if (seenTask.has(k)) return false;
+    seenTask.add(k);
+    return true;
+  }).slice(0, 6);
   if (recent.length === 0) {
-    listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">' + t("暂无任务") + "</div>";
+    listEl.classList.remove("is-cross");
+    listEl.innerHTML = '<div class="rd-empty">' + esc(t("这个台还没有任务。在上面说一句要做什么，就会出现在这里。")) + "</div>";
     return;
   }
-  listEl.innerHTML = recent.map((r) => {
-    const tone = r.status === "running" ? "run" : (r.status === "queued" || r.status === "cancelled") ? "wait" : (r.status === "failed" || r.status === "timeout") ? "bad" : "ok";
-    const label = r.status === "running" ? t("运行中") : r.status === "queued" ? t("排队中")
-      : r.status === "failed" ? t("失败") : r.status === "timeout" ? t("超时")
-      : r.status === "cancelled" ? t("已取消") : t("已完成");
-    const icon = tone === "run" ? '<span class="rd-task-spin" aria-hidden="true"></span>'
-      : tone === "wait" ? '<span class="rd-task-pause" aria-hidden="true"><i></i><i></i></span>'
-      : '<svg class="ico" aria-hidden="true"><use href="#i-' + (tone === "ok" ? "check" : "x") + '"></use></svg>';
-    // 进度契约与状态栏一致：step_count 折算、current_step 是对象取 .n
-    const total = r.step_count || 0;
-    const progress = total ? Math.min(100, Math.max(0, Math.round(Number(r.progress) || 0))) : (r.progress != null ? Math.round(Number(r.progress)) : null);
-    const pct = progress == null ? null : Math.min(100, Math.max(0, progress));
-    const step = (r.current_step && r.current_step.n) || 0;
-    const time = relTime(r.created_at || r.started_at || "");
-    const metaHtml = (time ? '<svg class="ico rd-meta-clock" aria-hidden="true"><use href="#i-clock"></use></svg><span>' + esc(time) + "</span>" : "")
-      + [r.flow_name || r.flow || "", total ? t("第 ") + step + "/" + total + t(" 步") : ""].filter(Boolean)
-        .map((x) => '<span class="rd-m3-dot"></span><span>' + esc(String(x)) + "</span>").join("");
-    return '<button type="button" class="rd-task-item" onclick="homeOpenRun(\'' + jsq(r.id || "") + '\')">'
-      + '<span class="rd-task-ico ' + tone + '">' + icon + "</span>"
-      + '<span class="rd-task-info">'
-      + '<span class="rd-task-title">' + esc(r.title || r.id || "") + "</span>"
-      + '<span class="rd-meta3">' + metaHtml + "</span>"
-      + "</span>"
-      + '<span class="rd-task-side ' + tone + '">'
-      + '<span class="rd-task-chip">' + esc(label) + "</span>"
-      + '<span class="rd-task-track"><i style="width:' + (pct == null ? 0 : pct) + '%"></i></span>'
-      + '<span class="rd-task-pct">' + (pct == null ? "—" : pct + "%") + "</span>"
-      + "</span>"
-      + "</button>";
-  }).join("");
+  listEl.classList.remove("is-cross");
+  // 任务卡形态按台走（见 WS_TASK_SHAPE）：小说＝章节/字数、成稿＝稿件/进度、
+  // 编码＝仓库/步骤、通用＝原来的步骤条。字数要走接口，先登记再渲染，回来补画。
+  const shape = WS_TASK_SHAPE[mode] || "step";
+  if (shape === "book") wsWritingFetch(recent.map((r) => r.task_id));
+  listEl.dataset.shape = shape;
+  listEl.innerHTML = recent.map((r) => wsTaskRow(shape, r)).join("");
+  renderLobbyRecent();   // 大厅底部的最近任务跟着轮询更新
+  // 停在总任务视图时，轮询也要把汇总列表一起刷（否则状态一直停在打开那一刻）
+  if (homeView === "all") renderAllTasks();
 }
 
 /* 主页直载真表单 composer：主页不放简化假身，把 #sub-tasks .cmp-box 原样
@@ -15471,7 +16399,13 @@ function homeUnmountComposer() {
   const box = document.querySelector("#rd-input-slot .cmp-box");
   if (!box) return;
   const form = document.querySelector("#sub-tasks .form");
-  if (form) form.appendChild(box);
+  if (!form) return;
+  // 任务页底部还有一条「最近的活」清单：输入卡要插在它前面，
+  // 否则 appendChild 会把清单挤到输入卡上方（页面上看就是「先看见历史、再看见输入框」）。
+  // 单测里跑的是最小假 DOM（只有 classList/appendChild），所以这里对 querySelector 做能力判断。
+  const recent = (typeof form.querySelector === "function" && form.querySelector("#tasks-recent")) || null;
+  if (recent && typeof form.insertBefore === "function") form.insertBefore(box, recent);
+  else form.appendChild(box);
 }
 
 /* 暖色皮肤主页显隐：与 switchTab 同一套状态（tab/mainPage/settings-mode/页名），
@@ -15494,6 +16428,8 @@ function showHome() {
   const crumb = $("crumb-root");
   if (crumb) crumb.classList.add("hidden");
   renderHome();
+  paintHomeView();
+  renderAllTasks();
   syncInspectorVis();
 }
 
@@ -16210,12 +17146,36 @@ function bindPromote(id, el) {
 }
 
 /* ---------------------------------------------------------- 智能体管理 */
+function getUiLevel() {
+  try { return localStorage.getItem("orch.ui-level") === "simple" ? "simple" : "advanced"; }
+  catch (e) { return "advanced"; }
+}
+function setUiLevel(level) {
+  level = level === "simple" ? "simple" : "advanced";
+  try { localStorage.setItem("orch.ui-level", level); } catch (e) {}
+  syncCliModeSeg();
+  renderCatalog();
+}
+function syncCliModeSeg() {
+  const level = getUiLevel();
+  document.querySelectorAll("#cli-mode-seg .seg-btn").forEach((b) => {
+    const on = b.dataset.uiLevel === level;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
 function renderCatalog() {
   const cat = S.catalog || [];
-  // 数据没变化就不重绘，避免轮询打断正在编辑的下拉/输入。
-  const sig = JSON.stringify([cat, S.mgmt || {}, S.catalogChecking]);
+  syncCliModeSeg();
+  // 数据没变化就不重绘，避免轮询打断正在编辑的下拉/输入。ui-level 也进 sig，
+  // 切模式时强制重绘（简单/高级渲染不同）。
+  const sig = JSON.stringify([cat, S.mgmt || {}, S.catalogChecking, getUiLevel()]);
   if (sig === S.catSig) return;
   S.catSig = sig;
+  // 简单模式：只摆三大订阅生态品牌位（探测到即接入），其余 CLI 仍可见不藏
+  // （决策记录 #13：自定义 CLI / 流程任何模式下都不能被藏掉）。
+  if (getUiLevel() === "simple") { renderSimpleCatalog(cat); return; }
   const groups = { installed: [], installable: [] };
   for (const c of cat) (groups[c.group] || groups.installable).push(c);
   $("ag-installed").innerHTML = groups.installed.map(card).join("");
@@ -16224,6 +17184,41 @@ function renderCatalog() {
   document.querySelectorAll("pre.mgmt-log").forEach((el) => {
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) el.scrollTop = el.scrollHeight;
   });
+}
+
+/* 简单模式引导面板：三大订阅生态品牌位 + 其余 CLI（不藏）。 */
+function renderSimpleCatalog(cat) {
+  const brandIds = ["claude-code", "codex-cli", "github-copilot-cli"];
+  const brands = cat.filter((c) => brandIds.indexOf(c.id) !== -1);
+  const others = cat.filter((c) => brandIds.indexOf(c.id) === -1);
+  const brandHtml = brands.length
+    ? brands.map(brandSlotCard).join("")
+    : '<div class="hint">' + t("尚未探测到 Claude Code / Codex CLI / GitHub Copilot CLI。确认已在本地安装其中之一，或切到「高级」模式手动管理。") + "</div>";
+  const othersHtml = others.length
+    ? '<h3 class="sec-title">' + t("其他智能体（完整管理见高级模式）") + "</h3>" + others.map(card).join("")
+    : "";
+  $("ag-installed").innerHTML =
+    '<div class="simple-cli-intro"><p class="hint">' +
+    t("简单模式：你已有哪家的订阅或 Key？勾选「参与编排」后，CodeBee 会自动把它接入任务执行；拥有两家以上才能做跨厂商对抗评审。没有任何 CLI 时，也可不走 CLI 直接用内置模型。") +
+    "</p></div>" + brandHtml;
+  $("ag-installable").innerHTML = othersHtml;
+}
+
+/* 品牌位卡片：复用现有 toggleOrch / mgmt / statusChip，视觉与高级模式一致。 */
+function brandSlotCard(c) {
+  const orchBox = c.orch_kind
+    ? '<label class="toggle"><input type="checkbox" ' + (c.orch_enabled ? "checked" : "") +
+      ' onchange="toggleOrch(\'' + jsq(c.id) + '\', this.checked)">' + t(" 参与编排") + '</label>'
+    : '<span class="tag">' + t("仅管理") + '</span>';
+  const status = c.installed ? statusChip("done") : '<span class="tag">' + t("未安装") + '</span>';
+  const ops = c.installed ? "" : (c.has_install
+    ? '<button class="ghost small" onclick="mgmt(\'' + jsq(c.id) + '\', \'install\')">' + t("安装") + "</button>"
+    : "");
+  return '<div class="card brand-slot">' +
+    '<div class="head"><span class="name">' + esc(c.name) + "</span>" + status + "</div>" +
+    '<div class="note">' + esc(t(c.note || "")) + "</div>" +
+    '<div class="facts">' + t("版本 ") + "<b>" + esc(c.version || "-") + "</b></div>" +
+    '<div class="ops">' + orchBox + ops + "</div></div>";
 }
 
 /* 该条目有管理操作在跑（queued/running）时，写操作按钮置灰防重复触发；
@@ -20092,12 +21087,19 @@ function renderOrchSide() {
   const o = S.orch || {};
   const name = (o.provider_name || "").trim().replace(/^\[[^\]]+\]\s*/, "");  // 去掉 "[CC] " 之类前缀
   const model = (o.model || "").trim();
+  // 顶栏那颗「选择模型」警示 pill 与左下角同源：没选厂商时一起亮，选了就一起灭
+  const mp = $("btn-model-pill");
+  if (mp) mp.classList.toggle("hidden", !!name);
   if (!name) {
-    txt.textContent = t("未选厂商");
+    // 没选厂商＝什么都跑不了。原来只有一颗灰点 + 「未选厂商」四个小字，
+    // 普通用户根本不会去点它。改成明说「选择模型」并加警示底色，点击直达编排设置。
+    txt.textContent = t("选择模型");
     dot.className = "pdot";
-    btn.title = t("尚未选择编排者供应商\n点击到「编排设置」，从已接入的厂商里选一个");
+    btn.classList.add("is-empty");
+    btn.title = t("还没选模型，任务跑不起来。点击从已接入的厂商里选一个");
     return;
   }
+  btn.classList.remove("is-empty");
   txt.textContent = name;
   dot.className = "pdot " + (o.ready ? "ok" : "warn");
   btn.title = t("编排者供应商：") + name + (model ? " · " + model : "") +
@@ -20945,7 +21947,7 @@ function helpChapterBody(id) {
     return '<div class="welcome-steps">' +
       '<div class="wstep"><b>1</b><span>' + t("添加模型供应商：设置 → 模型接入，填入 API Key") + '</span></div>' +
       '<div class="wstep"><b>2</b><span>' + t("启用本机智能体：运行时默认自动推荐模型") + '</span></div>' +
-      '<div class="wstep"><b>3</b><span>' + t("新建任务：选工作目录、写目标，蜂群开工") + '</span></div>' +
+      '<div class="wstep"><b>3</b><span>' + t("新建任务：选工作目录、写目标，CodeBee开工") + '</span></div>' +
       '</div>' +
       '<p class="help-note">' + t("任务跑起来后，详情页能看到步骤、蜂巢、成果文件与 Git 版本；「直接执行」类任务还能像聊天一样边跑边追加消息。") + '</p>' +
       '<div class="welcome-acts">' +
@@ -20983,7 +21985,7 @@ function helpChapterBody(id) {
   }
   if (id === "serial") {
     return '<h3 class="help-h3">' + t("开一本新书") + '</h3>' +
-      '<p class="help-p">' + t("新建任务选「连载写作」类型，目标里写清书名、题材和计划篇幅（如「都市异能，先写 20 章」）。目标写得太笼统时，蜂群会先反问几个澄清问题再开工。开书前会先准备作品资料：书简介与分类标签可一键生成，按平台官方选项实抓，不用自己去查规则。") + '</p>' +
+      '<p class="help-p">' + t("新建任务选「连载写作」类型，目标里写清书名、题材和计划篇幅（如「都市异能，先写 20 章」）。目标写得太笼统时，CodeBee会先反问几个澄清问题再开工。开书前会先准备作品资料：书简介与分类标签可一键生成，按平台官方选项实抓，不用自己去查规则。") + '</p>' +
       '<h3 class="help-h3">' + t("每章怎么跑") + '</h3>' +
       '<p class="help-p">' + t("大纲确认后分章推进：起草 → 跨厂商评审 → 打磨 → 定稿。评审不过会自动换将重写，不带着问题过关；需要你拍板的地方会亮起「待裁决」。写作时详情页可实时预览章节，蜂巢页每个智能体一格，点开能看谁在干什么。") + '</p>' +
       '<h3 class="help-h3">' + t("分卷（卷结构）") + '</h3>' +
@@ -20992,7 +21994,7 @@ function helpChapterBody(id) {
       '<h3 class="help-h3">' + t("中断了怎么办") + '</h3>' +
       '<p class="help-p">' + t("任务随时可续跑：已写章节都落了盘，续跑接着往下写，不会从头再来。单章失败会自动退避重试，任务状态里会显示「将于 HH:MM 自动续跑」，不用盯着等。") + '</p>' +
       '<h3 class="help-h3">' + t("递话与经验") + '</h3>' +
-      '<p class="help-p">' + t("跑的过程中可以在详情页给蜂群递话（文字/截图/附件），下一轮生效。每轮结束复盘官会把踩过的坑沉淀进经验库，后续任务自动复用，越用越顺手。") + '</p>';
+      '<p class="help-p">' + t("跑的过程中可以在详情页给CodeBee递话（文字/截图/附件），下一轮生效。每轮结束复盘官会把踩过的坑沉淀进经验库，后续任务自动复用，越用越顺手。") + '</p>';
   }
   if (id === "publish") {
     return '<h3 class="help-h3">' + t("第一次发布前：登录平台") + '</h3>' +
@@ -21006,7 +22008,7 @@ function helpChapterBody(id) {
   }
   if (id === "code") {
     return '<h3 class="help-h3">' + t("代码任务怎么跑") + '</h3>' +
-      '<p class="help-p">' + t("新建任务选开发类类型，目标写清楚要做什么（可以附需求文档、截图，附件会进入上下文）。蜂群先出计划再实现：实现 → 客观验证 → 跨厂商评审 → 修复，单路实现失败还有多候选赛马——各候选在隔离的 worktree 里各写各的，择优采纳。跑的过程中可以在详情页递话（文字/截图），下一轮生效。") + '</p>' +
+      '<p class="help-p">' + t("新建任务选开发类类型，目标写清楚要做什么（可以附需求文档、截图，附件会进入上下文）。CodeBee先出计划再实现：实现 → 客观验证 → 跨厂商评审 → 修复，单路实现失败还有多候选赛马——各候选在隔离的 worktree 里各写各的，择优采纳。跑的过程中可以在详情页递话（文字/截图），下一轮生效。") + '</p>' +
       '<h3 class="help-h3">' + t("任务分支隔离：你的工作区不受影响") + '</h3>' +
       '<p class="help-p">' + t("启用代码版本隔离的任务会检出独立的任务分支（codebee/任务ID），所有改动只落在那条分支上，你当前的分支和未提交的改动完全不动——开跑前工作区有脏改动会先帮你收起（stash），跑完自动还原。") + '</p>' +
       '<h3 class="help-h3">' + t("版本裁决：合并还是丢弃") + '</h3>' +
@@ -21710,6 +22712,56 @@ function openBoard() {
   window.open("/board.html", "_blank", "noopener");
 }
 window.openBoard = openBoard;
+
+/* 顶栏「⋯ 更多」：任务大屏 / 并排浏览器 / 状态栏 / 皮肤 / 语言从顶栏挪进一个菜单。
+   菜单行不自己实现功能，而是触发 #top-more-src 里的原件——原件的事件绑定、aria、
+   CSS 守卫全部不变，这里只负责开合、同步选中态、点外关闭。 */
+const TOP_MORE_ACTIONS = {
+  board: "btn-board",
+  browser: "btn-browser-split",
+  status: "btn-status-rail",
+  skin: "btn-skin",
+  /* 任务详情面板开关：日常写作时它天天用，但对「刚打开工作台的普通用户」是个
+     不明所以的面板图标。收进菜单，顶栏右侧只留「更多 + 主题 + 连接状态」。 */
+  insp: "btn-insp",
+};
+
+function topMoreDo(key) {
+  toggleTopMore(false);
+  if (key === "lang-zh" || key === "lang-en") {
+    pickLang(key.slice(5));
+    return;
+  }
+  const btn = $(TOP_MORE_ACTIONS[key]);
+  if (btn) btn.click();
+}
+
+function syncTopMore() {
+  const menu = $("top-more");
+  if (!menu) return;
+  const lang = getLang();
+  menu.querySelectorAll("[data-lang-row]").forEach((b) =>
+    b.classList.toggle("on", b.dataset.langRow === lang));
+  const split = $("btn-browser-split");
+  menu.querySelectorAll(".tm-item").forEach((b) => {
+    const key = (b.getAttribute("onclick") || "").match(/topMoreDo\('([a-z-]+)'\)/);
+    if (!key) return;
+    const pressed = key[1] === "browser" && split && split.getAttribute("aria-pressed") === "true";
+    b.classList.toggle("on", !!pressed);
+  });
+}
+
+function toggleTopMore(force) {
+  const menu = $("top-more");
+  if (!menu) return;
+  const show = force != null ? !!force : menu.classList.contains("hidden");
+  if (show) syncTopMore();
+  menu.classList.toggle("hidden", !show);
+  const btn = $("btn-top-more");
+  if (btn) btn.setAttribute("aria-expanded", String(show));
+}
+window.toggleTopMore = toggleTopMore;
+window.topMoreDo = topMoreDo;
 
 function setLangBtn(lang) {
   if (getLang() === lang) return;
@@ -22429,14 +23481,11 @@ function ovRenderHead() {
   if (!sub) return;
   const u = S.ovUsage;
   if (!u || !u.totals) { sub.textContent = ""; return; }
-  const cur = ovSplit(u.by_day).cur;
-  const calls = ovSum(cur, "calls"), ok = ovSum(cur, "ok");
-  const rate = calls ? Math.round(ok * 100 / calls) : 0;
-  let s = t("近 30 天执行 ") + fmtTok(calls) + t(" 次 · 成功率 ") + rate + "%" +
-    t(" · 消耗 ") + fmtTok(ovSum(cur, "tokens")) + t(" tokens · 费用 ") + fmtUsd(ovSum(cur, "cost_usd"));
+  // 这行原来把执行次数/成功率/token/费用又抄一遍，且成功率取整成「83%」、下方卡片却是
+  // 「82.9%」——同一件事说两遍还对不上，最伤信任。数字交给卡片，这里只留卡片里没有的
+  // 实时信息：当前几个任务在跑（没有就不额外写一行，保持顶部干净）。
   const running = ((S.state && S.state.runs) || []).filter((r) => r.status === "running").length;
-  if (running) s += t(" · 当前 ") + running + t(" 个任务运行中");
-  sub.textContent = s;
+  sub.textContent = running ? t("当前 ") + running + t(" 个任务运行中") : "";
 }
 
 function ovRenderKpis() {
@@ -23246,6 +24295,52 @@ function collapseDrawerIfMobile() {
   if (window.innerWidth <= 900) document.body.classList.add("side-collapsed");
 }
 
+/* ---------------------------------------------------------- 左栏开合（桌面常驻列 / 窄屏抽屉）
+ * 2026-10-29 六改：workbench 桌面端左栏改为**常驻列**（46 图标轨 + 208 导航列 + 主区，
+ * 见 linear-theme.css 第 20/21 节），导航一直看得见；这颗键的职责随之变成
+ * 「收起 / 展开导航列」，状态记在本机（orch.side-collapsed）。
+ * 窄屏（<=900px）仍走原来的覆盖式抽屉：side-open 开、点遮罩/Esc 关。 */
+function wsDrawerOpen() { return document.body.classList.contains("side-open"); }
+function wsWideDesk() {
+  return document.documentElement.dataset.layout === "workbench"
+    && window.matchMedia("(min-width: 901px)").matches;
+}
+function syncSideToggleAria() {
+  const open = wsWideDesk()
+    ? !document.body.classList.contains("side-collapsed")
+    : wsDrawerOpen();
+  ["btn-menu", "btn-rail-menu"].forEach((id) => {
+    const btn = $(id);
+    if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
+function toggleSideDrawer(force) {
+  if (wsWideDesk()) {
+    // 桌面常驻列：force=true 表示「展开」，undefined 表示翻转
+    const show = force === undefined ? document.body.classList.contains("side-collapsed") : !!force;
+    document.body.classList.toggle("side-collapsed", !show);
+    try { localStorage.setItem("orch.side-collapsed", show ? "0" : "1"); } catch (e) { /* 忽略隐私模式 */ }
+    syncSideToggleAria();
+    return show;
+  }
+  const open = force === undefined ? !wsDrawerOpen() : !!force;
+  document.body.classList.toggle("side-open", open);
+  syncSideToggleAria();
+  return open;
+}
+function closeSideDrawer() {
+  if (wsWideDesk()) return;          // 桌面常驻列没有「遮罩自动关」这回事
+  if (!wsDrawerOpen()) return;
+  toggleSideDrawer(false);
+}
+window.toggleSideDrawer = toggleSideDrawer;
+/* 左栏收起状态开机恢复：只在桌面端生效（窄屏由 resize 监听自己管） */
+try {
+  if (localStorage.getItem("orch.side-collapsed") === "1" && wsWideDesk()) {
+    document.body.classList.add("side-collapsed");
+  }
+} catch (e) { /* 忽略 */ }
+
 /* ---------------------------------------------------------- 机制与策略（Raven Evolver 借鉴）
  * 路由权重外置（/api/strategy/config）+ 冠军/挑战者影子对账（/api/strategy/report）。
  * 采用永远人工确认（uiConfirm），绝无 native dialog。 */
@@ -23436,6 +24531,10 @@ function switchTab(name, shell) {
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-settings"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.toggle("active", !inMain && b.dataset.sub === name));
   document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", inMain && b.dataset.page === name));
+  syncSideMoreForPage();   // 当前页在「更多」里就自动展开，否则选中项藏在收起区里看不见
+  // 设置左栏的「更多设置」同理：当前子页如果是技术项，必须把那一坨展开，否则没有选中态
+  const advBox = $("set-advanced");
+  if (advBox && advBox.querySelector(".set-item.active")) toggleSetMore(true);
   document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.toggle("active", b.dataset.railPage === (inMain ? name : "tasks")));
   document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.toggle("hidden", d.id !== "sub-" + name));
   renderPageCrumb();   // 页名 + 面包屑组名一起刷新（组名从左栏导航现读）
@@ -23463,6 +24562,9 @@ function switchTab(name, shell) {
   if (name === "overview") goalLoad();
   if (name === "kanban") renderKanban();   // 进看板页：issue 视角按生命周期分列（S.state 同源即绘）
   if (name === "browser") wbDraw();
+  if (name === "__home") renderSetHome();   // 设置首页：六张卡的状态每次进来现读
+  applyPageLead(name);   // 常用设置页顶部那句白话：这页干什么、要你做什么
+  foldAdvancedFields(name);   // 只留常用项，其余折进「还有 N 项更细的设置」
   if (name === "appearance") renderAppearance();   // 进皮肤页：按当前皮肤/明暗重画卡片
   if (name === "appearance") renderCodeSettings();  // 代码设置行 + 双主题预览卡同步当前值
   if (name === "about") loadSelfupdate(false);     // 进关于页：拉版本与更新状态
@@ -23502,9 +24604,290 @@ function exitSettings(forceForm) {
 /* 侧栏底部齿轮：直接进设置（左栏换成设置导航，不再弹菜单）。回到上次看的那页，默认编排设置。
  * 只认设置导航里真实存在的子页——概览/运行记录/自动化已升为快捷导航，落回它们会停在
  * 一个没有导航项高亮的设置页。 */
+/* ------------------------------------------------------------ 设置子页的「一句话」
+   把用户当傻瓜的第三步：**每个页顶上都先说「这页能干什么、要你做什么」**，
+   而且只用一句白话。原理说明（原来那些一段段的 hint）不动，留在下面给要看的人。
+   两种落地形态（见 applyPageLead）：
+     · 页面自己没标题（第一个子元素就是 .panel.wide）→ 塞一块 .pg-lead（大标题 + 一句）；
+     · 页面自带 .panel-head（运行记录/文件/用量…）→ 不重画标题，只在 h2 下面补一句 .pg-sub。
+   只写「普通用户真的会点进去」的页；纯技术页（策略/机制/图谱）不加，免得在没人看的地方编说明。 */
+const PAGE_LEADS = {
+  models: {
+    t: "选一个模型",
+    d: "左边挑一家，右边填上密钥，再把想要的模型打开。这三步做完就能开始干活了。",
+  },
+  appearance: {
+    t: "换个样子",
+    d: "深色浅色、字号、皮肤。点一下立刻生效，跟任务没关系，随便试。",
+  },
+  data: {
+    t: "备份与搬家",
+    d: "把全部数据导出成一个文件；换电脑时导入回来。要删东西的地方都会先问你一遍。",
+  },
+  usage: {
+    t: "花了多少",
+    d: "每天用掉多少 token、折多少钱，按模型分开算。数字来自本机台账，不上传。",
+  },
+  agents: {
+    t: "本机智能体",
+    d: "CodeBee 能调用你电脑上装好的命令行 AI（Claude Code、Codex 之类）。这里看装没装、能不能用。",
+  },
+  orch: {
+    t: "高级：编排与权限",
+    d: "一次并行几个任务、默认把文件放哪、允许执行哪些命令。不确定就保持默认，默认是安全的。",
+  },
+  runs: {
+    d: "每一次运行都在这条线上。点一行看它怎么做的、卡在哪、产出了什么。",
+  },
+  automation: {
+    d: "到点就自己跑的任务：定好时间或条件，之后不用再管。",
+  },
+  hooks: {
+    d: "在任务的关键时刻插入你自己的命令，比如开始前拉代码、结束后跑测试。",
+  },
+  zentao: {
+    d: "把禅道上的缺陷拉进来，让它自己定位、改，再把状态写回去。",
+  },
+  bindings: {
+    d: "一个模型不够用时，在这儿排「主选 → 备用」的降级顺序。",
+  },
+  memory: {
+    d: "它记住的关于你和这个项目的事。看到不对的，直接改或删。",
+  },
+  skills: {
+    d: "从踩过的坑里攒下来的经验，做同类任务时会自动带上。",
+  },
+  knowledge: {
+    d: "丢进来的文档会变成它能查的资料；问它的时候先查这里。",
+  },
+  market: {
+    d: "插件与 MCP 扩展的集市，装一个就多一种本事。",
+  },
+  evalbench: {
+    d: "同一个问题让几个模型都答一遍，比一比谁更好，再决定用谁。",
+  },
+  strategy: {
+    d: "活该派给谁、失败几次换人，这些权重在这儿调，也可以让它自己学。",
+  },
+  about: {
+    d: "版本、更新与诊断报告。要反馈问题时，把这里的报告发出去。",
+  },
+  files: {
+    d: "任务产出的文件都在这儿，按目录翻，能直接打开或下载。",
+  },
+  __wxdigest: {
+    d: "把微信群里一天的讨论整理成一份汇报，发给该看的人。",
+  },
+};
+
+function applyPageLead(name) {
+  const page = document.getElementById("sub-" + name);
+  if (!page) return;
+  const lead = PAGE_LEADS[name];
+  const oldLead = page.querySelector(":scope > .pg-lead");
+  const ownTitle = page.querySelector(":scope > .kb-head, :scope > .ov-head, :scope > h1, :scope > .sh-head, :scope > .avail-hero, :scope > .wb-shell, :scope > .atlas-topbar");
+  // ① 页面自带头（看板/概览/设置首页/体检/浏览器/图谱）：一句话由页面自己说，别叠两层标题
+  if (ownTitle) {
+    if (oldLead) oldLead.remove();
+    return;
+  }
+  // ② 自带 .panel-head 的页：不动标题，只在其下补一句副标题（改 CSS 成页头）
+  const head = page.querySelector(":scope > .panel.wide > .panel-head");
+  if (head) {
+    if (oldLead) oldLead.remove();
+    head.classList.add("is-page-head");
+    head.classList.toggle("has-lead", !!(lead && lead.d));
+    const h2 = head.querySelector("h2");
+    let sub = head.querySelector(".pg-sub");
+    if (lead && lead.d) {
+      if (!sub) {
+        sub = document.createElement("p");
+        sub.className = "pg-sub";
+        if (h2 && h2.nextSibling) head.insertBefore(sub, h2.nextSibling);
+        else head.appendChild(sub);
+      }
+      if (sub.dataset.leadText !== lead.d) {
+        sub.dataset.leadText = lead.d;
+        sub.textContent = t(lead.d);
+      }
+    } else if (sub) {
+      sub.remove();
+    }
+    return;
+  }
+  // ③ 什么头都没有的页：画一块 .pg-lead
+  if (!lead) { if (oldLead) oldLead.remove(); return; }
+  if (oldLead && oldLead.dataset.leadFor === name) return;
+  const el = oldLead || document.createElement("div");
+  el.className = "pg-lead";
+  el.dataset.leadFor = name;
+  el.innerHTML = "<h1>" + esc(t(lead.t || "")) + "</h1><p>" + esc(t(lead.d || "")) + "</p>";
+  if (!oldLead) page.insertBefore(el, page.firstChild);
+}
+
+/* ---------------------------------------------------------------- 设置子页「只露常用项」
+   用户原话：「每个菜单配置更简单」。一页十几个表单小节，进来先被长度劝退。
+   做法：每页只留前几项常用设置，其余折进一条「还有 N 项更细的设置」，点开才展开。
+   规则三条，都为了「折错不如不折」：
+     ① 只折顶层 .field（表单小节）；表格、列表、样题卡不动；
+     ② 含主操作按钮（button.primary）的小节不折——把「保存」藏起来等于埋雷；
+     ③ 折过一次就记在 page.dataset 上，切页回来不重复包（节点被搬过，重复包会丢内容）。 */
+/* 只给「真的长、且大部分项一辈子不用改」的页开折叠。
+ * 皮肤 / 数据与备份 / 自动化故意不折：皮肤页每块都是可视卡片，折了等于把
+ * 「切深色」这种最常做的事藏起来；数据页折进去的是「恢复备份」「清理」这类
+ * 危险动作，藏起来反而让人找不到后悔药。 */
+const FOLD_KEEP = {
+  models: 2, orch: 3, strategy: 2, evalbench: 3, zentao: 3,
+  memory: 3, knowledge: 3, skills: 3, market: 2, __wxdigest: 2, browser: 3, agents: 2,
+};
+/* 模型调度（bindings）故意不在名单里：那页是「每个 CLI 一张卡」，卡内就是三五行，
+ * 折叠只会把某一张卡折走、其它卡照旧，看起来像坏了。 */
+
+function foldAdvancedFields(name) {
+  const keep = FOLD_KEEP[name];
+  if (!keep) return;
+  const page = document.getElementById("sub-" + name);
+  if (!page || page.dataset.folded === name) return;
+  const panel = page.querySelector(":scope > .panel.wide") || page.querySelector(":scope > .panel") || page;
+  const kids = Array.prototype.slice.call(panel.children);
+  const h3 = [];
+  kids.forEach((el, i) => { if (el.matches("h3.sec-title")) h3.push(i); });
+
+  // ① 有多个小节标题（编排 / 策略 / 评测这类长页）：从第 2 个小节起整段折叠。
+  //    必须连 h3 一起搬——只搬 .field 会把标题留成「空壳」，页面上看着像坏了。
+  if (h3.length >= 2) {
+    const tail = kids.slice(h3[1]);
+    // 按 h3 切段，整段判断：段里只要有一个「保存 / 删除 / 恢复」这类主操作就整段不折。
+    // 只切掉那一行会留下「标题在折叠里、控件在外面」的孤儿排版（策略页就踩过）。
+    const segs = [];
+    tail.forEach((el) => {
+      if (el.matches("h3.sec-title") || !segs.length) segs.push([el]);
+      else segs[segs.length - 1].push(el);
+    });
+    let take = 0;
+    for (const seg of segs) {
+      const risky = seg.some((el) => el.matches("button.primary, button.danger") ||
+        el.querySelector("button.primary, button.danger"));
+      if (risky) break;
+      take++;
+    }
+    const foldable = [].concat.apply([], segs.slice(0, take));
+    const groups = foldable.filter((el) => el.matches("h3.sec-title")).length;
+    if (foldable.length >= 2 && groups >= 1) {
+      const fold = document.createElement("details");
+      fold.className = "adv-fold";
+      const sm = document.createElement("summary");
+      sm.textContent = t("还有 " + groups + " 组更细的设置");
+      fold.appendChild(sm);
+      // 折叠块一律落在页面末尾：夹在「保存权重 / 影子对账」中间会打断阅读顺序
+      panel.appendChild(fold);
+      foldable.forEach((el) => fold.appendChild(el));
+      page.dataset.folded = name;
+      return;
+    }
+  }
+
+  // ② 没有小节标题的页：退化成「只折表单小节」，同样跳过带主操作的
+  const fields = Array.prototype.slice.call(page.querySelectorAll(".field"))
+    .filter((f) => !f.closest(".adv-fold"))
+    .filter((f) => !f.querySelector("button.primary, button.danger"));
+  if (fields.length <= keep) { page.dataset.folded = name; return; }
+  const rest = fields.slice(keep);
+  const fold = document.createElement("details");
+  fold.className = "adv-fold";
+  const sm = document.createElement("summary");
+  sm.textContent = t("还有 " + rest.length + " 项更细的设置");
+  fold.appendChild(sm);
+  rest[0].parentNode.insertBefore(fold, rest[0]);
+  rest.forEach((f) => fold.appendChild(f));
+  page.dataset.folded = name;
+}
+
+/* ---------------------------------------------------------------- 设置首页
+   把用户当傻瓜的第一条：**别让他先读 21 个名词再决定点哪个**。
+   设置落地的第一屏只放六件「你可能想改的事」，每张卡一句白话 + 一行当前状态：
+     用哪个模型（没选就什么都干不了，必须排第一且带状态）
+     长什么样（深浅色）
+     手机上看（扫码）
+     备份与搬家（导出/导入）
+     花了多少（用量）
+     遇到问题（帮助）
+   其余 15 项技术设置收进左栏的「更多设置」，要用的人自己会找，不用的人不该看见。
+   状态全部现读（S.orch / html 主题），取不到就显示静态副文案，绝不编数字。 */
+const SET_HOME_CARDS = [
+  { key: "models", ico: "i-layers", title: "用哪个模型", desc: "没选模型，任何任务都跑不起来", sub: "models", primary: true },
+  { key: "market", ico: "i-blocks", title: "装点本事", desc: "写作规范、工程守则、MCP 工具，装上就生效", sub: "market" },
+  { key: "appearance", ico: "i-palette", title: "长什么样", desc: "深色、浅色、字号与皮肤", sub: "appearance" },
+  { key: "phone", ico: "i-phone", title: "在手机上看", desc: "扫个码，手机上接着干", sub: "__phone" },
+  { key: "data", ico: "i-library", title: "备份与搬家", desc: "导出全部数据，换电脑不丢", sub: "data" },
+  { key: "usage", ico: "i-chart", title: "花了多少", desc: "用了多少 token、多少钱", sub: "usage" },
+  { key: "guide", ico: "i-rocket", title: "遇到问题", desc: "三分钟上手、常见问题", sub: "__guide" },
+];
+
+function setHomeStatus(key) {
+  try {
+    if (key === "models") {
+      const o = S.orch || {};
+      const name = String(o.provider_name || "").trim().replace(/^\[[^\]]+\]\s*/, "");
+      const model = String(o.model || "").trim();
+      if (!name) return { text: t("还没选，点这里"), warn: true };
+      return { text: model ? name + " · " + model : name, warn: false };
+    }
+    if (key === "appearance") {
+      const dark = document.documentElement.dataset.theme === "dark";
+      return { text: dark ? t("深色") : t("浅色"), warn: false };
+    }
+  } catch (e) { /* 状态取不到就退回静态描述，不影响点击 */ }
+  return null;
+}
+
+function renderSetHome() {
+  const grid = $("sh-grid");
+  if (!grid) return;
+  grid.innerHTML = SET_HOME_CARDS.map((c) => {
+    const st = setHomeStatus(c.key);
+    const cls = "sh-card" + (c.primary ? " is-primary" : "") + (st && st.warn ? " is-warn" : "");
+    return '<button type="button" class="' + cls + '" onclick="switchTab(\'' + c.sub + '\')">' +
+      '<span class="sh-ico"><svg class="ico" aria-hidden="true"><use href="#' + c.ico + '"></use></svg></span>' +
+      '<span class="sh-body"><b>' + esc(t(c.title)) + "</b><small>" + esc(t(c.desc)) + "</small></span>" +
+      (st ? '<span class="sh-state">' + esc(st.text) + "</span>" : "") +
+      '<svg class="ico sh-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg>' +
+      "</button>";
+  }).join("");
+}
+window.renderSetHome = renderSetHome;
+
+/* 左栏「更多设置」：技术项默认收起，点开才出现（15 项默认不看，要看的一下就找到） */
+function syncSetMoreCount() {
+  const box = $("set-advanced"), n = $("set-more-count");
+  if (!box || !n) return;
+  const c = box.querySelectorAll(".set-item").length;
+  if (c) n.textContent = String(c);
+}
+function toggleSetMore(force) {
+  const box = $("set-advanced"), btn = $("btn-set-more");
+  if (!box || !btn) return;
+  syncSetMoreCount();
+  const open = force === undefined ? box.classList.contains("hidden") : !!force;
+  box.classList.toggle("hidden", !open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  btn.classList.toggle("is-open", open);
+}
+window.toggleSetMore = toggleSetMore;
+
+function focusSettingsSearch() {
+  const el = $("settings-search");
+  if (!el) return;
+  el.focus();
+  if (el.select) el.select();
+}
+window.focusSettingsSearch = focusSettingsSearch;
+
 function enterSettings() {
-  const saved = localStorage.getItem("orch.setTab") || "";
-  switchTab(settingsNavSubs().has(saved) ? saved : "orch", "settings");
+  // 齿轮永远落到设置首页（2026-10-28）：上次停在「编排设置」就回「编排设置」，
+  // 等于每次打开设置都先撞一屏 JSON —— 新手在这里就走了。要回上次那页，从首页点。
+  syncSetMoreCount();
+  switchTab("__home", "settings");
 }
 
 window.openRun = openRun;
@@ -23619,6 +25002,7 @@ window.updDismiss = updDismiss;
 
 document.addEventListener("DOMContentLoaded", () => {
   paintWorkspaceMode();
+  initSideFold();
   // Initialize Hive3D controls independently of run data. A fresh workspace may have no
   // active run yet, but fullscreen/view controls must still be wired and usable.
   setupHiveSceneControls();
@@ -23634,6 +25018,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const filterSettings = () => {
       const query = settingsSearch.value.trim().toLocaleLowerCase();
       let matches = 0;
+      // 搜的是「全部设置」，命中项可能躺在收起的「更多设置」里 —— 有搜索词就展开，
+      // 否则搜出 0 条会让人以为功能不存在（过滤本身是 CSS 类，容器 hidden 会整体藏住）。
+      if (query) toggleSetMore(true);
       document.querySelectorAll(".side-settings .set-item").forEach((item) => {
         const haystack = [item.innerText, item.dataset.search || ""].join(" ").toLocaleLowerCase();
         const visible = !query || haystack.includes(query);
@@ -23788,10 +25175,14 @@ document.addEventListener("DOMContentLoaded", () => {
     S.rdTabPin = true;
     applyRdTabs();
     rdEnsureActiveTabData();
+    // 从「更多」里选完即收起，不留一个悬空的下拉挡着内容
+    if (b.closest("#rd-tabs-more")) toggleRdTabsMore(false);
   });
   $("rd-tabs").addEventListener("keydown", (e) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
-    const tabs = Array.from($("rd-tabs").querySelectorAll(".rd-tab:not(.hidden)"));
+    // 收起的「更多」里的页签不可见，键盘遍历必须跳过，否则焦点会跑进看不见的按钮
+    const tabs = Array.from($("rd-tabs").querySelectorAll(".rd-tab:not(.hidden)"))
+      .filter((b) => b.offsetParent !== null);
     if (!tabs.length) return;
     const current = Math.max(0, tabs.indexOf(document.activeElement));
     let next = current;
@@ -23965,7 +25356,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.querySelector("main").addEventListener("scroll", apnSyncActive, { passive: true });
   syncLangMode();
-  $("btn-menu").addEventListener("click", () => document.body.classList.toggle("side-collapsed"));
+  // 顶栏 ☰：workbench 布局下开合「覆盖式左抽屉」（左栏已不占栅格列），
+  // 其余布局仍是原来的挤压式折叠。
+  $("btn-menu").addEventListener("click", () => {
+    if (document.documentElement.dataset.layout === "workbench") { toggleSideDrawer(); return; }
+    document.body.classList.toggle("side-collapsed");
+  });
   const statusRailBtn = $("btn-status-rail");
   if (statusRailBtn) statusRailBtn.addEventListener("click", toggleStatusRail);
   applyStatusRail();
@@ -24007,9 +25403,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   })();
   // 手机抽屉：遮罩点击 / 侧栏内任何可点项（导航、任务树、设置入口）点击后都收回
-  $("drawer-mask").addEventListener("click", () => document.body.classList.add("side-collapsed"));
+  $("drawer-mask").addEventListener("click", () => { document.body.classList.add("side-collapsed"); closeSideDrawer(); });
+  // 桌面抽屉里的入口点完就收回（折叠/展开类按钮除外——点完还要看结果，收起来什么都看不见）
   $("sidebar").addEventListener("click", (e) => {
     if (e.target.closest("button, summary, .stask")) collapseDrawerIfMobile();
+    if (e.target.closest(".new-task, .qitem, .stask, .side-ws-item, .set-item, .set-back")
+      && !e.target.closest(".side-fold-btn, .side-more-toggle, .notify-toggle, .arch-toggle")) closeSideDrawer();
   });
   $("btn-new-task").addEventListener("click", () => {
     // 工作台布局：新聊天=任务表单页（居中问候+类型页签+composer 的简洁形态）；
@@ -24037,6 +25436,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // 侧栏快捷导航：主栏换成目标页，左栏任务树不动（shell="main"）。
   // 页面清单以 index.html .side-quick 的 data-page 为准，这里逐项绑 id。
   $("btn-q-home").addEventListener("click", () => switchTab("home", "main"));
+  // 左侧图标轨：第一颗回大厅，其余四颗直接进台（与点台卡同一条链路）
+  const railWsBox = $("rail-ws");
+  if (railWsBox) railWsBox.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rail-mode]");
+    if (!b) return;
+    if (!b.dataset.railMode) { if (S.tab !== "home") showHome(); leaveWorkspace(); }
+    else pickWorkspaceMode(b.dataset.railMode);
+  });
   $("btn-q-overview").addEventListener("click", () => switchTab("overview", "main"));
   $("ov-goal-create").addEventListener("click", goalCreate);
   $("ov-goal-title").addEventListener("keydown", (e) => {
@@ -24070,10 +25477,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const b = e.target.closest(".rd-qs-btn");
     const goal = $("f-goal");
     if (b && goal && b.dataset.suggest) {
+      // 起手式可以顺带指定任务类型（例：内容台的「生成一张配图」＝生图流程），
+      // 否则点了只会把文字填进去、类型还停在上一台的默认值。
+      const wantType = b.dataset.type || "";
+      if (wantType && flowAllowedHere(wantType)) pickType(wantType);
       goal.value = b.dataset.suggest;
       goal.dispatchEvent(new Event("input", { bubbles: true }));
       goal.focus();
     }
+  });
+  // 工作台工具卡：卡由 renderWorkbenchTools 动态重建，所以监听挂在不变的外层栅格上
+  const wsTools = $("rd-tool-grid");
+  if (wsTools) wsTools.addEventListener("click", (e) => {
+    const card = e.target.closest("[data-ws-tool]");
+    if (card) openWorkspaceTool(card.dataset.wsTool);
   });
   // 状态栏「运行队列」→ 运行记录页
   const queueLink = $("status-queue-link");
@@ -24255,6 +25672,22 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleLangMenu(false);
   });
+  // 「更多」菜单与详情页签「更多」同款：点外 / Escape 收起
+  document.addEventListener("click", (e) => {
+    const menu = $("top-more"), btn = $("btn-top-more");
+    if (menu && !menu.classList.contains("hidden") &&
+        !menu.contains(e.target) && !(btn && btn.contains(e.target))) toggleTopMore(false);
+    const tmenu = $("rd-tabs-more"), tbtn = $("rd-tabs-more-btn");
+    if (tmenu && !tmenu.classList.contains("hidden") &&
+        !tmenu.contains(e.target) && !(tbtn && tbtn.contains(e.target))) toggleRdTabsMore(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    toggleTopMore(false);
+    toggleRdTabsMore(false);
+  });
+  // 页签「更多」是 fixed 定位（贴在按钮下方）：页面一滚就与按钮脱开，直接收起更稳
+  window.addEventListener("scroll", () => toggleRdTabsMore(false), true);
   $("f-mode").addEventListener("change", () => {
     $("f-manual-only").classList.toggle("hidden", $("f-mode").value !== "manual");
     refreshEstimate();
@@ -24288,6 +25721,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape" && !$("modal").classList.contains("hidden")) closeModal();
     // 日志抽屉：Esc 收起（最底层，放在弹窗之后）
     if (e.key === "Escape" && !$("rd-log").classList.contains("hidden")) window.rdLogClose();
+    // 左抽屉再下一层：上面都关了，才轮到它。
+    if (e.key === "Escape" && $("rd-log").classList.contains("hidden") && wsDrawerOpen()) closeSideDrawer();
   });
   // 快捷键：Ctrl/Cmd+K 命令面板；N 新建任务（正在输入或弹框打开时不劫持）
   document.addEventListener("keydown", (e) => {
@@ -24823,6 +26258,633 @@ function rememberWorkspaceType(id) {
   saveWorkspaceChoice();
 }
 
+/* 大厅与台内两套固定文案。台内文案在 WORKSPACE_MODES 里，这里只管大厅。 */
+const LOBBY_TITLE = "今天做哪类活？";
+const LOBBY_SUB = "说出你要什么，它自己拆步骤、调用工具，把能直接用的结果交给你。五个台只是分工不同，随时能换。";
+const ALLTASKS_TITLE = "所有工作台的任务，一屏看完。";
+const ALLTASKS_SUB = "按工作台或状态筛；点一行进详情，不用切台也能跟进别处的活。";
+
+/* 工作台首页的模式卡片。
+   大厅态＝四张大卡（图标 + 名称 + 一句话 + 箭头），点一张就是「进这个台」；
+   台内态＝同一组按钮收成一行台签（只留图标 + 名字），随时可以换台。 */
+function renderModeBar() {
+  const bar = $("rd-mode-bar");
+  if (!bar) return;
+  bar.classList.toggle("is-compact", homeEntered);
+  bar.innerHTML = Object.keys(WORKSPACE_MODES).map((key) => {
+    const def = WORKSPACE_MODES[key];
+    const on = key === workspaceChoice.mode && homeView !== "all";
+    return '<button type="button" class="rd-mode-card' + (on ? " is-on" : "") + '"' +
+      ' role="tab" aria-selected="' + String(on) + '" data-mode="' + esc(key) + '"' +
+      ' title="' + esc(t(def.label) + t(" · ") + t(def.desc)) + '"' +
+      ' onclick="pickWorkspaceMode(\'' + key + '\')">' +
+      '<span class="rd-mc-ico"><svg class="ico" aria-hidden="true"><use href="#' + esc(def.icon) + '"></use></svg></span>' +
+      '<span class="rd-mc-body"><b>' + esc(t(def.label)) + "</b>" +
+      "<small>" + esc(t(def.desc)) + "</small>" +
+      (homeEntered ? "" : '<span class="rd-mc-tags">' +
+        (def.tags || []).map((x) => "<i>" + esc(t(x)) + "</i>").join("") + "</span>") +
+      "</span>" +
+      // 箭头只在大厅出现：提示「点它＝进去」，台内台签不需要这层暗示
+      (homeEntered ? "" : '<svg class="ico rd-mc-go" aria-hidden="true"><use href="#i-arrow-right"></use></svg>') +
+      "</button>";
+  }).join("");
+  // 「全部任务」入口不进卡片栅格：渲染到标题行的右槽，和日期同排
+  const entryBox = $("rd-mode-entry");
+  if (entryBox) {
+    entryBox.innerHTML = '<button type="button" class="rd-alltasks-entry' + (homeView === "all" ? " is-on" : "") + '"' +
+      ' onclick="showAllTasks()" title="' + esc(t("所有工作台的任务汇总到一屏")) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>' +
+      '<span>' + esc(t("全部任务")) + "</span></button>";
+  }
+}
+
+/* 顶上两块标题（大厅一块、台内一块）按当前状态和二选一写文字。
+   全部任务视图借用大厅那块显示汇总标题——它本来也是「跨台」的视角。 */
+function renderHomeHeads() {
+  const all = homeView === "all";
+  const lobbyTitle = $("rd-lobby-title"), lobbySub = $("rd-lobby-sub");
+  if (all) {
+    if (lobbyTitle) {
+      lobbyTitle.dataset.i18n = ALLTASKS_TITLE;
+      lobbyTitle.textContent = t(ALLTASKS_TITLE);
+    }
+    if (lobbySub) {
+      lobbySub.dataset.i18n = ALLTASKS_SUB;
+      lobbySub.textContent = t(ALLTASKS_SUB);
+    }
+    return;
+  }
+  if (lobbyTitle) {
+    lobbyTitle.dataset.i18n = LOBBY_TITLE;
+    lobbyTitle.textContent = t(LOBBY_TITLE);
+  }
+  if (lobbySub) {
+    lobbySub.dataset.i18n = LOBBY_SUB;
+    lobbySub.textContent = t(LOBBY_SUB);
+  }
+  const mode = WORKSPACE_MODES[workspaceChoice.mode] || WORKSPACE_MODES.all;
+  const wsTitle = $("rd-ws-title"), wsSub = $("rd-ws-sub");
+  // 标题＝「当前在做的那个东西」的名字，不是欢迎语。参考稿的台内抬头永远是
+  // 具体对象（书名/标书名/仓库名），用户一眼知道自己站在哪一摊事上。
+  const fact = wsHeadObject(workspaceChoice.mode);
+  if (wsTitle) {
+    wsTitle.dataset.i18n = fact ? "" : mode.label;
+    wsTitle.textContent = fact ? fact.title : t(mode.label) + t("台");
+  }
+  if (wsSub) {
+    wsSub.dataset.i18n = fact ? "" : mode.hint;
+    wsSub.textContent = fact ? fact.sub : t(mode.hint);
+  }
+}
+
+/* 台内抬头的「对象」：最近动过的那一条活的标题 + 它的关键事实（状态/多久前/第几步）。
+ * 标题与下面列表同源（都取 runs），不会出现「标题说 A、列表说没有任务」的自相矛盾。
+ * 没活时返回 null，由调用方退回该台的名称。 */
+function wsHeadObject(mode) {
+  const runs = runsForWorkspace(mode);
+  const r = runs[0];
+  if (!r) return null;
+  // 只在「这会儿真在跑」时才把抬头让给那条活：否则一进小说台，最大的一行字是
+  // 「拆分回归连载 · 失败 · 7 小时」——用户以为自己打开了一个坏掉的应用。
+  // 跑完/失败的历史留在下面列表里，抬头回到台名 + 一句该干什么（2026-10-28）
+  if (r.status !== "running" && r.status !== "queued") return null;
+  const task = taskById(r.task_id) || {};
+  const title = String(r.title || task.title || "").trim();
+  if (!title) return null;
+  const st = r.status || "";
+  const state = st === "running" ? t("运行中") : st === "queued" ? t("排队中")
+    : st === "failed" ? t("失败") : st === "timeout" ? t("超时")
+    : st === "cancelled" ? t("已取消") : t("已完成");
+  const total = r.step_count || 0;
+  const step = (r.current_step && r.current_step.n) || 0;
+  const bits = [state];
+  if (total) bits.push(t("第 ") + step + "/" + total + t(" 步"));
+  const when = relTime(r.created_at || r.started_at || "");
+  if (when) bits.push(when);
+  return { title, sub: bits.join(" · ") };
+}
+
+/* 大厅 ⇄ 台内：只切显隐，不重建 compositor——真表单一直住在 #rd-input-slot 里，
+   进出台都不丢草稿。总任务视图归 paintHomeView 管，这里让位。 */
+/* 左栏台专属导航（2026-10-28）。
+   进了台，左栏不该还是四个台共用的那三颗按钮——那是「整个界面都换了」最容易砸掉的一处。
+   条目取 WORKSPACE_MODES[mode].tools，与主页工具区同一份定义：不新增事实、不放假入口。
+   通用台（all）不显示：它的定位就是什么都干，硬塞四个专属入口反而是废话。 */
+function renderSideWsNav() {
+  const box = $("side-ws-nav");
+  if (!box) return;
+  const on = homeEntered && homeView !== "all" && workspaceChoice.mode !== "all";
+  box.classList.toggle("hidden", !on);
+  // 「项目」在台内改叫书架/交付单/仓库：左栏标题是最便宜的「界面真的换了」信号。
+  // 离开台内要还原成「项目」，否则退回大厅左栏还顶着书架。
+  // 标题文字在内层 span 上：外层是折叠按钮，直接写 textContent 会把箭头图标一起清掉
+  const projLabel = $("side-projects-label");
+  if (projLabel) {
+    const word = on ? (WS_SIDE_LABEL[workspaceChoice.mode] || "项目") : "项目";
+    if (projLabel.dataset.i18n !== word) {
+      projLabel.dataset.i18n = word;
+      projLabel.textContent = t(word);
+    }
+  }
+  if (!on) {
+    if (box.innerHTML) box.innerHTML = "";
+    return;
+  }
+  const def = WORKSPACE_MODES[workspaceChoice.mode];
+  if (!def) return;
+  const ids = def.tools || [];
+  const head = '<div class="side-ws-head">' +
+    '<span class="side-ws-chip">' + esc(t(def.label)) + "</span>" +
+    '<span class="side-ws-caption">' + esc(t("本台常用")) + "</span></div>";
+  box.innerHTML = head + ids.map((id) => {
+    const tool = WS_TOOL_LIB[id];
+    if (!tool) return "";
+    return '<button type="button" class="qitem side-ws-item" data-ws-tool="' + esc(id) + '"' +
+      ' title="' + esc(t(tool.label) + t(" · ") + t(tool.desc)) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#' + esc(tool.icon) + '"></use></svg>' +
+      "<span>" + esc(t(tool.label)) + "</span></button>";
+  }).join("");
+  box.querySelectorAll("[data-ws-tool]").forEach((btn) => {
+    btn.addEventListener("click", () => openWorkspaceTool(btn.dataset.wsTool));
+  });
+}
+
+/* 台内的左栏标题语义：项目在不同台叫法不同——小说是「书架」、成稿是「交付单」、编码是「仓库」。
+   这是最省力也最有效的一处信号：用户扫一眼左栏就知道「界面真的换了」，而不是只换了个标题。 */
+const WS_SIDE_LABEL = { novel: "书架", dossier: "交付单", content: "选题", code: "仓库" };
+
+/* 顶栏的台招牌动作：取该台工具第 1 项（小说=扫榜选题、成稿=要件核对、编码=看板）。
+   与左栏、工具区同一份 WS_TOOL_LIB，不对同一件事发明第二种说法。 */
+function renderTopWsAction() {
+  const btn = $("btn-ws-action"), txt = $("btn-ws-action-txt");
+  if (!btn || !txt) return;
+  const on = homeEntered && homeView !== "all" && workspaceChoice.mode !== "all";
+  if (!on) { btn.classList.add("hidden"); return; }
+  const def = WORKSPACE_MODES[workspaceChoice.mode];
+  const id = (def && def.tools || [])[0];
+  const tool = id && WS_TOOL_LIB[id];
+  if (!tool) { btn.classList.add("hidden"); return; }
+  btn.dataset.wsTool = id;
+  txt.textContent = t(tool.label);
+  btn.title = t(tool.label) + t(" · ") + t(tool.desc);
+  btn.classList.remove("hidden");
+}
+
+function wsTopAction() {
+  const btn = $("btn-ws-action");
+  if (btn && btn.dataset.wsTool) openWorkspaceTool(btn.dataset.wsTool);
+}
+window.wsTopAction = wsTopAction;
+
+/* 主栏区块顺序按台排（2026-10-28）：四个台不只要换内容，先后顺序也照着「这个台先干什么」走。
+   通用＝直接说需求；小说＝先看进度再写；成稿＝先查要件再动笔；编码＝先盯看板与任务再提需求。
+   用 DOM 重排而不是 CSS order：容器里原来靠相邻 margin 折叠出间距，改 flex 会让间距翻倍。
+   节点是「搬」不是「重建」，输入框里的草稿跟着走，不丢。 */
+const WS_BLOCK_ORDER = {
+  all: ["input", "qs", "tools", "tasks"],
+  novel: ["domain", "input", "qs", "tools", "tasks"],
+  dossier: ["domain", "tools", "qs", "input", "tasks"],
+  content: ["input", "qs", "tools", "tasks"],
+  code: ["domain", "tools", "tasks", "input", "qs"],
+};
+
+function applyWsBlockOrder() {
+  const view = $("rd-ws-view");
+  if (!view) return;
+  const mode = workspaceChoice.mode;
+  if (view.dataset.blockOrder === mode) return;
+  const nodes = {
+    domain: $("rd-ws-domain"),
+    input: view.querySelector(".rd-input-card"),
+    qs: $("rd-quick-start"),
+    tools: $("rd-tools"),
+    tasks: view.querySelector(".rd-recent-tasks"),
+  };
+  const order = WS_BLOCK_ORDER[mode] || WS_BLOCK_ORDER.all;
+  order.forEach((key) => {
+    const node = nodes[key];
+    if (node) view.appendChild(node);
+  });
+  view.dataset.blockOrder = mode;
+}
+
+/* 左栏项目树折叠。2026-10-29 六改：左栏从「覆盖抽屉」改成常驻导航列以后，
+   树默认展开——208px 的列里空着一大片比「workdir 名有噪音」更难看，而且
+   常驻左栏的下半屏本来就该是「最近的活」（WorkBuddy 左栏同样是项目/会话列表）。
+   嫌长点标题收起，选择照旧记在本机。 */
+function syncSideFold() {
+  const box = $("side-projects"), btn = $("btn-side-fold");
+  const folded = !!(box && box.classList.contains("is-folded"));
+  if (btn) btn.setAttribute("aria-expanded", String(!folded));
+}
+function toggleSideFold() {
+  const box = $("side-projects");
+  if (!box) return;
+  box.classList.toggle("is-folded");
+  try {
+    localStorage.setItem("orch.side-fold", box.classList.contains("is-folded") ? "folded" : "open");
+  } catch (e) { /* 隐私模式下 localStorage 会抛，收起状态退化成「本次有效」 */ }
+  syncSideFold();
+}
+function initSideFold() {
+  const box = $("side-projects");
+  if (!box) return;
+  let saved = "";
+  try { saved = localStorage.getItem("orch.side-fold") || ""; } catch (e) {}
+  // 只有用户明确收起过才收起
+  if (saved === "folded") box.classList.add("is-folded");
+  syncSideFold();
+}
+
+/* 大厅底部的「最近的活」。大厅原来只有四张台卡，1440 视口下下半屏一片空白；
+   而人打开工具后第二常做的事就是接着上次没做完的继续——把这件事摆到选台下面。 */
+function renderLobbyRecent() {
+  const box = $("rd-lobby-recent");
+  if (!box) return;
+  const on = !homeEntered && homeView !== "all"
+    && S.tab === "home" && !document.body.classList.contains("settings-mode");
+  // 大厅同样按任务去重：同一个任务的四次重试不该占满「最近的活」
+  const seen = new Set();
+  const runs = ((S.state && S.state.runs) || []).filter((r) => {
+    const k = String(r.title || r.task_id || "?");
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 4);
+  if (!on || !runs.length) {
+    box.classList.toggle("hidden", true);
+    return;
+  }
+  box.classList.remove("hidden");
+  const list = $("rd-lobby-recent-list");
+  // 一律用 step 形态：这里是跨台的活，套任何一台的口径都不合适
+  const html = runs.map((r) => wsTaskRow("step", r)).join("");
+  if (list && list.dataset.sig !== html) {
+    list.dataset.sig = html;
+    list.innerHTML = html;
+  }
+}
+
+function paintHomeEntered() {
+  const lobby = $("rd-lobby"), head = $("rd-entered-head");
+  const inWs = homeEntered && homeView !== "all";
+  if (lobby) lobby.classList.toggle("hidden", homeEntered && homeView !== "all");
+  if (head) head.classList.toggle("hidden", !inWs);
+  const view = $("rd-ws-view");
+  if (view) view.classList.toggle("hidden", !inWs);
+  renderModeBar();   // 台卡形状随态变（大厅带箭头 / 台内收成台签）
+  renderSideWsNav(); // 左栏跟着换台：专属导航 + 台色
+  renderTopWsAction(); // 顶栏招牌动作：进台才出现
+  applyWsBlockOrder(); // 主栏区块顺序：四个台各按「先干什么」排
+  renderWsDomain();  // 台内主区块（书架/交付单/工程现场）：进台才摆出来
+  renderLobbyRecent(); // 大厅底部的「最近的活」只在大厅出现
+  renderRailWs();      // 图标轨高亮：大厅态亮第一颗，台内亮当前台
+}
+
+/* 工作台布局（#page-home）的台内标题、快速开始模板、本台任务标题跟当前模式走。 */
+function renderWorkbenchHomeForMode() {
+  renderHomeHeads();
+  const mode = WORKSPACE_MODES[workspaceChoice.mode] || WORKSPACE_MODES.all;
+  // 标题不再拼台名：顶栏与图标轨都已经说了「你在哪个台」，这里只说明这块是什么
+  const recentTitle = $("rd-recent-title");
+  if (recentTitle) recentTitle.textContent = t("最近任务");
+  const box = $("rd-qs-buttons");
+  if (box && Array.isArray(mode.starts)) {
+    // 起手式卡片（2026-10-28）：原来四台是同款灰胶囊、只换文字，视觉上等于没变。
+    // 现在每张卡＝图标 + 标题 + 一句「点了会发生什么」，四台各有各的四张。
+    // 仍复用 rd-qs-btn 类：点击委托挂在 #rd-qs-buttons 上按这个类找按钮，行为不用改。
+    box.innerHTML = mode.starts.map((s) =>
+      '<button type="button" class="rd-qs-btn rd-start-card" data-suggest="' + esc(s.suggest) + '"' +
+      (s.type ? ' data-type="' + esc(s.type) + '"' : "") + '>' +
+      '<span class="rd-start-ico"><svg class="ico" aria-hidden="true"><use href="#' +
+      esc(s.icon || "i-feather") + '"></use></svg></span>' +
+      '<span class="rd-start-body"><b>' + esc(t(s.label)) + "</b>" +
+      (s.desc ? "<small>" + esc(t(s.desc)) + "</small>" : "") + "</span>" +
+      '<svg class="ico rd-start-go" aria-hidden="true"><use href="#i-arrow-right"></use></svg>' +
+      "</button>").join("");
+  }
+}
+
+/* 工作台工具区：四个工作台各渲染一组自己的入口（WORKSPACE_MODES[mode].tools）。
+   切台时整组换掉——这是「四台不是一个模子」最直观的一处，所以不做折叠收起。
+   全部走 data-ws-tool 事件委托（卡是动态生成的，不写 inline onclick）。 */
+/* 右栏「本台概览」：四个能对得上的真数字（参考稿右栏的用量四宫格）。
+ * 只数本台的 runs，不编指标、不折算——没有样本就显示 0，说明这里确实还没跑过。 */
+function renderWsStats() {
+  const box = $("rd-ws-stats");
+  if (!box) return;
+  const runs = runsForWorkspace(workspaceChoice.mode);
+  let running = 0, done = 0, bad = 0, queued = 0;
+  runs.forEach((r) => {
+    const g = statusGroupOf(r.status);
+    if (g === "running") running++;
+    else if (g === "failed") bad++;
+    else if (g === "queued") queued++;
+    else done++;
+  });
+  const cells = [
+    [t("运行中"), running], [t("已完成"), done],
+    [t("待处理"), bad + queued], [t("本台记录"), runs.length],
+  ].filter(([, n]) => n > 0);   // 0 的格子就是噪音（「0 运行中」等于没说），只留真有数的那几个
+  // 一个数都没跑过时，四块「0」等于什么都没说，还占着右栏最显眼的位置。
+  // 直接整块收起，右栏第一眼就是能用的工具。
+  if (box) box.classList.toggle("is-empty", runs.length === 0);
+  const html = cells.map(([label, n]) =>
+    '<div class="rd-ws-stat"><b>' + esc(String(n)) + "</b><span>" + esc(label) + "</span></div>").join("");
+  if (box.dataset.sig === html) return;
+  box.dataset.sig = html;
+  box.innerHTML = html;
+}
+
+function renderWorkbenchTools() {
+  const grid = $("rd-tool-grid");
+  if (!grid) return;
+  renderWsStats();
+  const def = WORKSPACE_MODES[workspaceChoice.mode] || WORKSPACE_MODES.all;
+  const ids = def.tools || WORKSPACE_MODES.all.tools;
+  grid.innerHTML = ids.map((id) => {
+    const tool = WS_TOOL_LIB[id];
+    if (!tool) return "";
+    const ico = '<span class="rd-tool-ico"><svg class="ico" aria-hidden="true"><use href="#' +
+      esc(tool.icon) + '"></use></svg></span>';
+    // 通道体检卡：摘要与徽标留着 id，renderHomeHealth 认这两个 id 贴实时结论
+    const sub = tool.live
+      ? '<i id="rd-avail-summary">' + esc(t(tool.desc)) + "</i>"
+      : "<i>" + esc(t(tool.desc)) + "</i>";
+    const badge = tool.live ? '<span class="rd-tool-badge" id="rd-avail-badge"></span>' : "";
+    return '<button type="button" class="rd-tool' + (tool.live ? " rd-tool-health" : "") + '"' +
+      ' data-ws-tool="' + esc(id) + '"' +
+      ' title="' + esc(t(tool.label) + t(" · ") + t(tool.desc)) + '">' + ico +
+      '<span class="rd-tool-text"><b>' + esc(t(tool.label)) + "</b>" + sub + "</span>" +
+      badge +
+      '<svg class="ico rd-tool-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg></button>';
+  }).join("");
+  // 工具区标题 =「{台名}工具」。台名单独一个 span，data-i18n 一起换，
+  // 切语言时 applyI18n 才翻得对（拼接串没有词条）。
+  const modeLabel = $("rd-tools-mode");
+  if (modeLabel) {
+    modeLabel.dataset.i18n = def.label;
+    modeLabel.textContent = t(def.label);
+  }
+  // 卡是刚重建的，体检结论要贴回去（有缓存就不重拉，见 homeHealthRefresh）
+  if (ids.indexOf("health") >= 0) homeHealthRefresh();
+}
+window.renderWorkbenchTools = renderWorkbenchTools;
+
+/* 工具卡点击：page → 切到那一页；create → 填好成形指令并选好类型（不自动提交，
+   用户还得自己点「开始」，与快速开始的语义一致）。 */
+function openWorkspaceTool(id) {
+  const tool = WS_TOOL_LIB[id];
+  if (!tool) return;
+  if (tool.page) { switchTab(tool.page); return; }
+  if (!tool.create) return;
+  const goal = $("f-goal");
+  if (goal && tool.suggest) {
+    goal.value = tool.suggest;
+    goal.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (flowAllowedHere(tool.create)) pickType(tool.create);
+  if (goal) goal.focus();
+  toast(t("已填进输入框，确认后点开始"));
+}
+window.openWorkspaceTool = openWorkspaceTool;
+
+/* ===== 台内主区块（domain）：按台换页 =====
+   进台看到的是「另一张页」，不是同一页换个配色：小说台是书架（一本书一张卡，
+   带字数进度）、成稿台是交付单（一份稿一张卡）、编码台是工程现场（一个仓库
+   一张卡，带运行分布）。通用台不摆——什么都干的台，先让用户把事说出来。
+   首位永远是「新建」卡：第一次来的人不用读说明就知道从哪下手。
+   数据全部取自 /api/state 与 /api/writing/counts 的真实任务，不编数字；
+   没有就老实写空态，并告诉用户第一句话该往哪说。 */
+
+/* 新建卡：选好该台默认类型、焦点交给输入框。不预填指令——预填的半句话
+   用户还得删，类型本身已经把意图带足了。 */
+function wsDomainNewCard(label, desc, type) {
+  return '<button type="button" class="rd-domain-new" onclick="wsDomainStart(\'' + jsq(type) + '\')">' +
+    '<span class="rd-domain-new-ico"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg></span>' +
+    '<span class="rd-domain-new-text"><b>' + esc(t(label)) + "</b><small>" + esc(t(desc)) + "</small></span>" +
+    "</button>";
+}
+
+function wsDomainStart(type) {
+  if (flowAllowedHere(type)) pickType(type);
+  const goal = $("f-goal");
+  if (goal) goal.focus();
+  toast(t("类型已选好，在输入框写下要求就能开始"));
+}
+window.wsDomainStart = wsDomainStart;
+
+function wsRunBadge(st) {
+  const g = statusGroupOf(st);
+  const tone = g === "running" ? "run" : g === "failed" ? "bad"
+    : (st === "queued" || st === "cancelled") ? "wait" : "ok";
+  const label = st === "running" ? t("运行中") : st === "queued" ? t("排队中")
+    : st === "failed" ? t("失败") : st === "timeout" ? t("超时")
+    : st === "cancelled" ? t("已取消") : t("已完成");
+  return '<span class="rd-domain-chip ' + tone + '">' + esc(label) + "</span>";
+}
+
+function wsDomainHead(title, sub) {
+  return '<div class="rd-domain-head"><b>' + esc(t(title)) + "</b>" +
+    (sub ? "<span>" + esc(sub) + "</span>" : "") + "</div>";
+}
+
+function wsDomainEmpty(text, hint) {
+  return '<div class="rd-domain-empty"><p>' + esc(t(text)) + "</p>" +
+    (hint ? "<small>" + esc(t(hint)) + "</small>" : "") + "</div>";
+}
+
+function wsDomainCardHtml(cls, runId, title, st, bar, meta) {
+  return '<button type="button" class="rd-domain-card ' + esc(cls) + '" onclick="homeOpenRun(\'' +
+      jsq(runId || "") + '\')" title="' + esc(String(title || "")) + '">' +
+    '<span class="rd-domain-top"><b>' + esc(String(title || "")) + "</b>" + wsRunBadge(st) + "</span>" +
+    (bar || "") +
+    '<span class="rd-domain-bottom"><span class="rd-domain-meta">' + esc(String(meta || "")) + "</span>" +
+    '<svg class="ico rd-domain-go" aria-hidden="true"><use href="#i-chevron-r"></use></svg></span>' +
+    "</button>";
+}
+
+/* 书的身份＝工作目录（一本书一个目录）；「ws」这类无识别度的临时目录名
+   退回标题里的《书名》，再退回任务标题。 */
+function wsBookName(task) {
+  const dir = wsRepoName(task && task.workdir);
+  const generic = !dir || dir === "ws" || dir === "workdir" || dir === "demo-workdir";
+  if (!generic) return dir;
+  const m = String((task && task.title) || "").match(/《(.+?)》/);
+  return m ? m[1] : String((task && task.title) || (task && task.id) || "");
+}
+
+/* 一组运行折成一张对象卡：同一对象多次运行取最近一次当门面，重跑次数记进 meta。
+   keyOf 决定「什么算同一个」：书按 workdir，稿按任务。 */
+function wsGroupRuns(runs, keyOf) {
+  const map = new Map();
+  runs.forEach((r) => {
+    const task = taskById(r.task_id) || {};
+    const key = keyOf(task, r);
+    const prev = map.get(key);
+    if (!prev) { map.set(key, { run: r, task, count: 1 }); return; }
+    prev.count++;
+    if (String(r.created_at || "").localeCompare(String(prev.run.created_at || "")) > 0) prev.run = r;
+  });
+  return Array.from(map.values()).sort((a, b) =>
+    String(b.run.created_at || "").localeCompare(String(a.run.created_at || "")));
+}
+
+/* 小说台＝书架。扫榜不是书，留在下面的运行记录里。 */
+function wsNovelShelf() {
+  const runs = runsForWorkspace("novel").filter((r) => {
+    const task = taskById(r.task_id);
+    return task && taskTypeOf(task) !== "rank_scan";
+  });
+  const rows = wsGroupRuns(runs, (task, r) => String(task.workdir || task.title || r.task_id || r.id));
+  wsWritingFetch(rows.slice(0, 20).map((b) => b.run.task_id));
+  let writing = 0;
+  rows.forEach((b) => { if (statusGroupOf(b.run.status) === "running") writing++; });
+  const head = wsDomainHead("书架", rows.length ? t("{0} 本 · 在写 {1}", rows.length, writing) : "");
+  if (!rows.length) {
+    return head + '<div class="rd-domain-grid">' +
+      wsDomainNewCard("开新书", "短篇、连载、剧本，从一个设定开始", "short_story") + "</div>" +
+      wsDomainEmpty("书架还是空的", "点上面的「开新书」，或在下面写一句「写一个……的故事」");
+  }
+  const cards = rows.map((b) => {
+    const st = b.run.status || "";
+    const dead = st === "failed" || st === "cancelled" || st === "timeout";
+    const c = wsWritingOf(b.run.task_id);
+    const known = !!(c && c.known);
+    const meta = [];
+    let bar = "";
+    if (known && !dead) {
+      meta.push(fmtWordsZh(c.words));
+      if (c.chapters) meta.push(c.chapters + t(" 章"));
+      const target = Number(c.target) || 0;
+      if (target) {
+        meta.push(t("目标 ") + fmtWordsZh(target));
+        const pct = Math.min(100, Math.max(2, Math.round((Number(c.words) || 0) / target * 100)));
+        bar = '<span class="rd-book-bar"><span class="rd-book-track"><i style="width:' + pct + '%"></i></span>' +
+          '<span class="rd-book-pct">' + pct + "%</span></span>";
+      }
+    }
+    if (b.count > 1) meta.push(t("{0} 轮", b.count));
+    meta.push(relTime(b.run.created_at || ""));
+    return wsDomainCardHtml("rd-book-card", b.run.id, wsBookName(b.task), st, bar, meta.filter(Boolean).join(" · "));
+  }).join("");
+  return head + '<div class="rd-domain-grid">' +
+    wsDomainNewCard("开新书", "短篇、连载、剧本，从一个设定开始", "short_story") + cards + "</div>";
+}
+
+/* 成稿台＝交付单。一份稿一个任务；要件齐全度在详情页看，列表只说交的是什么、写到哪。 */
+function wsDossierBoard() {
+  const rows = wsGroupRuns(runsForWorkspace("dossier"),
+    (task, r) => String(task.id || r.task_id || r.id));
+  wsWritingFetch(rows.slice(0, 20).map((d) => d.run.task_id));
+  let running = 0;
+  rows.forEach((d) => { if (statusGroupOf(d.run.status) === "running") running++; });
+  const head = wsDomainHead("交付单", rows.length ? t("{0} 份稿件 · 运行中 {1}", rows.length, running) : "");
+  if (!rows.length) {
+    return head + '<div class="rd-domain-grid">' +
+      wsDomainNewCard("起草新文档", "标书、方案、周报，一句话起稿", "bid_doc") + "</div>" +
+      wsDomainEmpty("交付单还是空的", "点上面的「起草新文档」，在下面写一句「起草技术标书要点」");
+  }
+  const cards = rows.map((d) => {
+    const st = d.run.status || "";
+    const dead = st === "failed" || st === "cancelled" || st === "timeout";
+    const fd = d.task.type ? flowById(d.task.type) : null;
+    const kindName = d.run.flow_name || (fd && t(fd.name)) || "";
+    const c = wsWritingOf(d.run.task_id);
+    const known = !!(c && c.known);
+    const meta = [];
+    if (kindName) meta.push(kindName);
+    if (known && !dead) meta.push(fmtWordsZh(c.words));
+    if (d.count > 1) meta.push(t("{0} 轮", d.count));
+    meta.push(relTime(d.run.created_at || ""));
+    return wsDomainCardHtml("rd-doc-card", d.run.id, d.run.title || d.task.title || d.task.id, st,
+      "", meta.filter(Boolean).join(" · "));
+  }).join("");
+  return head + '<div class="rd-domain-grid">' +
+    wsDomainNewCard("起草新文档", "标书、方案、周报，一句话起稿", "bid_doc") + cards + "</div>";
+}
+
+/* 编码台＝工程现场。一个仓库一张卡，卡上是运行分布；整批活的全景在看板。 */
+function wsCodeSites() {
+  const sites = new Map();
+  runsForWorkspace("code").forEach((r) => {
+    const task = taskById(r.task_id) || {};
+    const key = String(task.workdir || task.title || r.task_id || r.id);
+    let s = sites.get(key);
+    if (!s) {
+      s = { run: r, repo: "", running: 0, done: 0, bad: 0 };
+      sites.set(key, s);
+    }
+    const g = statusGroupOf(r.status);
+    if (g === "running") s.running++;
+    else if (g === "failed") s.bad++;
+    else s.done++;
+    if (String(r.created_at || "").localeCompare(String(s.run.created_at || "")) > 0) s.run = r;
+    if (!s.repo) s.repo = wsRepoName(task.workdir) || String(task.title || "");
+  });
+  const rows = Array.from(sites.values()).sort((a, b) =>
+    String(b.run.created_at || "").localeCompare(String(a.run.created_at || "")));
+  let running = 0;
+  rows.forEach((s) => { running += s.running; });
+  const head = wsDomainHead("工程现场", rows.length ? t("{0} 个仓库 · 运行中 {1}", rows.length, running) : "");
+  // 还没有任何工程时不摆这块：下面就是输入框，「新建编码任务」卡片与虚线空状态
+  // 反而在同一个动作上说三遍。有仓库了再摆出来当现场概览。
+  if (!rows.length) return "";
+  const cards = rows.map((s) => {
+    const bits = [];
+    if (s.running) bits.push(t("运行中") + " " + s.running);
+    if (s.bad) bits.push(t("失败") + " " + s.bad);
+    if (s.done) bits.push(t("已完成") + " " + s.done);
+    bits.push(relTime(s.run.created_at || ""));
+    return wsDomainCardHtml("rd-repo-card", s.run.id, s.repo || t("未设目录"), s.run.status || "",
+      "", bits.filter(Boolean).join(" · "));
+  }).join("");
+  return head + '<div class="rd-domain-grid">' +
+    wsDomainNewCard("新建编码任务", "描述要实现的功能或要修的问题", "code") + cards + "</div>";
+}
+
+function renderWsDomain() {
+  const box = $("rd-ws-domain");
+  if (!box) return;
+  const mode = workspaceChoice.mode;
+  const on = homeEntered && homeView !== "all" && mode !== "all" &&
+    S.tab === "home" && !document.body.classList.contains("settings-mode");
+  const html = !on ? ""
+    : mode === "novel" ? wsNovelShelf()
+    : mode === "dossier" ? wsDossierBoard()
+    : mode === "code" ? wsCodeSites() : "";
+  // 同内容不重画：轮询里反复调到，重建会打断 hover 与焦点
+  if (box.dataset.sig === html) return;
+  box.dataset.sig = html;
+  box.innerHTML = html;
+  box.classList.toggle("hidden", !html);
+}
+window.renderWsDomain = renderWsDomain;
+
+/* 左侧图标轨（46px）：大厅 + 四个台。原来这一列是 216px 的整条左栏，台内页上它
+ * 90% 的内容与主区重复（台导航↔工具区、书架↔在写书、工作台↔全部任务），
+ * 换成五颗图标后同一个决定只要一个动作：点哪个台就去哪个台。 */
+function renderRailWs() {
+  const box = $("rail-ws");
+  if (!box) return;
+  const inLobby = !homeEntered || homeView === "all";
+  const items = [{ key: "", icon: "i-home", label: "工作台" }].concat(
+    Object.keys(WORKSPACE_MODES).map((k) => ({
+      key: k, icon: WORKSPACE_MODES[k].icon, label: WORKSPACE_MODES[k].label,
+    })));
+  const html = items.map((it) => {
+    const on = inLobby && !it.key ? true : (!inLobby && it.key === workspaceChoice.mode);
+    return '<button type="button" class="rail-ws-btn' + (on ? " active" : "") +
+      '" data-rail-mode="' + esc(it.key) + '" role="tab" aria-selected="' + (on ? "true" : "false") +
+      '" title="' + esc(t(it.label)) + '" aria-label="' + esc(t(it.label)) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#' + esc(it.icon) + '"></use></svg></button>';
+  }).join("");
+  if (box.dataset.sig === html) return;
+  box.dataset.sig = html;
+  box.innerHTML = html;
+}
+window.renderRailWs = renderRailWs;
+
 function paintWorkspaceMode() {
   document.documentElement.dataset.workspaceMode = workspaceChoice.mode;
   const label = $("brand-mode");
@@ -24836,6 +26898,11 @@ function paintWorkspaceMode() {
     button.setAttribute("aria-checked", String(selected));
   });
   cmpGreeting();
+  renderWorkbenchHomeForMode();
+  renderWorkbenchTools();
+  renderWsDomain();
+  paintHomeEntered();   // 含 renderModeBar：台卡形状取决于「大厅还是台内」
+  renderRailWs();       // 图标轨高亮跟着「大厅/台内」与当前台走
 }
 
 function pickWorkspaceMode(mode) {
@@ -24846,24 +26913,281 @@ function pickWorkspaceMode(mode) {
     const selected = $("f-type");
     if (selected && flowById(selected.value)) workspaceChoice.types[workspaceChoice.mode] = selected.value;
     workspaceChoice.mode = mode;
-    workspaceHasChoice = true;
-    saveWorkspaceChoice();
     // 只变新任务表单的类型；草稿正文、目录、附件与编排档位不变。
-    if (selected && S.flows) {
-      const remembered = workspaceChoice.types[mode];
-      const target = flowById(remembered) || flowById(WORKSPACE_MODES[mode].defaultType) || S.flows[0];
-      if (target) pickType(target.id);
-    }
-    paintWorkspaceMode();
-    renderQuickChips();
-  } else {
-    workspaceHasChoice = true;
-    saveWorkspaceChoice();
+    // 模式收敛后要重渲染类型列表：记忆的类型若不在新模式白名单（如「编码」记着
+    // code，切到「成稿」），由 renderTypeOptions 回落到该模式默认类型。
+    if (selected && S.flows) renderTypeOptions();
   }
+  workspaceHasChoice = true;
+  saveWorkspaceChoice();
+  // 点台卡＝进这个台（大厅态下这一步就是「进入」）；台内点台签则是换台。
+  // 先把状态落定再重绘，否则 paintWorkspaceMode 里的台卡仍会按旧态画成大厅大卡。
+  setHomeEntered(true);
+  homeView = "ws";   // 总任务视图只是看一眼全局，选台即离开
+  paintWorkspaceMode();
+  renderQuickChips();
+  paintHomeView();
+  renderHome();
+  S.sideSig = "";        // 左栏按台过滤，切台后必须强制重排
+  renderSideTasks();
+  const main = document.querySelector("main");
+  if (main) main.scrollTop = 0;   // 进台从顶部开始，别停在上一页的半截
   toggleBrandMenu(false);
   $("btn-brand").focus();
 }
 window.pickWorkspaceMode = pickWorkspaceMode;
+
+/* 退回大厅：不删任何东西，只是把页面切回「四张台卡」那一屏。
+   当前台记在 workspaceChoice 里不动——再点同一张卡就是原样回去。 */
+function leaveWorkspace() {
+  setHomeEntered(false);
+  homeView = "ws";
+  paintHomeEntered();
+  paintHomeView();
+  S.sideSig = "";
+  renderSideTasks();     // 回大厅＝取消按台过滤，左栏恢复全量
+  const main = document.querySelector("main");
+  if (main) main.scrollTop = 0;
+  const bar = $("rd-mode-bar");
+  const current = bar && bar.querySelector("[data-mode='" + workspaceChoice.mode + "']");
+  if (current) current.focus();
+}
+window.leaveWorkspace = leaveWorkspace;
+
+/* ===== 工作台 / 总任务视图 =====
+   四个工作台共用一套外壳，但各自只列属于自己那一摊的任务；「全部任务」把它们汇总到一屏。
+   任务归属按「类型 ∈ 该工作台白名单」判定——与模式收敛用同一套口径，不另造分类。
+   口径：通用 = 全部任务（它本来就不收敛）；类型缺失或不在任何白名单归到通用。 */
+let homeView = "ws";          // ws = 停在某个工作台；all = 总任务视图
+let allTasksWs = "all";       // 总视图的工作台筛选（all = 不筛）
+let allTasksStatus = "all";   // 总视图的状态筛选
+let allTasksLimit = 20;
+
+const ALLTASK_STATUS_GROUPS = {
+  running: ["running", "queued", "pending", "waiting", "paused"],
+  failed: ["failed", "timeout", "cancelled", "blocked"],
+  done: ["done", "completed", "success", "approved", "published"],
+};
+
+function taskById(id) {
+  return ((S.state && S.state.tasks) || []).find((x) => x.id === id) || null;
+}
+
+function taskTypeOf(task) {
+  return String((task && (task.type || task.flow)) || "").trim();
+}
+
+function workspaceOfTask(task) {
+  const type = taskTypeOf(task);
+  const flow = flowById(type);
+  if (!flow) return "all";
+  // 「直接执行」是跨台通用型，归总台——否则它会被第一个白名单（小说）先抢走
+  if (type === "direct") return "all";
+  for (const key of Object.keys(WORKSPACE_MODES)) {
+    if (key === "all") continue;
+    if (modeAllowsFlow(key, flow)) return key;
+  }
+  return "all";
+}
+
+function statusGroupOf(status) {
+  const s = String(status || "");
+  for (const group of Object.keys(ALLTASK_STATUS_GROUPS)) {
+    if (ALLTASK_STATUS_GROUPS[group].includes(s)) return group;
+  }
+  return s ? "done" : "running";
+}
+
+/* 首页「最近任务」按当前工作台过滤：run 不带流程 id，借 task_id 回查类型。
+   四个工作台是**互斥的划分**（通用台收 direct/未分类，其它三台收各自专精类型），
+   四台加起来就是「全部任务」——这样「各看各的」和「一屏看全」是同一份数据。 */
+function runsForWorkspace(mode) {
+  const runs = (S.state && S.state.runs) || [];
+  return runs.filter((r) => {
+    const task = taskById(r.task_id);
+    return task ? workspaceOfTask(task) === mode : mode === "all";
+  });
+}
+
+function paintHomeView() {
+  const all = homeView === "all";
+  const allView = $("rd-alltasks");
+  if (allView) allView.classList.toggle("hidden", !all);
+  // 大厅/台内/总任务三种形态的显隐与标题：都收口到这两个函数，别处不再各写一份
+  renderHomeHeads();
+  paintHomeEntered();
+  renderWorkbenchHomeForMode();
+  const pageTitle = $("page-title");
+  const allBtn = $("btn-q-alltasks");
+  const onHome = S.tab === "home" && !document.body.classList.contains("settings-mode");
+  if (allBtn) allBtn.classList.toggle("active", onHome && all);
+  const homeBtn = $("btn-q-home");
+  if (homeBtn) homeBtn.classList.toggle("active", onHome && !all);
+  if (pageTitle) pageTitle.textContent = all ? t("全部任务") : (homeEntered
+    ? t(WORKSPACE_MODES[workspaceChoice.mode].label) : t("工作台"));
+  // 每次切到主页都按当前 state 重画一次列表：首帧 state 可能比主页显隐更早到，
+  // 之后若只拿到 304（applyState 不再跑）列表就会永远停在第 1 帧的空态。
+  paintHomeSafe(0);
+}
+
+function showAllTasks() {
+  homeView = "all";
+  allTasksLimit = 20;
+  if (S.tab !== "home") showHome();
+  paintHomeView();
+  renderAllTasks();
+  const main = document.querySelector("main");
+  if (main) main.scrollTop = 0;
+}
+window.showAllTasks = showAllTasks;
+
+function pickAllTasksWs(key) {
+  allTasksWs = key || "all";
+  allTasksLimit = 20;
+  renderAllTasks();
+}
+window.pickAllTasksWs = pickAllTasksWs;
+
+function pickAllTasksStatus(key) {
+  allTasksStatus = key || "all";
+  allTasksLimit = 20;
+  renderAllTasks();
+}
+window.pickAllTasksStatus = pickAllTasksStatus;
+
+function allTasksMore() {
+  allTasksLimit += 20;
+  renderAllTasks();
+}
+window.allTasksMore = allTasksMore;
+
+function allTasksFiltered() {
+  const tasks = ((S.state && S.state.tasks) || []).slice();
+  tasks.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  return tasks.filter((task) => {
+    if (allTasksWs !== "all" && workspaceOfTask(task) !== allTasksWs) return false;
+    if (allTasksStatus !== "all" && statusGroupOf(task.status) !== allTasksStatus) return false;
+    return true;
+  });
+}
+
+function renderAllTasksFilters() {
+  const wsBox = $("rd-alltasks-ws");
+  if (wsBox) {
+    const items = [["all", t("全部工作台")]].concat(
+      Object.keys(WORKSPACE_MODES).map((k) => [k, t(WORKSPACE_MODES[k].label)]));
+    wsBox.innerHTML = items.map(([key, label]) =>
+      '<button type="button" class="rd-chip' + (key === allTasksWs ? " on" : "") + '"' +
+      ' data-ws="' + esc(key) + '" onclick="pickAllTasksWs(\'' + key + '\')">' + esc(label) + "</button>").join("");
+  }
+  const stBox = $("rd-alltasks-status");
+  if (stBox) {
+    const items = [["all", t("全部状态")], ["running", t("进行中")], ["failed", t("失败")], ["done", t("已完成")]];
+    stBox.innerHTML = items.map(([key, label]) =>
+      '<button type="button" class="rd-chip' + (key === allTasksStatus ? " on" : "") + '"' +
+      ' data-status="' + key + '" onclick="pickAllTasksStatus(\'' + key + '\')">' + esc(label) + "</button>").join("");
+  }
+}
+
+/* 总视图单行。抽出来是因为聚合展开后同一条任务要在「组首 / 子行」两个位置复用。 */
+function allTaskRow(task, inGroup) {
+  const wsKey = workspaceOfTask(task);
+  const wsLabel = t(WORKSPACE_MODES[wsKey].label);
+  const group = statusGroupOf(task.status);
+  const tone = group === "running" ? "run" : group === "failed" ? "bad" : "ok";
+  const statusLabel = task.status === "running" ? t("运行中") : task.status === "queued" ? t("排队中")
+    : task.status === "failed" ? t("失败") : task.status === "timeout" ? t("超时")
+    : task.status === "cancelled" ? t("已取消") : t("已完成");
+  const icon = tone === "run" ? '<span class="rd-task-spin" aria-hidden="true"></span>'
+    : '<svg class="ico" aria-hidden="true"><use href="#i-' + (tone === "ok" ? "check" : "x") + '"></use></svg>';
+  const flow = flowById(taskTypeOf(task));
+  const flowLabel = flow ? t(flow.name) : (taskTypeOf(task) || t("未指定类型"));
+  const time = relTime(task.created_at || "");
+  return '<button type="button" class="rd-task-item' + (inGroup ? " is-child" : "") + '" onclick="openAllTask(\'' + jsq(task.id) + '\')">'
+    + '<span class="rd-task-ico ' + tone + '">' + icon + "</span>"
+    + '<span class="rd-task-info">'
+    + '<span class="rd-task-title">' + esc(task.title || task.id || "") + "</span>"
+    + '<span class="rd-meta3">'
+    + '<span class="rd-ws-tag ws-' + esc(wsKey) + '">' + esc(wsLabel) + "</span>"
+    + '<span class="rd-m3-dot"></span><span>' + esc(flowLabel) + "</span>"
+    + (time ? '<span class="rd-m3-dot"></span><span>' + esc(time) + "</span>" : "")
+    + "</span></span>"
+    + '<span class="rd-task-side ' + tone + '"><span class="rd-task-chip">' + esc(statusLabel) + "</span></span>"
+    + "</button>";
+}
+
+function renderAllTasks() {
+  const listEl = $("rd-alltasks-list");
+  if (!listEl) return;
+  renderAllTasksFilters();
+  const all = allTasksFiltered();
+  // 按标题聚合：重跑会新建 task、标题却一样，汇总页原来一排 6 条「拆分回归连载」，
+  // 翻三屏看不到别的事。默认每类只留最近一次，其余折进「另有 N 次记录」（2026-10-28）。
+  S.allTaskGroups = S.allTaskGroups || {};
+  const groups = new Map();
+  all.forEach((task) => {
+    const k = String(task.title || task.id || "?");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(task);
+  });
+  if (!all.length) {
+    listEl.innerHTML = '<div class="rd-empty">' + esc(t("这个筛选下还没有任务")) + "</div>";
+  } else {
+    // 加载更多按「类」计数：20 组 ≈ 20 件不同的活，比 20 条同名记录有用
+    const keys = [...groups.keys()].slice(0, allTasksLimit);
+    listEl.innerHTML = keys.map((key) => {
+      const list = groups.get(key);
+      const open = !!S.allTaskGroups[key];
+      return allTaskRow(list[0], false) +
+        (list.length > 1
+          ? '<button type="button" class="rd-group-more" onclick="toggleAllTaskGroup(\'' + jsq(key) + '\')">' +
+            (open ? esc(t("收起这 " + list.length + " 次记录")) : esc(t("另有 " + (list.length - 1) + " 次记录"))) +
+            "</button>" +
+            (open ? list.slice(1).map((row) => allTaskRow(row, true)).join("") : "")
+          : "");
+    }).join("");
+  }
+  const more = $("rd-alltasks-more");
+  if (more) more.classList.toggle("hidden", groups.size <= allTasksLimit);
+}
+
+window.toggleAllTaskGroup = function (key) {
+  S.allTaskGroups = S.allTaskGroups || {};
+  S.allTaskGroups[key] = !S.allTaskGroups[key];
+  renderAllTasks();
+};
+
+/* 总视图点一行：有运行记录就直开该次运行，没有就明确说一声，不做假跳转。 */
+function openAllTask(id) {
+  const runs = (S.state && S.state.runs) || [];
+  const run = runs.find((r) => r.task_id === id);
+  if (run) { homeOpenRun(run.id); return; }
+  toast(t("这个任务还没有运行记录"), true);
+}
+window.openAllTask = openAllTask;
+
+/* 简化入口的展开/收起：侧栏「更多」与首页「更多工具」。
+   默认都收起——普通用户的主路径是「选模式 → 说需求 → 开始」，次要功能按需露出。 */
+function _toggleCollapse(btnId, panelId) {
+  const panel = $(panelId), btn = $(btnId);
+  if (!panel || !btn) return;
+  const show = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !show);
+  btn.setAttribute("aria-expanded", String(show));
+  btn.classList.toggle("is-open", show);
+}
+function toggleSideMore() { _toggleCollapse("btn-side-more", "side-more"); }
+/* 当前页落在「更多」组里时自动展开该组：用户切到概览/看板后，
+   侧栏得能看见自己被选中了，否则像是点空了。反向不自动收起（避免抖动）。 */
+function syncSideMoreForPage() {
+  const panel = $("side-more");
+  if (!panel || !panel.classList.contains("hidden")) return;
+  if (panel.querySelector(".qitem.active")) _toggleCollapse("btn-side-more", "side-more");
+}
+window.syncSideMoreForPage = syncSideMoreForPage;
+function toggleHomeTools() { _toggleCollapse("btn-home-more", "rd-tools"); }
+window.toggleSideMore = toggleSideMore;
+window.toggleHomeTools = toggleHomeTools;
 
 function toggleBrandMenu(force) {
   const menu = $("brand-menu");
@@ -24906,4 +27230,13 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#btn-brand, #brand-menu")) toggleBrandMenu(false);
+});
+
+/* 补画一次主页列表（2026-10-28）。
+ * 首帧 /api/state 可能比脚本解析到 WS_TASK_SHAPE、WS_WRITING 这些 const 更早返回，
+ * 那次 renderHome() 会在 TDZ 上抛错，DOM 停在第 1 帧的空态；而之后状态接口多半只回
+ * 304，applyState 不再执行，列表就再也画不出来（实测：27 条本台任务显示「还没有任务」）。
+ * load 之后所有常量都已就绪，这里补一次；renderHome 自身幂等，不会重复干活。 */
+window.addEventListener("load", () => {
+  try { renderHome(); } catch (e) { /* 首屏补画失败不影响其它渲染 */ }
 });

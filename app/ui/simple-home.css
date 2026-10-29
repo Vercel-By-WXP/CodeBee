@@ -1,0 +1,2083 @@
+/* ==========================================================================
+   简化版首页（2026-10-28）
+   --------------------------------------------------------------------------
+   目标：普通用户打开只知道三件事——「选个模式 → 说你想干什么 → 开始」。
+   做法：
+     · 主路径三段放大（标题 / 模式卡 / 输入卡），字阶对齐设计展厅（32px 标题、
+       12px 圆角、1px 描边、蓝紫单强调），不堆阴影；
+     · 次要入口（概览/看板/自动化/浏览器/体检、四张工具卡）默认收起，
+       由「更多」「更多工具」按需展开——功能一个没删，只是不在第一屏抢注意力；
+     · 最近任务只露 3 条，其余走「查看全部」。
+   作用域尽量贴着 workbench 布局，避免影响其他布局/皮肤。
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 主路径排版 */
+html[data-layout="workbench"] .rd-home-head {
+  margin-bottom: var(--s-6, 24px);
+}
+
+html[data-layout="workbench"] .rd-home-title {
+  font-size: 32px;
+  line-height: 1.24;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px 0;
+}
+
+html[data-layout="workbench"] .rd-home-sub {
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 46em;
+}
+
+/* -------------------------------------------------------------- 模式卡片 */
+#rd-mode-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.rd-mode-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+
+.rd-mode-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.rd-mode-card.is-on {
+  border-color: var(--accent);
+  background: var(--panel2);
+  /* 用内描边而不是阴影表达选中：和设计展厅一致，层级靠线不靠投影 */
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.rd-mc-ico {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--panel2);
+  color: var(--accent);
+}
+
+.rd-mode-card.is-on .rd-mc-ico {
+  background: var(--accent);
+  color: #fff;
+}
+
+.rd-mc-ico .ico {
+  width: 16px;
+  height: 16px;
+}
+
+.rd-mc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rd-mc-body b {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.rd-mc-body small {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  /* 一句话要能看全：允许折两行，别用省略号把「写小说、短篇…」截断 */
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rd-mode-card.is-on .rd-mc-n {
+  color: var(--accent);
+}
+
+@media (max-width: 1180px) {
+  #rd-mode-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ------------------------------------------------------- 「更多」展开器 */
+.rd-more-toggle {
+  display: inline-flex;
+  align-items: center;
+  /* 父容器是 column flex + stretch，不显式限宽会被拉成通栏 */
+  align-self: flex-start;
+  width: fit-content;
+  gap: 6px;
+  margin: 4px 0 18px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+
+.rd-more-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.rd-more-toggle .ico {
+  width: 14px;
+  height: 14px;
+  transition: transform .18s;
+}
+
+.rd-more-toggle.is-open .ico {
+  transform: rotate(180deg);
+}
+
+/* 侧栏「更多」组：与常驻项拉开距离，视觉上明确是二级入口 */
+.side-quick.side-more {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* .side-quick 在 workbench 布局下被基座写成 display:flex !important（见
+   redesign-layout.css:528），所以收起规则必须同权重带 !important 才压得住 */
+html[data-layout="workbench"] .side-quick.side-more.hidden,
+.side-quick.side-more.hidden {
+  display: none !important;
+}
+
+#btn-side-more .ico {
+  transition: transform .18s;
+}
+
+#btn-side-more.is-open .ico {
+  transform: rotate(180deg);
+}
+
+/* --------------------------------------------------------- 最近任务收口 */
+html[data-layout="workbench"] .rd-recent-tasks {
+  margin-top: var(--s-2, 8px);
+}
+
+/* ============================================================
+   主界面收口：顶栏「更多」、详情页签「更多」、更多选项里的控件行
+   —— 目标不是删功能，而是把低频项从第一屏挪走，原件与绑定全部保留。
+   ============================================================ */
+
+/* ---------- 顶栏二级操作（任务大屏 / 并排浏览器 / 状态栏 / 皮肤 / 语言） ---------- */
+.top-more-wrap { position: relative; display: inline-flex; }
+.top-more-src { display: none !important; }
+.top-more {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 90;
+  min-width: 190px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 12px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.top-more.hidden { display: none; }
+.tm-kicker {
+  padding: 7px 10px 3px; font-size: 11px; font-weight: 600;
+  color: var(--muted); letter-spacing: .02em;
+}
+.tm-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: none; border-radius: 8px;
+  background: none; color: var(--text); font: inherit; font-size: 13px;
+  cursor: pointer; text-align: left;
+}
+.tm-item:hover { background: var(--panel2); }
+.tm-item .ico { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.tm-item.on { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.tm-item.on .ico { color: var(--accent); }
+
+/* ---------- 详情页签「更多」：fixed 定位，避开标签条的横向滚动裁切 ---------- */
+.rd-tabs-more-wrap { position: relative; display: inline-flex; align-items: center; flex: none; }
+.rd-more-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none; cursor: pointer; font: inherit; font-size: 13px;
+  color: var(--muted); padding: 8px 12px 10px; white-space: nowrap;
+  border-radius: 8px 8px 0 0;
+}
+.rd-more-btn:hover { color: var(--text); background: var(--panel2); }
+.rd-more-btn.active { color: var(--accent); font-weight: 600; }
+.rd-more-btn .chev { width: 13px; height: 13px; opacity: .7; }
+.rd-tabs-more {
+  position: fixed; z-index: 95;
+  min-width: 152px; padding: 5px;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 10px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.rd-tabs-more.hidden { display: none; }
+.rd-tabs-more .rd-tab { border-radius: 8px; padding: 7px 10px; justify-content: flex-start; }
+.rd-tabs-more .rd-tab::after { display: none; }
+.rd-tabs-more .rd-tab.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* ---------- 「更多选项」里下沉控件的一行 ---------- */
+.adv-pill-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* 专家模板下沉到「更多选项」后按表单行渲染，不再套输入框里的胶囊尺度 */
+.adv-body .field .expert-pick {
+  max-width: 100%; width: 100%; border-radius: 8px;
+  font-size: 13px; color: var(--text); background: var(--panel);
+}
+
+/* ---------- ＋ 菜单里的「运行设置」：编排模式 / 思考程度 / 专家模板 ---------- */
+.cmp-add-settings { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 6px; }
+.cas-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 4px 0;
+}
+.cas-label { flex: none; font-size: 12.5px; color: var(--muted); }
+.cas-row .cmp-sel { flex: none; }
+.cas-row .expert-pick {
+  max-width: 190px; min-height: 28px; padding: 3px 24px 3px 10px;
+  border-radius: 999px; font-size: 12px; background: var(--panel2);
+}
+
+/* ============================================================
+   工作台 / 总任务视图
+   四个工作台各干各的一摊；「全部任务」把四台的任务汇总到一屏。
+   ============================================================ */
+
+/* 标题行：日期在左、总任务入口在右 */
+.rd-home-toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+.rd-home-toprow .rd-home-date { margin-bottom: 0; }
+.rd-alltasks-entry {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  margin-left: auto;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background-color .15s;
+}
+.rd-alltasks-entry:hover { color: var(--text); border-color: var(--border-strong); background: var(--panel2); }
+.rd-alltasks-entry.is-on {
+  color: var(--accent);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.rd-alltasks-entry .ico { width: 15px; height: 15px; }
+
+/* 总任务视图 */
+.rd-alltasks-head { margin-bottom: 14px; }
+.rd-alltasks-head h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; color: var(--text); }
+.rd-alltasks-sub { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+.rd-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.rd-filter-label {
+  flex: none;
+  width: 42px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.rd-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.rd-chip {
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background-color .15s;
+}
+.rd-chip:hover { color: var(--text); border-color: var(--border-strong); }
+.rd-chip.on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-weight: 600;
+}
+
+.rd-alltasks-list { margin-top: 12px; }
+.rd-alltasks-more { margin: 12px auto 0; display: flex; }
+
+/* 每行的工作台标签：靠色相区分，标签文字仍写全，不只靠颜色 */
+.rd-ws-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--panel2);
+}
+.rd-ws-tag.ws-novel { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 42%, transparent); background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.rd-ws-tag.ws-dossier { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 42%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.rd-ws-tag.ws-code { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 42%, transparent); background: color-mix(in srgb, var(--ok) 9%, transparent); }
+
+.rd-empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .rd-alltasks-entry { margin-left: 0; width: 100%; justify-content: center; }
+  .rd-filter-label { width: auto; }
+}
+
+/* ============================================ 大厅 / 台内两态（2026-10-28）
+   大厅＝四张台卡，点一张就是「进这个台」；台内＝同一组按钮收成一行台签。
+   层级差靠形态（大卡 ↔ 台签）表达，不再叠弹窗或新页面。 */
+
+/* 台卡右侧的进入箭头：只在大厅出现，暗示「点它＝进去」 */
+.rd-mc-go {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-left: auto;
+  color: var(--muted);
+  opacity: .55;
+  transition: transform .15s, opacity .15s;
+}
+.rd-mode-card:hover .rd-mc-go { opacity: 1; transform: translateX(2px); }
+
+/* 台内台签：一行四个、只留图标 + 名字，不跟输入框抢注意力 */
+#rd-mode-bar.is-compact { margin-top: 14px; gap: 8px; }
+#rd-mode-bar.is-compact .rd-mode-card {
+  padding: 7px 10px;
+  gap: 8px;
+  border-radius: 10px;
+}
+#rd-mode-bar.is-compact .rd-mc-ico { width: 22px; height: 22px; border-radius: 7px; }
+#rd-mode-bar.is-compact .rd-mc-ico .ico { width: 13px; height: 13px; }
+#rd-mode-bar.is-compact .rd-mc-body b { font-size: 13px; }
+#rd-mode-bar.is-compact .rd-mc-body small { display: none; }
+#rd-mode-bar.is-compact .rd-mode-card:hover { transform: none; }
+
+/* 台内标题块：先给一条回大厅的路，再是这个台自己的问候语 */
+.rd-entered-head .rd-home-title { margin-top: 2px; }
+.rd-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 8px -4px;
+  padding: 3px 9px 3px 5px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+.rd-back-btn:hover { background: var(--panel2); color: var(--text); }
+.rd-back-btn .ico { width: 14px; height: 14px; }
+
+/* 工具区常驻显示（不再藏进「更多工具」）：切台时整组换掉，
+   这是「四个台各干各的」最直观的一处，藏起来等于白做。 */
+html[data-layout="workbench"] #rd-tools { margin-top: 4px; }
+html[data-layout="workbench"] #rd-tools .rd-section-head h2::after {
+  content: "工具";
+  margin-left: 1px;
+  color: var(--muted);
+  font-weight: 500;
+}
+html[data-lang="en"][data-layout="workbench"] #rd-tools .rd-section-head h2::after {
+  content: " Tools";
+}
+
+/* 大厅：四张台卡竖排成一行一个（对齐设计展厅入口页的形态）。
+   横排时「一句话」被挤成两三行还得截断，竖排才装得下——而这句话正是用户选台的依据。 */
+#rd-mode-bar:not(.is-compact) {
+  grid-template-columns: 1fr;
+  gap: 10px;
+  max-width: 720px;
+  margin-top: 22px;
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card { padding: 14px 18px; gap: 14px; }
+#rd-mode-bar:not(.is-compact) .rd-mode-card:hover { transform: none; }
+#rd-mode-bar:not(.is-compact) .rd-mc-ico { width: 36px; height: 36px; border-radius: 11px; }
+#rd-mode-bar:not(.is-compact) .rd-mc-ico .ico { width: 18px; height: 18px; }
+#rd-mode-bar:not(.is-compact) .rd-mc-body b { font-size: 15px; }
+#rd-mode-bar:not(.is-compact) .rd-mc-body small { font-size: 12.5px; -webkit-line-clamp: 1; }
+
+/* ============================================ 台主色（2026-10-28）
+   一次只在一个台里，所以整页的强调色跟着台走不算花：小说暖橙、编码绿、成稿/通用蓝紫。
+   2026-10-28 从 #page-home 提到 workbench 布局根上：左栏、顶栏、输入框都在 #page-home
+   之外，原来只有主页内部换色，用户看着还是「只换了个标题」。 */
+html[data-layout="workbench"] { --ws-accent: var(--accent); }
+html[data-layout="workbench"][data-workspace-mode="novel"] { --ws-accent: var(--warn); }
+html[data-layout="workbench"][data-workspace-mode="code"] { --ws-accent: var(--ok); }
+/* 成稿台取强调色 2（品牌蓝→紫的第二色）：原来跟通用台同色，切换时只剩文字在变 */
+html[data-layout="workbench"][data-workspace-mode="dossier"] { --ws-accent: var(--accent2); }
+/* 内容台（自媒体/生图）取玫红：与小说暖橙、编码绿、成稿青绿都不同色系 */
+html[data-layout="workbench"][data-workspace-mode="content"] { --ws-accent: #d6467a; }
+
+/* 大厅台卡：选中态用台色；hover 用品牌色（还没进台，谈不上是哪个台） */
+#rd-mode-bar:not(.is-compact) .rd-mode-card.is-on {
+  border-color: var(--ws-accent);
+  box-shadow: inset 0 0 0 1px var(--ws-accent);
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card.is-on .rd-mc-ico { background: var(--ws-accent); }
+
+/* 台内台签：当前台用台色描边 + 实心图标 */
+#rd-mode-bar.is-compact .rd-mode-card.is-on {
+  border-color: var(--ws-accent);
+  box-shadow: inset 0 0 0 1px var(--ws-accent);
+  background: var(--panel2);
+}
+#rd-mode-bar.is-compact .rd-mode-card.is-on .rd-mc-ico {
+  background: var(--ws-accent);
+  color: #fff;
+}
+
+/* 工具区图标、快速开始 hover：都跟着台色，切台时整片色调一起换 */
+html[data-layout="workbench"] .rd-tool-ico {
+  color: var(--ws-accent);
+  background: color-mix(in srgb, var(--ws-accent) 12%, transparent);
+}
+html[data-layout="workbench"] .rd-tool-health .rd-tool-ico { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+html[data-layout="workbench"] .rd-qs-btn:hover { border-color: var(--ws-accent); }
+
+/* ============================================ 台内主区块（domain）
+   进台看到的是「另一张页」：小说＝书架（一本书一张卡，字数进度条）、
+   成稿＝交付单（一份稿一张卡）、编码＝工程现场（一个仓库一张卡，带运行分布）。
+   首位永远是「新建」卡——第一次来的人不需要读任何说明就知道从哪下手。 */
+.rd-ws-domain { margin-bottom: 18px; min-width: 0; }
+.rd-domain-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.rd-domain-head b { font-size: 15px; font-weight: 650; color: var(--text); }
+.rd-domain-head span { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rd-domain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+  gap: 12px;
+}
+.rd-domain-card, .rd-domain-new {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  min-height: 112px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px 12px;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.rd-domain-card:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 45%, var(--border));
+  box-shadow: 0 12px 30px -20px rgba(0, 0, 0, .38);
+  transform: translateY(-1px);
+}
+.rd-domain-top { display: flex; align-items: center; gap: 8px; }
+.rd-domain-top b {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rd-domain-chip {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.rd-domain-chip.run { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.rd-domain-chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.rd-domain-chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.rd-book-bar { display: flex; align-items: center; gap: 8px; }
+.rd-book-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+.rd-book-track i { display: block; height: 100%; border-radius: 999px; background: var(--ws-accent); }
+.rd-book-pct { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rd-domain-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rd-domain-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rd-domain-go { width: 13px; height: 13px; flex: none; color: var(--muted); opacity: .5; }
+.rd-domain-card:hover .rd-domain-go { opacity: .95; color: var(--ws-accent); }
+.rd-domain-new {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 7px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+.rd-domain-new:hover { border-color: var(--ws-accent); background: var(--panel); color: var(--text); transform: none; }
+.rd-domain-new-ico {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel2);
+  color: var(--muted);
+  transition: background-color .15s, color .15s;
+}
+.rd-domain-new:hover .rd-domain-new-ico { background: color-mix(in srgb, var(--ws-accent) 12%, transparent); color: var(--ws-accent); }
+.rd-domain-new .ico { width: 14px; height: 14px; }
+.rd-domain-new-text b { display: block; font-size: 13.5px; font-weight: 650; color: var(--text); }
+.rd-domain-new-text small { display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+.rd-domain-empty {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  text-align: center;
+}
+.rd-domain-empty p { margin: 0; font-size: 13px; color: var(--text); }
+.rd-domain-empty small { display: block; margin-top: 4px; font-size: 12px; line-height: 1.55; color: var(--muted); }
+
+/* ============================================ 左栏台专属导航（2026-10-28）
+   进台后左栏换成本台的去处。原来四个台左栏一模一样，是「整个界面都变化」最大的漏洞。 */
+.side-ws-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 2px;
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--border);
+}
+.side-ws-nav.hidden { display: none; }
+.side-ws-head { display: flex; align-items: center; gap: 7px; padding: 1px 4px 8px; }
+.side-ws-chip {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ws-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+.side-ws-caption { font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+.side-ws-nav .qitem { padding-left: 8px; }
+.side-ws-nav .qitem .ico { color: var(--ws-accent); opacity: .85; }
+.side-ws-nav .qitem:hover { background: var(--panel2); }
+.side-ws-nav .qitem:hover .ico { opacity: 1; }
+
+/* ============================================ 台色渗到壳层（2026-10-28）
+   左栏高亮、顶栏台名、发送按钮、输入框聚焦环——一眼扫过去整屏是那个台的色调。
+   通用台 --ws-accent 就是品牌色，所以这组规则对通用台等于「不变」。 */
+html[data-layout="workbench"] #sidebar .qitem.active,
+html[data-layout="workbench"] #sidebar .qitem[aria-current="page"] { color: var(--ws-accent); }
+html[data-layout="workbench"] #sidebar .qitem.active .ico { color: var(--ws-accent); }
+html[data-layout="workbench"] #sidebar .qitem.active {
+  background: color-mix(in srgb, var(--ws-accent) 12%, transparent);
+}
+html[data-layout="workbench"] #brand-mode { color: var(--ws-accent); }
+/* 发送键是整页最亮的一颗按钮，台色最该落在它身上。
+   注意两点：① button.primary 的底色是 background-image:linear-gradient，只写 background-color 会被渐变盖住；
+   ② redesign-layout.css 里那条用 `:is(#sub-tasks,#rd-input-slot) #btn-create`（两个 id），
+   特异性比单个 #btn-create 高，这里必须照着它的形态写才盖得住。 */
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) #btn-create {
+  background: var(--ws-accent);
+  background-image: none;
+  border-color: var(--ws-accent);
+}
+html[data-layout="workbench"] #btn-create:hover { filter: brightness(1.06); }
+html[data-layout="workbench"] #rd-input-slot .cmp,
+html[data-layout="workbench"] #rd-input-slot .composer { border-color: var(--border); }
+html[data-layout="workbench"] #rd-input-slot textarea:focus { border-color: var(--ws-accent); }
+
+/* 台内主栏极淡的台色氛围：只 3% 浓度，用来「进门就觉得换了屋子」，不影响读字 */
+html[data-layout="workbench"][data-workspace-mode="novel"] main { background-image:
+  radial-gradient(1200px 420px at 18% -8%, color-mix(in srgb, var(--warn) 7%, transparent), transparent 70%); }
+html[data-layout="workbench"][data-workspace-mode="code"] main { background-image:
+  radial-gradient(1200px 420px at 18% -8%, color-mix(in srgb, var(--ok) 7%, transparent), transparent 70%); }
+html[data-layout="workbench"][data-workspace-mode="dossier"] main { background-image:
+  radial-gradient(1200px 420px at 18% -8%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%); }
+
+/* ============================================ 顶栏台招牌动作（2026-10-28）
+   顶栏原来四个台一模一样（就几个图标）。进台后这里多一颗台色动作，
+   第一眼落在顶栏就能看出「现在在哪个台、这个台先干什么」。 */
+#btn-ws-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ws-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--ws-accent) 12%, transparent);
+  color: var(--ws-accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color .15s, transform .15s;
+}
+#btn-ws-action .ico { width: 13px; height: 13px; opacity: .8; }
+#btn-ws-action:hover { background: color-mix(in srgb, var(--ws-accent) 20%, transparent); }
+#btn-ws-action.hidden { display: none; }
+
+/* 主栏台色氛围再加一档（7% → 11%）：3% 在浅色底上等于看不见，
+   而这块是「进门觉得换了屋子」唯一不靠文字的来源。 */
+html[data-layout="workbench"][data-workspace-mode="novel"] main,
+html[data-layout="workbench"][data-workspace-mode="code"] main,
+html[data-layout="workbench"][data-workspace-mode="dossier"] main { background-image:
+  radial-gradient(1400px 520px at 14% -10%, color-mix(in srgb, var(--ws-accent) 11%, transparent), transparent 72%); }
+
+/* 主栏区块标题与首行动作也带台色：不然「工具区标题」「快速开始」还是中性灰，
+   整页只有顶栏和左栏有颜色，中间一大片依旧像通用页。 */
+html[data-layout="workbench"] #rd-tools-mode { color: var(--ws-accent); }
+html[data-layout="workbench"] .rd-qs-btn:first-child {
+  border-color: color-mix(in srgb, var(--ws-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--ws-accent) 8%, transparent);
+  color: var(--ws-accent);
+}
+html[data-layout="workbench"] .rd-qs-btn:first-child .ico { color: var(--ws-accent); opacity: .9; }
+
+/* ============================================ 台专属起手式卡片（2026-10-28）
+   原来四台共用同款灰胶囊、只换文字，视觉上等于没变。改成卡片：
+   图标 + 标题 + 一句「点了会发生什么」，每台四张各不相同。
+   特异性要压过 redesign-layout.css 的 `html[data-layout] .rd-qs-btn`（胶囊 + nowrap + max-width）。 */
+#rd-qs-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  white-space: normal;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: clip;
+  text-align: left;
+  transition: border-color .15s, background-color .15s;
+}
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card:hover {
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--ws-accent) 45%, var(--border));
+}
+.rd-start-ico {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--ws-accent) 11%, transparent);
+  color: var(--ws-accent);
+}
+.rd-start-ico .ico { width: 15px; height: 15px; }
+.rd-start-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rd-start-body b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.rd-start-body small {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rd-start-go { margin-left: auto; width: 13px; height: 13px; flex: none; color: var(--muted); opacity: .45; }
+.rd-start-card:hover .rd-start-go { opacity: .95; color: var(--ws-accent); }
+/* 每台第一张＝推荐起手式，只描台色边，不做实心（四张里一张亮就够） */
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card:first-child {
+  border-color: color-mix(in srgb, var(--ws-accent) 42%, transparent);
+}
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card:first-child .rd-start-ico {
+  background: var(--ws-accent);
+  color: #fff;
+}
+
+/* ============================================ 任务卡的台专属标签（2026-10-28）
+   小说＝第几章、成稿＝稿件类型、编码＝仓库名。一行标签就把「这是哪个台的任务」说清。 */
+.rd-task-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ws-accent) 12%, transparent);
+  color: var(--ws-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+/* 首张卡的图标在实心台色底上，必须反白：上面那条 first-child 规则会把它染成台色 */
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card:first-child .rd-start-ico .ico {
+  color: #fff;
+  opacity: 1;
+}
+
+/* 标题内塞了台标签后，省略必须落在标题本体上：
+   原来 overflow/ellipsis 挂在整个 .rd-task-title 上，标签占了宽度，
+   「gworkspace」会被截成「g」。改成 flex 行，由 .rd-task-name 负责省略。 */
+html[data-layout="workbench"] .rd-task-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+html[data-layout="workbench"] .rd-task-title .rd-task-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-layout="workbench"] .rd-task-title .rd-task-tag { flex: none; }
+
+/* ==========================================================================
+   工作台版式 v2（2026-10-28 第十轮）
+   用户连续反馈「变化不大 / 还不够 / 大刀阔斧的改」。复盘根因：此前所有改动都是
+   往旧骨架上贴补丁——宽度还被 max-width:900 锁着（1440 视口右边空一半），
+   所有块都是同一种「1px 灰边 + 12px 圆角 + 白底」的小卡，从上到下一条竖列。
+   观感的差异不来自「多一个 hero、换一个颜色」，而来自**画布、比例、卡片语言**。
+   这一块整体换版式，不再做局部覆盖。
+   ========================================================================== */
+
+/* ---------- 1. 画布：放开宽度，四边留白按大屏给 ---------- */
+html[data-layout="workbench"] .rd-home {
+  max-width: 1460px;
+  padding: 26px 34px 56px;
+}
+
+/* ---------- 2. 大厅：四张巨卡 2×2，各带自己的颜色 ---------- */
+#rd-mode-bar:not(.is-compact) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  max-width: none;
+  margin-top: 30px;
+}
+
+#rd-mode-bar:not(.is-compact) .rd-mode-card {
+  position: relative;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 196px;
+  padding: 22px 24px 20px;
+  border-radius: 18px;
+  /* 台卡各用自己的色：扫一眼就能把四张分开，不用读字 */
+  --mc: var(--accent);
+}
+/* 台色必须跟着 id 一起写：上面那条 `#rd-mode-bar ... .rd-mode-card` 有 id，
+   光用 .rd-mode-card[data-mode] 特异性不够，--mc 会一律停在品牌色上（实测过）。 */
+#rd-mode-bar .rd-mode-card[data-mode="novel"] { --mc: var(--warn); }
+#rd-mode-bar .rd-mode-card[data-mode="code"] { --mc: var(--ok); }
+#rd-mode-bar .rd-mode-card[data-mode="dossier"] { --mc: var(--accent2); }
+#rd-mode-bar .rd-mode-card[data-mode="content"] { --mc: #d6467a; }
+
+#rd-mode-bar:not(.is-compact) .rd-mode-card .rd-mc-ico {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--mc) 12%, transparent);
+  color: var(--mc);
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card .rd-mc-ico .ico { width: 23px; height: 23px; }
+#rd-mode-bar:not(.is-compact) .rd-mode-card:hover {
+  border-color: color-mix(in srgb, var(--mc) 55%, var(--border));
+  box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--mc) 75%, transparent);
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card:hover .rd-mc-ico {
+  background: var(--mc);
+  color: #fff;
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card.is-on {
+  border-color: var(--mc);
+  box-shadow: inset 0 0 0 1px var(--mc);
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card.is-on .rd-mc-ico {
+  background: var(--mc);
+  color: #fff;
+}
+
+/* 台卡文字：台名 19px，一句话 13.5px 最多两行，关键词一行 chips */
+#rd-mode-bar:not(.is-compact) .rd-mc-body { gap: 5px; width: 100%; }
+#rd-mode-bar:not(.is-compact) .rd-mc-body b { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+#rd-mode-bar:not(.is-compact) .rd-mc-body small {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  -webkit-line-clamp: 2;
+}
+.rd-mc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.rd-mc-tags i {
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  color: var(--muted);
+}
+#rd-mode-bar.is-compact .rd-mc-tags { display: none; }
+
+/* 大厅卡右上角的进入箭头：挪到角上，不再和文字抢一行 */
+#rd-mode-bar:not(.is-compact) .rd-mc-go {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  opacity: .35;
+}
+#rd-mode-bar:not(.is-compact) .rd-mode-card:hover .rd-mc-go {
+  opacity: 1;
+  color: var(--mc);
+  transform: translateX(3px);
+}
+
+/* 大厅标题：这是用户进门第一眼，字号要给足 */
+#rd-lobby-title { font-size: 38px; line-height: 1.16; letter-spacing: -0.03em; }
+#rd-lobby-sub { font-size: 15px; line-height: 1.6; max-width: 640px; }
+
+/* ---------- 3. 进台：主列 + 侧列两栏栅格 ----------
+   原来五块从上到下一条竖列，一屏只能看到两块。两栏后「写在哪里」和
+   「有哪些活、有哪些工具」同时可见，这才是工作台该有的样子。
+   每台的排布不同（按 data-workspace-mode 切模板），DOM 顺序不再决定位置。 */
+#rd-ws-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1.72fr) minmax(320px, 1fr);
+  gap: 18px 24px;
+  align-items: start;
+}
+#rd-ws-view > * { margin: 0; }
+#rd-ws-view > .rd-input-card { grid-area: input; }
+#rd-ws-view > #rd-quick-start { grid-area: qs; }
+#rd-ws-view > #rd-ws-domain { grid-area: domain; }
+#rd-ws-view > #rd-tools { grid-area: tools; }
+#rd-ws-view > .rd-recent-tasks { grid-area: tasks; }
+
+/* 通用：边说边写，工具在旁 */
+html[data-workspace-mode="all"] #rd-ws-view {
+  grid-template-areas: "input tools" "qs tools" "tasks tasks";
+}
+/* 小说：先看书架 → 写 → 起手式，工具在旁 */
+html[data-workspace-mode="novel"] #rd-ws-view {
+  grid-template-areas: "domain domain" "input tools" "qs tools" "tasks tasks";
+}
+/* 成稿：交付单与工具优先（满宽一排），再写、再挑起手式 */
+html[data-workspace-mode="dossier"] #rd-ws-view {
+  grid-template-areas: "domain domain" "tools tools" "input qs" "tasks tasks";
+}
+/* 编码：工程现场与看板优先，任务紧跟，输入沉到底部对照着改 */
+html[data-workspace-mode="code"] #rd-ws-view {
+  grid-template-areas: "domain domain" "tools tools" "tasks tasks" "input qs";
+}
+
+/* 台内标题：比大厅小一档，但仍要比原来的 28px 有存在感 */
+#rd-ws-title { font-size: 32px; line-height: 1.2; letter-spacing: -0.025em; }
+#rd-ws-sub { font-size: 14.5px; }
+
+/* ---------- 4. 卡片语言统一换掉：大圆角、无硬边、hover 抬起 ---------- */
+html[data-layout="workbench"] #page-home .rd-input-card {
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 10px 32px -22px rgba(0, 0, 0, .30);
+}
+
+/* 起手式与工具：按容器宽自适应列数（主列 2 列、侧列 1 列、满宽 3-4 列），
+   不写死列数，换台换位置都不用再改一次。 */
+#rd-qs-buttons { grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); }
+#rd-tools .rd-tool-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card {
+  padding: 14px 15px;
+  border-radius: 13px;
+  min-height: 74px;
+}
+html[data-layout="workbench"] .rd-tool {
+  border-radius: 13px;
+  padding: 13px 14px;
+}
+
+/* ---------- 5. 任务列表：横排两列卡片，不再是一条竖列窄行 ---------- */
+#rd-recent-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: 12px;
+}
+html[data-layout="workbench"] .rd-task-item {
+  border-radius: 14px;
+  padding: 14px 16px;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+html[data-layout="workbench"] .rd-task-item:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 45%, var(--border));
+  box-shadow: 0 8px 24px -20px color-mix(in srgb, var(--ws-accent) 90%, transparent);
+  transform: translateY(-1px);
+}
+
+/* ---------- 6. 区块标题：加一条极淡的分隔，把「块」立起来 ---------- */
+html[data-layout="workbench"] #page-home .rd-section-head {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+html[data-layout="workbench"] #page-home .rd-section-head h2 { font-size: 14.5px; }
+
+/* ---------- 7. 窄屏回退：两栏会挤成两列 40px，直接单列堆叠 ---------- */
+@media (max-width: 1080px) {
+  #rd-ws-view { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; }
+  #rd-ws-view > * { grid-area: auto !important; }
+  #rd-mode-bar:not(.is-compact) { grid-template-columns: minmax(0, 1fr); }
+  #rd-recent-list { grid-template-columns: minmax(0, 1fr); }
+  #rd-lobby-title { font-size: 30px; }
+  #rd-ws-title { font-size: 26px; }
+}
+
+/* ==========================================================================
+   工作台版式 v2 · 层级（2026-10-28）
+   上一版的问题是「六张白卡权重相同」：输入框和工具卡长得一样大，眼睛不知道先落哪。
+   这里把主次明确拉开——输入卡是唯一主角（台色描边 + 大阴影 + 聚焦发光），
+   其余块退成无边框色块。设计感来自层级，不来自再加一块东西。
+   ========================================================================== */
+
+/* 主角：输入卡。台色描边让它从一片灰里立起来 */
+html[data-layout="workbench"] #page-home #rd-input-slot .cmp-box {
+  border-color: color-mix(in srgb, var(--ws-accent) 40%, var(--border));
+  box-shadow: 0 2px 6px -2px rgba(24, 32, 42, .06),
+              0 22px 56px -30px color-mix(in srgb, var(--ws-accent) 80%, transparent);
+  transition: border-color .16s, box-shadow .16s;
+}
+html[data-layout="workbench"] #page-home #rd-input-slot .cmp-box:focus-within {
+  border-color: var(--ws-accent);
+  box-shadow: 0 2px 6px -2px rgba(24, 32, 42, .06),
+              0 26px 64px -30px color-mix(in srgb, var(--ws-accent) 100%, transparent);
+}
+
+/* 配角：起手式 / 工具 / 任务卡去掉硬边，退成色块 */
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card,
+html[data-layout="workbench"] .rd-tool,
+html[data-layout="workbench"] .rd-task-item {
+  border-color: transparent;
+  background: var(--panel2);
+}
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card:hover,
+html[data-layout="workbench"] .rd-tool:hover,
+html[data-layout="workbench"] .rd-task-item:hover {
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--ws-accent) 42%, var(--border));
+}
+/* 每台第一张起手式仍然实心台色图标，保留「推荐」的锚点 */
+html[data-layout="workbench"] .rd-qs-btn.rd-start-card:first-child {
+  border-color: color-mix(in srgb, var(--ws-accent) 30%, transparent);
+}
+
+/* ==========================================================================
+   壳层简化（2026-10-28，用户：上下左右都能改，唯一要求对普通用户简化）
+   ========================================================================== */
+
+/* ---------- 左栏：标题行兼折叠开关 ---------- */
+.side-fold-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: .05em;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color .15s, background-color .15s;
+}
+.side-fold-btn:hover { color: var(--text); }
+.side-fold-ico {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  opacity: .7;
+  transform: rotate(90deg);   /* 展开态：箭头朝下 */
+  transition: transform .15s;
+}
+#side-projects.is-folded .side-fold-ico { transform: rotate(0deg); }
+#side-projects.is-folded #side-tasks { display: none; }
+/* 收起后整块只剩标题，别留一大片空白把下面顶下去 */
+#side-projects.is-folded { padding-bottom: 2px; }
+
+/* ---------- 顶栏：右侧只留「更多 + 主题 + 连接状态」 ----------
+   详情面板开关已进「更多」菜单（TOP_MORE_ACTIONS.insp），原件在这里隐藏。 */
+html[data-layout="workbench"] #btn-insp { display: none; }
+
+/* ---------- 大厅底部「最近的活」：两张两列，把下半屏用起来 ---------- */
+#rd-lobby-recent { margin-top: 26px; }
+#rd-lobby-recent .rd-task-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: 12px;
+}
+
+/* ---------- 左下角厂商：没选模型时不是「一个状态」，是「一件事没做」 ----------
+   灰点 + 小字没人会点，而这是任务跑不起来的唯一原因。改成警示底色 + 「选择模型」。 */
+#btn-prov-side.is-empty {
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 38%, transparent);
+  border-radius: 9px;
+  color: var(--warn);
+}
+#btn-prov-side.is-empty .nm { color: var(--warn); font-weight: 600; }
+#btn-prov-side.is-empty:hover { background: color-mix(in srgb, var(--warn) 20%, transparent); }
+
+/* ============================================================================
+   左侧栏退场：workbench 桌面端把左栏改成「覆盖式抽屉」，主区拿回整幅画布
+   ----------------------------------------------------------------------------
+   台内页上的左栏与主区几乎一一重复（工作台/全部任务 ↔ 主区「全部任务」，
+   台导航 ↔ 右侧工具区，书架 ↔ 「在写书」，新任务 ↔ 输入框）。常驻 216px 只换来
+   「同一件事两个位置」，还吃掉 15% 画布。这里把它改成按需滑出：
+     · 默认收起，不占栅格列，主区 100% 宽
+     · 顶栏 ☰ 打开；点遮罩 / Esc / 任一入口后自动收回
+     · 设置（settings-mode）与文件浏览（files-mode）的左栏本身就是导航 → 恢复常驻两列
+   窄屏（<=900px）走 style.css 既有抽屉，不受影响（下面整段在 min-width:901px 内）。
+   ============================================================================ */
+@media (min-width: 901px) {
+  /* 1) 骨架：46px 图标轨 + 主区。整条 216px 左栏退场（只在设置/文件浏览时回来） */
+  html[data-layout="workbench"] #app,
+  html[data-layout="workbench"] body.side-collapsed #app {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+  html[data-layout="workbench"] body.inspector-open #app,
+  html[data-layout="workbench"] body.side-collapsed.inspector-open #app {
+    grid-template-columns: 46px minmax(0, 1fr) minmax(280px, 340px);
+  }
+
+  /* 2) 图标轨：常驻、只有图标，就是「台切换器」 */
+  html[data-layout="workbench"] .side-rail {
+    display: flex !important;
+    width: 46px;
+    padding: 10px 0 10px;
+    align-items: center;
+    gap: 6px;
+  }
+  /* 原来挤在 rail 上的技术入口（概览/运行记录/自动化/浏览器）已各有去处
+     （「更多」菜单 + 全部任务页），rail 只留台切换 + 底部设置 */
+  html[data-layout="workbench"] .side-rail > .rail-btn[data-rail-page="overview"],
+  html[data-layout="workbench"] .side-rail > .rail-btn[data-rail-page="runs"],
+  html[data-layout="workbench"] .side-rail > #btn-rail-phone {
+    display: none;
+  }
+  /* 第一颗「任务」图标在 workbench 下由 #rail-ws 的「工作台」替代，避免同一图标两个含义 */
+  html[data-layout="workbench"] .side-rail > .rail-btn[data-rail-page="tasks"] {
+    display: none;
+  }
+  .rail-ws { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+  .rail-ws-btn {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .15s, background-color .15s;
+  }
+  .rail-ws-btn .ico { width: 18px; height: 18px; }
+  .rail-ws-btn:hover { color: var(--text); background: var(--panel2); }
+  .rail-ws-btn.active {
+    color: var(--ws-accent);
+    background: color-mix(in srgb, var(--ws-accent) 11%, transparent);
+  }
+
+  /* 3) 整条左栏退场：默认不在画面上，只在 rail 底部「全部功能」按需滑出（覆盖式）。
+        设置 / 文件浏览的左栏本身就是导航，常驻显示，见第 4 条。 */
+  html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode) #sidebar {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 72;
+    width: var(--side-w, 260px);
+    transform: translateX(-101%);
+    transition: transform .22s cubic-bezier(.22, .61, .36, 1);
+    border-right: 1px solid var(--border);
+    border-radius: 0 14px 14px 0;
+    box-shadow: 0 22px 56px rgba(9, 14, 22, .20);
+    overscroll-behavior: contain;
+  }
+  html[data-layout="workbench"] body.side-open #sidebar { transform: none; }
+  html[data-layout="workbench"] body.side-open #drawer-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 71;
+    background: rgba(12, 16, 24, .28);
+  }
+  /* 顶栏那颗 ☰ 在 workbench 下由 rail 底部的「全部功能」承担，避免两个开合钮 */
+  html[data-layout="workbench"] #btn-menu { display: none !important; }
+  /* rail 底部的「全部功能」只在 workbench 出现（其余布局左栏本来就在） */
+  html[data-layout="workbench"] #btn-rail-menu { display: grid; }
+
+  /* 4) 设置 / 文件浏览：46 图标轨 + 216 侧栏 + 主区 */
+  html[data-layout="workbench"] body.settings-mode #app,
+  html[data-layout="workbench"] body.files-mode #app,
+  html[data-layout="workbench"] body.settings-mode.side-collapsed #app,
+  html[data-layout="workbench"] body.files-mode.side-collapsed #app {
+    grid-template-columns: 46px var(--side-w, 216px) minmax(0, 1fr);
+  }
+  html[data-layout="workbench"] body.settings-mode.inspector-open #app,
+  html[data-layout="workbench"] body.files-mode.inspector-open #app {
+    grid-template-columns: 46px var(--side-w, 216px) minmax(0, 1fr) minmax(280px, 340px);
+  }
+  html[data-layout="workbench"] body.settings-mode #sidebar,
+  html[data-layout="workbench"] body.files-mode #sidebar {
+    display: flex !important;
+  }
+
+  /* 5) 画布放宽：原来被左栏挤掉的像素还给内容 */
+  html[data-layout="workbench"] .rd-home {
+    max-width: 1560px;
+    margin-inline: auto;
+    padding: 22px clamp(26px, 2.6vw, 44px) 56px;
+  }
+}
+
+
+/* ---------- 顶栏「选择模型」警示 pill ----------
+   没选厂商＝任何任务都跑不起来，这是唯一会让普通用户彻底卡住的状态。
+   左栏收进抽屉后左下角那颗小按钮看不见了，改由顶栏常驻提醒（renderOrchSide 同源维护）。 */
+#btn-model-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent) !important;
+  color: var(--warn) !important;
+  font-weight: 650;
+}
+#btn-model-pill:hover { background: color-mix(in srgb, var(--warn) 20%, transparent) !important; }
+#btn-model-pill .ico { color: var(--warn); }
+
+/* ============================================================================
+   宽屏重排：左栏退场后画布从 1198 → 1414，原两栏模板会把右侧工具卡吊在长列上，
+   下半屏全空。这里按「每行都撑满」重排——hero / 起手式 / 任务列表通栏，
+   只有输入卡与工具区并排（它们本来就是一对：写什么 ↔ 能用什么）。
+   ============================================================================ */
+@media (min-width: 1200px) {
+  /* 通用：没有 hero，输入卡与工具并排 → 起手式通栏 → 任务通栏 */
+  html[data-layout="workbench"][data-workspace-mode="all"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+    grid-template-areas: "input tools" "qs qs" "tasks tasks";
+  }
+  /* 小说：书架通栏 → 写 + 工具 → 起手式通栏 → 任务通栏 */
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+    grid-template-areas: "domain domain" "input tools" "qs qs" "tasks tasks";
+  }
+  /* 成稿 / 编码本来就是逐行通栏，只调比例让左右两栏别一头沉 */
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  }
+
+  /* 起手式通栏后固定 4 列：auto-fit 在 1400 宽会算成 5 列，最后一行只剩 1 张 */
+  html[data-layout="workbench"] #rd-qs-buttons {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* 工具区在右列只有 ~470 宽，2 列比 auto-fit 更稳（230×2 卡在边界会翻成 1 列） */
+  html[data-layout="workbench"] #rd-tools .rd-tool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* 大厅四张台卡同理：2×2 的每一格不要被拉成 700 宽的长条 */
+  html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 本台没任务时列表会退化成「别处最近的活」：每条前面的台名标签要弱于类型标签，
+   一眼能分辨「这不是本台的活」，又不至于把标题挤掉。 */
+.rd-task-ws {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+}
+
+/* ============================================================================
+   台内页：三块 + 右栏（对齐参考稿）
+   ----------------------------------------------------------------------------
+   上一版进台以后是「在写书 / 输入 / 起手式 / 工具 / 任务」五块，眼睛要在三个方向
+   来回找。参考稿的台内页只有一个主列（标题 + 一张主卡 + 一张列表）加一条右栏，
+   所以这里：hero 三卡并进任务列表（book 行本来就带章数与字数），工具移右栏，
+   主列只剩「写什么」和「写过的」。
+   ============================================================================ */
+/* 统一主色：四台各一个颜色等于四个界面，换台先晃一下眼睛。
+   参考稿里四个台是同一个靛蓝，只有语义标签换色。 */
+html[data-layout="workbench"],
+html[data-layout="workbench"][data-workspace-mode="novel"],
+html[data-layout="workbench"][data-workspace-mode="code"],
+html[data-layout="workbench"][data-workspace-mode="dossier"] {
+  --ws-accent: #4f46e5;
+}
+
+@media (min-width: 1080px) {
+  /* 四台统一：主列 + 296px 右栏。不再按台写四套模板——那是四份要维护的排版 */
+  /* 通用台没有 domain 区块，模板少一行，免得空行距顶下来 */
+  html[data-layout="workbench"][data-workspace-mode="all"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1fr) 296px;
+    grid-template-areas: "input tools" "qs tools" "tasks tools";
+    gap: 14px 20px;
+  }
+  html[data-layout="workbench"][data-workspace-mode="novel"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="dossier"] #rd-ws-view,
+  html[data-layout="workbench"][data-workspace-mode="code"] #rd-ws-view {
+    grid-template-columns: minmax(0, 1fr) 296px;
+    grid-template-areas: "domain domain" "input tools" "qs tools" "tasks tools";
+    gap: 14px 20px;
+  }
+  /* 右栏窄，工具卡单列竖排——正好是参考稿右栏那种「一行一件事」的列表 */
+  html[data-layout="workbench"] #rd-tools .rd-tool-grid { grid-template-columns: minmax(0, 1fr); }
+  html[data-layout="workbench"] #rd-tools { align-self: start; }
+}
+
+/* 起手式压成一行胶囊：图标 + 一句话，说明文字不占第二行 */
+html[data-layout="workbench"] #rd-ws-view #rd-quick-start {
+  margin-top: -2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+html[data-layout="workbench"] #rd-ws-view #rd-qs-buttons {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+html[data-layout="workbench"] #rd-ws-view .rd-qs-btn.rd-start-card {
+  flex: 1 1 190px;
+  min-height: 0;
+  min-width: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  gap: 8px;
+}
+html[data-layout="workbench"] #rd-ws-view .rd-start-card .rd-start-body {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+html[data-layout="workbench"] #rd-ws-view .rd-start-card .rd-start-body b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 一行放不下就只留标题，别把卡片撑成两行 */
+html[data-layout="workbench"] #rd-ws-view .rd-start-card .rd-start-body small { display: none; }
+html[data-layout="workbench"] #rd-ws-view .rd-start-card .rd-start-ico { width: 24px; height: 24px; flex: none; }
+html[data-layout="workbench"] #rd-ws-view .rd-start-card .rd-start-go { display: none; }
+
+/* 「全部功能」只在 workbench 出现——其余布局的左栏本来就常驻 */
+#btn-rail-menu { display: none; }
+
+/* ============================================================================
+   对齐参考稿的收尾：去重复、去选中感、统一白卡
+   ============================================================================ */
+/* 1) 台签那一条与左侧图标轨说的是同一件事（进哪个台），删掉一行 */
+html[data-layout="workbench"] #rd-mode-bar.is-compact { display: none !important; }
+
+/* 2) 任务列表：一行一条。两列在三条数据时会摆成 2+1，像没加载完 */
+html[data-layout="workbench"] #rd-recent-list { grid-template-columns: minmax(0, 1fr); }
+html[data-layout="workbench"] #page-home .rd-task-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 30, 55, .04);
+  padding: 13px 16px;
+}
+
+/* 3) 起手式第一张原来带台色底，看着像「已被选中」；四张是一个层级的快捷方式 */
+html[data-layout="workbench"] #rd-ws-view .rd-qs-btn.rd-start-card,
+html[data-layout="workbench"] #rd-ws-view .rd-qs-btn.rd-start-card:first-child {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: none;
+  color: var(--text);
+}
+html[data-layout="workbench"] #rd-ws-view .rd-qs-btn.rd-start-card:hover {
+  border-color: color-mix(in srgb, var(--ws-accent) 45%, var(--border));
+  background: var(--panel);
+}
+html[data-layout="workbench"] #rd-ws-view .rd-qs-btn.rd-start-card:first-child .rd-start-ico {
+  background: color-mix(in srgb, var(--ws-accent) 10%, transparent);
+  color: var(--ws-accent);
+  border: 0;
+}
+html[data-layout="workbench"] #rd-ws-view .rd-start-card .rd-start-ico {
+  background: var(--panel2);
+  color: var(--muted);
+  border: 0;
+  border-radius: 7px;
+}
+
+/* 4) 日期行退成 kicker：参考稿顶部只有一行小字，不抢标题 */
+html[data-layout="workbench"] #rd-home-date {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: .85;
+}
+
+/* 5) 右栏工具卡：参考稿右栏是一行一件事，卡片不该有卡片的分量 */
+html[data-layout="workbench"] #rd-tools .rd-tool {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+html[data-layout="workbench"] #rd-tools .rd-tool small { display: none; }
+html[data-layout="workbench"] #rd-tools .rd-section-head { border-bottom: 0; padding-bottom: 0; }
+html[data-layout="workbench"] #rd-tools .rd-section-head h2 { font-size: 13px; color: var(--muted); font-weight: 600; }
+
+/* 6) 台内标题：参考稿的主标题是页面唯一的重音 */
+html[data-layout="workbench"] #rd-ws-title {
+  font-size: 31px;
+  line-height: 1.18;
+  letter-spacing: -.03em;
+  font-weight: 650;
+  margin: 2px 0 6px;
+}
+html[data-layout="workbench"] #rd-ws-sub { font-size: 13.5px; color: var(--muted); }
+
+/* 右栏工具卡只留「图标 + 名称」一行：说明文字在窄栏里必然折两行，把列表撑成话痨 */
+html[data-layout="workbench"] #rd-tools .rd-tool-text i { display: none; }
+html[data-layout="workbench"] #rd-tools .rd-tool-text b { font-size: 13px; font-weight: 600; }
+html[data-layout="workbench"] #rd-tools .rd-tool { display: flex; align-items: center; gap: 10px; min-height: 42px; }
+html[data-layout="workbench"] #rd-tools .rd-tool-go { opacity: .35; }
+
+/* 顶栏页名：前面一颗台色小方块，取代原来那条面包屑的位置 */
+html[data-layout="workbench"] #page-title { font-size: 13.5px; font-weight: 650; letter-spacing: .01em; }
+html[data-layout="workbench"] #page-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 2px;
+  background: var(--ws-accent);
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+
+/* 「← 全部工作台」：回大厅的退路，不该和标题抢同一条视线 */
+html[data-layout="workbench"] .rd-back-btn {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: .9;
+  margin-bottom: 10px;
+}
+html[data-layout="workbench"] .rd-back-btn:hover { color: var(--text); opacity: 1; }
+
+/* 右栏四宫格：参考稿的「用量」块，四个真数字，比一段说明文字有用 */
+.rd-ws-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.rd-ws-stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rd-ws-stat b { font-size: 19px; font-weight: 650; letter-spacing: -.02em; color: var(--text); line-height: 1.1; }
+.rd-ws-stat span { font-size: 11.5px; color: var(--muted); }
+
+/* ============================================================================
+   最简模式：只留「写什么 / 写过的 / 能用什么」
+   ----------------------------------------------------------------------------
+   原则：一屏之内每块都在回答三个问题之一，其余全部撤掉。
+     ① 写什么 → 标题一行 + 输入卡
+     ② 写过的 → 任务列表
+     ③ 能用什么 → 右栏工具
+   已经证明是「同一件事说两遍」的撤掉：日期行、顶部「全部任务」（列表标题里有）、
+   「← 全部工作台」（图标轨第一颗就是大厅）、顶栏招牌动作（右栏第一项就是它）。
+   输入卡内部同理：工作目录、上下文提示语、插件胶囊行都收起来——
+   **编码台例外**：工作目录与 git 分支是它的必需输入，一行都不能少。
+   ============================================================================ */
+
+/* 1) 头部：只留标题 + 状态行（那个 div 只有 class、没有 id，别写 #rd-home-toprow） */
+html[data-layout="workbench"] .rd-home-toprow { display: none !important; }
+html[data-layout="workbench"] #btn-rd-back { display: none !important; }
+html[data-layout="workbench"] #btn-ws-action { display: none !important; }
+
+/* 标题上下的空隙一起收紧：撤掉返回行后原来那段 margin 会变成一条空带 */
+html[data-layout="workbench"] #rd-entered-head { margin-bottom: 14px; }
+html[data-layout="workbench"] #rd-ws-title { margin: 0 0 5px; }
+html[data-layout="workbench"] #rd-ws-sub { margin: 0; }
+
+/* 2) 输入卡：去掉框内三层说明，只留输入框 + 底部动作条 */
+html[data-layout="workbench"] .cmp-context-note { display: none; }
+html[data-layout="workbench"] #cmp-workspace-hint,
+html[data-layout="workbench"] .cmp-hint:empty { display: none; }
+/* 非编码台不需要工作目录：小说/成稿的产物落在自己的任务目录里，填了反而多一个错项。
+   通用台保留——它可能起代码类任务。 */
+/* 必须照 reference-composer.css 那条选择器的形态写（:is(#sub-tasks,#rd-input-slot)
+   .cmp-box > .cmp-pills .cmp-wd 带 id，靠 class 堆特异性压不住），否则不生效。 */
+html[data-layout="workbench"][data-workspace-mode="novel"] :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills .cmp-wd,
+html[data-layout="workbench"][data-workspace-mode="dossier"] :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills .cmp-wd,
+html[data-layout="workbench"][data-workspace-mode="novel"] :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills:empty,
+html[data-layout="workbench"][data-workspace-mode="dossier"] :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills:empty {
+  display: none !important;
+}
+
+/* 3) 快速开始：去标签，只留一排胶囊 */
+html[data-layout="workbench"] #rd-ws-view .rd-qs-label { display: none; }
+html[data-layout="workbench"] #rd-ws-view #rd-quick-start { margin-top: 10px; }
+
+/* 4) 右栏：四宫格压成一行统计，工具列表顶上来 */
+html[data-layout="workbench"] .rd-ws-stats {
+  display: flex;
+  gap: 0;
+  align-items: baseline;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+html[data-layout="workbench"] .rd-ws-stat {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  justify-content: center;
+}
+html[data-layout="workbench"] .rd-ws-stat b { font-size: 15px; }
+html[data-layout="workbench"] .rd-ws-stat span { font-size: 11px; }
+
+/* 5) 任务区标题：一句话就够，「{台名} · 本台任务」把台名说了两遍（图标轨、顶栏都有） */
+html[data-layout="workbench"] .rd-section-head h2 { font-size: 13px; font-weight: 650; }
+
+/* 工作目录整条撤掉后，.cmp-pills 还留着 38px 的空壳（它在框顶，一眼就是「这里少了点什么」） */
+html[data-layout="workbench"][data-workspace-mode="novel"] :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills,
+html[data-layout="workbench"][data-workspace-mode="dossier"] :is(#sub-tasks, #rd-input-slot) .cmp-box > .cmp-pills {
+  display: none !important;
+}
+
+/* 标题与输入卡之间只留一口气 */
+html[data-layout="workbench"] .rd-home-head { margin-bottom: 12px !important; }
+
+/* 大厅同理：四张台卡是「门口」，不是内容——一排四张，一句话，走进去再看细节。
+   原来 2×2 大卡各 140px 高、还带一排类型标签，占了半屏却只说四个名字。 */
+@media (min-width: 900px) {
+  html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mode-card {
+  padding: 14px 15px;
+  min-height: 0;
+  border-radius: 14px;
+  align-items: flex-start;
+  gap: 11px;
+}
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-body b { font-size: 15px; }
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-body small {
+  font-size: 12px;
+  margin-top: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* 类型标签在台内是首屏入口，在大厅只是四个名字的注脚——先撤 */
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-tags { display: none; }
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-ico { width: 30px; height: 30px; }
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-go { align-self: flex-start; opacity: .3; }
+
+/* 「最近的活」在大厅也是 1 列：2 列时 4 条摆成 2+2，看着像两组 */
+html[data-layout="workbench"] #rd-lobby-recent-list { grid-template-columns: minmax(0, 1fr) !important; }
+
+/* 台卡横排：图标在左、名字在右。竖排时 4 列每列 314 宽却只用中间 120 宽，白得像占位 */
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mode-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+}
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-body { min-width: 0; flex: 1; }
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-body small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  -webkit-line-clamp: none;
+}
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mc-go { align-self: center; }
+
+/* 大厅里还没有「进去」，任何一张卡都不该是选中态：上次停在小说的痕迹会让第一次
+   打开的人以为已经进台了。选中感只留给图标轨（那是真实状态），台卡一律平权。 */
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mode-card.is-on {
+  border-color: var(--border);
+  background: var(--panel);
+  box-shadow: none;
+  color: var(--text);
+}
+html[data-layout="workbench"] #rd-mode-bar:not(.is-compact) .rd-mode-card.is-on .rd-mc-ico {
+  background: var(--panel2);
+  color: var(--muted);
+}
+
+/* ============================================================================
+   设置：首页 + 左栏收敛（2026-10-28）
+   ----------------------------------------------------------------------------
+   原来打开设置直接落在「编排设置」：编辑者、并发上限、MCP 服务器清单 JSON。
+   会用的人不需要这屏，不会用的人看到这屏就退了。现在：
+     · 齿轮 → 设置首页：六张卡，每张一句白话 + 一行当前状态
+     · 左栏只留常用六项，其余 15 项收进「更多设置」
+   ============================================================================ */
+.sh-head { max-width: 980px; margin: 0 auto 18px; }
+.sh-title { font-size: 30px; font-weight: 650; letter-spacing: -.03em; margin: 0 0 6px; color: var(--text); }
+.sh-sub { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+.sh-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.sh-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 16px;
+  min-height: 74px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .16s, box-shadow .16s, transform .16s;
+}
+.sh-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: 0 1px 3px rgba(15, 30, 55, .06);
+}
+.sh-card:active { transform: translateY(1px); }
+.sh-ico {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+.sh-ico .ico { width: 18px; height: 18px; }
+.sh-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.sh-body b { font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
+.sh-body small { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-state {
+  flex: none;
+  max-width: 42%;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sh-go { flex: none; color: var(--muted); opacity: .45; width: 15px; height: 15px; }
+
+/* 没选模型＝整台机器不能干活，这张卡必须自己跳出来 */
+.sh-card.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  background: color-mix(in srgb, var(--warn) 6%, var(--panel));
+}
+.sh-card.is-warn .sh-ico { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.sh-card.is-warn .sh-state {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  font-weight: 600;
+}
+
+.sh-foot {
+  max-width: 980px;
+  margin: 18px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.sh-dot { opacity: .5; }
+
+/* 左栏：常用项的说明 + 「更多设置」开关 */
+.set-item-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+  padding: 0 10px 6px 36px;
+  opacity: .85;
+}
+.set-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 8px 0 2px;
+  padding: 9px 10px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.set-more:hover { color: var(--text); }
+.set-more .ico { width: 14px; height: 14px; transition: transform .18s; }
+.set-more.is-open .ico { transform: rotate(180deg); }
+.set-more span { flex: 1; text-align: left; }
+.set-more i {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 900px) {
+  .sh-grid { grid-template-columns: minmax(0, 1fr); }
+  .sh-title { font-size: 24px; }
+  .sh-state { display: none; }
+}
+
+/* 设置首页的标题左对齐卡片栅格（父级 subpage 有居中倾向，这里显式压回左） */
+#page-settings #sub-__home { text-align: left; }
+#page-settings #sub-__home .sh-head { text-align: left; }
+
+/* ============================================================================
+   任务详情：顶部诊断条
+   ----------------------------------------------------------------------------
+   原来打开一条失败任务，第一眼是五张一模一样的「执行失败」红卡 + 右侧十二个
+   技术字段（ws / 终端 / 来源 / 配置来源 / 圣经…），原因要自己拼。
+   现在第一眼只有一句话结论 + 一个按钮，细节照旧留在下面。
+   ============================================================================ */
+.rd-diag {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel2);
+}
+.rd-diag.hidden { display: none; }
+.rd-diag-ico {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--muted);
+}
+.rd-diag-ico .ico { width: 16px; height: 16px; }
+.rd-diag-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rd-diag-text b { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.rd-diag-text small { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.rd-diag-act {
+  flex: none;
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: var(--text);
+  color: var(--panel);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rd-diag-act:hover { opacity: .88; }
+
+/* 需要你动手：暖色，和「失败」区分开（失败是自己的问题，warn 是「你去做一件事就好了」） */
+.rd-diag.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 38%, var(--border));
+  background: color-mix(in srgb, var(--warn) 7%, var(--panel));
+}
+.rd-diag.is-warn .rd-diag-ico { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.rd-diag.is-warn .rd-diag-act { background: var(--warn); color: #fff; }
+
+/* 真失败 */
+.rd-diag.is-bad {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger) 6%, var(--panel));
+}
+.rd-diag.is-bad .rd-diag-ico { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+
+/* 正在跑：安静一点，不要把常态渲染成事故 */
+.rd-diag.is-run {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+}
+.rd-diag.is-run .rd-diag-ico { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); }
+
+/* 失败卡片：收起原文后一行一条，「哪一步 / 什么时候 / 什么原因」仍在一行里 */
+.chat-fail-more { margin-top: 6px; }
+.chat-fail-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+  user-select: none;
+}
+.chat-fail-more > summary::-webkit-details-marker { display: none; }
+.chat-fail-more > summary:hover { color: var(--text); }
+.chat-fail-more > summary::before {
+  content: "▸";
+  font-size: 9px;
+  transition: transform .15s;
+}
+.chat-fail-more[open] > summary::before { content: "▾"; }
+.chat-fail-more[open] > summary { margin-bottom: 4px; }
+
+/* 设置子页的白话页头：标题一句话 + 一句「要你做什么」，正文原理不动 */
+.pg-lead {
+  /* 设置子页是 align-items:center 的列，只给 max-width 会按内容收缩成一条窄句；
+     必须 width:100% 撑到与下面 panel 同宽 */
+  width: 100%;
+  max-width: 1010px;
+  align-self: stretch;
+  margin: 0 auto 14px;
+  padding: 0 2px;
+  box-sizing: border-box;
+}
+.pg-lead h1 {
+  font-size: 23px;
+  font-weight: 650;
+  letter-spacing: -.025em;
+  margin: 0 0 5px;
+  color: var(--text);
+}
+.pg-lead p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 720px;
+}
+
+/* 看板/运行记录是主栏快捷页，页头跟着主区左右边距走，不套设置页那套 1010 宽度 */
+body:not(.settings-mode) .pg-lead { max-width: 1180px; }
+
+/* 设置首页与 pg-lead 同一个坑：设置子页是 align-items:center 的列，
+   max-width 不配 width:100% 会被内容宽度收窄，标题与卡片都缩在中间一坨。 */
+#page-settings #sub-__home .sh-head,
+#page-settings #sub-__home .sh-grid,
+#page-settings #sub-__home .sh-foot {
+  width: 100%;
+  max-width: 980px;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+#page-settings #sub-__home .sh-head { margin: 0 auto 18px; text-align: left; }
+#page-settings #sub-__home .sh-grid { margin: 0 auto; }
+#page-settings #sub-__home .sh-foot { margin: 18px auto 0; }
+
+/* ══ 详情页：把工程字段收进「技术细节」 ══
+   右栏原来一屏摊着 Git/子智能体/终端/来源/配置来源，写小说的用户一个也用不上。
+   值仍在、能力仍可点，只是默认收起；「进程」留外面，因为那是「跑到哪了」。 */
+#rd-context .rd-context-tech {
+  border-top: 1px solid var(--line, #ececf0);
+  margin-top: 6px;
+  padding-top: 4px;
+}
+#rd-context .rd-context-tech > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 6px;
+  font-size: 12px;
+  color: var(--muted);
+  border-radius: 8px;
+  user-select: none;
+}
+#rd-context .rd-context-tech > summary::-webkit-details-marker { display: none; }
+#rd-context .rd-context-tech > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 14px;
+  font-size: 10px;
+  transition: transform .15s;
+}
+#rd-context .rd-context-tech[open] > summary::before { transform: rotate(90deg); }
+#rd-context .rd-context-tech > summary:hover { background: var(--hover, #f6f6f8); color: var(--text); }
+
+/* 系统审计注记（who=本机）：不冒充用户发言，压成一行淡字 */
+.chat-sysnote { /* 旧单行形态，保留兼容 */
+  max-width: 880px;
+  margin: 2px 0 2px 4px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  opacity: .78;
+  border-left: 2px solid var(--line, #e6e6ec);
+}
+.chat-sysnote-group {
+  max-width: 880px;
+  margin: 4px 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.chat-sysnote-group > summary {
+  list-style: none;
+  cursor: pointer;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 6px;
+  opacity: .8;
+}
+.chat-sysnote-group > summary::-webkit-details-marker { display: none; }
+.chat-sysnote-group > summary::before { content: "▸ "; font-size: 10px; }
+.chat-sysnote-group[open] > summary::before { content: "▾ "; }
+.chat-sysnote-group > summary:hover { background: var(--hover, #f6f6f8); }
+.chat-sysnote-line {
+  padding: 3px 8px;
+  border-left: 2px solid var(--line, #e6e6ec);
+  margin-left: 4px;
+  line-height: 1.55;
+  opacity: .85;
+}
+
+/* 失败原因：人话在外，原文折进 details；底部动作按钮并排 */
+.cr-err b { font-weight: 600; }
+.cr-err-more { margin-top: 6px; font-size: 12px; }
+.cr-err-more > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+  width: fit-content;
+}
+.cr-err-more > summary::-webkit-details-marker { display: none; }
+.cr-err-more > summary::before { content: "▸ "; font-size: 10px; }
+.cr-err-more[open] > summary::before { content: "▾ "; }
+.cr-err-more > div {
+  margin-top: 5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0,0,0,.035);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
+}
+.cr-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+/* 失败步骤卡：白底 + 左侧红细线，别整块粉底把一屏染红。
+   结论级「本轮失败」还留在下面，这张只负责「哪一步、什么时候、为什么」。 */
+#rd-chat-flow .chat-fail-card {
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #ececf0);
+  border-left: 3px solid #e5484d;
+  border-radius: 10px;
+  box-shadow: none;
+}
+#rd-chat-flow .chat-fail-card .chat-fail-title { color: #c62a2f; }
+
+/* 被取消的步骤：一行淡灰记录，不要读成「智能体说了这句话」 */
+#rd-chat-flow .chat-bubble.agent.is-cancelled {
+  border-left: 2px solid var(--line, #e6e6ec);
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+#rd-chat-flow .chat-bubble.agent.is-cancelled .chat-meta { opacity: .8; }
+
+/* 运行记录：删除是低频且危险的动作，别和状态/时间挤在一行抢注意力。
+   平时藏起来，行悬停或键盘聚焦时才出现；页头「全部清除」同理弱化成描边。 */
+#run-list .item .danger.small {
+  opacity: 0;
+  transition: opacity .12s ease;
+  box-shadow: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+#run-list .item:hover .danger.small,
+#run-list .item .danger.small:focus-visible {
+  opacity: 1;
+  border-color: var(--line, #e6e6ec);
+  color: #c62a2f;
+}
+#btn-clear-runs.danger {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line, #e6e6ec);
+}
+#btn-clear-runs.danger:hover {
+  color: #c62a2f;
+  border-color: #f0c2c3;
+  background: rgba(229, 72, 77, .06);
+}
+
+/* 运行记录按任务聚合后的「另有 N 次」入口与组内子行 */
+#run-list .run-group-more {
+  display: block;
+  width: 100%;
+  margin: -3px 0 7px;
+  padding: 5px 12px 5px 42px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+#run-list .run-group-more:hover { color: var(--text); background: var(--hover, #f6f6f8); }
+#run-list .item.run-child { margin-left: 26px; opacity: .82; }
+
+/* ══ 全部任务页：同名重跑折叠 + 去掉重复说明 ══
+   上一屏已经有一句「按工作台或状态筛；点一行进详情」，下面 .rd-alltasks-sub
+   又说一遍「四个工作台的任务都在这里；按工作台或状态筛，点一行进详情」——删。 */
+#rd-alltasks .rd-alltasks-head { display: none; }
+#rd-alltasks .rd-group-more {
+  display: block;
+  width: 100%;
+  margin: -4px 0 8px;
+  padding: 5px 12px 5px 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+#rd-alltasks .rd-group-more:hover { color: var(--text); background: var(--hover, #f6f6f8); }
+#rd-alltasks .rd-task-item.is-child { opacity: .82; background: var(--hover, #f6f6f8); }
+
+/* ══ 看板：同名卡折叠（142 张 run a command → 1 张 + 另有 N 次） ══ */
+.kanban-board .kb-more {
+  display: block;
+  width: 100%;
+  margin: -2px 0 8px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.kanban-board .kb-more:hover { color: var(--text); background: var(--hover, rgba(0,0,0,.04)); }
+.kanban-board .kb-card.is-child { opacity: .82; }
+
+/* ============ v2 工作台：下线右侧旧状态栏 ============
+ * 「正在运行 / 待你处理 / 本月用量」三块与 运行记录 / 概览 / 任务列表 完全重复；
+ * 默认收起，但顶栏仍有开关（#btn-status-rail），拉开就是「待你处理 53」这类
+ * 历史失败压力墙——新手读不懂也帮不上忙，且是旧样式。DOM 与逻辑全部保留，只在
+ * 这一层隐藏：归零列宽 + 隐藏面板 + 藏掉开合钮。将来要恢复，删掉这三条即可。
+ * 归零列宽可兜住「localStorage 里存过 shown」的老用户，不会残留 280px 空列。 */
+html[data-layout="workbench"] { --status-rail-w: 0px !important; }
+html[data-layout="workbench"] #status-sidebar { display: none !important; }
+html[data-layout="workbench"] #btn-status-rail { display: none !important; }

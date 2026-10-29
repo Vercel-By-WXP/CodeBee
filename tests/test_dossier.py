@@ -195,14 +195,14 @@ class SummarizeAndTableTest(_Base):
 
 class ArchetypeWiringTest(unittest.TestCase):
     def test_dossier_page_is_declared(self):
-        self.assertEqual(agents.ARCHETYPES["dossier"]["default_page"],
-                         "dossier/index.html")
+        # v2 的 dossier 独立页已删除：原型不再声明默认页，统一落到工作台
+        self.assertEqual(agents.ARCHETYPES["dossier"]["default_page"], "")
 
     def test_dossier_agents_resolve_to_page(self):
-        # 文档类 Agent 的 surface 应由原型默认页带出来
+        # 文档类 Agent 没有独立页面，surface 为空即「走统一工作台」
         for flow in ("doc", "bid_doc", "tech_proposal"):
             spec = agents.get(flow)
-            self.assertEqual(spec["surface"], "dossier/index.html", flow)
+            self.assertEqual(spec["surface"], "", flow)
 
 
 if __name__ == "__main__":

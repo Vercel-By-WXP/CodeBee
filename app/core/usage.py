@@ -879,13 +879,13 @@ def summary(days=30, recent_limit=30):
 THIN_SAMPLES = 10   # 低于此样本数即「薄样本」，口径见执行标准第 6 条
 
 _DURATION_BASELINES = {
-    "direct": 90, "rank_scan": 1200, "email": 180, "weekly_report": 240,
-    "translation": 240, "speech": 360, "video_script": 360, "article": 480,
+    "direct": 90, "rank_scan": 1200, "email": 180, "weekly_report": 240,    "translation": 240, "speech": 360, "video_script": 360, "article": 480,
     "doc": 480, "resume": 420, "code": 600, "tech_proposal": 720,
     "research": 900, "novel": 720, "short_story": 900, "serial_novel": 2400,
     "short_drama": 1200,
     "presentation": 480, "bid_doc": 720, "defect_retro": 240,
     "handdraw_video": 720,   # 制作包=口播稿+分镜预算+逐镜画面，重于普通脚本轻于分集剧本
+    "image": 60,             # 生图：一次供应商调用，几十秒到一两分钟
 }
 
 

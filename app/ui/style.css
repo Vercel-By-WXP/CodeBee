@@ -2568,6 +2568,21 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 .type-menu-foot .type-item:hover { color: var(--text); }
 .type-menu-foot .ti-ico .ico { width: 15px; height: 15px; }
 .type-menu-foot .ti-name { font-weight: 550; font-size: 12px; }
+/* 模式口径提示（「小说」模式只列 N 个相关类型 + 看全部）：与底部入口同宽，弱化处理 */
+.type-scope {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 -5px; padding: 6px 5px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--muted);
+}
+.type-scope span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.type-scope button {
+  flex: none; border: 0; background: none; cursor: pointer; padding: 0;
+  font: inherit; font-weight: 550; color: var(--accent);
+}
+.type-scope button:hover { text-decoration: underline; }
+/* 嵌在 sticky 底部入口里时：上边框由 .type-menu-foot 提供，这里只留分隔下边线 */
+.type-menu-foot .type-scope { margin: 0 0 2px; padding: 2px 5px 5px; border-top: 0; border-bottom: 1px solid var(--border); }
 @media (max-width: 720px) {
   /* iOS Safari 聚焦输入控件 ≥16px 才不自动放大页面 */
   .type-pick { font-size: 16px; }

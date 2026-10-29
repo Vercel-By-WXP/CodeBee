@@ -51,14 +51,14 @@ ARCHETYPES = {
         "layout": "书架 + 正文 + 评审意见",
         "question": "这一章能不能留住读者？哪里该改？",
         "panels": ("shelf", "body", "review", "wordcount", "publish"),
-        "default_page": "novel/index.html",
+        "default_page": "",
     },
     "dossier": {
         "name": "成稿台",
         "layout": "章节树 + 模板校验 + 定稿导出",
         "question": "要件齐不齐？格式会不会被打回？",
         "panels": ("outline_tree", "checklist", "style_check", "export"),
-        "default_page": "dossier/index.html",
+        "default_page": "",
     },
     "radar": {
         "name": "分析台",
@@ -97,6 +97,11 @@ _BUILTIN = {
         "name": "快手", "focus": "一次说清、一次做对，不绕弯",
         "archetype": "studio", "metric": "一次通过率",
         "deliverable": "结论与产物", "primary_action": "直接交代任务",
+    },
+    "image": {
+        "name": "画师", "focus": "主体、风格、用途说清楚，出的图才用得上",
+        "archetype": "studio", "metric": "一次可用率",
+        "deliverable": "图片文件", "primary_action": "描述画面并出图",
     },
     "code": {
         "name": "工程师", "focus": "改完还能不能跑",
@@ -329,7 +334,7 @@ def describe_all(include_hidden=False, only=None):
 
     - ``only``     形态点名的专家清单。**点名即放出来**，即使它是草稿 ——
                    这是「某个发行版明知风险也要用它」的唯一入口。
-    - ``include_hidden``  连草稿一起给（开发者自用的蜂群版、排查问题时用）。
+    - ``include_hidden``  连草稿一起给（开发者自用的CodeBee版、排查问题时用）。
     - 都不给      只给非草稿的，也就是首发名单。
     """
     table = registry()

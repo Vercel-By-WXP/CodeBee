@@ -51,10 +51,13 @@ class ChatFailCardTests(unittest.TestCase):
         self.assertIn("failMembers.has(idx)", src)
         self.assertIn("chatFailGroupHTML(failGroups.get(idx), idx)", src)
         # 合并门槛是「至少两条」，孤立失败不合并、细节不丢
-        self.assertIn("if (j - i >= 2)", src)
+        self.assertIn("if (members.length >= 2)", src)
+        # 2026-10-28：夹在两次重试之间的系统注记（who=本机）不该切断合并，
+        # 否则同一个错误会在时间线里排成 4 张一样的红卡
+        self.assertIn("if (isSysNote(items[j])) { notes.push(j); j++; continue; }", src)
         app = _read(APP_JS)
         self.assertIn("function chatFailGroupHTML(", app)
-        self.assertIn("同一失败连续 {0} 次", app)
+        self.assertIn("连续失败 {0} 次", app)
 
     def test_failure_parts_split_code_stderr_and_diagnosis(self):
         app = _read(APP_JS)

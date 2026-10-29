@@ -71,7 +71,9 @@ class ProfileNovelTest(unittest.TestCase):
         self.assertFalse(profile.flow_allowed(""))
 
     def test_ui_entry(self):
-        self.assertEqual(profile.ui_entry(), "novel/index.html")
+        # v2 独立页面（novel/index.html 等）已整体删除，形态不再有专属入口页，
+        # 空串＝走统一工作台。
+        self.assertEqual(profile.ui_entry(), "")
 
     def test_features_hide_code_surfaces(self):
         features = profile.current()["features"]

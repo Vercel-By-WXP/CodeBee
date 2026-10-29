@@ -624,6 +624,48 @@ html[data-layout="workbench"] .rd-home-sub {
   line-height: 1.5;
 }
 
+/* 工作模式条：四个方向显式摆在标题下，当前模式实心高亮。
+   此前只藏在左上角「CodeBee 通用 ▾」里，用户会以为界面什么都没变。 */
+html[data-layout="workbench"] .rd-mode-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.rd-mode {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.rd-mode:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.rd-mode.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 550;
+}
+
+.rd-mode-scope {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* 任务输入卡 */
 html[data-layout="workbench"] .rd-input-card {
   background: var(--panel);

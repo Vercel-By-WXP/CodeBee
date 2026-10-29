@@ -372,11 +372,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = None
         # 静态页不设防（无敏感信息）：远程裸地址打开时由前端令牌门引导输入
         if path in ("/", "/index.html"):
-            # 首次启动（用户从没表过态）先给选择页；选过之后直接进对应入口，
-            # 之后换产品走页面右上角「切换」，不再用重定向把人拦在门口。
-            if profile.needs_chooser():
-                return self._redirect("/welcome/")
-            # 垂直形态可自带界面入口（app/ui/<dir>/index.html）；未声明则用内核默认。
+            # 2026-10-28 用户拍板：去掉独立欢迎页，根路径直接进工作台。
+            # 「选模式」改到工作台左上角品牌下拉里完成（四大方向：通用/小说/成稿/编码），
+            # 不再用重定向把人拦在门口。垂直形态若自带 ui 入口仍按 ui_entry 派发；
+            # 默认形态（ui=""）就是原 CodeBee 工作台 index.html。
             return self._static(profile.ui_entry() or "index.html")
         # 运行预览：工作目录里网页成品的只读挂载，供 iframe/新窗口直接打开。
         # 令牌走路径段（子资源继承不了查询串），鉴权复用 remote.request_authed。
@@ -4119,12 +4118,49 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             except Exception:
                 log.exception("收口失败的任务状态失败 task=%s", task.get("id"))
             return 503, {"error": "运行记录创建失败，请稍后重试", "task_id": task["id"]}
+        # 生图任务（type=image）：不走编排流水线。它没有「拆步骤、派智能体」这回事，
+        # 走的是建书封面同一条图像链路（core/covergen → 供应商 /images/generations），
+        # 产物落 RUNS_DIR/<run_id>/cover.png，终态写回 run 与任务，列表/详情照常显示。
+        if str(task.get("type") or "") == "image":
+            self._start_image_run(task, run)
+            return 200, {"task_id": task["id"], "run_id": run["id"]}
         queued, qerr = self._enqueue_run(
             run["id"], task["id"],
             {"kind": "orchestration", "run_id": run["id"], "task_id": task["id"]})
         if not queued:
             return 503, {"error": qerr, "task_id": task["id"], "run_id": run["id"]}
         return 200, {"task_id": task["id"], "run_id": run["id"]}
+
+    def _start_image_run(self, task, run):
+        """生图任务的后台执行：调图像接口 → 落盘 → 终态写回。
+
+        与编排任务的区别只有「不排队、不分步」：任务与运行记录照样建，
+        前端列表、详情页、状态徽标都不需要改。失败原因原样透出（供应商无可用
+        图像模型、私网 URL 被拒等），不吞成「生成失败」。"""
+        from core import covergen
+        tid, rid = task["id"], run["id"]
+        job = dict(task, image_prompt=str(task.get("goal") or ""))
+
+        def work():
+            entry = covergen.make_cover(rid, job)
+            ok = entry.get("status") == "done"
+            now = time.strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                store.set_cover_gen(tid, entry)
+            except Exception:
+                log.exception("写生图结果失败 task=%s", tid)
+            try:
+                store.update_run(rid, status="done" if ok else "failed",
+                                 error="" if ok else str(entry.get("error") or "生图失败"),
+                                 ended_at=now)
+            except Exception:
+                log.exception("写生图运行状态失败 run=%s", rid)
+            try:
+                store.update_task_status(tid, "done" if ok else "failed")
+            except Exception:
+                log.exception("写生图任务状态失败 task=%s", tid)
+
+        threading.Thread(target=work, daemon=True, name="image-%s" % tid).start()
 
     def _api_create_task(self):
         body = self._body()

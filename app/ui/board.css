@@ -4,7 +4,7 @@
  *   1) 主应用同款 token：--bg/--sidebar/--panel/--panel2/--border/--border-strong/
  *      --text/--muted/--accent/--ok/--warn/--bad/--log-bg/--log-text/--shadow，
  *      由 html[data-skin][data-theme] 取值，值与 style.css:33-297 同源。
- *   2) 大屏语义别名：--live（活动/蜂群=琥珀）、--data（数据/时间=主强调）、
+ *   2) 大屏语义别名：--live（活动/CodeBee=琥珀）、--data（数据/时间=主强调）、
  *      --t1/t2/t3 文字层级、--sunk/--term 终端、--card 卡面、--track 空槽。
  * 新增皮肤只需补第 1 层块，本文件布局规则一行不用改；两套值的同步由
  * tests/test_board_tokens.py 守住（抄写不靠自觉）。

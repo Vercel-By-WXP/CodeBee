@@ -91,7 +91,7 @@ class SwitchToTest(ChooserTestBase):
     def test_switch_changes_entry_and_remembers(self):
         self.assertTrue(profile.switch_to("novel"))
         self.assertEqual(profile.active(), "novel")
-        self.assertEqual(profile.ui_entry(), "novel/index.html")
+        self.assertEqual(profile.ui_entry(), "")
         self.assertEqual(profile.source(), "ui")
         self.assertEqual(profile.last_choice(), "novel")
 

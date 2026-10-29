@@ -106,19 +106,43 @@ def _build_agent(entry):
     }
 
 
-def effective_agents(catalog_entries, detected):
-    """生成当前可参与编排的智能体列表（真实已装+启用，外加内置 mock）。"""
+def resolve_orch_enabled(entry, det, pref, *, seed_detected=True):
+    """统一的「该 CLI 是否进自动路由」判定，effective_agents 与 catalog_view 共用。
+
+    优先级：
+      1. 显式编排偏好（pref 含 ``enabled``）——用户关掉的绝不偷偷启用；
+      2. 否则「探测到即启用」种子（无显式偏好且已被探测到安装 → 默认开）；
+      3. 否则回退 ``default_enabled``（catalog 里的硬开，如 codex/claude）。
+
+    第 2 条是精简化要的核心：装了但没手动开 ≠ 不该用。旧逻辑只认
+    ``default_enabled``，导致用户机器上装了 Copilot / opencode / qwen 却默认不进
+    自动路由，得去「智能体目录」手动开。种子让「探测到就可用」成为默认，
+    同时显式关闭始终优先（决策记录 #13：用户自己的选择不可逆）。
+    """
+    if not (entry.get("orch") or {}).get("kind"):
+        return False
+    if not (det or {}).get("installed"):
+        return False
+    pref = pref or {}
+    if "enabled" in pref:
+        return bool(pref["enabled"])
+    if seed_detected:
+        return True
+    return bool(entry.get("default_enabled", False))
+
+
+def effective_agents(catalog_entries, detected, *, seed_detected=True):
+    """生成当前可参与编排的智能体列表（真实已装+启用，外加内置 mock）。
+
+    seed_detected=True（默认）：没有显式编排偏好的已探测 CLI 默认启用
+    （「探测到即启用」种子）。显式关闭仍尊重；default_enabled 作兜底硬开。
+    """
     enabled = load_enabled()
     out = []
     for entry in catalog_entries:
-        orch = entry.get("orch")
-        if not orch or not orch.get("kind"):
-            continue
         det = (detected or {}).get(entry.get("id")) or {}
-        if not det.get("installed"):
-            continue
         pref = enabled.get(entry.get("id")) or {}
-        if not pref.get("enabled", entry.get("default_enabled", False)):
+        if not resolve_orch_enabled(entry, det, pref, seed_detected=seed_detected):
             continue
         out.append(_build_agent(entry))
     try:

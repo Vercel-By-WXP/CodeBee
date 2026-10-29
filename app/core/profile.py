@@ -16,7 +16,7 @@
 
 - ``agents``  显式点名。点名即放出来，**即使那个专家还是草稿**。适合「我这一版
               就是要用它，风险我认」；不写则按内核的可见规则（非草稿）来。
-- ``drafts``  是否放草稿。给开发者自用的蜂群版用，正式发行版不要开。
+- ``drafts``  是否放草稿。给开发者自用的 CodeBee 版用，正式发行版不要开。
 
 ``flows`` 和 ``agents`` 是两件事：前者管「能不能创建这类任务」，后者管
 「界面里出不出现这个专家」。隐藏一个专家不等于删掉能力 —— 已经存在的任务
@@ -81,7 +81,7 @@ _BUILTIN = {
     DEFAULT: {
         "id": DEFAULT,
         "name": "CodeBee",
-        "tagline": "All agents, one hive.",
+        "tagline": "All agents, one CodeBee.",
         "order": 0,
         # None = 不收敛，全部内置流程可见
         "flows": None,
@@ -91,20 +91,20 @@ _BUILTIN = {
         "ui": "",
         "features": dict(_ALL_ON),
     },
-    # 蜂群版：全部流程都在，但按「专职 Agent」组织成四种工作台。
+    # CodeBee 版：全部流程都在，但按「专职 Agent」组织成四种工作台。
     # 它演示的是内核的通用形态——新增垂直版只需再写一份定义。
     # ``drafts`` 是它为开发者自己留的：草稿专家也放出来，方便边做边看；
     # 正式发行版不要开这一项。
     "hive": {
         "id": "hive",
-        "name": "CodeBee 蜂群",
+        "name": "CodeBee",
         "tagline": "每个专家只管一件事",
         "order": 5,
         "flows": None,
         "agents": None,
         "drafts": True,
         "default_flow": "",
-        "ui": "hive/index.html",
+        "ui": "",
         "features": dict(_ALL_ON),
     },
     # 小说发行版：只留创作类的四个流程。
@@ -113,13 +113,13 @@ _BUILTIN = {
     "novel": {
         "id": "novel",
         "name": "CodeBee 小说版",
-        "tagline": "你只管故事，剩下的交给蜂群",
+        "tagline": "你只管故事，剩下的交给 CodeBee",
         "order": 10,
         "flows": ("novel", "short_story", "serial_novel", "rank_scan"),
         "agents": ("novel", "short_story", "serial_novel", "rank_scan"),
         "drafts": False,
         "default_flow": "short_story",
-        "ui": "novel/index.html",
+        "ui": "",
         "features": dict(
             _ALL_ON,
             code_tasks=False,
@@ -142,7 +142,7 @@ _BUILTIN = {
                    "weekly_report", "email", "resume", "translation"),
         "drafts": False,
         "default_flow": "bid_doc",
-        "ui": "dossier/index.html",
+        "ui": "",
         "features": dict(
             _ALL_ON,
             code_tasks=False,

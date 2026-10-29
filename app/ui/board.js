@@ -220,8 +220,8 @@ function render(d) {
   const st = $("#hd-state");
   st.classList.toggle("live", running.length > 0);
   $("#hd-state-text").textContent = running.length
-    ? t("蜂群运行中 · {0} 个任务并行", running.length)
-    : (queued.length ? t("蜂群待命 · {0} 个任务排队", queued.length) : t("蜂群待命"));
+    ? t("CodeBee运行中 · {0} 个任务并行", running.length)
+    : (queued.length ? t("CodeBee待命 · {0} 个任务排队", queued.length) : t("CodeBee待命"));
   $("#hd-pool-alive").textContent = pool.alive || 0;
   $("#hd-pool-target").textContent = "/" + (pool.target || 0);
   $("#hd-chat-alive").textContent = pool.chat_alive || 0;

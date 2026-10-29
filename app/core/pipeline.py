@@ -6869,6 +6869,7 @@ def _content_rounds(st):
         st, rr = _content_review_round(st, r)
         publishable = rr.publishable
         history_rounds.append(rr.history_entry)
+        _jev_review_opinion(st, r, rr, rounds)
         if publishable:
             break
         if r >= rounds:
@@ -6900,6 +6901,30 @@ def _content_rounds(st):
     _extra = dict(locals())
     _extra.pop("rr", None)
     return _content_state(st, _extra)
+
+
+def _jev_review_opinion(st, r, rr, rounds):
+    """Jev 评审门禁第二意见（P2-2 PoC，非阻断，默认关）。
+
+    确定性门禁结论是唯一事实来源；Jev 只给 opinion + 落审计
+    （data/audit/jev_review_gate-*.jsonl），绝不改主线。无 key / 异常一律当
+    「无意见」，不影响评审-修订循环。
+    """
+    try:
+        from . import jev
+        _rr_means = getattr(rr, "means", None) or {}
+        _rr_avg = (sum(_rr_means.values()) / len(_rr_means)) if _rr_means else None
+        jev.note_review_gate({
+            "round": r,
+            "max_rounds": rounds,
+            "task_type": (st.task.get("type") or st.task.get("task_type") or ""),
+            "avg_score": _rr_avg,
+            "seat_count": len(getattr(st, "critics", []) or []),
+            "issue_count": len(getattr(rr, "issues_all", []) or []),
+            "gate_decision": "pass" if rr.publishable else "more",
+        })
+    except Exception:
+        pass
 
 
 def _content_review_round(st, r):

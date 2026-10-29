@@ -97,7 +97,9 @@ class SelectTest(_TempData):
     def test_explicit_known_profile(self):
         name, why = profile.select("novel", allow_prompt=False)
         self.assertEqual((name, why), ("novel", "cli"))
-        self.assertEqual(profile.ui_entry(), "novel/index.html")
+        # v2 的独立页面（novel/index.html 等）已整体删除，统一回落到同一个工作台，
+        # 所以这里不再有「形态专属入口页」——空串就是「走主工作台」。
+        self.assertEqual(profile.ui_entry(), "")
 
     def test_explicit_unknown_profile_raises(self):
         with self.assertRaises(profile.ProfileError) as ctx:

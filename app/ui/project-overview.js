@@ -92,6 +92,17 @@
     status.querySelector("button").onclick = () => { attentionOnly = !attentionOnly; renderProjectOverview(); };
 
     const visible = attentionOnly ? Array.from(latest.values()).filter(issue) : scoped;
+    // 同一任务反复重跑会在表里排成一串同名行（2026-10-28 实况：5 条全是
+    // 「拆分回归连载 · 失败」）。项目视角要的是「每个任务最近跑成什么样」，
+    // 每次运行的完整清单在「运行记录」页；这里按任务去重，只留最近一次。
+    const recentRuns = [];
+    const seenRunTask = new Set();
+    visible.forEach((run) => {
+      const k = run.title || run.task_id || run.id;
+      if (seenRunTask.has(k)) return;
+      seenRunTask.add(k);
+      recentRuns.push(run);
+    });
     const gateList = attentionOnly && gates.length ? '<div class="project-gates">' + gates.map(task =>
       '<button type="button" class="ghost small" data-project-task="' + esc(task.id) + '">' +
       icon("file-search") + '<span>' + esc(t("待裁决")) + ' · ' + esc(task.title || task.id) + '</span></button>').join("") + '</div>' : "";
@@ -99,7 +110,7 @@
     body.innerHTML = gateList + (visible.length ?
       '<div class="project-table-wrap"><table class="project-runs"><thead><tr><th scope="col">' + esc(t("任务")) +
       '</th><th scope="col">' + esc(t("状态")) + '</th><th scope="col">' + esc(t("耗时")) +
-      '</th><th scope="col">' + esc(t("开始时间")) + '</th></tr></thead><tbody>' + visible.slice(0, 5).map(run => {
+      '</th><th scope="col">' + esc(t("开始时间")) + '</th></tr></thead><tbody>' + recentRuns.slice(0, 5).map(run => {
         const duration = runDurationSeconds(run);
         const path = directory(run);
         return '<tr><td><button type="button" class="ov-run project-run-link" data-project-run="' + esc(run.id) + '">' +
@@ -110,7 +121,16 @@
       }).join("") + '</tbody></table></div>' :
       (gateList ? "" : '<p class="project-empty">' + esc(t(attentionOnly ? "当前项目暂无待处理项" : "暂无运行记录")) + '</p>'));
 
-    const results = scoped.filter(run => run.status === "done" && runOutcomeSummary(run)).slice(0, 3);
+    // 结果摘要：只从「每个任务最近一次运行」里挑（recentRuns），不再从全部 run 里挑。
+    // 原来直接遍历 scoped 且先滤 status==="done"，于是同一任务最近一次是失败、更早一次
+    // 成功时，表格写「失败」、成果卡却挂「✓完成 综合9.0」——同一个名字两个结论，新手
+    // 只会觉得界面在骗人。以最近一次运行说了算：最近一次没跑成就别在成果区冒充完成。
+    const results = [];
+    for (const run of recentRuns) {
+      if (run.status !== "done" || !runOutcomeSummary(run)) continue;
+      results.push(run);
+      if (results.length >= 3) break;
+    }
     const resultBox = document.getElementById("ov-project-results");
     resultBox.innerHTML = '<h3 class="project-section-title">' + esc(t("结果摘要")) + '</h3>' +
       (results.length ? '<div class="project-result-grid">' + results.map(run =>

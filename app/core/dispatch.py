@@ -11,6 +11,7 @@ import math
 
 TYPE_DIMENSIONS = {
     "direct": "reasoning",
+    "image": "reasoning",   # 生图：不走 CLI 编排，维度只用于预估与偏好打分，取中性值
     "code": "coding",
     "novel": "writing",
     "short_story": "writing",

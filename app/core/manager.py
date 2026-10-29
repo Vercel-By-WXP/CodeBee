@@ -2629,7 +2629,8 @@ def catalog_view():
     for e in entries:
         det = detected.get(e["id"]) or {}
         pref = enabled.get(e["id"]) or {}
-        orch_enabled = bool(pref.get("enabled", e.get("default_enabled", False))) if e.get("orch") else False
+        # 与 effective_agents 共用判定：显式偏好优先，否则探测到即启用（种子）。
+        orch_enabled = registry.resolve_orch_enabled(e, det, pref) if e.get("orch") else False
         view.append({
             "id": e["id"], "name": e.get("name", e["id"]), "note": e.get("note", ""),
             "group": "installed" if det.get("installed") else "installable",
