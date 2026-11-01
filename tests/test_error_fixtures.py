@@ -37,12 +37,34 @@ def test_fixtures_exist_and_nonempty():
         "实案夹具过薄（%d 条）：确认台账在 data/errors/ 且脚本可跑" % len(cases))
 
 
+def test_second_cut_locks_both_directions():
+    """第二刀（2026-11-01）：text-lock 与 none-lock 双向在册。
+
+    只锁一致性夹具（3 类）是单向的：分类器「多认」不会红。text-lock 锁
+    「真实文本必须归此类」，none-lock 锁「真实噪声必须保持无信号」——
+    正则过度激进误吞结构化行时，none-lock 当场红。
+    """
+    data, cases = _cases()
+    tags = {c.get("tag") for c in cases}
+    assert "text-lock" in tags, "第二刀 text-lock 缺席：重跑 scripts/freeze_error_fixtures.py"
+    assert "none-lock" in tags, "第二刀 none-lock 缺席：重跑 scripts/freeze_error_fixtures.py"
+    assert len(cases) >= 12, (
+        "实案夹具过薄（%d 条）：第二刀后应显著厚于第一刀的 3 条" % len(cases))
+
+
 def test_each_fixture_proves_classification():
-    """核心回归：分类器对每条真实实案原文必须给出冻结时的既定类。"""
+    """核心回归：分类器对每条真实实案原文必须给出冻结时的既定行为——
+    text-lock/一致性夹具锁「归此类」，none-lock 锁「保持无信号」。"""
     _data, cases = _cases()
     assert cases
     for c in cases:
         got = classify_error_text(c.get("detail") or "")
+        if c.get("expect_none"):
+            assert got is None, (
+                "实案 %s（%s）应无文本信号却分到 %s：正则过度激进误吞结构化行\n原文：%s"
+                % (c.get("incident"), c.get("tag"),
+                   got.value if got else "?", str(c.get("detail"))[:120]))
+            continue
         assert got is not None, (
             "实案 %s（%s）分类掉 None：文本分类器对真实报错失去信号"
             % (c.get("incident"), c.get("tag")))
@@ -61,9 +83,10 @@ def test_fixture_internal_consistency():
     assert len(set(details)) == len(details), "夹具 detail 重复（去重失效）"
     valid = {e.value for e in ErrorCode}
     for c in cases:
-        assert c.get("expect_class") in valid, (
-            "夹具 %s 的 expect_class 不在枚举： %s" % (c.get("incident"),
-                                                     c.get("expect_class")))
+        if not c.get("expect_none"):
+            assert c.get("expect_class") in valid, (
+                "夹具 %s 的 expect_class 不在枚举： %r" % (c.get("incident"),
+                                                         c.get("expect_class")))
         incident = str(c.get("incident") or "")
         assert re.match(r"^\d{6}#\d+$", incident), (
             "夹具缺台账溯源（day#idx）：%r" % incident)

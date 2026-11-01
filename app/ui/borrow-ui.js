@@ -46,7 +46,8 @@
     return { failed_run: _t("运行失败"), paused_task: _t("已暂停"),
              stuck_queued: _t("排队滞留"), serial_gap: _t("连载断更"),
              automation_late: _t("定时失联"),
-             dead_override: _t("覆盖表未生效") }[kind] || kind;
+             dead_override: _t("覆盖表未生效"),
+             publish_rate: _t("发布告警") }[kind] || kind;
   }
 
   function renderAttention(items) {
@@ -569,6 +570,166 @@
     window.renderAvailability = wrapped;
   }
 
+  /* =========================== 6. ReasoningBank 检索 + 一键带走 */
+  function bankSectionHTML() {
+    return '<div class="borrow-disk" id="borrow-bank-box">' +
+      '<div class="bd-actions" style="display:flex;gap:6px;margin-bottom:6px">' +
+      '<input type="text" id="bb-q" style="flex:1;min-width:120px;padding:6px 8px" ' +
+      'placeholder="' + _t("搜历史模式（跨任务经验）") + '">' +
+      '<button class="ghost small" id="bb-search">' + _t("搜索") + "</button>" +
+      '<button class="ghost small" id="bb-reindex">' + _t("搬记忆入库") + "</button></div>" +
+      '<div id="bb-out" class="bd-out"></div></div>';
+  }
+
+  function bankRow(it) {
+    const ok = it.outcome === "success";
+    const tag = ok
+      ? '<span class="bd-badge bd-ok">' + _t("成功模式") + "</span>"
+      : '<span class="bd-badge bd-no">' + _t("教训") + "</span>";
+    const bits = [it.task_type || ""];
+    if (Number(it.count || 1) > 1) bits.push("×" + it.count + _t(" 次"));
+    if (it.score != null) bits.push(_t("分") + " " + it.score);
+    bits.push("sim " + it.sim);
+    const meta = bits.filter(Boolean).join(" · ");
+    return '<div class="bd-row"><b>' + tag + "</b> " + _esc(it.text || "") +
+      (meta ? '<span class="bd-size">' + _esc(meta) + "</span>" : "") + "</div>";
+  }
+
+  function bindBank(box) {
+    const out = box.querySelector("#bb-out");
+    box.querySelector("#bb-search").addEventListener("click", async () => {
+      const q = (box.querySelector("#bb-q").value || "").trim();
+      if (!q) return;
+      out.innerHTML = '<span class="bd-wait">' + _t("搜索中…") + "</span>";
+      try {
+        const d = await fetchJSON("/api/reasoning-bank?q=" +
+          encodeURIComponent(q) + "&k=8");
+        const items = d.items || [];
+        const st = (d.stats || {}).rows;
+        out.innerHTML =
+          '<div class="bd-total">' + (st != null ? st : 0) + _t(" 条模式") +
+          " · " + (items.length ? _t("命中") + " " + items.length : _t("无命中")) + "</div>" +
+          (items.map(bankRow).join("") ||
+            '<span class="bd-note">' + _t("库是空的：跑完的任务会自动入账") + "</span>");
+      } catch (e) {
+        out.innerHTML = '<span class="bd-err">' + _esc(e.message) + "</span>";
+      }
+    });
+    box.querySelector("#bb-q").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") box.querySelector("#bb-search").click();
+    });
+    box.querySelector("#bb-reindex").addEventListener("click", async () => {
+      const b = box.querySelector("#bb-reindex");
+      b.disabled = true;
+      out.innerHTML = '<span class="bd-wait">' + _t("搬运中…") + "</span>";
+      try {
+        const d = await fetchJSON("/api/reasoning-bank?reindex=1");
+        const rj = (d.stats || {}).reindex || {};
+        out.innerHTML = '<div class="bd-total">' +
+          _t("新入账") + " " + (rj.added || 0) + " / " +
+          _t("扫描") + " " + (rj.scanned || 0) + " · " +
+          _t("库共") + " " + ((d.stats || {}).rows || 0) + _t(" 条模式") + "</div>";
+      } catch (e) {
+        out.innerHTML = '<span class="bd-err">' + _esc(e.message) + "</span>";
+      }
+      b.disabled = false;
+    });
+  }
+
+  function injectBankSearch() {
+    const sub = g("sub-memory");
+    if (!sub || g("borrow-bank-box")) return;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = bankSectionHTML();
+    const box = wrap.firstElementChild;
+    sub.insertBefore(box, sub.firstChild);
+    bindBank(box);
+  }
+
+  function wrapBankSearch() {
+    const orig = window.renderMemoryCenter;
+    if (typeof orig !== "function" || orig.__borrowWrapped) return;
+    const wrapped = function () {
+      try { return orig.apply(this, arguments); }
+      finally { try { injectBankSearch(); } catch (e) { /* 静默 */ } }
+    };
+    wrapped.__borrowWrapped = true;
+    window.renderMemoryCenter = wrapped;
+  }
+
+  function detailTaskId() {
+    try {
+      if (S.detailTaskKey) return String(S.detailTaskKey);
+      const rid = S.detailRunId;
+      if (!rid) return "";
+      const runs = (S.state && S.state.runs) || [];
+      for (const r of runs) {
+        if (String(r.id) === String(rid)) return String(r.task_id || "");
+      }
+    } catch (e) { /* S 未就绪/不在状态窗口：如实返回空 */ }
+    return "";
+  }
+
+  async function runEject(tid) {
+    if (!tid) return;
+    if (typeof window.toast === "function") window.toast(_t("正在打包…"));
+    try {
+      const resp = await fetch("/api/tasks/" + encodeURIComponent(tid) +
+        "/eject/download",
+        { headers: (typeof authHeaders === "function") ? authHeaders() : {} });
+      if (!resp.ok) throw new Error(_t("导出失败") + " HTTP " + resp.status);
+      const blob = await resp.blob();
+      let name = tid + "-eject.zip";
+      const cd = resp.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename\*=UTF-8''([^;\s]+)/);
+      if (m) { try { name = decodeURIComponent(m[1]); } catch (e2) { /* 保底名 */ } }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+      if (typeof window.toast === "function") window.toast(e.message, true);
+    }
+  }
+
+  function ensureEject() {
+    const anchor = g("btn-delete") || g("btn-share");
+    if (!anchor) return;
+    let btn = g("btn-eject");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "btn-eject";
+      btn.className = "ghost";
+      btn.textContent = _t("导出带走");
+      btn.addEventListener("click", () => { runEject(detailTaskId()); });
+      anchor.parentNode.insertBefore(btn, anchor);
+    }
+    btn.classList.toggle("hidden", !detailTaskId());
+  }
+
+  function wrapRenderDetail() {
+    ["renderRunDetail", "renderTaskDetail"].forEach((fname) => {
+      const orig = window[fname];
+      if (typeof orig !== "function" || orig.__borrowWrapped) return;
+      const wrapped = function () {
+        const r = orig.apply(this, arguments);
+        try {
+          Promise.resolve(r).then(() => {
+            try { ensureEject(); } catch (e0) { /* 静默 */ }
+          }, () => { try { ensureEject(); } catch (e0b) { /* 静默 */ } });
+        } catch (e1) { /* 静默 */ }
+        try { ensureEject(); } catch (e2) { /* 静默 */ }
+        return r;
+      };
+      wrapped.__borrowWrapped = true;
+      window[fname] = wrapped;
+    });
+  }
+
   /* ===================================================== boot */
   function boot() {
     try { startAttention(); } catch (e) { /* 静默 */ }
@@ -577,6 +738,8 @@
     try { bindExperts(); } catch (e) { /* 静默 */ }
     try { bindDesignMode(); } catch (e) { /* 静默 */ }
     try { wrapAvailability(); } catch (e) { /* 静默 */ }
+    try { wrapBankSearch(); } catch (e) { /* 静默 */ }
+    try { wrapRenderDetail(); } catch (e) { /* 静默 */ }
   }
 
   if (document.readyState === "loading") {

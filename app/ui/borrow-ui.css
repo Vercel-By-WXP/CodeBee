@@ -35,6 +35,7 @@
 #borrow-attention .ba-failed_run { color: #b3261e; border-color: #e6b6b2; background: rgba(179, 38, 30, 0.08); }
 #borrow-attention .ba-paused_task { color: #8a6d00; border-color: #e2d089; background: rgba(138, 109, 0, 0.08); }
 #borrow-attention .ba-stuck_queued { color: #4e5ba6; border-color: #c6cbec; background: rgba(78, 91, 166, 0.08); }
+#borrow-attention .ba-publish_rate { color: #9a5b00; border-color: #e8c9a0; background: rgba(154, 91, 0, 0.09); }
 #borrow-attention .ba-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #borrow-attention .ba-reason {
   color: var(--wb-text2, #6b6f76); overflow: hidden; text-overflow: ellipsis;

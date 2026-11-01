@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""P1 实案转回归（第一刀）：把 data/errors 台账里的真实失败冻成分类器回归夹具。
+"""P1 实案转回归（第一+二刀）：把 data/errors 台账里的真实失败冻成分类器回归夹具。
 
 口径（迭代计划 P1，原料修正版）：复核假设的 `data/publish/shots` 里没有
 fail-*.png（0 个，115 张全是步骤截图）——实案原料的真源是 **data/errors
@@ -12,6 +12,14 @@ fail-*.png（0 个，115 张全是步骤截图）——实案原料的真源是 
   4. 每类上限 4 条（优先最近、detail 更长者），另把历史著名实案的关键词
      （1311 权限 429 / 七天上限 / 余额不足 / MISSING_.*_KEY 内嵌形式）
      强制收录——它们是分类器补丁的直接出处。
+
+第二刀（2026-11-01）：与台账 reason **脱钩**，锁分类器自身的文本行为——
+  5. text-lock：gap 行里 classify 非 None 的（reason 来自结构化信号、文本
+     另有信号），按 classify 当前值冻结 expect_class——锁「这段真实文本
+     必须归这个类」，与台账 reason 是否一致无关；
+  6. none-lock：gap 行里 classify 为 None 的（纯结构化噪声），冻结
+     expect_none——锁「这段真实噪声必须保持无信号」，防正则过度激进
+     误吞结构化行。按 tool 多样性采样，不留单一工具偏见。
 
 产物：tests/fixtures/error_cases.json（含 ledger 溯源：day+record 序号）。
 可重复跑：台账新增实案后重跑即扩充（幂等去重按 detail 指纹）。
@@ -31,6 +39,8 @@ from core.error_codes import classify_error_text, ErrorCode  # noqa: E402
 LEDGER_GLOB = "data/errors/errors-*.jsonl"
 OUT = ROOT / "tests" / "fixtures" / "error_cases.json"
 PER_CLASS_CAP = 4
+TEXT_LOCK_CAP = 3    # 第二刀：每类 text-lock 上限
+NONE_LOCK_CAP = 8    # 第二刀：none-lock 总量上限（按 tool 多样性采样）
 
 # 历史著名实案强制收录（分类器补丁的直接出处，见 error_codes.py 注释）。
 # 每个模式绑定**既定类**：从全台账取真实行、分类结果==既定类才冻结——
@@ -71,7 +81,7 @@ def load_ledger():
 
 def main():
     rows = load_ledger()
-    agreed, gap = [], 0
+    agreed, gap_rows = [], []
     for r in rows:
         detail = str(r.get("detail") or "")
         reason = str(r.get("reason") or "")
@@ -82,7 +92,8 @@ def main():
         if got is not None and str(got.value) == want:
             agreed.append(r)
         else:
-            gap += 1
+            gap_rows.append(r)
+    gap = len(gap_rows)
 
     # 每类选代表：优先命中强制实案关键词，其次 detail 更长（信号更富）、最近
     by_class = {}
@@ -92,19 +103,22 @@ def main():
     chosen, seen_fp = [], set()
     reasons = sorted(by_class)
 
-    def take(r, tag, expect=None):
+    def take(r, tag, expect=None, expect_none=False):
         fp = re.sub(r"\s+", " ", str(r.get("detail") or ""))[:200]
         if fp in seen_fp:
             return
         seen_fp.add(fp)
-        chosen.append({
+        case = {
             "reason": str(r.get("reason")),
-            "expect_class": expect or str(r.get("reason")),
+            "expect_class": "" if expect_none else (expect or str(r.get("reason"))),
             "detail": str(r.get("detail"))[:600],
             "incident": "%s#%s" % (r.get("_day"), r.get("_idx")),
             "tool": str(r.get("tool") or "")[:24],
             "tag": tag,
-        })
+        }
+        if expect_none:
+            case["expect_none"] = True
+        chosen.append(case)
 
     # 强制实案：模式命中 + 分类==既定类 才冻结（锁历史裁决）
     must_n = 0
@@ -125,9 +139,45 @@ def main():
     for reason in reasons:
         pool = sorted(by_class[reason],
                       key=lambda r: (-len(str(r.get("detail") or "")),
-                                     str(r.get("_day"))))
+                                     str(r.get("_day")), r.get("_idx")))
         for r in pool[:PER_CLASS_CAP]:
             take(r, "class-rep")
+
+    # ---- 第二刀：与台账 reason 脱钩，锁分类器对真实文本的自身行为 ----
+    text_pool = {}     # classify 值 → [行]（只收 gap 行：agreed 已被 class-rep 覆盖）
+    none_pool = []     # classify None 的结构化噪声
+    for r in gap_rows:
+        got = classify_error_text(str(r.get("detail") or ""))
+        if got is None:
+            none_pool.append(r)
+        else:
+            text_pool.setdefault(str(got.value), []).append(r)
+    text_n = 0
+    for cls in sorted(text_pool):
+        pool = sorted(text_pool[cls],
+                      key=lambda r: (-len(str(r.get("detail") or "")),
+                                     str(r.get("_day")), r.get("_idx")))
+        for r in pool[:TEXT_LOCK_CAP]:
+            before = len(chosen)
+            take(r, "text-lock", expect=cls)
+            text_n += len(chosen) - before
+    # none-lock：按 tool 多样性采样（先每工具一条轮转，再补足），防单一工具偏见
+    none_n = 0
+    by_tool = {}
+    for r in sorted(none_pool,
+                    key=lambda r: (-len(str(r.get("detail") or "")),
+                                   str(r.get("_day")), r.get("_idx"))):
+        by_tool.setdefault(str(r.get("tool") or "?"), []).append(r)
+    order = []
+    queues = [by_tool[t] for t in sorted(by_tool)]
+    while any(queues) and len(order) < NONE_LOCK_CAP:
+        for q in queues:
+            if q and len(order) < NONE_LOCK_CAP:
+                order.append(q.pop(0))
+    for r in order:
+        before = len(chosen)
+        take(r, "none-lock", expect_none=True)
+        none_n += len(chosen) - before
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({
@@ -137,10 +187,14 @@ def main():
         "agreed": len(agreed),
         "gap": gap,
         "must_cases": must_n,
+        "text_lock_cases": text_n,
+        "none_lock_cases": none_n,
         "cases": chosen,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
-    print("ledger=%d agreed=%d gap=%d -> fixtures=%d (must=%d) (%s)"
-          % (len(rows), len(agreed), gap, len(chosen), must_n, OUT))
+    print("ledger=%d agreed=%d gap=%d -> fixtures=%d (must=%d text-lock=%d "
+          "none-lock=%d) (%s)"
+          % (len(rows), len(agreed), gap, len(chosen), must_n, text_n,
+             none_n, OUT))
 
 
 if __name__ == "__main__":

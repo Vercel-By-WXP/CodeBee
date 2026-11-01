@@ -6,7 +6,7 @@
 全部上下文（任务标题、失败原因、可执行的操作语义），前端渲染成待办条。
 无事时返回空列表，界面就不出现这个面板（不是显示「一切正常」凑数）。
 
-五类来源（全部只读，2026-11-01 起 4/5 借 Ruflo 的 testgaps 思路找缺口）：
+七类来源（全部只读，2026-11-01 起 4/5 借 Ruflo 的 testgaps 思路找缺口）：
   1. failed_runs     —— 近 N 天失败的运行（最痛的一类，带 reason 与 task 链接语义）
   2. paused_runs     —— 人工暂停的运行（run 级 paused 标志；恢复动作 =
                         POST /api/runs/<id>/pause {paused:false}，条目带 run_id）
@@ -18,6 +18,8 @@
   6. dead_override   —— data/publish/flows-*.json 用户覆盖表有动作不过完成契约
                         （load_flow 会静默跳过=死表，2026-11-01 番茄死表考古；
                         动作 = 修正 sel/步骤或删除该文件）
+  7. publish_rate    —— 发布成功率（滚动窗口）跌破 95% 目标线且失败数达下限
+                        （2026-11-01 KPI 装牙；信息条无动作，处理入口=发布面板）
 
 纪律：绝不抛错——注意力面板挂了不能连累任何主流程；数据残缺的条目直接丢弃。
 """
@@ -220,6 +222,36 @@ def collect(days=_DEFAULT_DAYS, limit=_DEFAULT_LIMIT, now=None):
                                   "load_flow 会静默跳过此表——改了也白改",
                         "actions": [{"type": "fix_override",
                                      "file": f.name, "action": act}]})
+        except Exception:
+            pass
+        # 7. 发布成功率告警（2026-11-01，KPI 装牙：滚动窗口跌破 95% 目标线
+        #    且失败数达下限才说话——单次失败可能是平台瞬断，不值得打扰人）。
+        #    信息条不带动作按钮：事由在最近失败摘要里，处理入口走发布面板。
+        try:
+            from .publish import stats as _pub_stats
+            a = _pub_stats.alert(days=7)
+            if a:
+                brief = ""
+                s = _pub_stats.summary(days=int(a.get("days") or 7))
+                if s.get("failures"):
+                    f0 = s["failures"][0]
+                    brief = "最近失败：%s%s %s" % (
+                        ("《%s》" % f0.get("title")) if f0.get("title") else "",
+                        f0.get("platform") or "",
+                        str(f0.get("error") or "")[:80])
+                items.append({
+                    "kind": "publish_rate", "id": "pub-rate",
+                    "task_id": "", "run_id": "",
+                    "title": "发布成功率跌破目标线",
+                    "time": _human_time(now), "time_epoch": now,
+                    "reason": "近 %d 天成功率 %d%%（%d 次尝试 %d 失败，目标 %d%%）%s"
+                              % (int(a.get("days") or 7),
+                                 round(float(a.get("rate") or 0) * 100),
+                                 int(a.get("attempts") or 0),
+                                 int(a.get("failed") or 0),
+                                 round(float(a.get("goal") or 0.95) * 100),
+                                 ("——" + brief) if brief else ""),
+                    "actions": []})
         except Exception:
             pass
     except Exception:

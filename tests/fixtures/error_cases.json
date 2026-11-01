@@ -1,10 +1,12 @@
 {
- "generated": "2026-11-01 19:56:47",
+ "generated": "2026-11-01 22:48:01",
  "ledger_scope": "data/errors/errors-*.jsonl",
  "ledger_records": 612,
  "agreed": 13,
  "gap": 599,
  "must_cases": 2,
+ "text_lock_cases": 8,
+ "none_lock_cases": 5,
  "cases": [
   {
    "reason": "QUOTA",
@@ -29,6 +31,115 @@
    "incident": "202610#169",
    "tool": "generic",
    "tag": "class-rep"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "LOCAL_STATE",
+   "detail": "退出码 1；stderr/stdout: \u001b[91m\u001b[1mError: \u001b[0mUnexpected error\r\n\r\ndatabase is locked",
+   "incident": "202609#116",
+   "tool": "opencode",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "MISSING_CREDENTIAL",
+   "detail": "退出码 1；stderr/stdout: No API key found for the selected model.\n\nUse /login to log into a provider via OAuth or API key. See:\n  [path]providers.md\n  [path]models.md",
+   "incident": "202609#357",
+   "tool": "generic",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "NETWORK",
+   "detail": "退出码 1；stderr/stdout: tream disconnected before completion: stream closed before response.completed)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 2/5 (stream disconnected before completion: stream closed before response.completed)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 3/5 (stream disconnected before completion: stream closed before response.completed)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 4/5 (stream disconnected before completion: stream closed before response.completed)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 5/5 (stream disconnected before completion: stream closed before ",
+   "incident": "202609#317",
+   "tool": "codex",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "NETWORK",
+   "detail": "退出码 1；stderr/stdout: kimi version 2.0.0\nerror: failed to run prompt: provider.connection_error: Connection error.\nSee log: [path]kimi-code.log",
+   "incident": "202609#138",
+   "tool": "generic",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "QUOTA",
+   "detail": "退出码 1；stderr/stdout: kimi version 2.0.0\nerror: failed to run prompt: provider.auth_error: 403 no valid authorization: the account lacks an active order, has insufficient quota, or the order is invalid\nSee log: [path]kimi-code.log",
+   "incident": "202609#92",
+   "tool": "generic",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "UPSTREAM_SERVER",
+   "detail": "退出码 1；stderr/stdout: \u001b[91m\u001b[1mError: \u001b[0m{\n  \"name\": \"UnknownError\",\n  \"data\": {\n    \"message\": \"Unexpected server error. Check server logs for details.\",\n    \"ref\": \"err_8213a513\"\n  }\n}",
+   "incident": "202609#0",
+   "tool": "opencode",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "UPSTREAM_SERVER",
+   "detail": "退出码 1；stderr/stdout: \u001b[91m\u001b[1mError: \u001b[0m{\n  \"name\": \"UnknownError\",\n  \"data\": {\n    \"message\": \"Unexpected server error. Check server logs for details.\",\n    \"ref\": \"err_c5d9e825\"\n  }\n}",
+   "incident": "202609#1",
+   "tool": "opencode",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "UPSTREAM_SERVER",
+   "detail": "退出码 1；stderr/stdout: \u001b[91m\u001b[1mError: \u001b[0m{\n  \"name\": \"UnknownError\",\n  \"data\": {\n    \"message\": \"Unexpected server error. Check server logs for details.\",\n    \"ref\": \"err_7382764b\"\n  }\n}",
+   "incident": "202609#2",
+   "tool": "opencode",
+   "tag": "text-lock"
+  },
+  {
+   "reason": "RUN_FAILED",
+   "expect_class": "",
+   "detail": "运行失败",
+   "incident": "202610#0",
+   "tool": "",
+   "tag": "none-lock",
+   "expect_none": true
+  },
+  {
+   "reason": "ErrorCode.TIMEOUT",
+   "expect_class": "",
+   "detail": "超时；stderr/stdout: [超时 1200s，已终止进程树]\nCan't initialize prompt toolkit: Found xterm-256color, while expecting a \r\nWindows console. Maybe try to run this program using \"winpty\" or run it in \r\ncmd.exe instead. Or otherwise, in case of Cygwin, use the Python executable \r\nthat is compiled for Cygwin.\r\n───────────────────────────────────────────────────────────────────────────────\r\nYou can skip this check with --no-gitignore\r\nAdded .aider* to .gitignore",
+   "incident": "202609#222",
+   "tool": "aider",
+   "tag": "none-lock",
+   "expect_none": true
+  },
+  {
+   "reason": "UNKNOWN",
+   "expect_class": "",
+   "detail": "供应商或 CLI 调用失败（未识别具体原因）",
+   "incident": "202610#157",
+   "tool": "builtin",
+   "tag": "none-lock",
+   "expect_none": true
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "",
+   "detail": "退出码 1；stderr/stdout:  father's timing patterns to approach the sound source. Xu Zhiwei accompanies for safety, Zhou Jibai records sound directions. The echo leads them to a debris-sealed old inspection opening, from which comes knocking rhythms nobody recognizes. Chen Chuan restrains his urge to actively listen, first using signal bells to confirm team positions.\\n3. Chapter end hook: The knocking inside the inspection opening pauses for a beat, then switches to Chen Chuan's childhood nickname.\\n4. About 2500 characters in Chinese.\\n5. Save as chapter-14.md with UTF-8 encoding.\\n\\nLet me write",
+   "incident": "202609#133",
+   "tool": "codex",
+   "tag": "none-lock",
+   "expect_none": true
+  },
+  {
+   "reason": "ErrorCode.VENDOR_ERROR",
+   "expect_class": "",
+   "detail": "退出码 1；stderr/stdout: \", expanded drilling approval received for next morning at 7am\n  3. **Time:** ch11 starts next day 13:30 (after ch10 night, next day afternoon)\n  4. **Style rules:** short paragraphs (<150 words each, avg [path]~50), dialogue-dense, emotion externalized, time stamps sparingly, no exclamation marks (>1), no em dashes, chapter ends on hook\n  5. **Key state:** 熙川 still has tinnitus/tremors, old key on red string around waist, 借衣 hanging at home, 素琴 at home, 麦冬 has unpaid logistics debt, 周既白 has original measurements\n\n\n• Now let me do a quick quality check against the anti-AI ",
+   "incident": "202609#35",
+   "tool": "generic",
+   "tag": "none-lock",
+   "expect_none": true
   }
  ]
 }

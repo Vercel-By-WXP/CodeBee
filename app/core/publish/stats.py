@@ -26,6 +26,34 @@ _LIVE_ACTIONS = ("upload_chapter", "upload_chapter_scheduled", "publish_short_st
 _DRAFT_ACTIONS = ("upload_chapter_draft", "upload_short_story_draft")
 
 GOAL_RATE = 0.95
+# 告警的最小失败数：1 次失败可能是单次抖动（平台瞬断），不满 2 次不打扰人。
+ALERT_MIN_FAILURES = 2
+
+
+def _alert_from(live, days, target=GOAL_RATE):
+    """成功率告警判定（注意力面板第 7 来源的判定核心）。
+
+    三条同时满足才告警：有样本、失败数达下限、rate < 目标线。
+    没样本（rate None）绝不告警——「还没有发布记录」不是事故。
+    返回 None 或描述 dict（带最近失败摘要，供横幅一句话说清事由）。
+    """
+    rate = live.get("rate")
+    if rate is None:
+        return None
+    failed = int(live.get("failed") or 0)
+    if failed < ALERT_MIN_FAILURES:
+        return None
+    if rate >= target:
+        return None
+    return {
+        "rate": rate, "goal": target, "days": int(days),
+        "attempts": int(live.get("attempts") or 0), "failed": failed,
+    }
+
+
+def alert(days=7, target=GOAL_RATE):
+    """独立判定入口（给注意力面板用，不需要整份 summary）。"""
+    return _alert_from(summary(days=days)["live"], days, target)
 
 
 def _bucket():
@@ -42,8 +70,9 @@ def summary(days=7, task_id=""):
     """近 N 天的发布成功率。task_id 非空时只算这本书。
 
     返回 ``{days, goal, live:{...}, draft:{...}, platforms:{pid:{live,draft}},
-    failures:[...]}``。``rate`` 在样本为 0 时是 ``None``——界面显示「还没有
-    发布记录」，不要显示 0%（那看起来像全线失败）。
+    failures:[...], alert}``。``rate`` 在样本为 0 时是 ``None``——界面显示
+    「还没有发布记录」，不要显示 0%（那看起来像全线失败）。``alert`` 只在
+    全局视图（task_id 为空）时计算：失败数达下限且 rate 跌破目标线才非 None。
     """
     try:
         days = max(1, min(365, int(days)))
@@ -81,7 +110,7 @@ def summary(days=7, task_id=""):
         _finish(pair["live"])
         _finish(pair["draft"])
     failures.sort(key=lambda f: f["ts"], reverse=True)
-    return {
+    out = {
         "days": days,
         "goal": GOAL_RATE,
         "live": _finish(live),
@@ -89,3 +118,7 @@ def summary(days=7, task_id=""):
         "platforms": platforms,
         "failures": failures[:5],
     }
+    # 告警只挂在**全局**视图上（task_id 过滤视图的告警语义不明，不掺和）——
+    # GET /api/publish/stats 默认就是全局，前端/巡检拿到即用。
+    out["alert"] = _alert_from(out["live"], days) if not task_id else None
+    return out

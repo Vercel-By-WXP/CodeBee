@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 from core import attention, automation, store
+from core.publish import stats as pub_stats
 
 
 def _run(rid, status="failed", ended="2026-11-01T08:00:00", task_id="t1",
@@ -36,6 +37,11 @@ class CollectTests(unittest.TestCase):
         ap = mock.patch.object(automation, "list_tasks", return_value=[])
         ap.start()
         self.addCleanup(ap.stop)
+        # 发布成功率告警（第 7 来源）读真实发布台账：统一 mock 成不告警，
+        # 存量计数断言才不依赖测试环境里的真实台账
+        pp = mock.patch.object(pub_stats, "alert", return_value=None)
+        pp.start()
+        self.addCleanup(pp.stop)
 
     def test_failed_run_listed_with_reason_and_actions(self):
         runs = [_run("r1", error="评审未达标")]
@@ -154,6 +160,10 @@ class GapTests(unittest.TestCase):
 
     def setUp(self):
         self.now = time.time()
+        # 与 CollectTests 同款：发布告警来源读真实台账，统一 mock 成不告警
+        pp = mock.patch.object(pub_stats, "alert", return_value=None)
+        pp.start()
+        self.addCleanup(pp.stop)
 
     def _collect(self, runs, tasks, autos):
         with mock.patch.object(store, "list_runs", return_value=runs), \
@@ -218,6 +228,79 @@ class GapTests(unittest.TestCase):
                      task_id="t1")]
         res = self._collect(soon, ap_task, [])
         self.assertNotIn("serial_gap", [i["kind"] for i in res["items"]])
+
+
+class PublishRateTests(unittest.TestCase):
+    """第 7 来源：发布成功率告警（2026-11-01 KPI 装牙）。
+
+    判定本体在 publish.stats.alert 的守测里（test_publish_stats.AlertTest）；
+    这里锁的是接线：告警非 None 才上面板、条目字段齐、stats 故障不连累
+    其它来源。
+    """
+
+    def setUp(self):
+        self.now = time.time()
+
+    def _collect(self, alert_value, summary_value=None, alert_raises=False):
+        runs = [_run("r1", error="评审未达标")]
+        tasks = [{"id": "t1", "title": "书一"}]
+        # 注意：告警值必须走 return_value（side_effect=None 会回落到
+        # MagicMock 自动真值——第一版就栽在这里）；crash 用例才用 side_effect
+        with mock.patch.object(store, "list_runs", return_value=runs), \
+             mock.patch.object(store, "list_tasks", return_value=tasks), \
+             mock.patch.object(automation, "list_tasks", return_value=[]), \
+             mock.patch.object(pub_stats, "summary", return_value=summary_value or {}), \
+             mock.patch.object(pub_stats, "alert",
+                               return_value=alert_value or None,
+                               side_effect=OSError("x") if alert_raises else None):
+            return attention.collect(now=self.now)
+
+    def test_alert_listed_with_reason(self):
+        res = self._collect({"rate": 0.25, "goal": 0.95, "days": 7,
+                             "attempts": 4, "failed": 3},
+                            summary_value={"failures": [
+                                {"title": "书一", "platform": "fanqie",
+                                 "error": "登录已失效"}]})
+        it = next(i for i in res["items"] if i["kind"] == "publish_rate")
+        self.assertEqual(it["title"], "发布成功率跌破目标线")
+        self.assertIn("25%", it["reason"])
+        self.assertIn("3 失败", it["reason"])
+        self.assertIn("登录已失效", it["reason"])
+
+    def test_quiet_when_no_alert(self):
+        res = self._collect(None)
+        self.assertNotIn("publish_rate", [i["kind"] for i in res["items"]])
+        # 失败 run 条目仍在：告警安静不吞其它来源
+        self.assertIn("failed_run", [i["kind"] for i in res["items"]])
+
+    def test_stats_crash_does_not_harm_other_sources(self):
+        res = self._collect(None, alert_raises=True)
+        self.assertNotIn("publish_rate", [i["kind"] for i in res["items"]])
+        self.assertIn("failed_run", [i["kind"] for i in res["items"]])
+        self.assertFalse(res.get("degraded"))
+
+
+class UiWiringTest(unittest.TestCase):
+    """前端接线契约（静态）：注意力条认识 publish_rate，标签/色槽/翻译在位。
+
+    后端条目渲染成什么标签是 borrow-ui 的事；三处缺一处，告警条就会
+    以裸 kind 名/无色/无英文出现——静态断言锁死，免起浏览器。"""
+
+    def _read(self, *parts):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1].joinpath(*parts)
+                .read_text(encoding="utf-8"))
+
+    def test_attention_bar_knows_publish_rate(self):
+        js = self._read("app", "ui", "borrow-ui.js")
+        self.assertIn('publish_rate: _t("发布告警")', js,
+                      "borrow-ui.js 注意力条缺 publish_rate 标签")
+        css = self._read("app", "ui", "borrow-ui.css")
+        self.assertIn(".ba-publish_rate", css,
+                      "borrow-ui.css 缺 publish_rate 色槽")
+        i18n = self._read("app", "ui", "i18n.js")
+        self.assertIn('"发布告警": "Publish alert"', i18n,
+                      "i18n.js 缺发布告警英文翻译")
 
 
 if __name__ == "__main__":

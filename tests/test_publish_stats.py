@@ -152,5 +152,64 @@ class RealLedgerPathTest(unittest.TestCase):
                 paths.PUBLISH_DIR = saved
 
 
+class AlertTest(_LedgerCase):
+    """成功率告警（2026-11-01 KPI 装牙）：跌破目标线且失败数达下限才响。
+
+    口径三查：没样本不响（没记录≠事故）、单次失败不响（平台瞬断是抖动）、
+    草稿失败不响（草稿不进成功率分母——见本文件 CountingTest 口径）。
+    """
+
+    def test_alert_fires_when_below_goal_with_enough_failures(self):
+        self.write([
+            {"action": "upload_chapter", "ok": False, "error": "登录已失效"},
+            {"action": "upload_chapter", "ok": False, "error": "弹窗没关"},
+            {"action": "create_book", "ok": False, "error": "书名已存在"},
+            {"action": "upload_chapter", "ok": True},
+        ])
+        got = stats.summary(7)
+        a = got["alert"]
+        self.assertIsNotNone(a)
+        self.assertEqual(a["failed"], 3)
+        self.assertEqual(a["attempts"], 4)
+        self.assertEqual(a["rate"], 0.25)
+        self.assertEqual(a["goal"], 0.95)
+        self.assertEqual(a["days"], 7)
+        # 独立入口与 summary 附带的一致（注意力面板走独立入口）
+        self.assertEqual(stats.alert(days=7), a)
+
+    def test_quiet_on_single_failure_even_when_rate_low(self):
+        self.write([
+            {"action": "upload_chapter", "ok": False, "error": "瞬断"},
+            {"action": "upload_chapter", "ok": True},
+            {"action": "upload_chapter", "ok": True},
+            {"action": "upload_chapter", "ok": True},
+        ])
+        self.assertIsNone(stats.summary(7)["alert"])   # rate 0.75 但失败仅 1 次
+
+    def test_quiet_when_at_goal_line(self):
+        self.write([{"action": "upload_chapter", "ok": i % 20 != 0}
+                    for i in range(40)])               # 38 ok / 2 fail = 95% 达标
+        self.assertIsNone(stats.summary(7)["alert"])
+
+    def test_draft_failures_never_alert(self):
+        self.write([
+            {"action": "upload_chapter_draft", "ok": False, "error": "草稿框没找到"},
+            {"action": "upload_short_story_draft", "ok": False, "error": "草稿框没找到"},
+        ])
+        self.assertIsNone(stats.summary(7)["alert"])
+
+    def test_empty_ledger_no_alert(self):
+        self.assertIsNone(stats.summary(7)["alert"])
+        self.assertIsNone(stats.alert(days=7))
+
+    def test_alert_attached_on_global_view_only(self):
+        self.write([
+            {"action": "upload_chapter", "ok": False, "task_id": "t1"},
+            {"action": "upload_chapter", "ok": False, "task_id": "t2"},
+        ])
+        self.assertIsNotNone(stats.summary(7)["alert"])
+        self.assertIsNone(stats.summary(7, task_id="t1")["alert"])
+
+
 if __name__ == "__main__":
     unittest.main()
