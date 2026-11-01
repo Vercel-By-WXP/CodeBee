@@ -97,3 +97,14 @@
   #sub-tasks .cmp-quick { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
   #sub-tasks .cmp-quick > button { flex: 0 1 auto; width: auto; justify-content: center; }
 }
+
+/* 分型 hero 手机适配（1031）：390px 实测 band 402px 溢出 12px——封面缩小、
+   状态胶囊换行右对齐、补充卡单列（.eh-more 已有 1100px 断点覆盖）。 */
+@media (max-width: 900px) {
+  #exp-hero { margin-bottom: 10px; }
+  #exp-hero .exp-hero-band { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
+  #exp-hero .eh-cover, #exp-hero .eh-cover-img { width: 48px; height: 66px; }
+  #exp-hero .eh-side { flex-basis: 100%; display: flex; justify-content: flex-end; }
+  #exp-hero .eh-bar { width: 100%; }
+  #exp-hero .eh-stats { gap: 10px; }
+}

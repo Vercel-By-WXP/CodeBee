@@ -193,3 +193,166 @@ def register(target, path_override=None, *, dry_run=True):
             os.unlink(tmp)
     result["changed"] = True
     return result
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 反向导入：外部 CLI（claude/codex/qwen/gemini/opencode）已装的 MCP → CodeBee。
+# 与 export/register 对称，但方向相反：读外部配置文件，把其 mcpServers /
+# mcp_servers / mcp 段转成 CodeBee settings.mcp_servers 的 {name,command,...}
+# 形态。纯读取 + 归一化，不写任何外部文件，env 一律脱敏（可关闭）。
+# ────────────────────────────────────────────────────────────────────────────
+_LABELS = {
+    "claude": "Claude Code", "codex": "Codex CLI", "opencode": "OpenCode",
+    "qwen": "Qwen Code", "gemini": "Gemini CLI",
+}
+
+
+def _sanitize_server_name(name, used):
+    """外部 server 名 → 合规 CodeBee 名（[a-z0-9_-]{1,24}，无 __，去重加后缀）。"""
+    base = re.sub(r"[^a-z0-9_-]", "", str(name or "").lower())
+    base = base.replace("__", "_").strip("_-") or "mcp"
+    base = base[:24]
+    cand, n = base, 2
+    while cand in used:
+        suffix = "-%d" % n
+        cand = base[: 24 - len(suffix)] + suffix
+        n += 1
+    used.add(cand)
+    return cand
+
+
+def _normalize_server(name, cfg, target):
+    """外部单条 server 配置 → CodeBee 形（{name,command,args,env,url,headers}）。
+    无 command 且无 url 的条目跳过（返回 None）。"""
+    item = {}
+    if target == "opencode":
+        # opencode 形：{type:"local", command:[...], environment:{...}}
+        cmd = cfg.get("command")
+        if isinstance(cmd, list) and cmd and str(cmd[0]).strip():
+            item["command"] = str(cmd[0]).strip()
+            item["args"] = [str(x) for x in cmd[1:] if str(x).strip()]
+        env = cfg.get("environment")
+        if not isinstance(env, dict):
+            env = cfg.get("env")
+        if isinstance(env, dict):
+            item["env"] = {str(k): str(v) for k, v in env.items()}
+    else:
+        cmd = cfg.get("command")
+        args = cfg.get("args")
+        args = [str(x) for x in args if str(x).strip()] if isinstance(args, list) else []
+        if isinstance(cmd, str) and cmd.strip():
+            item["command"] = cmd.strip()
+            # Windows 常见包装「cmd /c <real> ...」：解包成真实命令，
+            # 否则导入后 command=cmd args=[/c,npx,...]，语义对但可读性差。
+            if item["command"].lower() == "cmd" and len(args) >= 2 and \
+                    args[0].lower() in ("/c", "/k", "/cmd"):
+                item["command"] = args[1]
+                args = args[2:]
+        if args:
+            item["args"] = args
+        if isinstance(cfg.get("env"), dict):
+            item["env"] = {str(k): str(v) for k, v in cfg["env"].items()}
+        if isinstance(cfg.get("url"), str) and cfg["url"].strip():
+            item["url"] = cfg["url"].strip()
+        if isinstance(cfg.get("headers"), dict):
+            item["headers"] = {str(k): str(v)
+                               for k, v in list(cfg["headers"].items())[:8]}
+    if not item.get("command") and not item.get("url"):
+        return None
+    return item
+
+
+def _cap(servers):
+    """控制导入条目体量：args/env 值截断（与 parse_servers 的量级一致）。"""
+    out = []
+    for s in servers:
+        item = dict(s)
+        if isinstance(item.get("args"), list):
+            item["args"] = [str(x)[:500] for x in item["args"]][:32]
+        if isinstance(item.get("env"), dict):
+            item["env"] = {str(k)[:64]: str(v)[:2000]
+                           for k, v in list(item["env"].items())[:32]}
+        if isinstance(item.get("headers"), dict):
+            item["headers"] = {str(k): str(v)[:500]
+                               for k, v in list(item["headers"].items())[:8]}
+        out.append(item)
+    return out
+
+
+def _read_target_text(target):
+    path = Path(os.path.expanduser(_TARGETS[target]["path"])).expanduser().resolve()
+    if not path.exists():
+        return None, os.path.expanduser(_TARGETS[target]["path"]), \
+            "配置文件不存在（该智能体可能未安装）"
+    try:
+        return path.read_text(encoding="utf-8"), str(path), ""
+    except OSError as exc:
+        return None, str(path), "读取失败：%s" % exc
+
+
+def import_from(target, redact=True):
+    """外部 CLI 已装的 MCP → CodeBee 服务器清单（脱敏审计）。
+
+    只读、不写任何外部文件。返回 {target,format,path,servers,error,redacted}：
+      - 文件不存在 / 解析失败 → error 非空，servers 空
+      - 配置存在但无 mcpServers 段 → error 空，servers 空（该智能体没装 MCP）
+    """
+    target = _target_key(target)
+    if target not in _TARGETS:
+        raise ValueError("不支持的 MCP 来源 CLI：%s" % target)
+    fmt = _TARGETS[target]["format"]
+    root = _TARGETS[target]["root"]
+    text, path, err = _read_target_text(target)
+    base = {"target": target, "format": fmt, "path": path,
+            "servers": [], "error": err, "redacted": bool(redact)}
+    if err:
+        return base
+    try:
+        if fmt == "toml":
+            import tomllib
+            doc = tomllib.loads(text)
+        else:
+            doc = json.loads(text)
+    except Exception as exc:
+        base["error"] = "配置文件解析失败：%s" % exc
+        return base
+    section = doc.get(root) if isinstance(doc, dict) else None
+    if not isinstance(section, dict):
+        return base                       # 存在但没配 MCP：合法空结果
+    used = set()
+    servers = []
+    for name, cfg in section.items():
+        if not isinstance(cfg, dict):
+            continue
+        norm = _normalize_server(name, cfg, target)
+        if not norm:
+            continue
+        norm["name"] = _sanitize_server_name(str(name), used)
+        servers.append(norm)
+    servers = _cap(servers)
+    base["servers"] = [_redact(x) if redact else x for x in servers]
+    return base
+
+
+def importable_sources(redact=True):
+    """各外部 CLI 的导入源清单：路径存在性 + 已装 MCP 数（只读探测）。
+
+    单家读取失败不拖垮整表（error 单独标注）。前端据此渲染「从其它智能体
+    导入」区：只展示 exists=True 的源，server_count>0 才给「导入」。
+    """
+    out = []
+    for target, spec in _TARGETS.items():
+        path = os.path.expanduser(spec["path"])
+        exists = Path(path).exists()
+        entry = {"id": target, "name": _LABELS.get(target, target),
+                 "path": path, "format": spec["format"],
+                 "exists": exists, "server_count": 0, "error": ""}
+        if exists:
+            try:
+                data = import_from(target, redact=redact)
+                entry["server_count"] = len(data.get("servers") or [])
+                entry["error"] = data.get("error") or ""
+            except Exception as exc:      # pragma: no cover - 防御
+                entry["error"] = str(exc)
+        out.append(entry)
+    return out

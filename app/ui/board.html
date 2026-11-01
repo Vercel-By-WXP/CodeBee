@@ -8,10 +8,10 @@
 (function () {
   try {
     var query = new URLSearchParams(location.search);
-    document.documentElement.dataset.skin = query.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "ocean";
+    document.documentElement.dataset.skin = query.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "wbbuddy";
     document.documentElement.dataset.theme = query.get("mode") || localStorage.getItem("orch.theme") || localStorage.getItem("orch.boardTheme") || "light";
   } catch (_) {
-    document.documentElement.dataset.skin = "ocean";
+    document.documentElement.dataset.skin = "wbbuddy";
     document.documentElement.dataset.theme = "light";
   }
 })();
@@ -20,9 +20,7 @@
 <link rel="stylesheet" href="/board.css">
 <link rel="stylesheet" href="/button-reference.css">
 <link rel="stylesheet" href="/hive-ui.css">
-<!-- v2 桥接层最后加载：classic/ocean 两皮肤跟随主界面统一到 v2 调色板与圆角；
-     forest/contrast 等其余皮肤不受影响（与 theme-v2.css 的作用域边界一致）。 -->
-<link rel="stylesheet" href="/theme-v2.css">
+<link rel="stylesheet" href="/wb-themes.css">
 </head>
 <body>
 
@@ -42,7 +40,7 @@
 
   <div class="hd-state" id="hd-state">
     <span class="state-pip" aria-hidden="true"></span>
-    <span class="state-text" id="hd-state-text" data-i18n="CodeBee待命">CodeBee待命</span>
+    <span class="state-text" id="hd-state-text" data-i18n="蜂群待命">蜂群待命</span>
     <span class="hd-sep" aria-hidden="true"></span>
     <span class="hd-sync" id="hd-updated" data-i18n="同步中">同步中</span>
   </div>

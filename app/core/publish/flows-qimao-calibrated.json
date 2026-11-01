@@ -1,5 +1,5 @@
 {
- "_note": "七猫真机校准（2026-10-14）：发章从目标作品章节管理页点击“新建章节”进入真实编辑器；填写标题/正文后直接点击“立即发布”，兼容“更正序号去发布”与“确认发布”弹层；最终必须在章节管理页按本章标题和待审核/审核中/已发布状态核验，草稿不算发布。 | 2026-10-18 重建：站点弹层下线，直达 information?client_id=1；频道radio必须先于分类（gating）；分类下拉选后补 sleep。",
+ "_note": "七猫真机校准（2026-10-14）：发章从目标作品章节管理页点击“新建章节”进入真实编辑器；填写标题/正文后直接点击“立即发布”，兼容“更正序号去发布”与“确认发布”弹层；最终必须在章节管理页按本章标题和待审核/审核中/已发布状态核验，草稿不算发布。 | 2026-10-18 重建：站点弹层下线，直达 information?client_id=1；频道radio必须先于分类（gating）；分类下拉选后补 sleep。 | 2026-11-01 P0-a 附带①回灌：upload_chapter 按生产覆盖表（10-18 真机重建版）同步——弹层下线直达编辑器，删 fill chapter_no 与两处 expect_text 断言，js_click 换 click_real；模板此前停在 10-14 版。",
  "upload_chapter_draft": [
   {
    "do": "navigate",
@@ -235,11 +235,6 @@
    "key": "chapter_title"
   },
   {
-   "do": "fill",
-   "sel": ".chapter-index-input-input input",
-   "key": "chapter_no"
-  },
-  {
    "do": "wait",
    "sel": ".q-contenteditable.book.font-size-16.edit-mask",
    "timeout": 15
@@ -254,37 +249,10 @@
    "name": "chapter-filled"
   },
   {
-   "do": "expect_text",
-   "any": [
-    "已保存到云端"
-   ],
-   "timeout": 15
-  },
-  {
-   "do": "submit",
-   "gate": true
-  },
-  {
    "do": "click_real",
    "text": "立即发布",
    "scope": "a,button,[role=button],span",
    "tries": 25
-  },
-  {
-   "do": "js_click",
-   "text": "立即发布",
-   "scope": "a,button,[role=button]",
-   "tries": 10,
-   "skip_if_modal": true
-  },
-  {
-   "do": "expect_text",
-   "any": [
-    "立即发布确认",
-    "检测到章节序号不连续"
-   ],
-   "timeout": 12,
-   "visible_only": true
   },
   {
    "do": "shot",
@@ -295,9 +263,9 @@
    "s": 1.2
   },
   {
-   "do": "js_click",
+   "do": "click_real",
    "text": "更正序号去发布",
-   "scope": "a,button,[role=button]",
+   "scope": "a,button,[role=button],span",
    "tries": 12,
    "optional": true
   },
@@ -306,30 +274,21 @@
    "s": 0.8
   },
   {
-   "do": "js_click",
+   "do": "click_real",
    "text": "确认发布",
-   "scope": ".el-dialog a,.el-dialog button",
+   "scope": "a,button,[role=button],span",
    "tries": 15,
-   "optional": false
-  },
-  {
-   "do": "expect_text_absent",
-   "any": [
-    "立即发布确认"
-   ],
-   "timeout": 15,
-   "visible_only": true
+   "optional": true
   },
   {
    "do": "sleep",
-   "s": 2.5
+   "s": 1.5
   },
   {
    "do": "verify_chapter_status",
    "url": "{chapter_manage_url}",
    "timeout": 35,
    "settle": 4,
-   "new_tab": true,
    "row_sel": ".el-table__row, tr",
    "live_status": [
     "待审核",

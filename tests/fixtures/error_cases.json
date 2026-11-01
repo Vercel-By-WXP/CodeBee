@@ -1,0 +1,34 @@
+{
+ "generated": "2026-11-01 19:56:47",
+ "ledger_scope": "data/errors/errors-*.jsonl",
+ "ledger_records": 612,
+ "agreed": 13,
+ "gap": 599,
+ "must_cases": 2,
+ "cases": [
+  {
+   "reason": "QUOTA",
+   "expect_class": "QUOTA",
+   "detail": "上游余额或调用额度不足",
+   "incident": "202610#47",
+   "tool": "codex",
+   "tag": "quota_balance"
+  },
+  {
+   "reason": "AUTH",
+   "expect_class": "AUTH",
+   "detail": "API 凭据认证失败",
+   "incident": "202610#175",
+   "tool": "generic",
+   "tag": "class-rep"
+  },
+  {
+   "reason": "TOOL_LAUNCH",
+   "expect_class": "TOOL_LAUNCH",
+   "detail": "本地 CLI 启动失败（可执行文件不存在，与供应商无关）",
+   "incident": "202610#169",
+   "tool": "generic",
+   "tag": "class-rep"
+  }
+ ]
+}

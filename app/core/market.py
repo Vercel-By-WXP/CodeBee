@@ -237,6 +237,10 @@ def view():
                       "pending_review": bool(rec.get("pending_review"))
                       and inst and not en,
                       "scan_stale": _scan_stale(rec.get("scan_generation")),
+                      # 版本钉扎（Ruflo 借来的纪律：目录条目必须可复现——
+                      # 安装时若登记过远端版本就透出，catalog 分发侧可对账）
+                      "version": str((rec.get("remote") or {}).get("version")
+                                     or ""),
                       "files": sorted(files),
                       "chars": sum(len(v) for v in files.values())})
     cats = list(skills.LESSON_CATEGORIES)     # 闭集全枚举先给全（UI 下拉不缺项）

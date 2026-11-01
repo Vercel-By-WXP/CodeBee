@@ -83,15 +83,15 @@ function submitGate() {
 /* ---------------------------------------------------------------- 换肤
    主工作台和驾驶舱共用 orch.skin / orch.theme。旧版驾驶舱独立偏好只作
    一次性回退，任何切换都会写回全局偏好，保持两处入口一致。 */
-const SKINS = [["ocean", "深海"], ["classic", "经典"], ["apple", "苹果"],
-               ["hermes", "墨金"], ["paper", "简白"], ["forest", "森林"],
-               ["amber", "暖阳"], ["violet", "霓虹"], ["contrast", "高对比"]];
+const SKINS = [["wbbuddy", "CodeBee"], ["wb-light", "浅色"], ["wb-dark", "深色"],
+               ["wb-breeze", "有风"], ["wb-qq", "经典 QQ"], ["wb-peace", "紫金秋"],
+               ["wb-peer", "同行"], ["wb-ripple", "涟漪"], ["wb-buddy", "伙伴"]];
 const SKIN_IDS = new Set(SKINS.map((s) => s[0]));
 const _q = new URLSearchParams(location.search);
 
 function skin() {
-  const v = _q.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "ocean";
-  return SKIN_IDS.has(v) ? v : "ocean";
+  const v = _q.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "wbbuddy";
+  return SKIN_IDS.has(v) ? v : "wbbuddy";
 }
 function mode() {
   const v = _q.get("mode") || localStorage.getItem("orch.theme") || localStorage.getItem("orch.boardTheme") || "light";
@@ -220,8 +220,8 @@ function render(d) {
   const st = $("#hd-state");
   st.classList.toggle("live", running.length > 0);
   $("#hd-state-text").textContent = running.length
-    ? t("CodeBee运行中 · {0} 个任务并行", running.length)
-    : (queued.length ? t("CodeBee待命 · {0} 个任务排队", queued.length) : t("CodeBee待命"));
+    ? t("蜂群运行中 · {0} 个任务并行", running.length)
+    : (queued.length ? t("蜂群待命 · {0} 个任务排队", queued.length) : t("蜂群待命"));
   $("#hd-pool-alive").textContent = pool.alive || 0;
   $("#hd-pool-target").textContent = "/" + (pool.target || 0);
   $("#hd-chat-alive").textContent = pool.chat_alive || 0;

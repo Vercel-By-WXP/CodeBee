@@ -85,7 +85,10 @@
   main.chat-fill #run-detail.chat-mode {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--workbench-task-width);
-    grid-template-areas: "main rail";
+    grid-template-areas:
+      "hero hero"
+      "main rail";
+    grid-template-rows: auto minmax(0, 1fr);
     column-gap: var(--workbench-gap);
     height: 100%;
     width: 100%;
@@ -562,7 +565,7 @@
     border: 1px solid var(--cb-button-border);
     border-radius: 9px;
     background: var(--cb-button-bg);
-    color: #333941;
+    color: var(--text);
     box-shadow: 0 1px 3px rgba(20, 28, 38, .04);
   }
 
@@ -574,7 +577,7 @@
 
   .side-label-row {
     min-height: 34px;
-    color: #7a828b;
+    color: var(--muted);
     border-bottom: 1px solid var(--cb-card-border);
   }
 
@@ -687,7 +690,7 @@
   }
 
   :is(#sub-tasks, #rd-input-slot) .hero {
-    color: #26282c;
+    color: var(--text);
     font-size: clamp(26px, 2.1vw, 32px);
     font-weight: 560 !important;
   }
@@ -733,56 +736,56 @@
   }
 
   html[data-theme="dark"] .side-rail {
-    background: #1e2125;
-    border-right-color: #30353b;
+    background: var(--sidebar);
+    border-right-color: var(--border-strong);
   }
 
   html[data-theme="dark"] .rail-btn.active,
   html[data-theme="dark"] .rail-btn:hover {
-    color: #9fc3f5;
-    background: #303943;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel2));
   }
 
   html[data-theme="dark"] #sidebar {
     background: var(--sidebar);
-    border-right-color: #30353b;
+    border-right-color: var(--border-strong);
   }
 
   html[data-theme="dark"] .brand-row,
   html[data-theme="dark"] .side-label-row,
-  html[data-theme="dark"] .side-foot { border-color: #343a42; }
+  html[data-theme="dark"] .side-foot { border-color: var(--border-strong); }
   html[data-theme="dark"] .brand-name,
-  html[data-theme="dark"] .topbar .page-title { color: #f3f5f7; }
+  html[data-theme="dark"] .topbar .page-title { color: var(--text); }
   html[data-theme="dark"] .brand-mode,
   html[data-theme="dark"] .brand-tool,
   html[data-theme="dark"] .topbar .icon-btn,
-  html[data-theme="dark"] .topbar .pill { color: #a8b0ba; }
+  html[data-theme="dark"] .topbar .pill { color: var(--muted); }
   html[data-theme="dark"] .brand-tool:hover,
   html[data-theme="dark"] .topbar .icon-btn:hover,
-  html[data-theme="dark"] .topbar .pill:hover { color: #f3f5f7; background: #30353b; }
+  html[data-theme="dark"] .topbar .pill:hover { color: var(--text); background: var(--border-strong); }
   html[data-theme="dark"] .side-main > .new-task {
-    border-color: #4a535e;
-    background: #292e34;
-    color: #eef1f4;
+    border-color: var(--border-strong);
+    background: var(--panel2);
+    color: var(--text);
     box-shadow: none;
   }
   html[data-theme="dark"] .side-main > .new-task:hover,
   html[data-theme="dark"] .sdir summary:hover,
-  html[data-theme="dark"] .stask:hover { background: #30353b; }
-  html[data-theme="dark"] .stask.active { color: #b5d1f5; background: #2d3a4b; }
-  html[data-theme="dark"] .topbar { background: rgba(32, 35, 40, .96); border-bottom-color: #343a42; }
+  html[data-theme="dark"] .stask:hover { background: var(--border-strong); }
+  html[data-theme="dark"] .stask.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
+  html[data-theme="dark"] .topbar { background: var(--cb-topbar); border-bottom-color: var(--border-strong); }
   html[data-theme="dark"] main,
   html[data-theme="dark"] main.chat-fill,
   html[data-theme="dark"] main.chat-fill #run-detail.chat-mode #rd-rail { background: var(--cb-canvas); }
-  html[data-theme="dark"] main.chat-fill #run-detail.chat-mode #rd-rail { border-color: #3b424a; }
-  html[data-theme="dark"] .chat-bubble.me { background: #30353b; border-color: #424a54; }
-  html[data-theme="dark"] .chat-avatar { background: #303943; border-color: #4b5867; color: #b5d1f5; }
-  html[data-theme="dark"] #run-detail.chat-mode .rd-chat-bar { border-color: #4a535e; box-shadow: 0 3px 14px rgba(0, 0, 0, .24); }
+  html[data-theme="dark"] main.chat-fill #run-detail.chat-mode #rd-rail { border-color: var(--border-strong); }
+  html[data-theme="dark"] .chat-bubble.me { background: var(--panel2); border-color: var(--border-strong); }
+  html[data-theme="dark"] .chat-avatar { background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); border-color: var(--border-strong); color: var(--accent); }
+  html[data-theme="dark"] #run-detail.chat-mode .rd-chat-bar { border-color: var(--border-strong); box-shadow: 0 3px 14px rgba(0, 0, 0, .24); }
   html[data-theme="dark"] #rd-rail > #rd-tabs,
-  html[data-theme="dark"] #rd-rail > #rd-chat-nav { border-top-color: #3b424a; }
+  html[data-theme="dark"] #rd-rail > #rd-chat-nav { border-top-color: var(--border-strong); }
   html[data-theme="dark"] #rd-rail > #rd-tabs .rd-tab.active,
   html[data-theme="dark"] #rd-rail > #rd-chat-nav .cn-pill:hover,
-  html[data-theme="dark"] #rd-rail > #rd-chat-nav .cn-pill.on { color: #b5d1f5; background: #2d3a4b; }
+  html[data-theme="dark"] #rd-rail > #rd-chat-nav .cn-pill.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
 }
 
 /* Settings navigation and pages follow Codex's quiet, centered settings layout. */
@@ -1193,13 +1196,13 @@
   :is(#sub-tasks, #rd-input-slot) #btn-create.round {
     width: 34px;
     height: 34px;
-    color: #fff;
-    background: #8b8d91;
+    color: var(--text);
+    background: var(--border-strong);
     box-shadow: none;
   }
 
   :is(#sub-tasks, #rd-input-slot) #btn-create.round:hover {
-    background: var(--accent);
+    background: var(--accent); color: #fff;
   }
 
   #page-settings > :is(#sub-tasks, #rd-input-slot) .cmp-quick {

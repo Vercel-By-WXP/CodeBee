@@ -45,6 +45,7 @@ import time
 
 from .browser import BrowserError
 
+from . import selectors  # P0-a 外置注册表：执行器 JS 的选择器单一真源
 from .flow_fanqie import (run_fanqie_publish, run_fanqie_short_publish,
                           run_fanqie_short_trial)
 from .flow_qimao import run_qimao_short_publish
@@ -75,11 +76,11 @@ def _dismiss_fanqie_stale_draft(page, timeout=6.0):
                 "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
                 "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
                 "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
-                "const ds=[...document.querySelectorAll('body *')].filter(e=>vis(e)&&"
+                "const ds=[...document.querySelectorAll('" + selectors.get("body_any") + "')].filter(e=>vis(e)&&"
                 "norm(e.innerText).includes(mark));"
                 "ds.sort((a,b)=>norm(a.innerText).length-norm(b.innerText).length);"
                 "const d=ds[0];if(!d)return{ok:false,absent:true};"
-                "const b=[...d.querySelectorAll('button,[role=button],a')].find(e=>"
+                "const b=[...d.querySelectorAll('" + selectors.get("scope_btn_role_a") + "')].find(e=>"
                 "vis(e)&&norm(e.innerText)===norm(label));"
                 "if(!b)return{ok:false,err:'button'};"
                 "const r=b.getBoundingClientRect(),x=Math.round(r.x+r.width/2),"
@@ -246,9 +247,29 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     # 视觉兜底：文本定位链全灭（平台改版/文案漂移/弹层判断
                     # 失效）时，截图问视觉模型要坐标再真实点一次；模型侧
                     # 不中才认输抛原错误（vision_fallback 纪律：绝不包装成功）
-                    from .vision_fallback import rescue_click
+                    from .vision_fallback import (rescue_click, page_signature,
+                                                  assert_advanced)
+                    _sig0 = page_signature(page)
                     if rescue_click(page, click_texts, note=lambda s: note(i, s)):
-                        verified = True
+                        # P0-c 判成功：派发了点击 ≠ 页面接受。expect_checked 步
+                        # 回读选中态；普通点击看「页面是否前进」（URL/正文长/
+                        # 顶层弹层三信号，零模型成本）。未前进=静默没生效，
+                        # 判失败绝不 silently ok。advance_check:false 可按步豁免
+                        # （点选后面貌不变的真步）。
+                        if st.get("expect_checked"):
+                            _v = page.call(_checked_js(), text,
+                                           st.get("scope") or "")
+                            if (_v or {}).get("ok"):
+                                verified = True
+                            else:
+                                note(i, "视觉兜底已点但未见选中态，判失败")
+                                raise FlowError((r or {}).get("err") or text)
+                        elif (st.get("advance_check", True)
+                              and not assert_advanced(_sig0, page_signature(page))):
+                            note(i, "视觉兜底已点但页面未前进，判失败")
+                            raise FlowError((r or {}).get("err") or text)
+                        else:
+                            verified = True
                     else:
                         raise FlowError((r or {}).get("err") or text)
             elif act == "click_in":
@@ -275,7 +296,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
                         "const cards=[...document.querySelectorAll('div,li,section,tr')].filter(e=>{"
                         "const x=(e.innerText||'').trim();"
-                        "const hasBtn=e=>[...e.querySelectorAll('a,button,[role=button],[class*=btn],span')]"
+                        "const hasBtn=e=>[...e.querySelectorAll('" + selectors.get("scope_btn_broad") + "')]"
                         ".some(b=>{const y=(b.innerText||'').trim();return vis(b)&&(y===t||y.includes(t)&&y.length<=t.length+6);});"
                         "return vis(e)&&x.includes(sc)&&x.length<600&&hasBtn(e);});"
                         "if(!cards.length)return{ok:false,err:'找不到含'+sc+'的卡片'};"
@@ -285,7 +306,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         # drafts to the newest row instead of the requested one.
                         "cards.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                         "const card=cards[0];"
-                        "let btns=[...card.querySelectorAll('a,button,[role=button],[class*=btn],span')].filter(e=>{"
+                        "let btns=[...card.querySelectorAll('" + selectors.get("scope_btn_broad") + "')].filter(e=>{"
                         "const x=(e.innerText||'').trim();return vis(e)&&!e.disabled&&(x===t||x.includes(t)&&x.length<=t.length+6);});"
                         "if(!btns.length)return{ok:false,err:'卡片内没有'+t};"
                         "const exact=btns.filter(e=>(e.innerText||'').trim()===t);"
@@ -302,7 +323,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         # cancel and submit labels; promoting that wrapper (or
                         # a child span whose center is covered by a sibling)
                         # was the source of the live "提交被挡住：SPAN" failure.
-                        "const parent=el.closest('a,button,[role=button]');"
+                        "const parent=el.closest('" + selectors.get("scope_btn_role") + "');"
                         "const ptxt=parent?(parent.innerText||'').trim():'';"
                         "const etxt=(el.innerText||'').trim();"
                         "const act=parent&&ptxt===etxt?parent:el;"
@@ -317,7 +338,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         " let hit=null;for(const [fx,fy] of pts){"
                         "  const x=Math.round(rc.x+rc.width*fx),y=Math.round(rc.y+rc.height*fy);"
                         "  const px=document.elementFromPoint(x,y);"
-                        "  const top=px&&px.closest('a,button,[role=button]');"
+                        "  const top=px&&px.closest('" + selectors.get("scope_btn_role") + "');"
                         "  const sameAction=top&&(top.innerText||'').trim()===t"
                         "   &&cards.some(c=>c.contains(top))"
                         "   &&top.getBoundingClientRect().width>0;"
@@ -349,7 +370,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 r = page.call(
                     "(t)=>{"
                     "const vis=e=>e.getBoundingClientRect().width>0;"
-                    "const btn=[...document.querySelectorAll('button')].find(e=>"
+                    "const btn=[...document.querySelectorAll('" + selectors.get("bare_button") + "')].find(e=>"
                     "vis(e)&&(e.innerText||'').trim().includes(t));"
                     "if(!btn)return{ok:false,err:'按钮未找到'};"
                     "const host=btn.closest('[class*=group],[class*=dropdown]')||btn.parentElement;"
@@ -439,19 +460,21 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 # （.el-form-item 等），组内再找 value——找不到容器才退全局。
                 scope_text = str(st.get("scope_text") or "").strip()
                 scope_sel = str(st.get("scope_sel") or "").strip()
+                _ri = selectors.get("radio_input")
+                _fr = selectors.get("form_row")
                 base_js = ("(v,sc,ss)=>{let root=null;"
                            "if(ss){root=document.querySelector(ss);"
-                           "if(!root||!root.querySelector('input[type=radio]'))"
+                           "if(!root||!root.querySelector('" + _ri + "'))"
                            "return{ok:false,err:'scope'};}"
                            "else if(sc){const els=[...document.querySelectorAll"
-                           "('[class*=form-item],[class*=form_row],fieldset')]"
+                           "('" + _fr + "')]"
                            ".filter(e=>e.getBoundingClientRect().width>0"
-                           "&&e.querySelector('input[type=radio]'));"
+                           "&&e.querySelector('" + _ri + "'));"
                            "const hit=els.filter(e=>(e.innerText||'').includes(sc))"
                            ".sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
                            "if(hit.length)root=hit[0];}"
-                           "const all=[...document.querySelectorAll('input[type=radio]')];"
-                           "const pool=root?root.querySelectorAll('input[type=radio]'):all;"
+                           "const all=[...document.querySelectorAll('" + _ri + "')];"
+                           "const pool=root?root.querySelectorAll('" + _ri + "'):all;"
                            "const rs=[...pool].filter(x=>x.value===v&&!x.disabled);"
                            "if(!rs.length)return{ok:false,err:'nf'};"
                            "return{ok:true,idx:all.indexOf(rs[0])};}")
@@ -459,7 +482,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 def _checked():
                     return page.call(
                         "(i)=>{const all=[...document.querySelectorAll"
-                        "('input[type=radio]')];return i>=0&&i<all.length"
+                        "('" + _ri + "')];return i>=0&&i<all.length"
                         "&&!!all[i].checked;}", idx)
 
                 verified = False
@@ -476,7 +499,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     # display:none，编程点击可直接翻转受控状态）
                     page.call(
                         "(i)=>{const all=[...document.querySelectorAll"
-                        "('input[type=radio]')];if(i>=0&&i<all.length)all[i].click();}",
+                        "('" + _ri + "')];if(i>=0&&i<all.length)all[i].click();}",
                         idx)
                     time.sleep(0.45)
                     if _checked():
@@ -486,7 +509,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                     # 被吸顶栏/浮层挡住时不盲点）
                     pos = page.call(
                         "(i)=>{const all=[...document.querySelectorAll"
-                        "('input[type=radio]');const r0=all[i];"
+                        "('" + _ri + "');const r0=all[i];"
                         "const lab=r0.closest('label')||r0.closest('.el-radio')"
                         "||r0.parentElement;"
                         "lab.scrollIntoView({block:'center'});"
@@ -606,11 +629,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 stale_draft = page.call(
                     "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                     "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
-                    "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal,"
-                    ".byte-modal-wrapper')].filter(vis);"
+                    "const ds=[...document.querySelectorAll('" + selectors.get("stale_modal")
+                    + "')].filter(vis);"
                     "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('有刚刚更新的草稿'));"
                     "if(!d)return{ok:false};"
-                    "const b=[...d.querySelectorAll('button,[role=button]')].find(e=>"
+                    "const b=[...d.querySelectorAll('" + selectors.get("qm_btn_scope") + "')].find(e=>"
                     "(e.innerText||'').replace(/\\s+/g,'').trim()==='放弃');"
                     "if(!b)return{ok:false,err:'button'};b.click();return{ok:true};}",
                     timeout=10) or {}
@@ -627,11 +650,11 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
                         "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
                         "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
-                        "const ds=[...document.querySelectorAll('body *')].filter(e=>vis(e)&&"
+                        "const ds=[...document.querySelectorAll('" + selectors.get("body_any") + "')].filter(e=>vis(e)&&"
                         "norm(e.innerText).includes('有刚刚更新的草稿'));"
                         "ds.sort((a,b)=>norm(a.innerText).length-norm(b.innerText).length);"
                         "const d=ds[0];if(!d)return null;"
-                        "const b=[...d.querySelectorAll('button,[role=button],a')].find(e=>"
+                        "const b=[...d.querySelectorAll('" + selectors.get("scope_btn_role_a") + "')].find(e=>"
                         "vis(e)&&norm(e.innerText)==='放弃');if(!b)return null;"
                         "const r=b.getBoundingClientRect(),x=Math.round(r.x+r.width/2),"
                         "y=Math.round(r.y+r.height/2),hit=document.elementFromPoint(x,y);"
@@ -659,9 +682,10 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         still_visible = page.call(
                             "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                             "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
-                            "return [...document.querySelectorAll('[role=dialog],.arco-modal,.byte-modal-wrapper')]"
+                            "return [...document.querySelectorAll('" + selectors.get("stale_modal")
+                            + "')]"
                             ".filter(vis).some(e=>(e.innerText||'').replace(/\\s+/g,'').includes('有刚刚更新的草稿'))||"
-                            "[...document.querySelectorAll('body *')].some(e=>vis(e)&&"
+                            "[...document.querySelectorAll('" + selectors.get("body_any") + "')].some(e=>vis(e)&&"
                             "(e.innerText||'').replace(/\\s+/g,'').includes('有刚刚更新的草稿'));}",
                             timeout=10)
                         if not still_visible:
@@ -690,11 +714,21 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         time.sleep(0.9)
                     if not (r or {}).get("ok"):
                         # 视觉兜底：提交按钮文案漂移/页面改版时的最后救援；
-                        # 不中维持原失败口径（publish/vision_fallback.py）
-                        from .vision_fallback import rescue_click
+                        # 不中维持原失败口径（publish/vision_fallback.py）。
+                        # P0-c 判成功：提交必须带来页面前进（toast/跳转/弹层
+                        # 变化），点了没前进=平台没受理，判失败不静默。
+                        from .vision_fallback import (rescue_click, page_signature,
+                                                      assert_advanced)
+                        _sig0 = page_signature(page)
                         if not rescue_click(page, [text],
                                             note=lambda s: note(i, s)):
                             raise FlowError((r or {}).get("err") or "提交按钮未找到")
+                        if (st.get("advance_check", True)
+                                and not assert_advanced(_sig0,
+                                                        page_signature(page))):
+                            raise FlowError(
+                                "视觉兜底已点「%s」但页面未前进（提交可能未被平台受理）"
+                                % text)
                 else:
                     note(i, "提交 %s" % st.get("sel") or "")
                     page.wait_for(st["sel"], timeout=8)
@@ -880,14 +914,15 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
                         "const l=document.querySelector(s);"
                         "if(!l||!vis(l))return{ok:false,err:'nf'};"
-                        "const m=l.querySelector('.arco-checkbox-mask')||l;"
+                        "const m=l.querySelector('" + selectors.get("check_mask") + "')||l;"
                         "m.scrollIntoView({block:'center'});"
                         "const rc=m.getBoundingClientRect();"
                         "const x=Math.round(rc.x+rc.width/2),y=Math.round(rc.y+rc.height/2);"
                         "const px=document.elementFromPoint(x,y);"
                         "if(!px||(px!==m&&!m.contains(px)&&!px.contains(m)))"
                         "return{ok:false,err:'blocked'};"
-                        "return{ok:true,x:x,y:y};}", sel, timeout=10) or {}
+                        "return{ok:true,x:x,y:y};}",
+                        sel, timeout=10) or {}
                     if pos.get("ok"):
                         for kind in ("mousePressed", "mouseReleased"):
                             page.send("Input.dispatchMouseEvent",
@@ -948,8 +983,8 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         # also catches ordinary descendants such as
                         # .arco-modal-title, which made this skip the actual
                         # editor click even though no blocking dialog existed.
-                        "if(gm){var g=[...document.querySelectorAll('.el-dialog,.modal,[role=dialog],"
-                        ".arco-modal,.byte-modal-wrapper')]"
+                        "if(gm){var g=[...document.querySelectorAll('" + selectors.get("dialog_enum")
+                        + "')]"
                         ".filter(e=>vis(e)&&e.querySelector('button,[role=button]')).find(e=>{"
                         "const x=(e.innerText||'').trim();return x.length>0;});"
                         "if(g)return{ok:false,err:'modal-open'};}"
@@ -1036,7 +1071,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 for _try in range(3):
                     r = page.call(
                         "(payload)=>{const j=JSON.parse(payload);"
-                        "const body=document.querySelector('.q-contenteditable');"
+                        "const body=document.querySelector('" + selectors.get("contenteditable") + "');"
                         "if(!body)return{ok:false,err:'no-editor'};"
                         "const norm=x=>String(x||'').replace(/\\s+/g,'');"
                         "const p=[...body.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6')]"
@@ -1049,8 +1084,9 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                         "document.execCommand('formatBlock', false, j.block);"
                         "const made=body.querySelector(j.block);"
                         "return{ok:!!made};"
-                        "}", json.dumps({"text": text, "block": block},
-                                        ensure_ascii=False), 15)
+                        "}",
+                        json.dumps({"text": text, "block": block},
+                                   ensure_ascii=False), 15)
                     # 兼容旧校准表里 JSON.stringify 版本（返回字符串）
                     if isinstance(r, str):
                         try:
@@ -1087,7 +1123,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 while time.time() < deadline:
                     if st.get("visible_only"):
                         body_txt = str(page.call(
-                            "()=>[...document.querySelectorAll('body *')].filter(e=>{"
+                            "()=>[...document.querySelectorAll('" + selectors.get("body_any") + "')].filter(e=>{"
                             "const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                             "return r.width>0&&r.height>0&&s.display!=='none'"
                             "&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0;})"
@@ -1120,7 +1156,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 while time.time() < deadline:
                     if st.get("visible_only"):
                         body_txt = str(page.call(
-                            "()=>[...document.querySelectorAll('body *')].filter(e=>{"
+                            "()=>[...document.querySelectorAll('" + selectors.get("body_any") + "')].filter(e=>{"
                             "const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                             "return r.width>0&&r.height>0&&s.display!=='none'"
                             "&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0;})"
@@ -1353,7 +1389,7 @@ def run_flow(page, steps, values=None, config=None, auto_submit=True,
                 time.sleep(0.5)
                 rr = page.call("(m)=>{var mm=document.querySelector(m);"
                                "if(!mm)return{ok:false,err:'nomodal'};"
-                               "var b=mm.querySelectorAll('button');"
+                               "var b=mm.querySelectorAll('" + selectors.get("bare_button") + "');"
                                "for (var i=0;i<b.length;i++){"
                                " if((b[i].innerText||'').trim()==='确定'){"
                                "  b[i].click();return{ok:true};}}"

@@ -62,6 +62,8 @@ function makeWorld() {
     querySelector(sel) {
       if (sel === 'main') return main;
       if (sel === '#rd-input-slot .cmp-box') return where() === 'slot' ? box : null;
+      // homeUnmountComposer 用逗号并列选择器找输入卡（新版工作区槽 + 老主页槽）
+      if (sel === '#wb-input-slot .cmp-box, #rd-input-slot .cmp-box') return where() === 'slot' ? box : null;
       if (sel === '#sub-tasks .cmp-box') return where() === 'form' ? box : null;
       if (sel === '#sub-tasks .form') return form;
       return null;
@@ -70,9 +72,14 @@ function makeWorld() {
   };
   const $ = (id) => (id === 'rd-input-slot' ? slot : null);
   const api = new Function('document', '$', 'S',
-    'syncRailState', 'syncInspBtn', 'renderPageCrumb', 'collapseDrawerIfMobile', 'syncInspectorVis', 'atlasLiveStop',
+    // 图标轨下线后高亮统一走 paintRailPage；syncRailState 在 app.js 中仍保留
+    // 并仍被 showDetailInMain 等调用，本单测以 no-op 桩注入，避免切片引用未定义符号。
+    'paintRailPage', 'syncInspBtn', 'renderPageCrumb', 'collapseDrawerIfMobile', 'syncInspectorVis', 'atlasLiveStop', 'syncRailState',
+    // homeMountComposer 会先问 wbHomeSlot()：经典工作区用 #wb-input-slot，
+    // 其余布局回落到老主页槽。本单测跑老主页路径，故返回 null。
+    'wbHomeSlot',
     movers + '\n' + detail + '\nreturn { homeMountComposer, homeUnmountComposer, showDetailInMain };')(
-    doc, $, { tab: 'home' }, () => {}, () => {}, () => {}, () => {}, () => {}, () => {});
+    doc, $, { tab: 'home' }, () => {}, () => {}, () => {}, () => {}, () => {}, () => {}, () => {}, () => null);
   return { api, where, slot, form };
 }
 

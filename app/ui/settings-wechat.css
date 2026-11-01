@@ -1,0 +1,87 @@
+/* ============================================================================
+ * 设置面板 · 微信化覆盖层 settings-wechat（2026-10-29，用户拍板「全量微信化」）
+ * ----------------------------------------------------------------------------
+ * 目标：让设置页（settings-v3.css 的薄荷语言）翻成和聊天窗同一套微信语言——
+ *       灰画布、白圆角卡、深墨青强调、iOS 绿开关。两副面孔合一个产品。
+ *
+ * 做法（与仓库既有的「顶层覆盖」原则一致，可逆）：
+ *   1. settings-v3.css 是纯 token 驱动（--st-*），本层只重定义这组变量成微信色板，
+ *      580 行结构、DOM、并行会话的活一字未动；删掉本文件即回薄荷观感。
+ *   2. 少数 settings-v3 里硬编码的薄荷色（聚焦描边 / 深色开关）单独收编成深墨青。
+ *   3. 设置导航列宽 --st-nav-w 对齐聊天列表 268px，两种模式切换时骨架不跳。
+ *   4. 全部限定 body.settings-mode，主界面（聊天窗）零影响。
+ *
+ * 色板对照（token → 微信值）：
+ *   --st-canvas   #f7f9fa → #ededed（微信画布灰）
+ *   --st-nav      #fbfcfc → #f5f5f5（微信左栏灰）
+ *   --st-mint-2   #d9eeea → #d9d9d9（选中项＝微信灰，不是薄荷）
+ *   --st-primary  #1f3d47 → #177983（深墨青＝强调/开关/主按钮）
+ * ==========================================================================*/
+
+/* ------------------------------------------------ 1. token 重映射（浅色）
+ * 1031 主题直达：全部由皮肤 --wb-* 派生（带回退值）——设置页跟随主题，
+ * 不再写死微信灰（写死=「切肤不动」根因之一）。灰阶用 color-mix 向文字色偏移。 */
+html[data-layout] body.settings-mode {
+  --st-canvas: color-mix(in srgb, var(--wb-bg, #ededed) 94%, var(--wb-text, #191919));
+  --st-card: var(--wb-panel, #ffffff);
+  --st-nav: color-mix(in srgb, var(--wb-bg, #f5f5f5) 97%, var(--wb-text, #191919));
+  --st-line: var(--wb-border, #e5e5e5);
+  --st-border: var(--wb-border, #e5e5e5);
+  --st-text: var(--wb-text, #191919);
+  --st-sub: var(--wb-muted, #8a8a8a);
+  --st-strong: var(--wb-text, #111111);
+  --st-mint: color-mix(in srgb, var(--wb-text, #191919) 6%, var(--wb-bg, #e6e6e6));   /* 搜索胶囊底 */
+  --st-mint-2: color-mix(in srgb, var(--wb-text, #191919) 14%, var(--wb-bg, #d9d9d9)); /* 选中导航项 */
+  --st-mint-ink: var(--wb-text, #111111);                                            /* 选中文字 */
+  --st-ctl: var(--wb-panel, #ffffff);
+  --st-ctl-line: var(--wb-border, #e0e0e0);
+  --st-primary: var(--wb-accent, #177983);       /* 深墨青 → 皮肤强调色 */
+  --st-hover: color-mix(in srgb, var(--wb-text, #191919) 4%, transparent);
+  --st-nav-w: 268px;           /* 与聊天列表列宽对齐 */
+}
+
+/* ------------------------------------------------ 2. token 重映射（深色）
+ * 与浅色同一套 --wb-* 派生：--wb-* 已随 data-theme 翻转，无需另写一组深色值 */
+html[data-theme="dark"][data-layout] body.settings-mode {
+  --st-canvas: color-mix(in srgb, var(--wb-bg, #1e1e1e) 94%, var(--wb-text, #eaeaea));
+  --st-card: var(--wb-panel, #2c2c2e);
+  --st-nav: color-mix(in srgb, var(--wb-bg, #1c1c1e) 97%, var(--wb-text, #eaeaea));
+  --st-line: var(--wb-border, #3a3a3c);
+  --st-border: var(--wb-border, #3a3a3c);
+  --st-text: var(--wb-text, #eaeaea);
+  --st-sub: var(--wb-muted, #9a9a9a);
+  --st-strong: var(--wb-text, #f5f5f5);
+  --st-mint: color-mix(in srgb, var(--wb-text, #eaeaea) 6%, var(--wb-bg, #2a2a2c));
+  --st-mint-2: color-mix(in srgb, var(--wb-text, #eaeaea) 14%, var(--wb-bg, #3a3a3c));
+  --st-mint-ink: var(--wb-text, #f5f5f5);
+  --st-ctl: var(--wb-panel, #2c2c2e);
+  --st-ctl-line: var(--wb-border, #444444);
+  --st-primary: var(--wb-accent, #177983);       /* 深色也用皮肤强调色 */
+  --st-hover: color-mix(in srgb, var(--wb-text, #eaeaea) 6%, transparent);
+  --st-nav-w: 268px;
+}
+
+/* ------------------------------------------------ 3. 少数硬编码薄荷色收编 */
+/* 输入框聚焦：薄荷描边 → 深墨青描边 */
+html[data-layout] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+html[data-layout] body.settings-mode #page-settings select:focus,
+html[data-layout] body.settings-mode #page-settings textarea:focus {
+  border-color: #177983 !important;
+  box-shadow: 0 0 0 3px rgba(7, 193, 96, .16) !important;
+  outline: 0;
+}
+
+/* 深色开关「开」态：薄荷 #6fb3a8 → 深墨青 */
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings input[type="checkbox"]:checked {
+  background: #177983 !important;
+}
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings .cs-switch input:checked + .cs-track,
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings .mem-switch input:checked + i {
+  background: #177983 !important;
+}
+
+/* 深色主按钮文字：近黑 → 白（绿底白字是微信的常规读法） */
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings button.primary,
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings a.button.primary {
+  color: #fff !important;
+}

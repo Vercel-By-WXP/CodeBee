@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from .selectors import get as _sel_get  # P0-a 外置注册表：番茄 arco 选择器单一真源
+
 CONFIG = {
     "id": "fanqie",
     "label": "番茄",
@@ -45,7 +47,8 @@ CONFIG = {
     # 对账应把它当作远端 0 章，而不是改版/登录失效。
     "empty_chapter_markers": ["暂无章节内容"],
     "pager_next_js":
-        "()=>{const n=document.querySelector('.arco-pagination-item-next');"
+        "()=>{const n=document.querySelector('" + _sel_get("fq_pagination_next")
+        + "');"
         "if(!n)return{done:true};"
         "if(/item-disabled/.test(n.className))return{done:true};"
         "n.click();return{done:false};}",
@@ -55,21 +58,23 @@ CONFIG = {
     # 无「全部」项，逐卷收齐全量；收完恢复进入时的卷。
     "volume_js": {
         "current":
-            "()=>{const v=document.querySelector('.chapter-select-left .byte-select-view');"
+            "()=>{const v=document.querySelector('" + _sel_get("fq_chapter_select")
+            + "');"
             "return v?(v.innerText||'').trim():'';}",
         "open":
-            "()=>{const v=document.querySelector('.chapter-select-left .byte-select-view');"
+            "()=>{const v=document.querySelector('" + _sel_get("fq_chapter_select")
+            + "');"
             "if(!v)return{ok:false};v.click();return{ok:true};}",
         "options":
-            "()=>{const dd=[...document.querySelectorAll('.byte-select-popup,"
-            "[class*=select-dropdown]')].find(e=>e.getBoundingClientRect().width>0);"
-            "return dd?[...dd.querySelectorAll('li,[class*=option]')]"
+            "()=>{const dd=[...document.querySelectorAll('" + _sel_get("fq_select_popup")
+            + "')].find(e=>e.getBoundingClientRect().width>0);"
+            "return dd?[...dd.querySelectorAll('" + _sel_get("fq_option_item") + "')]"
             ".map(e=>(e.innerText||'').trim()).filter(Boolean):[];}",
         "pick":
-            "(t)=>{const dd=[...document.querySelectorAll('.byte-select-popup,"
-            "[class*=select-dropdown]')].find(e=>e.getBoundingClientRect().width>0);"
+            "(t)=>{const dd=[...document.querySelectorAll('" + _sel_get("fq_select_popup")
+            + "')].find(e=>e.getBoundingClientRect().width>0);"
             "if(!dd)return{ok:false};"
-            "const hit=[...dd.querySelectorAll('li,[class*=option]')]"
+            "const hit=[...dd.querySelectorAll('" + _sel_get("fq_option_item") + "')]"
             ".find(e=>((e.innerText||'').trim())===t);"
             "if(!hit)return{ok:false};hit.click();return{ok:true};}",
     },
@@ -563,9 +568,9 @@ def reconcile_short_story_book_id(page, book, allow_ghost=False):
                 "可在发布面板「登记已有作品」填该 ID 绑定" % (title, gid, when))
     probe = page.call(
         "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
-        "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+        "const titleVisible=[...document.querySelectorAll('" + _sel_get("scope_broad") + "')]."
         "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
-        "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+        "const create=[...document.querySelectorAll('" + _sel_get("scope_clickable") + "')].some(e=>vis(e)&&"
         "(e.innerText||'').trim().includes('新建短故事'));"
         "return{ready:document.readyState==='complete'&&"
         "(location.href.includes('/short-manage')"
@@ -600,11 +605,12 @@ def reconcile_book_id(page, book):
             time.sleep(1.0)
         probe = page.call(
             "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
-            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "const titleVisible=[...document.querySelectorAll('" + _sel_get("scope_broad") + "')]."
             "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
-            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "const create=[...document.querySelectorAll('" + _sel_get("scope_clickable") + "')].some(e=>vis(e)&&"
             "(e.innerText||'').trim().includes('创建作品'));"
-            "const loading=[...document.querySelectorAll('.arco-spin,[aria-busy=true]')].some(vis);"
+            "const loading=[...document.querySelectorAll('" + _sel_get("fq_spin")
+            + "')].some(vis);"
             "return{ready:document.readyState==='complete'&&location.href.includes('/main/writer/')"
             "&&location.href.includes('book-manage'),create,loading,titleVisible};}" , title, 500)
         if (probe and probe.get("ready") and probe.get("create") and

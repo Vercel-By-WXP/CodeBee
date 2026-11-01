@@ -29,6 +29,8 @@ import base64
 import json
 import re
 
+from .selectors import get as _sel_get
+
 # 置信度地板：低于它宁可失败也不乱点。视觉模型普遍偏自信，0.55 只挡
 # 明显含糊的答案，不做激进过滤（真挡错的代价是兜底永不生效）。
 _CONF_MIN = 0.55
@@ -114,6 +116,44 @@ def _parse_reply(text):
         return None
     return {"x": x, "y": y, "conf": conf,
             "text": str(j.get("text") or "")[:40]}
+
+
+def page_signature(page):
+    """页面前进断言的廉价指纹（P0-c，零模型成本）：URL + 正文字符数 + 顶层
+    弹层文本三信号。任何取数失败返回 None（= 测不了，断言 fail-open）。"""
+    try:
+        return page.call(
+            "()=>{const vis=e=>{const r=e.getBoundingClientRect(),"
+            "s=getComputedStyle(e);return r.width>0&&r.height>0"
+            "&&s.display!=='none'&&s.visibility!=='hidden';};"
+            "const ds=[...document.querySelectorAll('" + _sel_get("dialog_enum")
+            + "')].filter(vis);"
+            "return{url:location.href,"
+            "n:(document.body?document.body.innerText:'').length,"
+            "d:ds.length?((ds[ds.length-1].innerText||'').trim().slice(0,40)):''};}",
+            timeout=6.0) or {}
+    except Exception:
+        return None
+
+
+def assert_advanced(before, after):
+    """视觉兜底点击后页面是否「前进」（P0-c 判成功，零模型成本）。
+
+    三信号任一变化即算前进：URL 变了 / 正文字符数 ±8 / 顶层弹层文本变了。
+    before/after 任一测不了（None/空）= fail-open 放行——断言自身的故障
+    不许把流程咬死，后续 expect/verify 步骤仍是最终守门人。"""
+    try:
+        if not before or not after:
+            return True
+        if str(after.get("url") or "") != str(before.get("url") or ""):
+            return True
+        if abs(int(after.get("n") or 0) - int(before.get("n") or 0)) >= 8:
+            return True
+        if str(after.get("d") or "") != str(before.get("d") or ""):
+            return True
+        return False
+    except Exception:
+        return True
 
 
 def rescue_click(page, targets, note=None):

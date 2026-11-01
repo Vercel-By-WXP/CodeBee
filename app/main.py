@@ -592,6 +592,21 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 if allowed:
                     data["agents"] = [a for a in data["agents"] if a["flow"] in allowed]
                 return self._json(200, data)
+            m = re.match(r"^/api/experts/([^/]+)/export$", path)
+            if m:
+                # 专家导出 Markdown（2026-11-01 借鉴 OpenMausBot bot 团队导入导出）。
+                # 默认 JSON {markdown,...} 供界面复制；?raw=1 给 .md 下载。
+                from core import expert_md
+                fid = m.group(1)
+                md = expert_md.export_md(fid)
+                if md is None:
+                    return self._json(404, {"error": "专家未登记：%s" % fid})
+                if (parse_qs(urlparse(self.path).query).get("raw") or [""])[0] in ("1", "true"):
+                    return self._send(200, md.encode("utf-8"),
+                                      ctype="text/markdown; charset=utf-8",
+                                      headers={"Content-Disposition":
+                                               'attachment; filename="%s.md"' % fid})
+                return self._json(200, {"flow": fid, "markdown": md})
             if path == "/api/review-tiers":
                 # 评审强度分档表：哪个流程给几席几轮、凭什么、相对基准贵多少。
                 # 界面上要能回答「为什么这篇是两席那篇是一席」——答不上来
@@ -696,6 +711,25 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 # 聚合视图。坏 manifest 以 blocked/broken 行呈现，不 500。
                 from core import plugins
                 return self._json(200, plugins.view())
+            if path == "/api/builtin-features":
+                # 内置功能（禅道/群摘要/端口扫描）市场卡片的状态清单（只读）。
+                # 开关动作走各自 /api/{zentao,wxdigest}/config 既有链路。
+                from core import builtin_features
+                return self._json(200, {"features": builtin_features.features()})
+            if path == "/api/mcp-import/sources":
+                # 其它智能体（claude/codex/qwen/gemini/opencode）已装 MCP 的
+                # 导入源探测（只读）。无参→汇总（路径存在性+已装 server 数）；
+                # ?target=<id>→单家完整脱敏 server 清单（前端点「导入」时取）。
+                # 导入动作在前端合并进 settings.mcp_servers 文本框，走既有
+                # 「保存 MCP 配置」落盘；本端点从不写任何外部文件。
+                from core import mcp_registry
+                t = (parse_qs(urlparse(self.path).query).get("target") or [""])[0].strip()
+                if t:
+                    try:
+                        return self._json(200, mcp_registry.import_from(t))
+                    except ValueError as exc:
+                        return self._json(400, {"error": str(exc)})
+                return self._json(200, {"sources": mcp_registry.importable_sources()})
             if path == "/api/capabilities":
                 # Composer directory: CodeBee plugins plus the Codex plugins,
                 # skills and agent profiles installed for this user.
@@ -726,6 +760,73 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if path == "/api/knowledge":
                 from core import knowledge
                 return self._json(200, knowledge.view())
+            if path == "/api/memory/settings":
+                from core import ui_prefs
+                return self._json(200, {"settings": ui_prefs.load()})
+            if path == "/api/quota":
+                # 额度节流视图：各供应商四维（RPM/RPD/TPM/TPD）上限 vs 实际消耗
+                # （2026-11-01 借鉴 Freellmapi；消耗数据源=用量台账，零新增埋点）。
+                from core import modelhub as _mh, quota_ledger
+                try:
+                    return self._json(200, quota_ledger.view(_mh.providers()))
+                except Exception as exc:
+                    return self._json(500, {"error": str(exc)})
+            if path == "/api/attention":
+                # 注意力面板（2026-11-01 借鉴 dsh-superagent「注意力守恒」）：
+                # 只列需要人处理的事，每条带下一步动作语义；无事=空列表。
+                from core import attention
+                qs = parse_qs(urlparse(self.path).query)
+                try:
+                    days = int((qs.get("days") or ["7"])[0])
+                except ValueError:
+                    days = 7
+                try:
+                    limit = int((qs.get("limit") or ["30"])[0])
+                except ValueError:
+                    limit = 30
+                return self._json(200, attention.collect(days=days, limit=limit))
+            if path == "/api/reasoning-bank":
+                # ReasoningBank 模式库（2026-11-01 借鉴 ruflo）：跨任务
+                # 「成功模式/失败教训」本地检索，字符二元组 TF-IDF，零模型
+                # 零额度。?reindex=1 先把项目记忆 vault 的已采纳条目搬进来
+                # （幂等）。检索失败如实报错，不静默空。
+                from core import reasoning_bank
+                qs = parse_qs(urlparse(self.path).query)
+                stats = reasoning_bank.stats()
+                if str((qs.get("reindex") or ["0"])[0]) == "1":
+                    stats["reindex"] = reasoning_bank.reindex_memory()
+                q = str((qs.get("q") or [""])[0]).strip()
+                ttype = str((qs.get("type") or [""])[0]).strip()
+                try:
+                    k = max(1, min(20, int((qs.get("k") or ["3"])[0])))
+                except ValueError:
+                    k = 3
+                items = reasoning_bank.retrieve(q, task_type=ttype, k=k) if q else []
+                return self._json(200, {"stats": stats, "items": items,
+                                        "q": q, "type": ttype})
+            if path == "/api/maintenance/disk":
+                # AI 磁盘清理盘点（只读，2026-11-01 借鉴 Purrge 三段式）
+                from core import disk_scan
+                return self._json(200, disk_scan.scan())
+            if path == "/api/publish/selector-health":
+                # P0-b 改版自检（零额度盘点+红线；模型仅在红线后介入）。
+                # 无 page 参数=离线审计（表结构盘点不判红）；真页采样由发布
+                # 流程挂钩写入台账，本端点附带返回 latest 供巡检。
+                from core.publish import selector_health
+                qs = parse_qs(urlparse(self.path).query)
+                plat = (qs.get("plat") or ["qimao"])[0]
+                action = (qs.get("action") or ["upload_chapter"])[0]
+                try:
+                    rep = selector_health.health_check(
+                        plat, action, page=None, present=None,
+                        model_locate=False)
+                    rep["latest"] = selector_health.latest(plat, action)
+                    return self._json(200, rep)
+                except Exception as exc:
+                    return self._json(409, {"error": str(exc)})
+            if path == "/api/maintenance/disk/trash":
+                from core import disk_scan
+                return self._json(200, disk_scan.trash_list())
             if path == "/api/memory":
                 from core import knowledge, project_memory, skills
                 tasks = store.list_tasks(archived=False) + store.list_tasks(archived=True)
@@ -736,6 +837,31 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                         "knowledge": knowledge.view(),
                     },
                 })
+            if path == "/api/memory/summary":
+                from core import memory_summary
+                qs = parse_qs(urlparse(self.path).query)
+                lang = (qs.get("lang") or ["zh"])[0]
+                if lang not in ("zh", "en"):
+                    lang = "zh"
+                try:
+                    return self._json(200, memory_summary.generate_summary(lang=lang))
+                except Exception as exc:
+                    return self._json(500, {"error": str(exc)})
+            if path == "/api/memory/vault":
+                # 记忆 MD vault 状态（只读）：目录、项目、文件数。
+                # 2026-11-01 借鉴 Obsidian 本地优先 vault；导出/回访走 POST。
+                from core import memory_vault
+                root = memory_vault.vault_dir()
+                projects = []
+                try:
+                    if root.is_dir():
+                        for d in sorted(x for x in root.iterdir() if x.is_dir()):
+                            n = len([f for f in d.glob("*.md") if f.name != "_index.md"])
+                            projects.append({"project": d.name, "entries": n})
+                except OSError:
+                    pass
+                return self._json(200, {"dir": str(root), "exists": root.is_dir(),
+                                        "projects": projects})
             m = re.match(r"^/api/tasks/([^/]+)/memory$", path)
             if m:
                 task = store.get_task(m.group(1))
@@ -1240,6 +1366,25 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                                  "attachment; filename*=UTF-8''%s"
                                  % _quote(pub_kit.filename(data))})
                 return self._json(200, data)
+            m = re.match(r"^/api/tasks/([^/]+)/eject$", path)
+            if m:
+                # 一键带走（eject，Ruflo 借来的产品动作）：任务档案 + 运行史 +
+                # workdir 产物打成自包含 zip。数据永远是用户的，harness 换了
+                # 也能读。只读导出、不删源、上限纪律在 core/eject.py。
+                from core import eject as eject_mod
+                out = eject_mod.export_task(m.group(1))
+                return self._json(200 if out.get("ok") else 404, out)
+            m = re.match(r"^/api/tasks/([^/]+)/eject/download$", path)
+            if m:
+                from core import eject as eject_mod
+                blob = eject_mod.export_zip_bytes(m.group(1))
+                if not blob:
+                    return self._json(404, {"error": "导出失败：任务不存在或导出为空"})
+                from urllib.parse import quote as _quote
+                return self._send(
+                    200, blob[1], ctype="application/zip",
+                    headers={"Content-Disposition":
+                             "attachment; filename*=UTF-8''%s" % _quote(blob[0])})
             m = re.match(r"^/api/publish/task/([^/]+)/outcome$", path)
             if m:
                 # 结果回流（P1-2）：这本书在平台上怎么了 + 下次同题材开书时
@@ -1400,6 +1545,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 return self._json(200, {"task": t}) if t else self._json(404, {"error": "not found"})
             if path == "/api/market":
                 return self._json(200, market.view())
+            if path == "/api/market/catalog":
+                # 分发格式目录 JSON（Obsidian community-plugins.json 同构物；
+                # 导入第三方 catalog 走 POST /api/market/catalog/import）
+                from core import market_catalog
+                return self._json(200, market_catalog.catalog_json())
             if path == "/api/cleanup":
                 # 数据与备份页：清理配置 + 上次清理状态 + 当前可清理预估
                 from core import cleanup
@@ -1614,6 +1764,16 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             deny = self._deny_control()
             if deny:
                 return deny
+        if path == "/api/memory/settings":
+            from core import ui_prefs
+            body = self._body() or {}
+            patch = {}
+            if "conversation" in body:
+                patch["memory_conversation"] = body.get("conversation")
+            if "local" in body:
+                patch["memory_local_skills"] = body.get("local")
+            view = ui_prefs.save(patch) if patch else ui_prefs.load()
+            return self._json(200, {"ok": True, "settings": view})
         if path == "/api/memory":
             body = self._body() or {}
             if str(body.get("action") or "").lower() != "approve_all":
@@ -3387,6 +3547,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._json(200, zentao.fetch_users())
         # 外部目录路由必须在通配的 market/<id>/(install|remove) 之前——
         # 否则 "remote" 会被当成包名吞掉
+        if path == "/api/market/catalog/import":
+            # 导入第三方 catalog：manifest 校验 + 本地对账（unknown 如实报）
+            from core import market_catalog
+            return self._json(200, market_catalog.import_catalog(
+                self._body() or {}))
         if path == "/api/market/remote/sources":
             # 自定义索引源管理（B6，dsh「自定义插件索引源」借鉴）：标准
             # marketplace.json 清单 URL 按需增删，与内置源同权参与拉取/安装。
@@ -3407,6 +3572,75 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._json(400, {"error": "action 需要是 list/add/remove"})
         if path == "/api/market/remote/refresh":
             return self._json(200, market_remote.refresh((self._body() or {}).get("source")))
+        if path == "/api/experts/import":
+            # 专家导入 Markdown：body {markdown, flow_id?, overwrite?}。
+            # 落点 = data/agents/<flow>.json（agents.registry 用户覆盖层）。
+            from core import expert_md
+            body = self._body() or {}
+            try:
+                target, info = expert_md.import_md(
+                    body.get("markdown") or "",
+                    flow_id=body.get("flow_id") or None,
+                    overwrite=bool(body.get("overwrite")))
+                return self._json(200, {"ok": True, "path": target, **info})
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/memory/vault/export":
+            # 导出/刷新记忆 MD vault（幂等覆盖，源永远是 jsonl 日志）
+            from core import memory_vault
+            try:
+                return self._json(200, memory_vault.export_vault())
+            except (OSError, ValueError) as exc:
+                return self._json(409, {"error": str(exc)})
+        if path == "/api/memory/vault/sync":
+            # 手改 MD 回流：frontmatter 版本落后=conflict 不回流（防旧盖新）
+            from core import memory_vault
+            body = self._body() or {}
+            return self._json(200, memory_vault.sync_back(
+                dry_run=bool(body.get("dry_run"))))
+        if path == "/api/maintenance/disk/judge":
+            # AI 逐项判定（可选步骤）：无模型回落启发式，不编造
+            from core import disk_scan
+            return self._json(200, disk_scan.judge())
+        if path == "/api/maintenance/disk/clean":
+            # 用户勾选后才执行；移动进回收站（可 restore），绝不直接删除
+            from core import disk_scan
+            body = self._body() or {}
+            sel = body.get("paths") or []
+            if not isinstance(sel, list) or not sel:
+                return self._json(400, {"error": "paths 必须是非空数组"})
+            return self._json(200, disk_scan.clean([str(x) for x in sel]))
+        if path == "/api/maintenance/disk/restore":
+            from core import disk_scan
+            try:
+                return self._json(200, disk_scan.restore(
+                    (self._body() or {}).get("batch") or ""))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/quota":
+            # per-key 四维额度上限维护（2026-11-01 借鉴 Freellmapi 派单前节流）。
+            # body: {provider_id, limits:{rpm,rpd,tpm,tpd}}；0/缺省维=不限，
+            # 全 0 = 删除该供应商的显式上限（回落供应商条目预设）。
+            body = self._body() or {}
+            pid = str(body.get("provider_id") or "").strip()
+            if not pid:
+                return self._json(400, {"error": "provider_id 不能为空"})
+            from core import quota_ledger
+            try:
+                lim = quota_ledger.save_limits(pid, body.get("limits") or {})
+                quota_ledger.invalidate_cache()
+                return self._json(200, {"ok": True, "provider_id": pid, "limits": lim})
+            except (TypeError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+        if path == "/api/intent/triage":
+            # 对话意图兜底（C0 阶段③）：确定性解析没接住的短句让编排者模型
+            # 起草意图草稿；草稿绝不直接执行——前端照常渲染确认卡。
+            # fail-open：任何失败返回 intent:null，前端照旧建任务。
+            body = self._body() or {}
+            text = str(body.get("text") or "")[:200]
+            books = [str(b or "")[:40] for b in (body.get("books") or [])][:40]
+            from core import intent_triage
+            return self._json(200, {"intent": intent_triage.triage(text, books)})
         if path == "/api/market/remote/preview":
             # 安装前预览（先看后装）：下载+剥离检查但不落盘，带 token 两阶段安装
             res, err = market_remote.preview_remote((self._body() or {}).get("id") or "")

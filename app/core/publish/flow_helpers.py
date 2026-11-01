@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import time
 
+from . import selectors  # P0-a 外置注册表：JS builder 的选择器单一真源
+
 
 class FlowError(Exception):
     """流程失败：message 面向用户（含步骤序号与截图路径线索）。"""
@@ -106,7 +108,8 @@ def _click_match_js():
     # “创建作品”，平台页面只出现其中一个时也必须能继续。
     return ("(keys,maxLen)=>{"
             "const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
-            "const ds=[...document.querySelectorAll('.el-dialog,.modal,[role=dialog]')].filter(vis);"
+            "const ds=[...document.querySelectorAll('" + selectors.get("dialog_scope")
+            + "')].filter(vis);"
             "const root=ds.length?ds[ds.length-1]:document;"
             "const hit=[...root.querySelectorAll('div,li,section,label,span,a')].filter(e=>{"
             "const x=(e.innerText||'').trim();"
@@ -130,10 +133,11 @@ def _fill_label_js():
     # Element UI 表单：在 .el-form-item（或 class 含 form-item 的容器）里按
     # label 文本定位控件，走与 browser.fill 相同的 native setter 管道
     return ("(labelText,text)=>{"
-            "const items=[...document.querySelectorAll('.el-form-item,[class*=form-item]')];"
+            "const items=[...document.querySelectorAll('" + selectors.get("form_item")
+            + "')];"
             "let target=null;"
             "for(const it of items){"
-            "const lb=it.querySelector('[class*=label],[class*=label]');"
+            "const lb=it.querySelector('" + selectors.get("label_part") + "');"
             "const ltxt=((lb&&lb.innerText)||'').trim();"
             "if(ltxt&&ltxt.includes(labelText)){target=it;break;}}"
             "if(!target)return{ok:false,err:'找不到字段「'+labelText+'」'};"
@@ -186,7 +190,8 @@ def _checked_js():
             "if(!el)return{ok:false,err:'nf'};"
             "const box=el.closest('[class*=radio],[class*=checkbox]')||el;"
             "let any=false;"
-            "for(const i of box.querySelectorAll('input[type=radio],input[type=checkbox]')){"
+            "for(const i of box.querySelectorAll('" + selectors.get("radio_checkbox_input")
+            + "')){"
             "if(i.checked){any=true;break;}}"
             "const ck=any||/checked|active/.test(box.className||'')"
             "||/checked|active/.test(el.className||'');"
@@ -211,11 +216,12 @@ def _tag_sections_js():
     # 标签弹层分组读取（七猫形态）：div.tags-wrap[data-type-id] 每组一块，
     # 组名在 .tags-tit（带前导空格须 trim），芯片名 .tags-con-name，
     # 选中态 .tags-con.tag-selected。返回 null = 弹层无此结构。
-    return ("()=>{const wraps=[...document.querySelectorAll('.tags-wrap')];"
+    return ("()=>{const wraps=[...document.querySelectorAll('" + selectors.get("tag_wrap")
+            + "')];"
             "if(!wraps.length)return null;"
             "return wraps.map(w=>({"
-            "g:(((w.querySelector('.tags-tit')||{}).innerText)||'').trim(),"
-            "sel:[...w.querySelectorAll('.tags-box .tags-con.tag-selected .tags-con-name')]"
+            "g:(((w.querySelector('" + selectors.get("tag_title") + "')||{}).innerText)||'').trim(),"
+            "sel:[...w.querySelectorAll('" + selectors.get("tag_selected_chip") + "')]"
             ".map(e=>(e.innerText||'').trim())}));}")
 
 
@@ -227,10 +233,12 @@ def _tag_click_js():
     # 空选，「确定」被平台以「每个类型下至少选择1个标签」打回）。
     # err=nogroup（弹层没这组）单独返回，供上层区分「没等到弹层」与
     # 「组里没这个标签」（后者=平台目录漂移，必须立刻报错而不是去别组碰）。
-    return ("(g,t)=>{for(const w of document.querySelectorAll('.tags-wrap')){"
-            "const gname=(((w.querySelector('.tags-tit')||{}).innerText)||'').trim();"
+    return ("(g,t)=>{for(const w of document.querySelectorAll('" + selectors.get("tag_wrap")
+            + "')){"
+            "const gname=(((w.querySelector('" + selectors.get("tag_title")
+            + "')||{}).innerText)||'').trim();"
             "if(gname!==g)continue;"
-            "const hit=[...w.querySelectorAll('.tags-box .tags-con-name')]"
+            "const hit=[...w.querySelectorAll('" + selectors.get("tag_chip") + "')]"
             ".find(e=>((e.innerText||'').trim())===t);"
             "if(!hit)return{ok:false,err:'组「'+g+'」下没有标签「'+t+'」'};"
             "hit.scrollIntoView({block:'center'});hit.click();return{ok:true};}"

@@ -1,0 +1,837 @@
+/* ============================================================================
+ * 设置面板 v3（2026-10-29）
+ * ----------------------------------------------------------------------------
+ * 目标形态（用户给的参考截图）：设置不是「主栏里的一个长表单」，而是一整块
+ * 独立面板——左边一条浅薄荷色导航（搜索 + 分组 + 选中胶囊），右边浅灰画布上
+ * 一叠白卡，卡里一行一项：左边写「是什么」，右边放开关/下拉/按钮。
+ *
+ * 落地原则（不改功能、不改 id、不搬 DOM）：
+ *   1. 只作用于 html[data-layout] body.settings-mode，主界面其余页零影响；
+ *   2. 原件全部保留在 DOM，本层只做「看起来是另一张页」；删掉本文件即回旧观感；
+ *   3. 只在 ≥901px 生效——窄屏沿用原设置壳（左栏抽屉 + 顶部返回），不硬套面板。
+ *
+ * 结构约定（JS 侧的 stSettingsEnhance 只加类，不动节点）：
+ *   .panel / .mem-card / .card  → 白卡（.st-card）
+ *   h3.sec-title / .st-sec      → 卡内小节标题（小灰字）
+ *   .field.st-row / .cs-row / .mem-row → 一行一项（左说明 / 右控件）
+ *   .toggle / .cs-switch / .mem-switch → 开关（深色胶囊）
+ * ==========================================================================*/
+
+html[data-layout] body.settings-mode {
+  --st-canvas: #f7f9fa;
+  --st-card: #ffffff;
+  --st-nav: #fbfcfc;
+  --st-line: #f0f3f4;
+  --st-border: #e9edee;
+  --st-text: #26333a;
+  --st-sub: #8b979e;
+  --st-strong: #1c333b;
+  --st-mint: #cfe9e4;
+  --st-mint-2: #d9eeea;
+  --st-mint-ink: #16363d;
+  --st-ctl: #ffffff;
+  --st-ctl-line: #e1e6e8;
+  --st-primary: #1f3d47;
+  --st-hover: rgba(31, 58, 66, .05);
+}
+
+html[data-theme="dark"][data-layout] body.settings-mode {
+  --st-canvas: #141517;
+  --st-card: #1c1e21;
+  --st-nav: #17191b;
+  --st-line: #262a2d;
+  --st-border: #2a2e31;
+  --st-text: #e4e7e9;
+  --st-sub: #8f979d;
+  --st-strong: #f0f2f3;
+  --st-mint: #1e3634;
+  --st-mint-2: #24403d;
+  --st-mint-ink: #d8efea;
+  --st-ctl: #212427;
+  --st-ctl-line: #323739;
+  --st-primary: #d8efea;
+  --st-hover: rgba(255, 255, 255, .06);
+}
+
+/* ------------------------------------------------------------------ 1. 画布 */
+@media (min-width: 901px) {
+  html[data-layout] body.settings-mode { --st-nav-w: 236px; }
+  /* 列宽与元素宽必须钉成同一个数：wechat-exact 层会把 #sidebar 定成它自己的会话列宽，
+     只改 grid 不改元素宽，左栏就会压到内容区上（分组标签被盖住一半的实案）。
+     2026-10-30：46px 图标轨整条下线，原来的第一列 0 位去掉，改两列。 */
+  html[data-layout] body.settings-mode #app { grid-template-columns: var(--st-nav-w) minmax(0, 1fr) !important; }
+  /* 图标轨若在 DOM（工作台形态恢复 rail 的分支），设置模式下必须整条收掉——
+   * 否则两列栅格里 rail 占第一列（--st-nav-w），sidebar 被挤进内容列，main 掉到
+   * 隐式第三列折行，设置页/市场页整块被压成 ~188px（2026-10-30 实测翻车）。 */
+  html[data-layout] body.settings-mode .side-rail { display: none !important; }
+  html[data-layout] body.settings-mode #sidebar {
+    width: var(--st-nav-w) !important;
+    min-width: var(--st-nav-w) !important;
+    max-width: var(--st-nav-w) !important;
+    background: var(--st-nav) !important;
+    border-right: 1px solid var(--st-border) !important;
+  }
+  /* 顶栏（面包屑 + 页名 + 状态）：目标形态里没有，收掉；返回入口改成右上角 ✕ */
+  html[data-layout] body.settings-mode .topbar { display: none !important; }
+  html[data-layout] body.settings-mode #mainwrap main {
+    background: var(--st-canvas) !important;
+    padding: 0 !important;
+    overflow-y: auto;
+  }
+  html[data-layout] body.settings-mode #page-settings {
+    max-width: none;
+    padding: 26px 40px 72px;
+    gap: 0;
+  }
+  /* 长表单页（任务/模型/运行/看板…）放宽，别把表格压成一条 */
+  html[data-layout] body.settings-mode #page-settings > .subpage,
+  html[data-layout] body.settings-mode #page-settings > .subpage > .panel.wide { width: 100%; }
+  html[data-layout] body.settings-mode #page-settings > .subpage { max-width: 940px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-tasks,
+  html[data-layout] body.settings-mode #page-settings > #sub-runs,
+  html[data-layout] body.settings-mode #page-settings > #sub-models,
+  html[data-layout] body.settings-mode #page-settings > #sub-atlas,
+  html[data-layout] body.settings-mode #page-settings > #sub-availability,
+  html[data-layout] body.settings-mode #page-settings > #sub-overview,
+  html[data-layout] body.settings-mode #page-settings > #sub-kanban,
+  html[data-layout] body.settings-mode #page-settings > #sub-automation,
+  html[data-layout] body.settings-mode #page-settings > #sub-browser,
+  html[data-layout] body.settings-mode #page-settings > #sub-usage { max-width: 1240px; }
+}
+
+/* 关闭按钮：目标形态的右上角 ✕（固定住，滚动时也够得着） */
+.st-close {
+  display: none;
+  position: fixed; top: 14px; right: 16px; z-index: 70;
+  width: 30px; height: 30px; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--st-sub) ;
+  cursor: pointer; transition: background-color .15s, color .15s;
+}
+.st-close > .ico { width: 17px; height: 17px; }
+.st-close:hover { background: var(--st-hover); color: var(--st-text); }
+@media (min-width: 901px) { html[data-layout] body.settings-mode .st-close { display: inline-flex; } }
+
+/* ------------------------------------------------------------- 2. 左栏导航 */
+@media (min-width: 901px) {
+  html[data-layout] body.settings-mode #sidebar .side-settings { padding: 12px 10px 18px !important; }
+  /* 旧导航头（「设置」+ 返回箭头）让位给搜索框：返回入口已挪到 ✕ */
+  html[data-layout] body.settings-mode .settings-nav-head { display: none !important; }
+
+  html[data-layout] body.settings-mode .settings-search-wrap {
+    min-height: 34px !important; margin: 2px 0 6px !important; padding: 0 10px !important;
+    border: 1px solid transparent !important; border-radius: 9px !important;
+    background: var(--st-mint) !important; color: #4c7178 !important;
+  }
+  html[data-theme="dark"][data-layout] body.settings-mode .settings-search-wrap { color: #9ec4c0; }
+  html[data-layout] body.settings-mode .settings-search-wrap input { font-size: 12.5px; color: var(--st-mint-ink); }
+  html[data-layout] body.settings-mode .settings-search-wrap input::placeholder { color: #5d8489; }
+  html[data-theme="dark"][data-layout] body.settings-mode .settings-search-wrap input::placeholder { color: #8fb3b0; }
+  html[data-layout] body.settings-mode .settings-search-wrap kbd {
+    border-color: rgba(22, 54, 61, .16); color: #4d747a; background: rgba(255, 255, 255, .55);
+  }
+  html[data-theme="dark"][data-layout] body.settings-mode .settings-search-wrap kbd {
+    border-color: rgba(216, 239, 234, .18); color: #a9c9c5; background: rgba(255, 255, 255, .06);
+  }
+  html[data-layout] body.settings-mode .settings-search-wrap > .ico { width: 14px; height: 14px; }
+
+  /* 「搜一下」点击反馈（2026-10-30 实案：点击后焦点跳到 500px 外的小框，
+     焦点样式又被本层 !important 压住——用户完全看不出发生了什么）。
+     聚焦 = 描边 + 白底 + 一次放大脉冲；类由 focusSettingsSearch 主动加，
+     纯 :focus 会被前面 !important 的背景盖掉，动画则负责「眼睛跟得上」。 */
+  html[data-layout] body.settings-mode .settings-search-wrap.is-armed {
+    border-color: var(--st-primary) !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-primary) 16%, transparent);
+    animation: st-search-pulse .45s ease;
+  }
+  html[data-theme="dark"][data-layout] body.settings-mode .settings-search-wrap.is-armed {
+    background: #1d2b30 !important;
+    box-shadow: 0 0 0 3px rgba(79, 179, 189, .22);
+  }
+  @keyframes st-search-pulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+
+  html[data-layout] body.settings-mode .side-settings .set-group {
+    margin: 0 !important; padding: 16px 10px 6px !important;
+    font-size: 11.5px !important; font-weight: 500 !important; letter-spacing: .04em !important;
+    color: var(--st-sub) !important; background: none !important; border: 0 !important;
+    text-transform: none !important;
+  }
+  html[data-layout] body.settings-mode .side-settings .set-group:first-of-type { padding-top: 14px; }
+
+  /* 线性主题层对 #sidebar .set-item 全线用了 !important（行高 30 / 灰蓝选中），
+     这里是设置面板的最终形态，只能同样用 !important 才盖得住 */
+  html[data-layout] body.settings-mode #sidebar .side-settings .set-item {
+    min-height: 34px !important; height: 34px !important;
+    padding: 0 10px !important; border-radius: 8px !important;
+    font-size: 13px !important; font-weight: 400 !important;
+    color: var(--st-text) !important; gap: 10px !important;
+    background: none !important;
+    transition: background-color .14s ease, color .14s ease;
+  }
+  html[data-layout] body.settings-mode #sidebar .side-settings .set-item .ico {
+    width: 15px !important; height: 15px !important; color: #5d6d75 !important; opacity: 1 !important;
+  }
+  html[data-layout] body.settings-mode #sidebar .side-settings .set-item:hover {
+    background: var(--st-hover) !important; color: var(--st-strong) !important;
+  }
+  html[data-layout] body.settings-mode #sidebar .side-settings .set-item.active {
+    background: var(--st-mint-2) !important; color: var(--st-mint-ink) !important;
+    font-weight: 600 !important; box-shadow: none !important;
+  }
+  html[data-layout] body.settings-mode #sidebar .side-settings .set-item.active .ico {
+    color: var(--st-mint-ink) !important;
+  }
+
+  /* 「更多设置」折叠行：长得像导航项，不抢视线 */
+  html[data-layout] body.settings-mode #sidebar .set-more {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    min-height: 34px; margin-top: 2px; padding: 7px 10px;
+    border: 0; border-radius: 8px; background: none; color: var(--st-sub);
+    font-size: 13px; font-family: inherit; cursor: pointer; text-align: left;
+  }
+  html[data-layout] body.settings-mode #sidebar .set-more:hover { background: var(--st-hover); color: var(--st-text); }
+  html[data-layout] body.settings-mode #sidebar .set-more .ico { width: 15px; height: 15px; }
+  html[data-layout] body.settings-mode #sidebar .set-more i {
+    margin-left: auto; font-style: normal; font-size: 11px; color: var(--st-sub);
+    background: var(--st-hover); border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center;
+  }
+  /* 底部「帮助」组：与上面用一条发丝线分开（目标形态的分区感） */
+  html[data-layout] body.settings-mode #sidebar .set-group[data-st-group="help"] {
+    margin-top: 14px; padding-top: 16px; border-top: 1px solid var(--st-border);
+  }
+}
+
+/* --------------------------------------------------------- 3. 内容节奏 */
+@media (min-width: 901px) {
+  /* 页签式小胶囊（外观页的「外观/代码」锚点）：贴顶吸附 */
+  html[data-layout] body.settings-mode #page-settings .cs-anchor {
+    position: sticky; top: 0; z-index: 5;
+    display: inline-flex; gap: 4px; margin: 0 0 14px; padding: 4px;
+    background: var(--st-card); border: 1px solid var(--st-border); border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(16, 32, 38, .04);
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn {
+    border: 0; background: none; color: var(--st-sub);
+    font-size: 12.5px; padding: 5px 12px; border-radius: 7px;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn.active {
+    background: var(--st-mint-2); color: var(--st-mint-ink); font-weight: 600;
+  }
+
+  /* 页头（applyPageLead 塞的 .pg-lead）：一行标题 + 一句白话，不再是 26px 大字 */
+  html[data-layout] body.settings-mode #page-settings .pg-lead {
+    margin: 0 0 16px; padding: 0; border: 0; max-width: none;
+  }
+  html[data-layout] body.settings-mode #page-settings .pg-lead .pg-lead-t,
+  html[data-layout] body.settings-mode #page-settings .pg-lead h1 {
+    margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; color: var(--st-strong);
+  }
+  html[data-layout] body.settings-mode #page-settings .pg-lead p {
+    margin: 6px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--st-sub); max-width: 74ch;
+  }
+
+  /* 白卡：一叠分区，卡与卡之间留灰缝 */
+  html[data-layout] body.settings-mode #page-settings .panel,
+  html[data-layout] body.settings-mode #page-settings .panel.wide,
+  html[data-layout] body.settings-mode #page-settings .mem-card,
+  html[data-layout] body.settings-mode #page-settings > .subpage > .card {
+    background: var(--st-card) !important;
+    border: 1px solid var(--st-border) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 6px 20px 10px !important;
+    margin: 0 0 6px !important;
+  }
+  /* 卡片自己的头部：h2 当页内小标题，hint 当说明 */
+  html[data-layout] body.settings-mode #page-settings .panel-head {
+    padding: 14px 0 10px; margin: 0; border: 0;
+  }
+  html[data-layout] body.settings-mode #page-settings .panel-head h2 {
+    margin: 0; font-size: 14.5px; font-weight: 600; color: var(--st-strong); letter-spacing: .01em;
+  }
+  html[data-layout] body.settings-mode #page-settings .panel-head h2 + .pg-sub,
+  html[data-layout] body.settings-mode #page-settings .pg-sub {
+    margin: 5px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--st-sub); font-weight: 400;
+  }
+
+  /* 小节标题：目标形态里的「常规 / 权限 / 存储」那种小灰字 */
+  html[data-layout] body.settings-mode #page-settings h3.sec-title,
+  html[data-layout] body.settings-mode #page-settings .settings-subhead {
+    margin: 22px 0 2px; padding: 0 0 6px; border: 0;
+    font-size: 12.5px; font-weight: 500; letter-spacing: .02em; color: var(--st-sub);
+  }
+  html[data-layout] body.settings-mode #page-settings .panel > h3.sec-title:first-child,
+  html[data-layout] body.settings-mode #page-settings .panel-head + h3.sec-title { margin-top: 12px; }
+
+  /* 说明文字：目标形态的 12px 灰描述 */
+  html[data-layout] body.settings-mode #page-settings .hint {
+    margin: 6px 0 10px; font-size: 12.5px; line-height: 1.7; color: var(--st-sub);
+  }
+  html[data-layout] body.settings-mode #page-settings .hint b { color: var(--st-text); font-weight: 600; }
+
+  /* 卡内区块分隔线（右侧栏/双列布局不用） */
+  html[data-layout] body.settings-mode #page-settings .st-sep {
+    height: 1px; margin: 0; background: var(--st-line); border: 0;
+  }
+}
+
+/* ------------------------------------------------------- 4. 一行一项（核心） */
+@media (min-width: 901px) {
+  /* .field 被 JS 标成 .st-row 才转横向：只有「一个 label + 一个控件」的形态才安全 */
+  html[data-layout] body.settings-mode #page-settings .field.st-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 300px);
+    align-items: center;
+    gap: 4px 28px;
+    padding: 13px 0;
+    margin: 0;
+    border-bottom: 1px solid var(--st-line);
+  }
+  html[data-layout] body.settings-mode #page-settings .field.st-row:last-child { border-bottom: 0; }
+  html[data-layout] body.settings-mode #page-settings .field.st-row > label {
+    grid-column: 1; margin: 0; font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+    display: block; line-height: 1.5;
+  }
+  html[data-layout] body.settings-mode #page-settings .field.st-row > label + .st-desc,
+  html[data-layout] body.settings-mode #page-settings .field.st-row > .st-desc {
+    grid-column: 1; margin: 3px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--st-sub);
+  }
+  html[data-layout] body.settings-mode #page-settings .field.st-row > input:not([type="checkbox"]):not([type="radio"]),
+  html[data-layout] body.settings-mode #page-settings .field.st-row > select,
+  html[data-layout] body.settings-mode #page-settings .field.st-row > .seg,
+  html[data-layout] body.settings-mode #page-settings .field.st-row > .st-ctl {
+    grid-column: 2; justify-self: stretch; margin: 0;
+  }
+  /* 文本域/多按钮行：整行铺开（塞进右半列会挤成一条缝） */
+  html[data-layout] body.settings-mode #page-settings .field.st-row > textarea,
+  html[data-layout] body.settings-mode #page-settings .field.st-row > .input-row,
+  html[data-layout] body.settings-mode #page-settings .field.st-row > .row,
+  html[data-layout] body.settings-mode #page-settings .field.st-row > .cards {
+    grid-column: 1 / -1; margin-top: 8px;
+  }
+
+  /* 多控件字段（.st-row2）：label 落左、行容器（input+按钮组）落右列；
+     跟在后面的勾选行 / 说明 / 消息位铺整行 */
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
+    align-items: center;
+    gap: 8px 28px;
+    padding: 13px 0;
+    margin: 0;
+    border-bottom: 1px solid var(--st-line);
+  }
+  html[data-layout] body.settings-mode #page-settings .field.st-row2:last-child { border-bottom: 0; }
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 > label:not(.toggle) {
+    grid-column: 1; margin: 0; font-size: 13.5px; font-weight: 500; color: var(--st-strong); line-height: 1.5;
+  }
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 > .st-ctl {
+    grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0;
+  }
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 > .st-ctl > input { flex: 1 1 160px; min-width: 0; }
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 > label.toggle,
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 > .hint,
+  html[data-layout] body.settings-mode #page-settings .field.st-row2 > .msg { grid-column: 1 / -1; }
+
+  /* 老式纵向 field（没被标 .st-row）：也给它一样的行距与发丝线，视觉上连成一份表 */
+  html[data-layout] body.settings-mode #page-settings .field:not(.st-row) { margin: 0; padding: 12px 0; border-bottom: 1px solid var(--st-line); }
+  html[data-layout] body.settings-mode #page-settings .field:not(.st-row):last-child { border-bottom: 0; }
+  html[data-layout] body.settings-mode #page-settings .field:not(.st-row) > label {
+    display: block; margin: 0 0 7px; font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+  }
+
+  /* 已经是行形态的三处（代码设置 / 记忆中心 / 表格行）：统一行距与发丝线 */
+  html[data-layout] body.settings-mode #page-settings .cs-row,
+  html[data-layout] body.settings-mode #page-settings .mem-row {
+    display: flex; align-items: center; gap: 28px;
+    padding: 13px 0; margin: 0; border: 0; border-bottom: 1px solid var(--st-line);
+    background: none; border-radius: 0;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-row:last-child,
+  html[data-layout] body.settings-mode #page-settings .mem-row:last-child { border-bottom: 0; }
+  html[data-layout] body.settings-mode #page-settings .cs-lab { flex: 1 1 auto; min-width: 0; }
+  html[data-layout] body.settings-mode #page-settings .cs-lab > b,
+  html[data-layout] body.settings-mode #page-settings .mem-row-txt strong {
+    display: block; font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-lab > .hint,
+  html[data-layout] body.settings-mode #page-settings .mem-row-txt span {
+    display: block; margin: 3px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--st-sub);
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-row > select,
+  html[data-layout] body.settings-mode #page-settings .cs-row > .cs-size { flex: 0 0 auto; width: 200px; }
+  html[data-layout] body.settings-mode #page-settings .mem-switch,
+  html[data-layout] body.settings-mode #page-settings .cs-switch { margin-left: auto; }
+
+  /* .toggle（勾选框 + 文字，例如「桌面蜜蜂」）：文字在左、开关在右 */
+  html[data-layout] body.settings-mode #page-settings label.toggle {
+    display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between;
+    gap: 24px; padding: 13px 0; margin: 0; border-bottom: 1px solid var(--st-line);
+    font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+  }
+  html[data-layout] body.settings-mode #page-settings label.toggle > span {
+    flex: 1 1 auto; font-weight: 500; line-height: 1.5; text-align: left;
+  }
+}
+
+/* ------------------------------------------------------------- 5. 控件外观 */
+@media (min-width: 901px) {
+  /* 输入类：白底细描边、高 32，聚焦只提亮描边不发光 */
+  html[data-layout] body.settings-mode #page-settings input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html[data-layout] body.settings-mode #page-settings select,
+  html[data-layout] body.settings-mode #page-settings textarea {
+    min-height: 32px; padding: 5px 10px;
+    border: 1px solid var(--st-ctl-line) !important;
+    border-radius: 8px !important;
+    background: var(--st-ctl) !important;
+    color: var(--st-text) !important;
+    font-size: 13px !important;
+    box-shadow: none !important;
+  }
+  html[data-layout] body.settings-mode #page-settings textarea { padding: 9px 11px; line-height: 1.65; resize: vertical; }
+  html[data-layout] body.settings-mode #page-settings select {
+    appearance: none; padding-right: 26px;
+    background-image: linear-gradient(45deg, transparent 50%, #7b8a91 50%), linear-gradient(135deg, #7b8a91 50%, transparent 50%);
+    background-position: calc(100% - 15px) 14px, calc(100% - 10px) 14px;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  }
+  html[data-layout] body.settings-mode #page-settings input:focus,
+  html[data-layout] body.settings-mode #page-settings select:focus,
+  html[data-layout] body.settings-mode #page-settings textarea:focus {
+    border-color: #9fc3bd !important;
+    box-shadow: 0 0 0 3px rgba(159, 195, 189, .18) !important;
+    outline: 0;
+  }
+
+  /* 开关：目标形态的深墨胶囊（40×22），关态浅灰 */
+  html[data-layout] body.settings-mode #page-settings input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    position: relative; width: 40px; height: 22px; min-height: 22px; flex: 0 0 auto;
+    border-radius: 999px; background: #dfe5e8; border: 0; cursor: pointer;
+    transition: background-color .16s ease; margin: 0;
+  }
+  html[data-layout] body.settings-mode #page-settings input[type="checkbox"]::after {
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 2px rgba(16, 32, 38, .22);
+    transition: left .16s ease;
+  }
+  html[data-layout] body.settings-mode #page-settings input[type="checkbox"]:checked { background: var(--st-primary); }
+  html[data-layout] body.settings-mode #page-settings input[type="checkbox"]:checked::after { left: 21px; }
+  html[data-theme="dark"][data-layout] body.settings-mode #page-settings input[type="checkbox"] { background: #3a3f42; }
+  html[data-theme="dark"][data-layout] body.settings-mode #page-settings input[type="checkbox"]:checked { background: #6fb3a8; }
+  /* 已经自带轨道 .cs-switch / .mem-switch 的：别叠双份 */
+  html[data-layout] body.settings-mode #page-settings .cs-switch input[type="checkbox"],
+  html[data-layout] body.settings-mode #page-settings .mem-switch input[type="checkbox"] {
+    position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
+  }
+
+  /* 按钮：默认是浅描边胶囊（目标形态的「前往官网 ↗」「添加模型」那种） */
+  html[data-layout] body.settings-mode #page-settings button.ghost,
+  html[data-layout] body.settings-mode #page-settings a.button.ghost,
+  html[data-layout] body.settings-mode #page-settings .mem-btn {
+    min-height: 32px; padding: 5px 12px;
+    border: 1px solid var(--st-ctl-line) !important; border-radius: 8px !important;
+    background: var(--st-ctl) !important; color: var(--st-text) !important;
+    font-size: 12.5px; box-shadow: none;
+  }
+  html[data-layout] body.settings-mode #page-settings button.ghost:hover,
+  html[data-layout] body.settings-mode #page-settings .mem-btn:hover { background: #f6f8f8 !important; border-color: #cfd7d9 !important; }
+  html[data-layout] body.settings-mode #page-settings button.primary,
+  html[data-layout] body.settings-mode #page-settings a.button.primary {
+    min-height: 32px; padding: 5px 14px;
+    border: 0 !important; border-radius: 8px !important;
+    background: var(--st-primary) !important; background-image: none !important;
+    color: #fff !important; font-size: 12.5px; font-weight: 500;
+  }
+  html[data-theme="dark"][data-layout] body.settings-mode #page-settings button.primary,
+  html[data-theme="dark"][data-layout] body.settings-mode #page-settings a.button.primary { color: #16262b !important; }
+  html[data-layout] body.settings-mode #page-settings button.danger,
+  html[data-layout] body.settings-mode #page-settings .mem-btn.is-danger {
+    background: var(--st-ctl) !important; color: #c0392b !important;
+    border: 1px solid #f0cdc7 !important; border-radius: 8px !important;
+  }
+
+  /* 确认弹层红色主按钮（uiConfirm danger，#ask 直挂 body 不在 #page-settings 内，
+     吃不到上面的 .danger 白底样式，落回全局红底红字/红底白字被渐变吃掉——即用户
+     实拍「红色按钮里面的字看不见」。这里显式钉住：红底 #c0392b + 白字（对比 5.4，
+     过 WCAG AA）+ hover 加深。body.ask-open 兜底段同时覆盖非设置模式打开的弹层。 */
+  html[data-layout] body.settings-mode #ask button#ask-yes.danger,
+  html[data-layout] body.ask-open #ask button#ask-yes.danger {
+    background: #c0392b !important; background-image: none !important;
+    color: #fff !important; border: 0 !important;
+    min-height: 32px; padding: 5px 14px; border-radius: 8px !important;
+    font-size: 12.5px; font-weight: 600;
+  }
+  html[data-layout] body.settings-mode #ask button#ask-yes.danger:hover,
+  html[data-layout] body.ask-open #ask button#ask-yes.danger:hover {
+    background: #a93226 !important;
+  }
+
+  /* 分段控件（中文 / English、日间 / 夜间）：白底小胶囊 */
+  html[data-layout] body.settings-mode #page-settings .seg {
+    display: inline-flex; gap: 2px; padding: 3px;
+    background: var(--st-ctl); border: 1px solid var(--st-ctl-line); border-radius: 9px;
+    width: fit-content;
+  }
+  html[data-layout] body.settings-mode #page-settings .seg .seg-btn {
+    border: 0 !important; background: none !important; box-shadow: none !important;
+    padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--st-sub);
+  }
+  html[data-layout] body.settings-mode #page-settings .seg .seg-btn.active {
+    background: var(--st-mint-2) !important; color: var(--st-mint-ink) !important; font-weight: 600;
+  }
+
+  /* 标签（.tag / .badge）：淡灰药丸，别用品牌色抢眼 */
+  html[data-layout] body.settings-mode #page-settings .tag,
+  html[data-layout] body.settings-mode #page-settings .badge {
+    background: var(--st-hover) !important; color: var(--st-sub) !important;
+    border: 0 !important; font-size: 11.5px; padding: 1px 8px; border-radius: 999px;
+  }
+
+  /* 「还有 N 项更细的设置」折叠：目标形态里的次级行 */
+  html[data-layout] body.settings-mode #page-settings .adv-fold {
+    margin: 4px 0 8px; border: 1px solid var(--st-border); border-radius: 10px;
+    background: transparent; padding: 0 14px;
+  }
+  html[data-layout] body.settings-mode #page-settings .adv-fold > summary {
+    padding: 11px 0; font-size: 12.5px; color: var(--st-sub); cursor: pointer; list-style: none;
+  }
+  html[data-layout] body.settings-mode #page-settings .adv-fold > summary::-webkit-details-marker { display: none; }
+  html[data-layout] body.settings-mode #page-settings .adv-fold > .field { border-bottom: 1px solid var(--st-line); }
+}
+
+/* --------------------------------------------- 6. 几个特殊页的落地微调 */
+@media (min-width: 901px) {
+  /* 外观页：布局卡 / 皮肤卡是网格里的选择卡，卡套卡要收掉双层底线 */
+  html[data-layout] body.settings-mode #page-settings .layout-grid,
+  html[data-layout] body.settings-mode #page-settings .skin-grid { margin: 12px 0 6px; gap: 12px; }
+  html[data-layout] body.settings-mode #page-settings .cs-previews { margin-top: 10px; }
+
+  /* 记忆中心：两张卡紧挨着，去重底线 */
+  html[data-layout] body.settings-mode #page-settings .mem-wrap > .mem-card + .mem-card { margin-top: 0 !important; }
+  html[data-layout] body.settings-mode #page-settings .mem-doc { font-size: 13px; line-height: 1.75; color: var(--st-text); }
+
+  /* 设置首页六张卡：与面板同一套底色与描边 */
+  html[data-layout] body.settings-mode #page-settings .sh-grid { margin-top: 4px; }
+  html[data-layout] body.settings-mode #page-settings .sh-card {
+    background: var(--st-card); border: 1px solid var(--st-border); border-radius: 12px;
+    box-shadow: none; padding: 16px 18px;
+  }
+  html[data-layout] body.settings-mode #page-settings .sh-card:hover { border-color: #d8e2e3; background: var(--st-card); }
+  html[data-layout] body.settings-mode #page-settings .sh-title { font-size: 15px; }
+
+  /* ── 高级设置页（2026-10-30 样式第二轮）────────────────────────────
+     病灶（CDP 实测）：① .sh-head 的 margin:auto 在 stretch 列里把标题挤成
+     内容宽、左缘与下面的网格差 175px；② .adv-group 撞上通用 h3.sec-title
+     规则变成 13.5px/600 + 22px 大上边距，四组之间空一截；③ 980px 里只放
+     2 列 392px 卡，右半截空白，9 卡拉成 740px 长条。
+     处方：头/网格/脚注三条同宽左对齐（sub-__home 同款律）；网格改 3 列
+     自适应（1160px 主栏下约 3×340px）；分组标签钉死 11px 小字 + 10px 紧凑
+     上距；卡描述放开两行，把「不确定就别改」的语境在卡内讲完。 */
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced { display: block; max-width: 1160px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced .sh-head,
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid,
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced .sh-foot {
+    width: 100%;
+    max-width: 980px;
+    margin-left: 0;           /* 左对齐统一律：不吃 auto 居中，头和卡同一条左缘 */
+    margin-right: 0;
+    box-sizing: border-box;
+  }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced .sh-head { margin-bottom: 14px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced .sh-sub { margin-top: 3px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 10px;
+  }
+  /* 分组标签：压过 h3.sec-title 的通用规则（同级 !important，本节在文件更后加载） */
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .adv-group {
+    grid-column: 1 / -1;
+    margin: 14px 0 0;
+    padding: 0;
+    border: 0;
+    font-size: 11px !important;
+    font-weight: 650;
+    letter-spacing: .04em;
+    color: var(--st-sub) !important;
+  }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .adv-group::after { content: none !important; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .adv-group:first-child { margin-top: 0; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .sh-card { padding: 13px 15px; min-height: 0; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .sh-card .sh-ico { width: 32px; height: 32px; border-radius: 9px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .sh-card .sh-body { gap: 2px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced #adv-grid .sh-card .sh-body small {
+    white-space: normal;      /* 描述放开换行，两行讲完，不再右半空白 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  html[data-layout] body.settings-mode #page-settings > #sub-__advanced .sh-foot { margin-top: 16px; }
+
+  /* 用量/关于这类「一行一条」的键值列表：发丝线 + 右侧值 */
+  html[data-layout] body.settings-mode #page-settings .kv-row,
+  html[data-layout] body.settings-mode #page-settings .about-row { border-bottom: 1px solid var(--st-line); }
+
+  /* 卡内列表只剩一张卡时别被 auto-fill 压成 280px 窄条（经验库空态实案） */
+  html[data-layout] body.settings-mode #page-settings .cards:has(> :only-child) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* 打印/极端窄屏：回退到旧的堆叠表单，不做横向栅格 */
+@media (max-width: 900px) {
+  .st-close { display: none !important; }
+  html[data-layout] body.settings-mode #page-settings .field.st-row { display: block; }
+}
+
+/* ------------------------------------------- 7. 分组标签提到卡外 + 开关同形 */
+@media (min-width: 901px) {
+  /* 小节标题（stSplitSections 提到卡外的那批）：卡与卡之间的分组小标签。
+     原实现靠 .sec-title::after 拉一条贯穿线，这里必须显式撤掉。 */
+  html[data-layout] body.settings-mode #page-settings .subpage > h3.sec-title,
+  html[data-layout] body.settings-mode #page-settings .subpage .panel > h3.sec-title {
+    display: block !important;
+    margin: 18px 2px 7px !important; padding: 0 !important;
+    border: 0 !important;
+    font-size: 12.5px !important; font-weight: 500 !important;
+    letter-spacing: .02em !important; text-transform: none !important;
+    color: var(--st-sub) !important;
+  }
+  html[data-layout] body.settings-mode #page-settings .subpage > h3.sec-title::after,
+  html[data-layout] body.settings-mode #page-settings .subpage .panel > h3.sec-title::after {
+    content: none !important; display: none !important;
+  }
+  /* 第一块前面的标签不要顶出一大段空白 */
+  html[data-layout] body.settings-mode #page-settings .subpage > .pg-lead + h3.sec-title { margin-top: 6px !important; }
+
+  /* 卡里第一个元素若还是标题（没被拆出来的单节卡），同样按标签排 */
+  html[data-layout] body.settings-mode #page-settings .subpage .panel > h3.sec-title:first-child { margin-top: 12px !important; }
+
+  /* 开关：两条既有实现（.cs-track / .mem-switch i）统一成深墨胶囊 */
+  html[data-layout] body.settings-mode #page-settings .cs-switch,
+  html[data-layout] body.settings-mode #page-settings .mem-switch {
+    position: relative !important; flex: 0 0 auto !important;
+    width: 40px !important; height: 22px !important; margin-left: auto;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-track,
+  html[data-layout] body.settings-mode #page-settings .mem-switch i {
+    position: absolute !important; inset: 0 !important;
+    width: 40px !important; height: 22px !important;
+    border-radius: 999px !important; background: #dfe5e8 !important;
+    transition: background-color .16s ease !important;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-track::after,
+  html[data-layout] body.settings-mode #page-settings .mem-switch i::after {
+    content: "" !important; position: absolute !important;
+    top: 3px !important; left: 3px !important;
+    width: 16px !important; height: 16px !important; border-radius: 50% !important;
+    background: #fff !important; box-shadow: 0 1px 2px rgba(16, 32, 38, .22) !important;
+    transition: left .16s ease !important;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-switch input:checked + .cs-track,
+  html[data-layout] body.settings-mode #page-settings .mem-switch input:checked + i {
+    background: var(--st-primary) !important;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-switch input:checked + .cs-track::after,
+  html[data-layout] body.settings-mode #page-settings .mem-switch input:checked + i::after { left: 21px !important; }
+  html[data-theme="dark"][data-layout] body.settings-mode #page-settings .cs-track,
+  html[data-theme="dark"][data-layout] body.settings-mode #page-settings .mem-switch i { background: #3a3f42 !important; }
+
+  /* 页头那句白话：没有标题的页只剩一行说明，别留空 h1 占位 */
+  html[data-layout] body.settings-mode #page-settings .pg-lead h1:empty { display: none; }
+
+  /* 外观页顶部的「外观 / 代码」锚点：白底小胶囊，吸顶 */
+  html[data-layout] body.settings-mode #page-settings .cs-anchor {
+    display: inline-flex !important; gap: 2px !important;
+    margin: 0 0 12px !important; padding: 3px !important;
+    background: var(--st-card) !important;
+    border: 1px solid var(--st-border) !important; border-radius: 9px !important;
+    box-shadow: 0 1px 2px rgba(16, 32, 38, .04) !important;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn {
+    border: 0 !important; background: none !important;
+    font-size: 12.5px !important; padding: 5px 12px !important; border-radius: 7px !important;
+    color: var(--st-sub) !important;
+  }
+  html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn.active {
+    background: var(--st-mint-2) !important; color: var(--st-mint-ink) !important; font-weight: 600 !important;
+  }
+}
+
+/* 机制与策略：冠军/挑战者对照表（贴合设置面板 v3 视觉语言） */
+html[data-layout] body.settings-mode #page-settings .st-cmp-wrap { margin: 4px 0 2px; overflow-x: auto; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp th,
+html[data-layout] body.settings-mode #page-settings table.st-cmp td {
+  text-align: left; vertical-align: middle;
+  padding: 8px 12px; border-bottom: 1px solid var(--st-line);
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp thead th {
+  font-size: 12px; font-weight: 600; color: var(--st-sub);
+  background: var(--st-canvas); position: sticky; top: 0; z-index: 1;
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp td.st-k { min-width: 172px; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-name { font-size: 13.5px; font-weight: 500; color: var(--st-strong); }
+html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-range { display: block; margin-top: 2px; font-size: 11.5px; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp input.st-num {
+  width: 112px; padding: 6px 8px; font-size: 13px;
+  background: var(--st-ctl); color: var(--st-text);
+  border: 1px solid var(--st-ctl-line); border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp input.st-num:focus {
+  outline: none; border-color: var(--st-primary);
+  box-shadow: 0 0 0 2px rgba(31, 58, 66, .12);
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp input.st-num.invalid {
+  border-color: #c0392b; box-shadow: 0 0 0 2px rgba(192, 57, 43, .15);
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp td.st-delta {
+  font-variant-numeric: tabular-nums; color: var(--st-sub); white-space: nowrap;
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp tr.st-diff td {
+  background: var(--st-mint-2);
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp tr.st-diff td.st-delta {
+  color: var(--st-mint-ink); font-weight: 600;
+}
+html[data-layout] body.settings-mode #page-settings .st-dirty {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 600; color: #b8860b;
+  background: rgba(184, 134, 11, .14); border-radius: 999px; padding: 2px 9px;
+}
+html[data-layout] body.settings-mode #page-settings .st-dirty[hidden] { display: none; }
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings .st-dirty { color: #e0b341; background: rgba(224, 179, 65, .16); }
+
+/* 可读性修正（2026-10-30 用户实拍「字都看不懂」）：--st-sub 在浅色画布 #eef6f9 上对比度仅 2.8
+ * （WCAG AA 要 4.5），表头/分组标签/差异占位/页头导语整片发灰。本页作用域内统一换成正文色
+ * --st-text（日 #26333a 系 / 夜 #e4e7e9 系，两版都有映射），并提最小字号；不动全局 token，
+ * 其他设置页观感不受影响。 */
+html[data-layout] body.settings-mode #page-settings #sub-strategy h3.sec-title {
+  color: var(--st-text) !important; font-size: 13px !important; font-weight: 600 !important;
+}
+html[data-layout] body.settings-mode #page-settings #sub-strategy .pg-sub { color: var(--st-text) !important; }
+html[data-layout] body.settings-mode #page-settings #sub-strategy .st-desc { color: var(--st-text) !important; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp thead th {
+  color: var(--st-text) !important; font-size: 12.5px !important;
+}
+html[data-layout] body.settings-mode #page-settings table.st-cmp td.st-delta { color: var(--st-text) !important; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-range { font-size: 12px !important; }
+html[data-layout] body.settings-mode #page-settings #sub-strategy .hint { color: var(--st-text) !important; opacity: .78; }
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings #sub-strategy .hint { opacity: .82; }
+/* 深色主按钮：亮青 #4fb3bd 底 + 白字对比仅 2.5，换深墨字（青底配深字 >7） */
+html[data-theme="dark"][data-layout] body.settings-mode #page-settings #sub-strategy button.primary {
+  color: #0d2b31 !important; font-weight: 600 !important;
+}
+
+/* ===== 记忆中心 v3：四段总结（散文排版）=====
+ * 默认态正文：h4 粗体小标题 + p 段落 + ul 圆点列表；编辑态回到治理列表。
+ * 作用域同上文（设置壳 + #page-settings），深色版用主题 token，不硬编码。 */
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-sec { margin: 0 0 14px; }
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-sec:last-child { margin-bottom: 0; }
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary h4 {
+  font-size: 14px; font-weight: 650; margin: 0 0 6px;
+  color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary p {
+  font-size: 13.5px; line-height: 1.8; margin: 0 0 8px;
+  color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary ul {
+  margin: 4px 0 8px; padding-left: 20px; list-style: disc;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li {
+  font-size: 13.5px; line-height: 1.8; margin: 0 0 4px;
+  color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li i {
+  font-style: normal; opacity: .62; font-size: 12.5px;
+}
+/* 编辑态：条目事实行 + 沉淀时间 */
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-entry .mem-entry-meta {
+  font-size: 12px; opacity: .62; margin: -2px 0 6px;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-facts {
+  display: grid; gap: 4px; margin: 6px 0;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-facts .mem-fact {
+  font-size: 13px; line-height: 1.7; color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-facts .mem-fact b { font-weight: 600; }
+
+/* ===== 记忆中心 v3.1：卡片布局与阅读排版收口（2026-11-01）=====
+ * 头部左右两端对齐（标题+副题 vs 按钮组）、正文限阅读行宽、脚注弱化为
+ * 真正的脚注（小字、淡色、顶部细分隔线）、卡片间距与内边距成体系。 */
+/* —— 两卡布局：纵向堆叠 + 统一间距 —— */
+html[data-layout] body.settings-mode #page-settings .mem-wrap {
+  display: grid; gap: 14px;
+}
+/* —— 卡片：内边距上下放宽，与设置页其他卡一致 —— */
+html[data-layout] body.settings-mode #page-settings .mem-wrap .mem-card {
+  padding: 18px 22px 16px !important;
+}
+/* —— 管理记忆卡头部：标题块与按钮组两端对齐 —— */
+html[data-layout] body.settings-mode #page-settings .mem-card .mem-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin: 0 0 4px;
+}
+html[data-layout] body.settings-mode #page-settings .mem-card .mem-head h2 {
+  margin: 0 0 2px; font-size: 16px; font-weight: 650; letter-spacing: .2px;
+  color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-card .mem-head p {
+  margin: 0; font-size: 12.5px; color: var(--st-sub, var(--st-text)) !important; opacity: .72;
+}
+html[data-layout] body.settings-mode #page-settings .mem-card .mem-head .mem-actions {
+  display: flex; gap: 8px; flex: none; margin-top: 2px;
+}
+/* —— 正文：限阅读行宽（~72ch），首段与头部留白 —— */
+html[data-layout] body.settings-mode #page-settings .mem-doc {
+  margin-top: 10px;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary {
+  max-width: 780px;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary h4 {
+  font-size: 13.5px; font-weight: 650; margin: 0 0 5px;
+  color: var(--st-text) !important; letter-spacing: .3px;
+  display: flex; align-items: center; gap: 8px;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary h4::before {
+  content: ""; width: 3px; height: 12px; border-radius: 2px;
+  background: var(--st-mint-ink, #16363d); flex: none; opacity: .9;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary p {
+  font-size: 13.5px; line-height: 1.85; margin: 0 0 9px;
+  color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary ul {
+  margin: 2px 0 9px; padding-left: 5px; list-style: none;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li {
+  position: relative; padding-left: 16px; font-size: 13.5px; line-height: 1.8;
+  margin: 0 0 5px; color: var(--st-text) !important;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li::before {
+  content: ""; position: absolute; left: 2px; top: .62em;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--st-sub, #8b979e); opacity: .8;
+}
+html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li i {
+  font-style: normal; opacity: .55; font-size: 12px; margin-left: 2px;
+}
+/* —— 脚注：弱化为真正的脚注 —— */
+html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
+  margin: 14px 0 0; padding-top: 10px;
+  border-top: 1px solid var(--st-line, rgba(127,127,127,.18));
+  font-size: 12px; line-height: 1.6; color: var(--st-sub, var(--st-text)) !important; opacity: .62;
+}

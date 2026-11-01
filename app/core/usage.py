@@ -82,15 +82,26 @@ def _parse_bool(v):
     return bool(v)
 
 
+def key_fp(api_key):
+    """key 指纹（P3 per-key 落账）：sha256 前 8 位——够区分同供应商多把 key，
+    不泄露 key 本体。空 key 返回空串。"""
+    k = str(api_key or "").strip()
+    if not k:
+        return ""
+    import hashlib
+    return hashlib.sha256(k.encode("utf-8")).hexdigest()[:8]
+
+
 def record(source="", run_id="", task_id="", task_type="", role="", step=0,
            agent="", agent_label="", tool="", model="", provider="",
            ok=True, duration_s=0.0, cost_usd=0.0, usage=None,
-           first_token_ms=0.0, tokens_per_sec=0.0):
+           first_token_ms=0.0, tokens_per_sec=0.0, key_fp=""):
     """追加一条用量记录。usage 为细分 dict：{input, output, cached, reasoning, total}；
     缺省字段按 0 处理。任何异常都吞掉——统计永远不能拖垮业务调用方。
 
     step 为该运行内的步骤号：与 backfill_from_runs 的去重键一致，缺了会导致
-    启动回填把同一步骤重复入账。
+    启动回填把同一步骤重复入账。key_fp 为该次调用实际使用的 API KEY 指纹
+    （P3 per-key 落账；缺省不落字段，旧记录零迁移）。
     """
     try:
         u = usage or {}
@@ -150,6 +161,9 @@ def record(source="", run_id="", task_id="", task_type="", role="", step=0,
         tps = round(_parse_float(tokens_per_sec), 2)
         if tps > 0:
             rec["tokens_per_sec"] = tps
+        kfp = key_fp if isinstance(key_fp, str) else ""
+        if kfp:
+            rec["key_fp"] = kfp[:8]
         line = json.dumps(rec, ensure_ascii=False)
         with LOCK:
             paths.USAGE_DIR.mkdir(parents=True, exist_ok=True)

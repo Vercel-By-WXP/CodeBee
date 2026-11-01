@@ -185,7 +185,17 @@ def score_model_entry(entry, providers, pricing, difficulty, task_type="", role=
 
 def rank_model_entries(entries, providers, pricing, difficulty,
                        task_type="", role="", force=False):
-    """稳定排序模型链并返回脱敏决策明细；default 难度保持人工顺序。"""
+    """稳定排序模型链并返回脱敏决策明细；default 难度保持人工顺序。
+
+    排序前先过额度节流（2026-11-01 借鉴 Freellmapi 派单前节流）：配置了
+    RPM/RPD/TPM/TPD 上限且已用尽的通道从候选里摘掉，把单派给还有额度的
+    通道——免费档限速是已知常量，不该等平台打 429 才知道。全部候选都被
+    节流时保持原列表（fail-open：宁可撞 429 也不无单可派）。"""
+    try:
+        from . import quota_ledger
+        entries, _throttled = quota_ledger.filter_candidates(entries or [])
+    except Exception:
+        pass   # 节流层故障不挡派单
     rows = []
     for index, entry in enumerate(entries or []):
         score, reason = score_model_entry(

@@ -3982,15 +3982,145 @@ def migrate_builtin_free_model_ids():
 
 
 # ---------------------------------------------------------------- 编排设置（编排者模型）
+#
+# 默认全自动：没有「手动启用」记录（provider_id + enabled=True）时，编排者由
+# auto_orch_pick() 自动选型——硬过滤（启停/密钥/健康/探针/模型启停）后用
+# dispatch 统一评分取最优（能力/档位/价格/在线指标/评测台），不是随机；
+# Jev 接路由（JEV_ENABLED=1 且配 JEV_ENDPOINT/JEV_API_KEY 时，对硬过滤后的
+# 候选做 Jev 概率重排，未启用/无凭据/失败则保持确定性评分顺序）。用户在编排
+# 设置里指定供应商并启用即转手动固定；手动配置失效（供应商被停用/删密钥/
+# 模型全停）也回落自动选型，不整条编排链停摆。
+
+_AUTO_ORCH_CACHE = {"at": 0.0, "pick": None}
+ORCH_AUTO_FRESH_S = 60.0   # 自动选型结论缓存：过滤链含健康/探针查询，不能每步现算
+
+
+def _auto_orch_pick_uncached():
+    """自动选型一趟：候选硬过滤 + dispatch 评分，返回 dict 或 None。
+
+    与 recommend_binding 同一套调度纪律；差别只在面向直连对话——chat() 三种
+    协议都支持，不做 CLI 注入协议过滤；native_cli（CLI 本机凭据、无 API key）
+    供应商直连用不了，被 api_key 硬过滤排除。"""
+    try:
+        from . import health
+        down_set = health.down_names()
+    except Exception:
+        down_set = set()
+    data = _load()
+    provs = {p.get("id"): p for p in data.get("providers") or []}
+    candidates = []
+    for prov in data.get("providers") or []:
+        pid = (prov.get("id") or "").strip()
+        if not pid or not prov.get("enabled", True) or not prov.get("api_key"):
+            continue
+        if prov.get("name") in down_set:
+            continue
+        if not _evaluation_is_usable(pid, prov.get("model") or ""):
+            continue
+        names = [str(m.get("name")) for m in _enabled_models(prov)
+                 if isinstance(m, dict) and m.get("name")]
+        if not names and prov.get("model"):
+            dflt = str(prov.get("model"))
+            if _model_bindable(prov, dflt):   # 默认模型被停用时不充作唯一候选
+                names = [dflt]
+        for model in names:
+            try:
+                from . import health as _health
+                if _health.is_model_down(prov.get("name") or pid, model):
+                    continue
+            except Exception:
+                pass
+            if not _evaluation_is_usable(pid, model):
+                continue
+            candidates.append({"provider_id": pid, "model": model})
+    if not candidates:
+        return None
+    from . import dispatch
+    ranked, decisions = dispatch.rank_model_entries(
+        candidates, provs, data.get("pricing") or {}, "default", "", "",
+        force=True)   # 自动选型必须按评分重排：default 档不 force 会退回「首个可用」
+    reranked = _jev_rerank(ranked)   # 路由侧 Jev 概率重排；未启用/失败时保持原序
+    if reranked:
+        ranked = reranked
+    head = ranked[0]
+    decision = next((d for d in decisions
+                     if d.get("provider_id") == head.get("provider_id")
+                     and d.get("model") == head.get("model")), {})
+    prov = provs.get(head.get("provider_id")) or {}
+    return {"provider_id": head.get("provider_id") or "",
+            "provider_name": prov.get("name") or head.get("provider_id") or "",
+            "model": head.get("model") or "",
+            "score": decision.get("score"),
+            "reason": decision.get("reason") or ""}
+
+
+def auto_orch_pick(fresh_s=None):
+    """自动选型结论（默认 60s 缓存）。任何异常返回 None，绝不把编排调用拖死。
+
+    fresh_s=0 强制重算（测试/配置变更后使用）。"""
+    fresh = ORCH_AUTO_FRESH_S if fresh_s is None else fresh_s
+    with _LOCK:
+        if fresh > 0 and time.time() - float(_AUTO_ORCH_CACHE.get("at") or 0) < fresh:
+            return _AUTO_ORCH_CACHE.get("pick")
+        pick = None
+        try:
+            pick = _auto_orch_pick_uncached()
+        except Exception:
+            pick = None
+        _AUTO_ORCH_CACHE["at"] = time.time()
+        _AUTO_ORCH_CACHE["pick"] = pick
+    return pick
+
+
+def _auto_orch_provider():
+    """自动选型 → (prov, model) 或 None（resolve_orchestrator 自动路径用）。"""
+    pick = auto_orch_pick()
+    if not pick:
+        return None
+    prov = next((p for p in providers() if p.get("id") == pick.get("provider_id")),
+                None)
+    if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
+        with _LOCK:   # 缓存窗口内供应商被停用/删密钥：作废本次结论
+            _AUTO_ORCH_CACHE["at"] = 0.0
+        return None
+    return prov, pick.get("model") or ""
+
+
+def resolve_best_provider(difficulty="default", task_type="", role=""):
+    """全自动编排者的公开入口：评分选出当前最优可用 (provider, model) 或 None。
+
+    difficulty/task_type/role 为调用方语义保留位；评分统一平衡档 + 在线指标
+    （与 CLI 步骤的 recommend_binding 同一套排序器）。"""
+    return _auto_orch_provider()
+
 
 def orchestrator_view():
-    """编排者配置（脱敏展示 + 可用性判定）。"""
+    """编排者展示视图（脱敏 + 可用性判定）。
+
+    未手动启用时返回自动选型结论（mode="auto"）——全自动是默认形态，UI 侧栏
+    指示据此显示当前实际生效的供应商；手动启用且有效时 mode="manual"。"""
     with _LOCK:
         cfg = dict(_load().get("orchestrator") or {})
-    prov = next((p for p in providers() if p.get("id") == cfg.get("provider_id")), None)
+    pid = cfg.get("provider_id") or ""
+    if not (pid and cfg.get("enabled")):
+        pick = auto_orch_pick()
+        if pick:
+            prov = next((p for p in providers()
+                         if p.get("id") == pick.get("provider_id")), None) or {}
+            return {"provider_id": pick.get("provider_id") or "",
+                    "model": pick.get("model") or "",
+                    "provider_name": pick.get("provider_name") or "",
+                    "protocol": prov.get("protocol", ""),
+                    "enabled": True,
+                    "mode": "auto",
+                    "ready": True,
+                    "score": pick.get("score"),
+                    "reason": pick.get("reason") or ""}
+    prov = next((p for p in providers() if p.get("id") == pid), None)
     cfg["provider_name"] = (prov or {}).get("name", "")
     cfg["protocol"] = (prov or {}).get("protocol", "")
     cfg["enabled"] = bool(cfg.get("enabled", False))
+    cfg["mode"] = "manual" if cfg.get("enabled") else ""
     cfg["ready"] = bool(
         cfg.get("enabled") and prov and prov.get("api_key")
         and prov.get("enabled", True) and (cfg.get("model") or prov.get("model")))
@@ -3998,7 +4128,7 @@ def orchestrator_view():
 
 
 def set_orchestrator(provider_id, model=None, enabled=None):
-    """保存编排者配置。provider_id 空串 = 不使用编排者。返回错误或 None。"""
+    """保存编排者配置。provider_id 空串 = 回到全自动。返回错误或 None。"""
     with _LOCK:
         data = _load()
         pid = (provider_id or "").strip()
@@ -4014,26 +4144,43 @@ def set_orchestrator(provider_id, model=None, enabled=None):
             cfg["enabled"] = False
         data["orchestrator"] = cfg
         _save(data)
+        _AUTO_ORCH_CACHE["at"] = 0.0   # 配置变了，自动选型结论立即作废
         return None
 
 
-def resolve_orchestrator():
-    """返回编排者实际可用的 (provider, model_name)，未启用/失效返回 None。"""
+def _jev_rerank(ranked):
+    """编排者候选的 JEV 概率重排（路由侧，P2-2 待接①）。
+
+    JEV 未启用/无凭据/调用失败/响应不可解析时返回 None，调用方保持
+    确定性评分顺序。独立成函数便于单测 mock；懒 import 避免循环依赖。
+    """
+    if not ranked:
+        return None
+    try:
+        from . import jev
+        return jev.rank_candidates(ranked)
+    except Exception:
+        return None
+
+
+def resolve_orchestrator(difficulty="default"):
+    """返回编排者实际可用的 (provider, model_name)，完全无可用返回 None。
+
+    手动启用且配置有效 → 按用户配置；其余情况（从未配置 / 手动配置失效——
+    供应商被停用、删密钥、模型全停）→ 自动评分选型（auto_orch_pick，含
+    JEV 概率重排）。difficulty 仅为兼容旧调用签名保留，自动路径统一平衡档。
+    """
     with _LOCK:
         cfg = _load().get("orchestrator") or {}
-    if not cfg.get("enabled", False):
-        return None
     pid = cfg.get("provider_id") or ""
-    prov = next((p for p in providers() if p.get("id") == pid), None)
-    if not prov or not prov.get("enabled", True) or not prov.get("api_key"):
-        return None
-    model = (cfg.get("model") or "").strip() or prov.get("model") or ""
-    model = _usable_default_model(prov, model)   # 配置的模型被停用时回落启用名单，不冒充可用
-    if not model:
-        return None
-    if not _evaluation_is_usable(pid, model):
-        return None
-    return prov, model
+    if pid and cfg.get("enabled", False):
+        prov = next((p for p in providers() if p.get("id") == pid), None)
+        if prov and prov.get("enabled", True) and prov.get("api_key"):
+            model = (cfg.get("model") or "").strip() or prov.get("model") or ""
+            model = _usable_default_model(prov, model)   # 配置模型停用→回落启用名单
+            if model and _evaluation_is_usable(pid, model):
+                return prov, model
+    return _auto_orch_provider()
 
 
 def _chat_user_content(proto, prompt, images):

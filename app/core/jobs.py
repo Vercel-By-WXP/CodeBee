@@ -669,6 +669,30 @@ def _run_job(job):
                 notify.push_run_async(run_id)
             except Exception:
                 pass
+            # ReasoningBank 自动入账（Ruflo 借来的模式库：跑完的每个 run 都是
+            # 一条「成功模式/失败教训」原料；零模型零额度，绝不连累主流程）
+            if did_execute:
+                try:
+                    from . import reasoning_bank
+                    latest_rb = store.get_run(run_id) or {}
+                    st = str(latest_rb.get("status") or "")
+                    if st in ("done", "failed"):
+                        t_rb = store.get_task(str(latest_rb.get("task_id") or "")) or {}
+                        vals = [v for v in (latest_rb.get("chapter_scores") or {}).values()
+                                if isinstance(v, (int, float))]
+                        reasoning_bank.record(
+                            source="run",
+                            title=str(t_rb.get("title") or latest_rb.get("title") or ""),
+                            text=(str(t_rb.get("title") or "")
+                                  + " " + str(t_rb.get("type") or "")).strip(),
+                            task_type=str(t_rb.get("type") or ""),
+                            outcome="success" if st == "done" else "failure",
+                            score=round(sum(vals) / len(vals), 2) if vals else None,
+                            error=str(latest_rb.get("error") or ""),
+                            refs={"task_id": str(latest_rb.get("task_id") or ""),
+                                  "run_id": str(run_id)})
+                except Exception:
+                    pass
         _release_slot(job)
         if should_wake_workdir and workdir_to_wake:
             try:

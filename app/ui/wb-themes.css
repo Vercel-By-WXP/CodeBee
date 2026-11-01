@@ -1,0 +1,964 @@
+/* ==========================================================================
+   61. 多主题体系（2026-10-30，「外观像 支持多种主题，
+      之前的皮肤不要了」）
+   --------------------------------------------------------------------------
+   参照用户提供的 外观页实拍截图：
+     - 顶部一张大幅「当前主题」预览（带「永久有效」角标）；
+     - 下方「全部主题」网格，每张卡 = 一张主题壁纸缩略图 + 主题名；
+     - 主题是一整套配色（画布 / 列表 / 分隔线 / 选中 / 强调 / 气泡 / 正文），
+       换主题即整套换掉，而不是只换一个强调色。
+   旧皮肤（深海 / 苹果 / 墨金 / 经典 / 简白 / 森野 / 暖阳 / 暖纸 / 海盐 /
+   樱雾 / 暮霞 / 珊瑚 / 霓虹 / 高对比）已从选择器中退役：外观页只列下面这 8 套。
+   机制：
+     - 主题仍走 data-skin（沿用既有存储键 orch.skin，值域换成 wb-* 前缀）；
+     - 本文件挂在 wb-visuals.css 之后（最后加载），删掉 index.html 那行 link
+       即回退到「单一 单一配色」；
+     - 通用 token 落在 html[data-skin=X]（skinPalette() 读根元素计算值）；
+       聊天工作台 token 落在 html[data-skin=X] body（与 wb-visuals.css 60.0
+       同特异性，靠「后加载」取胜）。
+   ========================================================================== */
+
+/* ---------- 61.1 通用 token（画布 / 面板 / 正文 / 强调） ---------- */
+/* wbbuddy（WorkBuddy 风格皮肤）：--wb-* 映射到同源色板，供 61.3c 全局映射层
+ * 取值（任何皮肤都必须给 --wb-* 一份定义，否则 var() 无效值会砸穿全局）。 */
+html[data-skin="wbbuddy"] {
+  --wb-shadow: 0 6px 20px rgba(31, 35, 41, .06);
+  --wb-bg: #ffffff;
+  --wb-sidebar: #f7f8fa;
+  --wb-panel: #ffffff;
+  --wb-panel2: #f4f5f7;
+  --wb-border: #ececf0;
+  --wb-border-strong: #dcdce3;
+  --wb-text: #1f2329;
+  --wb-muted: #646a73;
+  --wb-accent: #4e5ba6;
+  --wb-accent2: #7b6cd9;
+  --wb-ok: #2e9e6b;
+  --wb-warn: #b07d1d;
+  --wb-bad: #d54d42;
+  --wb-log-bg: #f7f8fa;
+  --wb-log-text: #3c414a;
+  --wb-chip-queued-bg: #f4f5f7;
+  --wb-bg-art: #ffffff;
+  --wb-uc-in: #4e5ba6;
+  --wb-uc-ca: #7b6cd9;
+  --wb-uc-out: #2e9e6b;
+}
+html[data-theme="dark"][data-skin="wbbuddy"] {
+  --wb-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  --wb-bg: #1c1d21;
+  --wb-sidebar: #17181c;
+  --wb-panel: #232428;
+  --wb-panel2: #2a2b30;
+  --wb-border: #2e2f35;
+  --wb-border-strong: #3d3f47;
+  --wb-text: #e8e9ec;
+  --wb-muted: #9a9ca6;
+  --wb-accent: #7b86c9;
+  --wb-accent2: #9d8ce0;
+  --wb-ok: #4cc38a;
+  --wb-warn: #e0a94a;
+  --wb-bad: #e8687f;
+  --wb-log-bg: #141519;
+  --wb-log-text: #b8bac2;
+  --wb-chip-queued-bg: #2a2b30;
+  --wb-bg-art: #1c1d21;
+  --wb-uc-in: #7b86c9;
+  --wb-uc-ca: #9d8ce0;
+  --wb-uc-out: #4cc38a;
+}
+html[data-skin="wb-light"] {
+  --wb-shadow: 0 18px 48px rgba(24, 74, 84, .10);
+  --wb-bg: #eef6f9;
+  --wb-sidebar: #f7fbfc;
+  --wb-panel: #fdfeff;
+  --wb-panel2: #eaf4f7;
+  --wb-border: #e0edf0;
+  --wb-border-strong: #c3dce1;
+  --wb-text: #16323a;
+  --wb-muted: #7d99a3;
+  --wb-accent: #177983;
+  --wb-accent2: #0f6470;
+  --wb-ok: #139678;
+  --wb-warn: #a8761a;
+  --wb-bad: #cf3f58;
+  --wb-log-bg: #f7fbfc;
+  --wb-log-text: #2c4a52;
+  --wb-chip-queued-bg: #e4eff2;
+  --wb-bg-art: #eef6f9;
+  --wb-uc-in: #177983;
+  --wb-uc-ca: #4fb3bd;
+  --wb-uc-out: #6f9fd0;
+}
+html[data-skin="wb-dark"] {
+  --wb-shadow: 0 22px 60px rgba(0, 0, 0, .34);
+  --wb-bg: #10181c;
+  --wb-sidebar: #121b21;
+  --wb-panel: #17222a;
+  --wb-panel2: #1c2a32;
+  --wb-border: #24333c;
+  --wb-border-strong: #354a55;
+  --wb-text: #dfeaf0;
+  --wb-muted: #829aa4;
+  --wb-accent: #4fb3bd;
+  --wb-accent2: #9ad8de;
+  --wb-ok: #35c99b;
+  --wb-warn: #f0b429;
+  --wb-bad: #f2637a;
+  --wb-log-bg: #0d1418;
+  --wb-log-text: #c6d8e0;
+  --wb-chip-queued-bg: #1c2a32;
+  --wb-bg-art: #10181c;
+  --wb-uc-in: #4fb3bd;
+  --wb-uc-ca: #9ad8de;
+  --wb-uc-out: #7fa9d6;
+}
+html[data-skin="wb-breeze"] {
+  --wb-shadow: 0 18px 48px rgba(30, 82, 54, .10);
+  --wb-bg: #eef6f0;
+  --wb-sidebar: #f6faf5;
+  --wb-panel: #fdfffd;
+  --wb-panel2: #e8f3ea;
+  --wb-border: #dceadd;
+  --wb-border-strong: #bcd8c4;
+  --wb-text: #17342a;
+  --wb-muted: #7a9a8b;
+  --wb-accent: #2f7d52;
+  --wb-accent2: #1f5f3d;
+  --wb-ok: #2f8f5e;
+  --wb-warn: #9a7518;
+  --wb-bad: #c94a4a;
+  --wb-log-bg: #f6faf5;
+  --wb-log-text: #26483a;
+  --wb-chip-queued-bg: #e4f0e6;
+  --wb-bg-art: #eef6f0;
+  --wb-uc-in: #2f7d52;
+  --wb-uc-ca: #6fbf8f;
+  --wb-uc-out: #5aa0b8;
+}
+html[data-skin="wb-qq"] {
+  --wb-shadow: 0 18px 48px rgba(20, 60, 84, .10);
+  --wb-bg: #f2f7fa;
+  --wb-sidebar: #ffffff;
+  --wb-panel: #ffffff;
+  --wb-panel2: #eef5f9;
+  --wb-border: #e3e9ee;
+  --wb-border-strong: #c3d3dd;
+  --wb-text: #16232e;
+  --wb-muted: #7b8b99;
+  --wb-accent: #0f9fd8;
+  --wb-accent2: #0a7ba8;
+  --wb-ok: #17a673;
+  --wb-warn: #a07a1c;
+  --wb-bad: #d04354;
+  --wb-log-bg: #f7fafc;
+  --wb-log-text: #24333d;
+  --wb-chip-queued-bg: #eaf2f7;
+  --wb-bg-art: #f2f7fa;
+  --wb-uc-in: #0f9fd8;
+  --wb-uc-ca: #4fb3bd;
+  --wb-uc-out: #8a7ae0;
+}
+html[data-skin="wb-peace"] {
+  --wb-shadow: 0 18px 48px rgba(70, 40, 100, .12);
+  --wb-bg: #f5effa;
+  --wb-sidebar: #fbf7fe;
+  --wb-panel: #ffffff;
+  --wb-panel2: #f0e8f8;
+  --wb-border: #e6dbf2;
+  --wb-border-strong: #cdb9e2;
+  --wb-text: #2a1a38;
+  --wb-muted: #8b78a0;
+  --wb-accent: #7a3fb5;
+  --wb-accent2: #c79a3e;
+  --wb-ok: #2f8f6d;
+  --wb-warn: #b08322;
+  --wb-bad: #c9485f;
+  --wb-log-bg: #faf6fd;
+  --wb-log-text: #3a2749;
+  --wb-chip-queued-bg: #efe5f7;
+  --wb-bg-art: #f5effa;
+  --wb-uc-in: #7a3fb5;
+  --wb-uc-ca: #c79a3e;
+  --wb-uc-out: #4f8fd0;
+}
+html[data-skin="wb-peer"] {
+  --wb-shadow: 0 18px 48px rgba(30, 52, 96, .11);
+  --wb-bg: #edf2fa;
+  --wb-sidebar: #f6f9fd;
+  --wb-panel: #ffffff;
+  --wb-panel2: #e5ecf7;
+  --wb-border: #dbe3f0;
+  --wb-border-strong: #bac7e0;
+  --wb-text: #1b2739;
+  --wb-muted: #74839c;
+  --wb-accent: #2a5fa8;
+  --wb-accent2: #1d4780;
+  --wb-ok: #2c8c6d;
+  --wb-warn: #a2761b;
+  --wb-bad: #c8455c;
+  --wb-log-bg: #f5f8fd;
+  --wb-log-text: #2b3a52;
+  --wb-chip-queued-bg: #e6ecf6;
+  --wb-bg-art: #edf2fa;
+  --wb-uc-in: #2a5fa8;
+  --wb-uc-ca: #6f8fd8;
+  --wb-uc-out: #56b0a8;
+}
+html[data-skin="wb-ripple"] {
+  --wb-shadow: 0 18px 48px rgba(16, 80, 78, .11);
+  --wb-bg: #e8f5f4;
+  --wb-sidebar: #f4fbfa;
+  --wb-panel: #ffffff;
+  --wb-panel2: #dff0ee;
+  --wb-border: #d3eae7;
+  --wb-border-strong: #b3d7d2;
+  --wb-text: #123535;
+  --wb-muted: #6f9490;
+  --wb-accent: #0f8f86;
+  --wb-accent2: #0a6e67;
+  --wb-ok: #1f9b7a;
+  --wb-warn: #9c771a;
+  --wb-bad: #cb4459;
+  --wb-log-bg: #f2fbf9;
+  --wb-log-text: #214a48;
+  --wb-chip-queued-bg: #dff0ed;
+  --wb-bg-art: #e8f5f4;
+  --wb-uc-in: #0f8f86;
+  --wb-uc-ca: #4fb3bd;
+  --wb-uc-out: #6fb0d8;
+}
+html[data-skin="wb-buddy"] {
+  --wb-shadow: 0 18px 48px rgba(96, 56, 26, .12);
+  --wb-bg: #fdf4ec;
+  --wb-sidebar: #fffaf6;
+  --wb-panel: #ffffff;
+  --wb-panel2: #f8ece1;
+  --wb-border: #f0dfd0;
+  --wb-border-strong: #dcc0aa;
+  --wb-text: #3a2113;
+  --wb-muted: #a3836b;
+  --wb-accent: #d9622b;
+  --wb-accent2: #a94a1f;
+  --wb-ok: #3f8f52;
+  --wb-warn: #a8781c;
+  --wb-bad: #cf4a3f;
+  --wb-log-bg: #fff8f1;
+  --wb-log-text: #4a3020;
+  --wb-chip-queued-bg: #f7e8da;
+  --wb-bg-art: #fdf4ec;
+  --wb-uc-in: #d9622b;
+  --wb-uc-ca: #e8a33c;
+  --wb-uc-out: #6aa8c0;
+}
+
+/* ---------- 61.2 聊天工作台 token（画布 / 列表 / 选中 / 气泡） ---------- */
+/* wbbuddy：WorkBuddy 风格——白画布 + 浅灰列 + 蓝紫强调 + 白卡气泡 */
+html[data-skin="wbbuddy"] body {
+  --wx-bg: #ffffff; --wxa-bg: #ffffff;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #f7f8fa; --wx-list: 248px; --wxa-list: 248px;
+  --wx-rail-bg: #f7f8fa; --wx-rail: 52px; --wxa-rail-bg: #f7f8fa; --wxa-rail: 52px;
+  --wx-line: #ececf0; --wxa-line: #ececf0;
+  --wx-hover: #f0f1f4; --wxa-hover: #f0f1f4;
+  --wxa-sel: #e8eaf5; --wx-sel: #e8eaf5;
+  --wx-green: #4e5ba6; --wxa-green: #4e5ba6;
+  --wx-me: #e8eaf5; --wxa-bubble-me: #e8eaf5;
+  --wx-me-text: #2c3154;
+  --wx-txt: #1f2329; --wxa-text: #1f2329;
+  --wx-dim: #8a8f99; --wxa-dim: #8a8f99;
+  --wx-sub: #646a73;
+  --wxa-time: #8a8f99;
+  --wxa-search: #f0f1f4;
+  --cum-canvas: #ffffff; --cum-rail: #f7f8fa;
+  --cum-accent: #4e5ba6; --cum-accent-deep: #3d4888;
+  --cum-badge: #e8687f; --cum-bubble: #ffffff; --cum-bubble-line: #ececf0;
+}
+html[data-theme="dark"][data-skin="wbbuddy"] body {
+  --wx-bg: #1c1d21; --wxa-bg: #1c1d21;
+  --wx-panel: #232428; --wxa-panel: #232428;
+  --wx-list-bg: #17181c; --wx-list: 248px; --wxa-list: 248px;
+  --wx-rail-bg: #17181c; --wx-rail: 52px; --wxa-rail-bg: #17181c; --wxa-rail: 52px;
+  --wx-line: #2e2f35; --wxa-line: #2e2f35;
+  --wx-hover: #26272c; --wxa-hover: #26272c;
+  --wxa-sel: #2c3050; --wx-sel: #2c3050;
+  --wx-green: #7b86c9; --wxa-green: #7b86c9;
+  --wx-me: #2c3050; --wxa-bubble-me: #2c3050;
+  --wx-me-text: #dfe2f5;
+  --wx-txt: #e8e9ec; --wxa-text: #e8e9ec;
+  --wx-dim: #9a9ca6; --wxa-dim: #9a9ca6;
+  --wx-sub: #8a8f99;
+  --wxa-time: #7c7f89;
+  --wxa-search: #26272c;
+  --cum-canvas: #1c1d21; --cum-rail: #17181c;
+  --cum-accent: #7b86c9; --cum-accent-deep: #9d8ce0;
+  --cum-badge: #e8687f; --cum-bubble: #232428; --cum-bubble-line: #2e2f35;
+}
+html[data-skin="wb-light"] body {
+  --wx-bg: #eef6f9; --wxa-bg: #eef6f9;
+  --wx-panel: #fdfeff; --wxa-panel: #fdfeff;
+  --wx-list-bg: #f7fbfc; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #eef5f7; --wx-rail: 60px; --wxa-rail-bg: #eef5f7; --wxa-rail: 60px;
+  --wx-line: #e0edf0; --wxa-line: #e0edf0;
+  --wx-hover: #e9f4f6; --wxa-hover: #e9f4f6;
+  --wxa-sel: #cfe9ed; --wx-sel: #cfe9ed;
+  --wx-green: #177983; --wxa-green: #177983;
+  --wx-me: #d8f0ec; --wxa-bubble-me: #d8f0ec;
+  --wx-me-text: #123f47;
+  --wx-txt: #16323a; --wxa-text: #16323a;
+  --wx-dim: #7d99a3; --wxa-dim: #7d99a3;
+  --wx-sub: #6b8b95;
+  --wxa-time: #9db4bc;
+  --wxa-search: #dcedf0;
+  --cum-canvas: #eaf4f7; --cum-rail: #edf4f6;
+  --cum-accent: #177983; --cum-accent-deep: #114c58;
+  --cum-badge: #ee8171; --cum-bubble: #ffffff; --cum-bubble-line: #e6f1f4;
+}
+html[data-skin="wb-dark"] body {
+  --wx-bg: #10181c; --wxa-bg: #10181c;
+  --wx-panel: #17222a; --wxa-panel: #17222a;
+  --wx-list-bg: #121b21; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #0e1519; --wx-rail: 60px; --wxa-rail-bg: #0e1519; --wxa-rail: 60px;
+  --wx-line: #24333c; --wxa-line: #24333c;
+  --wx-hover: #1c2a32; --wxa-hover: #1c2a32;
+  --wxa-sel: #1e3d44; --wx-sel: #1e3d44;
+  --wx-green: #4fb3bd; --wxa-green: #4fb3bd;
+  --wx-me: #1d4249; --wxa-bubble-me: #1d4249;
+  --wx-me-text: #dff2f2;
+  --wx-txt: #dfeaf0; --wxa-text: #dfeaf0;
+  --wx-dim: #829aa4; --wxa-dim: #829aa4;
+  --wx-sub: #6f8892;
+  --wxa-time: #718994;
+  --wxa-search: #1d2b33;
+  --cum-canvas: #0d1418; --cum-rail: #0c1216;
+  --cum-accent: #4fb3bd; --cum-accent-deep: #9ad8de;
+  --cum-badge: #e07b6b; --cum-bubble: #17222a; --cum-bubble-line: #22323b;
+}
+html[data-skin="wb-breeze"] body {
+  --wx-bg: #eef6f0; --wxa-bg: #eef6f0;
+  --wx-panel: #fdfffd; --wxa-panel: #fdfffd;
+  --wx-list-bg: #f6faf5; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #eaf4ec; --wx-rail: 60px; --wxa-rail-bg: #eaf4ec; --wxa-rail: 60px;
+  --wx-line: #dceadd; --wxa-line: #dceadd;
+  --wx-hover: #e8f4ea; --wxa-hover: #e8f4ea;
+  --wxa-sel: #c9e6d0; --wx-sel: #c9e6d0;
+  --wx-green: #2f7d52; --wxa-green: #2f7d52;
+  --wx-me: #dcf0e2; --wxa-bubble-me: #dcf0e2;
+  --wx-me-text: #1d4a33;
+  --wx-txt: #17342a; --wxa-text: #17342a;
+  --wx-dim: #7a9a8b; --wxa-dim: #7a9a8b;
+  --wx-sub: #6b8d7d;
+  --wxa-time: #9bb6a8;
+  --wxa-search: #dceee1;
+  --cum-canvas: #e9f4ec; --cum-rail: #ecf5ee;
+  --cum-accent: #2f7d52; --cum-accent-deep: #1f5f3d;
+  --cum-badge: #e0894f; --cum-bubble: #ffffff; --cum-bubble-line: #e2f0e5;
+}
+html[data-skin="wb-qq"] body {
+  --wx-bg: #f2f7fa; --wxa-bg: #f2f7fa;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #ffffff; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #eef5f9; --wx-rail: 60px; --wxa-rail-bg: #eef5f9; --wxa-rail: 60px;
+  --wx-line: #e3e9ee; --wxa-line: #e3e9ee;
+  --wx-hover: #f0f6fa; --wxa-hover: #f0f6fa;
+  --wxa-sel: #d9eefb; --wx-sel: #d9eefb;
+  --wx-green: #0f9fd8; --wxa-green: #0f9fd8;
+  --wx-me: #dff1fb; --wxa-bubble-me: #dff1fb;
+  --wx-me-text: #0d4d69;
+  --wx-txt: #16232e; --wxa-text: #16232e;
+  --wx-dim: #7b8b99; --wxa-dim: #7b8b99;
+  --wx-sub: #6c8296;
+  --wxa-time: #a3b2be;
+  --wxa-search: #e8f2f8;
+  --cum-canvas: #eef5f9; --cum-rail: #f1f6fa;
+  --cum-accent: #0f9fd8; --cum-accent-deep: #0a7ba8;
+  --cum-badge: #f08a5d; --cum-bubble: #ffffff; --cum-bubble-line: #e6eef4;
+}
+html[data-skin="wb-peace"] body {
+  --wx-bg: #f5effa; --wxa-bg: #f5effa;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #fbf7fe; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #efe6f7; --wx-rail: 60px; --wxa-rail-bg: #efe6f7; --wxa-rail: 60px;
+  --wx-line: #e6dbf2; --wxa-line: #e6dbf2;
+  --wx-hover: #f1e9f8; --wxa-hover: #f1e9f8;
+  --wxa-sel: #e3d0f6; --wx-sel: #e3d0f6;
+  --wx-green: #7a3fb5; --wxa-green: #7a3fb5;
+  --wx-me: #efe0fa; --wxa-bubble-me: #efe0fa;
+  --wx-me-text: #4a2372;
+  --wx-txt: #2a1a38; --wxa-text: #2a1a38;
+  --wx-dim: #8b78a0; --wxa-dim: #8b78a0;
+  --wx-sub: #7a6791;
+  --wxa-time: #b0a0c1;
+  --wxa-search: #eee2f7;
+  --cum-canvas: #f1e9f8; --cum-rail: #f3ecf9;
+  --cum-accent: #7a3fb5; --cum-accent-deep: #5c2c8a;
+  --cum-badge: #d9a23e; --cum-bubble: #ffffff; --cum-bubble-line: #ebdff6;
+}
+html[data-skin="wb-peer"] body {
+  --wx-bg: #edf2fa; --wxa-bg: #edf2fa;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #f6f9fd; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #e7edf7; --wx-rail: 60px; --wxa-rail-bg: #e7edf7; --wxa-rail: 60px;
+  --wx-line: #dbe3f0; --wxa-line: #dbe3f0;
+  --wx-hover: #e9eef8; --wxa-hover: #e9eef8;
+  --wxa-sel: #d3e0f7; --wx-sel: #d3e0f7;
+  --wx-green: #2a5fa8; --wxa-green: #2a5fa8;
+  --wx-me: #dfe8f7; --wxa-bubble-me: #dfe8f7;
+  --wx-me-text: #23477e;
+  --wx-txt: #1b2739; --wxa-text: #1b2739;
+  --wx-dim: #74839c; --wxa-dim: #74839c;
+  --wx-sub: #667691;
+  --wxa-time: #a3aec2;
+  --wxa-search: #e4ebf7;
+  --cum-canvas: #e9eff8; --cum-rail: #ecf1f9;
+  --cum-accent: #2a5fa8; --cum-accent-deep: #1d4780;
+  --cum-badge: #d9713f; --cum-bubble: #ffffff; --cum-bubble-line: #e2e9f4;
+}
+html[data-skin="wb-ripple"] body {
+  --wx-bg: #e8f5f4; --wxa-bg: #e8f5f4;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #f4fbfa; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #e0f1ef; --wx-rail: 60px; --wxa-rail-bg: #e0f1ef; --wxa-rail: 60px;
+  --wx-line: #d3eae7; --wxa-line: #d3eae7;
+  --wx-hover: #e5f4f2; --wxa-hover: #e5f4f2;
+  --wxa-sel: #c6ebe6; --wx-sel: #c6ebe6;
+  --wx-green: #0f8f86; --wxa-green: #0f8f86;
+  --wx-me: #d3f2ee; --wxa-bubble-me: #d3f2ee;
+  --wx-me-text: #0b5751;
+  --wx-txt: #123535; --wxa-text: #123535;
+  --wx-dim: #6f9490; --wxa-dim: #6f9490;
+  --wx-sub: #5e8581;
+  --wxa-time: #9bb8b4;
+  --wxa-search: #d9efec;
+  --cum-canvas: #e4f2f0; --cum-rail: #e7f3f2;
+  --cum-accent: #0f8f86; --cum-accent-deep: #0a6e67;
+  --cum-badge: #dd8352; --cum-bubble: #ffffff; --cum-bubble-line: #dcf0ed;
+}
+html[data-skin="wb-buddy"] body {
+  --wx-bg: #fdf4ec; --wxa-bg: #fdf4ec;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #fffaf6; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #f8ece1; --wx-rail: 60px; --wxa-rail-bg: #f8ece1; --wxa-rail: 60px;
+  --wx-line: #f0dfd0; --wxa-line: #f0dfd0;
+  --wx-hover: #f9ece1; --wxa-hover: #f9ece1;
+  --wxa-sel: #fbe0cd; --wx-sel: #fbe0cd;
+  --wx-green: #d9622b; --wxa-green: #d9622b;
+  --wx-me: #ffe8d6; --wxa-bubble-me: #ffe8d6;
+  --wx-me-text: #8a3a12;
+  --wx-txt: #3a2113; --wxa-text: #3a2113;
+  --wx-dim: #a3836b; --wxa-dim: #a3836b;
+  --wx-sub: #93755f;
+  --wxa-time: #c4aa94;
+  --wxa-search: #f7e5d6;
+  --cum-canvas: #f9ece0; --cum-rail: #fbf0e6;
+  --cum-accent: #d9622b; --cum-accent-deep: #a94a1f;
+  --cum-badge: #4fa88c; --cum-bubble: #ffffff; --cum-bubble-line: #f3e2d4;
+}
+
+/* ---------- 61.3 夜间版（同一主题在「夜间」下另有一套） ---------- */
+html[data-theme="dark"][data-skin="wb-light"] body,
+html[data-theme="dark"][data-skin="wb-breeze"] body,
+html[data-theme="dark"][data-skin="wb-qq"] body,
+html[data-theme="dark"][data-skin="wb-peace"] body,
+html[data-theme="dark"][data-skin="wb-peer"] body,
+html[data-theme="dark"][data-skin="wb-ripple"] body,
+html[data-theme="dark"][data-skin="wb-buddy"] body {
+  --wx-bg: #10171b; --wxa-bg: #10171b;
+  --wx-panel: #17222a; --wxa-panel: #17222a;
+  --wx-list-bg: #121b21; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #0e1519; --wx-rail: 60px; --wxa-rail-bg: #0e1519; --wxa-rail: 60px;
+  --wx-line: #24333c; --wxa-line: #24333c;
+  --wx-hover: #1c2a32; --wxa-hover: #1c2a32;
+  --wxa-sel: #1e3d44; --wx-sel: #1e3d44;
+  --wx-me: #1d4249; --wxa-bubble-me: #1d4249;
+  --wx-me-text: #dff2f2;
+  --wx-txt: #dfeaf0; --wxa-text: #dfeaf0;
+  --wx-dim: #829aa4; --wxa-dim: #829aa4;
+  --wx-sub: #6f8892;
+  --wxa-time: #718994;
+  --wxa-search: #1d2b33;
+  --cum-canvas: #0d1418; --cum-rail: #0c1216;
+  --cum-bubble: #17222a; --cum-bubble-line: #22323b;
+}
+/* 夜间里各主题只换强调色，其余沿用上面那套石墨底 */
+html[data-theme="dark"][data-skin="wb-breeze"] body {
+  --wx-green: #56b07c; --wxa-green: #56b07c;
+  --cum-accent: #56b07c; --cum-accent-deep: #8fd6ac;
+}
+html[data-theme="dark"][data-skin="wb-qq"] body {
+  --wx-green: #3fb6e8; --wxa-green: #3fb6e8;
+  --cum-accent: #3fb6e8; --cum-accent-deep: #93dcf5;
+}
+html[data-theme="dark"][data-skin="wb-peace"] body {
+  --wx-green: #a06fd0; --wxa-green: #a06fd0;
+  --cum-accent: #a06fd0; --cum-accent-deep: #d3aef0;
+}
+html[data-theme="dark"][data-skin="wb-peer"] body {
+  --wx-green: #6a95dd; --wxa-green: #6a95dd;
+  --cum-accent: #6a95dd; --cum-accent-deep: #a8c2ee;
+}
+html[data-theme="dark"][data-skin="wb-ripple"] body {
+  --wx-green: #3cbdb1; --wxa-green: #3cbdb1;
+  --cum-accent: #3cbdb1; --cum-accent-deep: #92e3da;
+}
+html[data-theme="dark"][data-skin="wb-buddy"] body {
+  --wx-green: #f08a4f; --wxa-green: #f08a4f;
+  --cum-accent: #f08a4f; --cum-accent-deep: #f7b894;
+}
+
+
+/* ---------- 61.3b 夜间通用色板（各主题共用石墨底，强调色各自不同） ---------- */
+html[data-theme="dark"][data-skin="wb-light"],
+html[data-theme="dark"][data-skin="wb-breeze"],
+html[data-theme="dark"][data-skin="wb-qq"],
+html[data-theme="dark"][data-skin="wb-peace"],
+html[data-theme="dark"][data-skin="wb-peer"],
+html[data-theme="dark"][data-skin="wb-ripple"],
+html[data-theme="dark"][data-skin="wb-buddy"] {
+  --wb-bg: #10181c;
+  --wb-sidebar: #121b21;
+  --wb-panel: #17222a;
+  --wb-panel2: #1c2a32;
+  --wb-border: #24333c;
+  --wb-border-strong: #354a55;
+  --wb-text: #dfeaf0;
+  --wb-muted: #829aa4;
+  --wb-log-bg: #0d1418;
+  --wb-log-text: #c6d8e0;
+  --wb-chip-queued-bg: #1c2a32;
+  --wb-bg-art: #10181c;
+  --wb-shadow: 0 22px 60px rgba(0, 0, 0, .34);
+}
+html[data-theme="dark"][data-skin="wb-breeze"] {
+  --wb-accent: #56b07c; --wb-accent2: #8fd6ac;
+  --wb-uc-in: #56b07c; --wb-uc-ca: #8fd6ac; --wb-uc-out: #6aa8c0;
+}
+html[data-theme="dark"][data-skin="wb-qq"] {
+  --wb-accent: #3fb6e8; --wb-accent2: #93dcf5;
+  --wb-uc-in: #3fb6e8; --wb-uc-ca: #93dcf5; --wb-uc-out: #9c8fe8;
+}
+html[data-theme="dark"][data-skin="wb-peace"] {
+  --wb-accent: #a06fd0; --wb-accent2: #d3aef0;
+  --wb-uc-in: #a06fd0; --wb-uc-ca: #e0b45c; --wb-uc-out: #6aa0dc;
+}
+html[data-theme="dark"][data-skin="wb-peer"] {
+  --wb-accent: #6a95dd; --wb-accent2: #a8c2ee;
+  --wb-uc-in: #6a95dd; --wb-uc-ca: #93aae8; --wb-uc-out: #5fc4bb;
+}
+html[data-theme="dark"][data-skin="wb-ripple"] {
+  --wb-accent: #3cbdb1; --wb-accent2: #92e3da;
+  --wb-uc-in: #3cbdb1; --wb-uc-ca: #92e3da; --wb-uc-out: #7fbde0;
+}
+html[data-theme="dark"][data-skin="wb-buddy"] {
+  --wb-accent: #f08a4f; --wb-accent2: #f7b894;
+  --wb-uc-in: #f08a4f; --wb-uc-ca: #f2b45c; --wb-uc-out: #74b6cc;
+}
+
+
+/* ---------- 61.3c-pre 兜底：旧皮肤（ocean/warm 等）没有 --wb-* 时，
+     全局映射层只在 wb 系皮肤启用（上面选择器已限定），这里再给聊天件
+     用的 --cum-*/--wxa-* 一份全局兜底，防止旧皮肤下这些件失效。 ---------- */
+:root {
+  --cum-canvas: var(--bg);
+  --cum-rail: var(--sidebar);
+  --cum-accent: var(--accent);
+  --cum-accent-deep: var(--accent2);
+  --cum-badge: var(--bad);
+  --cum-bubble: var(--panel);
+  --cum-bubble-line: var(--border);
+  --wxa-search: var(--panel2);
+}
+
+/* ---------- 61.3c 主题 → 全局 token 映射（末位加载，靠后取胜） ----------
+ * linear-theme.css / cumora.css 里有「布局级强制白底」规则（html[data-layout="workbench"]
+ * + !important），特异性高于主题块本身；这里用同样的 !important + 更高特异性
+ * （html[data-layout][data-skin] = 0,2,1，与前层同权重但本文件最后加载）把
+ * 主题色板真正落到全局变量上——否则换主题只换聊天窗，主区仍是白底。 */
+html[data-layout][data-skin="wbbuddy"], html[data-layout][data-skin="wb-light"], html[data-layout][data-skin="wb-dark"], html[data-layout][data-skin="wb-qq"], html[data-layout][data-skin="wb-peace"], html[data-layout][data-skin="wb-peer"], html[data-layout][data-skin="wb-ripple"], html[data-layout][data-skin="wb-breeze"], html[data-layout][data-skin="wb-buddy"] {
+  --bg: var(--wb-bg) !important;
+  --sidebar: var(--wb-sidebar) !important;
+  --panel: var(--wb-panel) !important;
+  --panel2: var(--wb-panel2) !important;
+  --border: var(--wb-border) !important;
+  --border-strong: var(--wb-border-strong) !important;
+  --text: var(--wb-text) !important;
+  --muted: var(--wb-muted) !important;
+  --accent: var(--wb-accent) !important;
+  --accent2: var(--wb-accent2) !important;
+  --ok: var(--wb-ok) !important;
+  --warn: var(--wb-warn) !important;
+  --bad: var(--wb-bad) !important;
+  --log-bg: var(--wb-log-bg) !important;
+  --log-text: var(--wb-log-text) !important;
+  --chip-queued-bg: var(--wb-chip-queued-bg) !important;
+  --shadow: var(--wb-shadow) !important;
+  --uc-in: var(--wb-uc-in) !important;
+  --uc-ca: var(--wb-uc-ca) !important;
+  --uc-out: var(--wb-uc-out) !important;
+  /* 1031 主题直达：--cb-* 家族（desktop-workbench Codex 层的消费面）一并映射——
+     否则顶栏/主画布/按钮/卡片描边永远停在 Codex 浅色硬编码上，切肤不动。
+     全部由 --wb-* 派生（color-mix 向文字色偏移一档做灰阶）。 */
+  --cb-canvas: color-mix(in srgb, var(--wb-bg) 94%, var(--wb-text)) !important;
+  --cb-rail-bg: var(--wb-sidebar) !important;
+  --cb-rail-text: var(--wb-muted) !important;
+  --cb-divider: var(--wb-border) !important;
+  --cb-divider-soft: var(--wb-border) !important;
+  --cb-hover: color-mix(in srgb, var(--wb-text) 5%, transparent) !important;
+  --cb-active: color-mix(in srgb, var(--wb-accent) 10%, transparent) !important;
+  --cb-active-text: var(--wb-accent) !important;
+  --cb-accent: var(--wb-accent) !important;
+  --cb-button-bg: var(--wb-panel) !important;
+  --cb-button-border: var(--wb-border) !important;
+  --cb-button-hover: color-mix(in srgb, var(--wb-text) 4%, var(--wb-panel)) !important;
+  --cb-card-border: var(--wb-border) !important;
+  --cb-focus: var(--wb-accent) !important;
+  --cb-focus-ring: color-mix(in srgb, var(--wb-accent) 12%, transparent) !important;
+  --cb-topbar: color-mix(in srgb, var(--wb-bg) 92%, transparent) !important;
+  /* hive-ui 的画布/文字/线家族（body 底色=--cb-bg-0 字面量的元凶面）：一并映射 */
+  --cb-bg-0: color-mix(in srgb, var(--wb-bg) 94%, var(--wb-text)) !important;
+  --cb-bg-nav: color-mix(in srgb, var(--wb-bg) 97%, var(--wb-text)) !important;
+  --cb-bg-rail: color-mix(in srgb, var(--wb-bg) 96%, var(--wb-text)) !important;
+  --cb-bg-sidebar: var(--wb-panel) !important;
+  --cb-bg-nav-hover: color-mix(in srgb, var(--wb-text) 5%, var(--wb-bg)) !important;
+  --cb-bg-nav-selected: color-mix(in srgb, var(--wb-text) 12%, var(--wb-bg)) !important;
+  --cb-bg-1: var(--wb-panel) !important;
+  --cb-bg-2: color-mix(in srgb, var(--wb-bg) 92%, var(--wb-text)) !important;
+  --cb-bg-inset: color-mix(in srgb, var(--wb-bg) 90%, var(--wb-text)) !important;
+  --cb-text-1: var(--wb-text) !important;
+  --cb-text-2: var(--wb-muted) !important;
+  --cb-text-3: var(--wb-muted) !important;
+  --cb-line: var(--wb-border) !important;
+  --cb-line-strong: var(--wb-border-strong) !important;
+  --cb-brand: var(--wb-accent) !important;
+  --cb-brand-strong: var(--wb-accent) !important;
+  --cb-success: var(--wb-ok) !important;
+  --cb-warning: var(--wb-warn) !important;
+  --cb-danger: var(--wb-bad) !important;
+}
+/* 画布：首页 / 主区背景一律跟主题走（顶掉 linear-theme 的纯白/纯黑硬写） */
+html[data-layout][data-skin="wbbuddy"] main, html[data-layout][data-skin="wb-light"] main, html[data-layout][data-skin="wb-dark"] main, html[data-layout][data-skin="wb-qq"] main, html[data-layout][data-skin="wb-peace"] main, html[data-layout][data-skin="wb-peer"] main, html[data-layout][data-skin="wb-ripple"] main, html[data-layout][data-skin="wb-breeze"] main, html[data-layout][data-skin="wb-buddy"] main,
+html[data-layout][data-skin="wbbuddy"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-light"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-dark"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-qq"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-peace"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-peer"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-ripple"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-breeze"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-buddy"] main:has(> #page-home:not(.hidden)) {
+  background: var(--wb-bg) !important;
+}
+
+/* ---------- 61.4 设置面板跟随主题 ---------- */
+html[data-layout] body.settings-mode {
+  --st-canvas: #eef6f9;
+  --st-card: #ffffff;
+  --st-nav: #f5fafb;
+  --st-line: #e2eef1;
+  --st-border: #e2eef1;
+  --st-text: #16323a;
+  --st-sub: #7d99a3;
+  --st-strong: #0e3d47;
+  --st-mint: #cfe9ed;
+  --st-mint-2: #cfe9ed;
+  --st-mint-ink: #0e4a56;
+  --st-ctl: #ffffff;
+  --st-ctl-line: #dcebef;
+  --st-primary: #177983;
+  --st-hover: rgba(14, 74, 86, .05);
+}
+html[data-skin="wb-dark"] body.settings-mode {
+  --st-canvas: #10181c;
+  --st-card: #17222a;
+  --st-nav: #121b21;
+  --st-line: #24333c;
+  --st-border: #24333c;
+  --st-text: #dfeaf0;
+  --st-sub: #829aa4;
+  --st-strong: #eaf4f6;
+  --st-mint: #1e3d44;
+  --st-mint-2: #1e3d44;
+  --st-mint-ink: #cfe9ed;
+  --st-ctl: #1c2a32;
+  --st-ctl-line: #31424c;
+  --st-primary: #4fb3bd;
+  --st-hover: rgba(255, 255, 255, .06);
+}
+html[data-skin="wbbuddy"] body.settings-mode {
+  --st-canvas: #f7f8fa;
+  --st-card: #ffffff;
+  --st-nav: #f7f8fa;
+  --st-line: #ececf0;
+  --st-border: #ececf0;
+  --st-text: #1f2329;
+  --st-sub: #646a73;
+  --st-strong: #14171c;
+  --st-mint: #e8eaf5;
+  --st-mint-2: #e8eaf5;
+  --st-mint-ink: #3d4888;
+  --st-ctl: #ffffff;
+  --st-ctl-line: #dcdce3;
+  --st-primary: #4e5ba6;
+  --st-hover: rgba(78, 91, 166, .06);
+}
+html[data-theme="dark"][data-skin="wbbuddy"] body.settings-mode {
+  --st-canvas: #1c1d21;
+  --st-card: #232428;
+  --st-nav: #17181c;
+  --st-line: #2e2f35;
+  --st-border: #2e2f35;
+  --st-text: #e8e9ec;
+  --st-sub: #9a9ca6;
+  --st-strong: #f2f3f5;
+  --st-mint: #2c3050;
+  --st-mint-2: #2c3050;
+  --st-mint-ink: #c3c9ee;
+  --st-ctl: #232428;
+  --st-ctl-line: #3d3f47;
+  --st-primary: #7b86c9;
+  --st-hover: rgba(123, 134, 201, .10);
+}
+html[data-skin="wb-breeze"] body.settings-mode {
+  --st-canvas: #eef6f0; --st-card: #fdfffd; --st-nav: #f6faf5;
+  --st-line: #dceadd; --st-border: #dceadd; --st-text: #17342a; --st-sub: #7a9a8b;
+  --st-strong: #14402f; --st-mint: #c9e6d0; --st-mint-2: #c9e6d0; --st-mint-ink: #1d4a33;
+  --st-ctl: #ffffff; --st-ctl-line: #d5e7da; --st-primary: #2f7d52;
+}
+html[data-skin="wb-qq"] body.settings-mode {
+  --st-canvas: #f2f7fa; --st-card: #ffffff; --st-nav: #ffffff;
+  --st-line: #e3e9ee; --st-border: #e3e9ee; --st-text: #16232e; --st-sub: #7b8b99;
+  --st-strong: #10394f; --st-mint: #d9eefb; --st-mint-2: #d9eefb; --st-mint-ink: #0d4d69;
+  --st-ctl: #ffffff; --st-ctl-line: #dde6ec; --st-primary: #0f9fd8;
+}
+html[data-skin="wb-peace"] body.settings-mode {
+  --st-canvas: #f5effa; --st-card: #ffffff; --st-nav: #fbf7fe;
+  --st-line: #e6dbf2; --st-border: #e6dbf2; --st-text: #2a1a38; --st-sub: #8b78a0;
+  --st-strong: #3d2158; --st-mint: #e3d0f6; --st-mint-2: #e3d0f6; --st-mint-ink: #4a2372;
+  --st-ctl: #ffffff; --st-ctl-line: #e7dcf2; --st-primary: #7a3fb5;
+}
+html[data-skin="wb-peer"] body.settings-mode {
+  --st-canvas: #edf2fa; --st-card: #ffffff; --st-nav: #f6f9fd;
+  --st-line: #dbe3f0; --st-border: #dbe3f0; --st-text: #1b2739; --st-sub: #74839c;
+  --st-strong: #1e3b63; --st-mint: #d3e0f7; --st-mint-2: #d3e0f7; --st-mint-ink: #23477e;
+  --st-ctl: #ffffff; --st-ctl-line: #dde5f1; --st-primary: #2a5fa8;
+}
+html[data-skin="wb-ripple"] body.settings-mode {
+  --st-canvas: #e8f5f4; --st-card: #ffffff; --st-nav: #f4fbfa;
+  --st-line: #d3eae7; --st-border: #d3eae7; --st-text: #123535; --st-sub: #6f9490;
+  --st-strong: #0b4342; --st-mint: #c6ebe6; --st-mint-2: #c6ebe6; --st-mint-ink: #0b5751;
+  --st-ctl: #ffffff; --st-ctl-line: #d6ebe8; --st-primary: #0f8f86;
+}
+html[data-skin="wb-buddy"] body.settings-mode {
+  --st-canvas: #fdf4ec; --st-card: #ffffff; --st-nav: #fffaf6;
+  --st-line: #f0dfd0; --st-border: #f0dfd0; --st-text: #3a2113; --st-sub: #a3836b;
+  --st-strong: #55290f; --st-mint: #fbe0cd; --st-mint-2: #fbe0cd; --st-mint-ink: #8a3a12;
+  --st-ctl: #ffffff; --st-ctl-line: #efdfd1; --st-primary: #d9622b;
+}
+
+
+/* 夜间下的设置面板：底色统一石墨，强调色仍跟随当前主题 */
+html[data-theme="dark"][data-layout] body.settings-mode {
+  --st-canvas: #10181c;
+  --st-card: #17222a;
+  --st-nav: #121b21;
+  --st-line: #24333c;
+  --st-border: #24333c;
+  --st-text: #dfeaf0;
+  --st-sub: #829aa4;
+  --st-strong: #eaf4f6;
+  --st-mint: #1e3d44;
+  --st-mint-2: #1e3d44;
+  --st-mint-ink: #cfe9ed;
+  --st-ctl: #1c2a32;
+  --st-ctl-line: #31424c;
+  --st-primary: var(--cum-accent);
+  --st-hover: rgba(255, 255, 255, .06);
+}
+
+/* ---------- 61.5 强调件跟随主题（按钮 / 发送键 / 新任务钮） ---------- */
+html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode) button.primary {
+  background: var(--cum-accent-deep) !important;
+  background-image: none !important;
+  color: #fff !important;
+}
+html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode) button.primary:hover {
+  background: var(--cum-accent) !important;
+}
+html[data-layout="workbench"] body #rd-chat #rd-chat-send,
+html[data-layout="workbench"] body #rd-chat #rd-chat-send.primary {
+  background: var(--cum-accent) !important;
+  background-image: none !important;
+  color: #fff !important;
+  border-radius: 50% !important;
+}
+html[data-layout="workbench"] body #sidebar input[type="search"],
+html[data-layout="workbench"] body #sidebar .search input,
+html[data-layout="workbench"] body #sidebar input {
+  background: var(--wxa-search);
+  border-radius: 999px;
+  border-color: transparent;
+}
+html[data-layout="workbench"] body #sidebar .friend.is-sel,
+html[data-layout="workbench"] body #sidebar .friend.is-sel .fr-head {
+  color: var(--cum-accent-deep);
+}
+html[data-layout] body.settings-mode button.primary {
+  background: var(--st-primary) !important;
+  background-image: none !important;
+  color: #fff !important;
+  border-radius: 10px;
+}
+
+/* ---------- 61.6 外观页：新版式「主题预览 + 全部主题」网格 ---------- */
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero {
+  display: block;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--st-border);
+  background: var(--st-card);
+  margin: 10px 0 22px;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-stage {
+  position: relative;
+  height: 260px;
+  background: var(--wb-hero-bg, linear-gradient(135deg, #d9f0f2, #bfe3e6));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-shot {
+  width: 78%;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 18px 46px rgba(16, 48, 58, .28);
+  background: var(--wb-shot-bg, #fff);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: #fff;
+  background: rgba(30, 58, 66, .72);
+  backdrop-filter: blur(4px);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-bar {
+  height: 26px;
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  background: var(--wb-shot-rail, #eef5f7);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-bar i {
+  display: block; flex: 0 0 7px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--wb-shot-dot, #c3d9dd);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-side {
+  width: 96px;
+  flex: 0 0 96px;
+  background: var(--wb-shot-list, #f7fbfc);
+  border-right: 1px solid var(--wb-shot-line, #e0edf0);
+  padding: 8px 8px;
+  display: flex; flex-direction: column; gap: 5px;
+  overflow: hidden;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-side i {
+  display: block;
+  height: 7px; border-radius: 4px; background: var(--wb-shot-bar, #dfeaec);
+  flex: 0 0 7px;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-side i.sel {
+  background: var(--wb-shot-sel, #cfe9ed);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-main {
+  flex: 1;
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-title {
+  display: block;
+  font-size: 13px; font-weight: 700; color: var(--wb-shot-text, #16323a);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-chip {
+  display: block;
+  height: 12px; width: 62%; border-radius: 999px; background: var(--wb-shot-chip, #e6eff1);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-input {
+  width: 78%; height: 40px; border-radius: 12px;
+  background: var(--wb-shot-input, #fff);
+  border: 1px solid var(--wb-shot-line, #e0edf0);
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-input b {
+  display: block;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--wb-shot-accent, #177983);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-foot {
+  padding: 9px 14px 12px;
+  font-size: 12px;
+  color: var(--st-sub);
+  display: flex; align-items: center; gap: 8px;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-hero .wb-hero-foot b {
+  color: var(--st-text);
+  font-weight: 650;
+}
+/* 主题网格：每张卡 = 壁纸缩略图 + 主题名 */
+html[data-layout] body.settings-mode #page-settings .wb-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+  margin: 12px 0 6px;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card {
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  text-align: left;
+  color: inherit;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card .wb-thumb {
+  height: 96px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  box-shadow: 0 6px 18px rgba(20, 50, 60, .10);
+  transition: transform .15s, box-shadow .15s;
+  position: relative;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card:hover .wb-thumb {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(20, 50, 60, .16);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card.active .wb-thumb {
+  border-color: var(--st-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-primary) 22%, transparent);
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card .wb-thumb-label {
+  font-size: 12.5px;
+  color: var(--st-text);
+  text-align: center;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card.active .wb-thumb-label {
+  color: var(--st-primary);
+  font-weight: 650;
+}
+html[data-layout] body.settings-mode #page-settings .wb-theme-card .wb-thumb-more {
+  display: flex; align-items: center; justify-content: center;
+  height: 96px; border-radius: 12px;
+  background: var(--st-nav);
+  border: 1px dashed var(--st-ctl-line);
+  color: var(--st-sub);
+  font-size: 12px;
+}

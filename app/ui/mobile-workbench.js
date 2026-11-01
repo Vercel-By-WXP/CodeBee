@@ -196,7 +196,8 @@
   window.mobileWorkbenchReady = true;
 })();
 
-/* 手机壳：首页 / 任务 / 我的。数据全部来自 /api/state，动作全部走既有实现。 */
+/* 手机壳：任务 / 定时任务 / 发现 / 我的（WorkBuddy 视觉，2026-11-01）。
+   数据全部来自 /api/state 与 /api/automation，动作全部走既有实现。 */
 (() => {
   const media = window.matchMedia("(max-width: 900px)");
   const label = (zh, en) => document.documentElement.dataset.lang === "en" ? en : zh;
@@ -207,14 +208,20 @@
   if (!shell || !tabbar) return;
   const views = {};
   shell.querySelectorAll("[data-mob-view]").forEach((node) => { views[node.dataset.mobView] = node; });
-  let view = "home";
+  let view = "tasks";
   let filter = "all";
+  let dirFilter = "";
   let detailWasOpen = false;
   let suppressReturn = false;
 
   const state = () => (typeof S !== "undefined" && S.state) || {};
   const latestOf = (id) => (state().task_latest || {})[id] || {};
   const attentionOf = (id) => (state().task_attention || {})[id] || {};
+  const hapticOn = () => { try { return localStorage.getItem("orch.haptic") === "1"; } catch (e) { return false; } };
+  const haptic = () => {
+    if (!hapticOn() || !navigator.vibrate) return;
+    try { navigator.vibrate(10); } catch (e) { /* 忽略：部分浏览器禁用 */ }
+  };
   const categoryOf = (task, run, attention) => {
     const status = run.status || task.status || "";
     if (task.git_state === "isolated" || attention.approval_pending ||
@@ -262,22 +269,55 @@
 
   const paintText = () => {
     $("mob-greeting").textContent = label("把要做的事，交给 CodeBee。", "Hand it to CodeBee.");
-    $("mob-new-title").textContent = label("新建任务", "New task");
-    $("mob-new-sub").textContent = label("描述目标，自动拆解并执行", "Describe the goal — CodeBee plans and runs it");
     $("mob-sec-pending-title").textContent = label("等你处理", "Needs you");
     $("mob-sec-running-title").textContent = label("进行中", "Running");
-    $("mob-sec-recent-title").textContent = label("最近完成", "Recently done");
-    $("mob-tasks-title").textContent = label("任务", "Tasks");
+    $("mob-tasks-title").textContent = label("全部任务", "All tasks");
+    $("mob-auto-title").textContent = label("定时任务", "Scheduled");
+    $("mob-find-title").textContent = label("发现", "Discover");
     $("mob-me-title").textContent = label("我的", "Me");
+    $("mob-composer-ph").textContent = label("描述目标，交给 CodeBee…", "Describe the goal…");
+    $("mob-drawer-new-label").textContent = label("新建任务", "New task");
+    $("mob-auto-note").textContent = label(
+      "到点自动运行；新建、编辑和模板在电脑端「自动化」页。",
+      "Runs on schedule. Create, edit and templates live on the desktop Automation page.");
+    $("mob-auto-manage").textContent = label("去电脑端管理", "Manage on desktop");
+    $("mob-me-host").textContent = label("连接电脑端后自动同步", "Syncs with your desktop");
     $("mob-me-conn-label").textContent = label("连接状态", "Connection");
-    $("mob-me-theme-label").textContent = label("外观", "Appearance");
+    $("mob-me-theme-label").textContent = label("主题", "Theme");
     $("mob-me-lang-label").textContent = label("语言", "Language");
-    $("mob-me-sound-label").textContent = label("任务完成提示音", "Completion sound");
+    $("mob-me-font-label").textContent = label("字体大小", "Font size");
+    $("mob-me-haptic-label").textContent = label("触感反馈", "Haptics");
+    $("mob-me-sound-label").textContent = label("提示音", "Sound");
+    $("mob-me-storage-label").textContent = label("存储空间", "Storage");
+    $("mob-me-desktop-label").textContent = label("更多设置（电脑端）", "More settings (desktop)");
     $("mob-me-refresh").textContent = label("重新连接", "Reconnect");
     $("mob-me-note").textContent = label(
-      "手机只保留连接、外观、语言和通知；皮肤、模型、通道等其余设置在电脑上打开。",
-      "Phones keep only connection, appearance, language and notifications. Open the desktop app for everything else.");
-    const titles = { home: label("首页", "Home"), tasks: label("任务", "Tasks"), new: label("新任务", "New"), me: label("我的", "Me") };
+      "任务与产物保存在电脑端；手机只保留上面这些常用设置。",
+      "Tasks and outputs live on the desktop; the phone keeps only these quick settings.");
+    $("mob-font-title").textContent = label("字体大小", "Font size");
+    $("mob-font-ok").textContent = label("确认", "Done");
+    $("mob-fp-user").textContent = label("帮我预览一下字号大小", "Preview the font size");
+    $("mob-fp-bot").textContent = label(
+      "拖动下面的滑块设置字号。设置后会改变手机版全局的文字大小。",
+      "Drag the slider to change the font size across the mobile app.");
+    $("mob-slider-mid").textContent = label("标准", "Default");
+    $("mob-font-note").textContent = label(
+      "跟随系统的字号暂不支持，手动选择会一直生效。",
+      "System font scale is not followed; your pick stays until changed.");
+    $("mob-st-title").textContent = label("存储空间", "Storage");
+    $("mob-st-clearall").textContent = label("全部清除", "Clear all");
+    $("mob-st-hero-label").textContent = label("CodeBee 占用空间", "CodeBee storage used");
+    $("mob-st-cache-title").textContent = label("界面缓存", "Interface cache");
+    $("mob-st-cache-clear").textContent = label("清除", "Clear");
+    $("mob-st-cache-desc").textContent = label(
+      "本机保存的界面状态与草稿（页签、折叠、筛选等）。清理后不影响任务数据。",
+      "Local UI state and drafts (tabs, folds, filters). Task data is not affected.");
+    $("mob-st-cloud-title").textContent = label("任务与产物数据", "Tasks and outputs");
+    $("mob-st-cloud-desc").textContent = label(
+      "保存在电脑端，不占用本机存储；打开会话时从电脑端读取。",
+      "Stored on the desktop and read from there; they do not use phone storage.");
+    const titles = { tasks: label("任务", "Tasks"), auto: label("定时任务", "Scheduled"),
+      find: label("发现", "Discover"), me: label("我的", "Me") };
     tabbar.querySelectorAll("[data-mob-tab-label]").forEach((span) => {
       const key = span.dataset.mobTabLabel;
       if (titles[key]) span.textContent = titles[key];
@@ -347,25 +387,22 @@
       '<span class="mob-badge ' + status.cls + '">' + esc(status.text) + '</span></button>';
   };
 
-  const paintHome = () => {
+  const paintFeed = () => {
     paintDate();
     const items = taskItems();
     const running = items.filter((item) => item.cat === "running");
     const pending = items.filter((item) => item.cat === "pending");
-    const recent = items.filter((item) => item.cat === "done").slice(0, 3);
     const summary = running.length || pending.length
       ? label(running.length + " 个任务在跑 · " + pending.length + " 个等你处理",
               running.length + " running · " + pending.length + " awaiting you")
-      : (items.length ? label("现在没有在跑的任务", "Nothing is running right now") : label("还没有任务，点下面新建一个。", "No tasks yet — create one below."));
+      : (items.length ? label("现在没有在跑的任务", "Nothing is running right now") : label("还没有任务，点下面说第一句。", "No tasks yet — say your first goal below."));
     $("mob-summary").textContent = summary;
     $("mob-home-pending").innerHTML = pending.map(pendingCard).join("");
     $("mob-home-running").innerHTML = running.map(runningCard).join("");
-    $("mob-home-recent").innerHTML = recent.map(taskRow).join("");
     $("mob-pending-count").textContent = pending.length ? String(pending.length) : "";
     $("mob-running-count").textContent = running.length ? String(running.length) : "";
     $("mob-sec-pending").classList.toggle("hidden", !pending.length);
     $("mob-sec-running").classList.toggle("hidden", !running.length);
-    $("mob-sec-recent").classList.toggle("hidden", !recent.length);
   };
 
   const paintTasks = () => {
@@ -374,16 +411,132 @@
     items.forEach((item) => { if (counts[item.cat] != null) counts[item.cat] += 1; });
     const labels = { all: label("全部", "All"), running: label("进行中", "Running"),
       pending: label("待处理", "Needs you"), done: label("已完成", "Done") };
-    $("mob-task-filters").innerHTML = Object.keys(labels).map((key) =>
-      '<button type="button" class="mob-chip' + (filter === key ? " on" : "") + '" data-filter="' + key + '">' +
+    let chips = Object.keys(labels).map((key) =>
+      '<button type="button" class="mob-chip' + (filter === key && !dirFilter ? " on" : "") + '" data-filter="' + key + '">' +
       esc(labels[key]) + '<b>' + counts[key] + '</b></button>').join("");
-    const shown = filter === "all" ? items : items.filter((item) => item.cat === filter);
+    if (dirFilter) {
+      chips += '<button type="button" class="mob-chip on" data-filter-dir="' + esc(dirFilter) + '">📂 ' +
+        esc(dirFilter) + ' ✕</button>';
+    }
+    $("mob-task-filters").innerHTML = chips;
+    $("mob-all-count").textContent = items.length ? String(items.length) : "";
+    let shown = filter === "all" ? items : items.filter((item) => item.cat === filter);
+    if (dirFilter) shown = shown.filter((item) => dirName(item.task.workdir) === dirFilter);
     $("mob-task-list").innerHTML = shown.length ? shown.map(taskRow).join("") :
-      '<p class="mob-empty">' + esc(filter === "all"
+      '<p class="mob-empty">' + esc(filter === "all" && !dirFilter
         ? label("还没有任务", "No tasks yet")
         : label("这个筛选下没有任务", "No tasks in this filter")) + '</p>';
   };
 
+  /* ---------- 定时任务页：真源 /api/automation（与桌面同源，只读清单） ---------- */
+  const paintAuto = () => {
+    const list = $("mob-auto-list");
+    const tasks = (typeof S !== "undefined" && Array.isArray(S.autoTasks)) ? S.autoTasks : null;
+    if (!tasks) {
+      list.innerHTML = '<p class="mob-empty">' + esc(label("还没连上，稍后再试。", "Not connected yet.")) + '</p>';
+      return;
+    }
+    if (!tasks.length) {
+      list.innerHTML = '<p class="mob-empty">' + esc(label(
+        "还没有定时任务——去电脑端「自动化」页新建，或从模板一键创建。",
+        "No scheduled tasks yet — create one on the desktop Automation page.")) + '</p>';
+      return;
+    }
+    list.innerHTML = tasks.map((tsk) => {
+      const kind = (typeof window.autoKindText === "function") ? window.autoKindText(tsk) : (tsk.time || "");
+      return '<div class="mob-row mob-auto-row">' +
+        '<span class="mob-auto-copy"><b>' + esc(tsk.name || tsk.id) + '</b>' +
+        '<small>' + esc(kind || "") + '</small></span>' +
+        '<span class="mob-state-pill ' + (tsk.enabled ? "on" : "off") + '">' +
+        esc(tsk.enabled ? label("启用中", "On") : label("已停用", "Off")) + '</span></div>';
+    }).join("");
+  };
+  const refreshAuto = () => {
+    if (typeof window.loadAutomation !== "function") { paintAuto(); return; }
+    Promise.resolve(window.loadAutomation()).then(paintAuto, paintAuto);
+  };
+
+  /* ---------- 发现页：入口 + 专家 ---------- */
+  const FIND_ENTRIES = [
+    { key: "market", icon: "i-folder", tab: "market" },
+    { key: "skills", icon: "i-tasks", tab: "skills" },
+    { key: "knowledge", icon: "i-folder", tab: "knowledge" },
+    { key: "memory", icon: "i-chat", tab: "memory" }
+  ];
+  const paintFind = () => {
+    const entries = $("mob-find-entries");
+    const names = { market: label("插件市场", "Market"), skills: label("经验库", "Skills"),
+      knowledge: label("知识库", "Knowledge"), memory: label("记忆中心", "Memory") };
+    entries.innerHTML = '<div class="mob-find-grid">' + FIND_ENTRIES.map((item) =>
+      '<button type="button" class="mob-find-item" data-find-tab="' + item.tab + '">' +
+      '<span class="mob-find-ico"><svg class="ico" aria-hidden="true"><use href="#' + item.icon + '"></use></svg></span>' +
+      esc(names[item.key]) + '</button>').join("") + '</div>';
+    const flows = (typeof S !== "undefined" && Array.isArray(S.flows)) ? S.flows.filter((f) => f && f.id && f.agent) : [];
+    const box = $("mob-find-experts");
+    if (!flows.length) {
+      box.innerHTML = "";
+      return;
+    }
+    const nameOf = (f) => (typeof window.expertName === "function") ? window.expertName(f) : (f.agent.name || f.id);
+    const descOf = (f) => {
+      if (typeof window.expertFocus === "function" && window.expertFocus(f)) return window.expertFocus(f);
+      return (typeof window.flowDesc === "function") ? window.flowDesc(f) : (f.name || "");
+    };
+    const card = (f) => {
+      const nm = nameOf(f);
+      const av = String(nm).slice(0, 1).toUpperCase();
+      return '<button type="button" class="mob-exp-card" data-find-expert="' + esc(f.id) + '">' +
+        '<span class="mob-exp-top"><span class="mob-exp-av" aria-hidden="true">' + esc(av) + '</span>' +
+        '<span class="mob-exp-name">' + esc(nm) + '</span></span>' +
+        '<span class="mob-exp-desc">' + esc(descOf(f) || "") + '</span></button>';
+    };
+    box.innerHTML = '<div class="mob-find-head">' + esc(label("选位专家开始", "Pick an expert")) + '</div>' +
+      '<div class="mob-exp-grid">' + flows.slice(0, 12).map(card).join("") + '</div>';
+  };
+
+  /* ---------- 我的：连接 / 主题 / 语言 / 字号 / 触感 / 提示音 / 存储 ---------- */
+  const fmtBytes = (n) => {
+    if (!Number.isFinite(n)) return "—";
+    if (n < 1024) return Math.round(n) + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10 * 1024 ? 1 : 0) + " KB";
+    return (n / 1024 / 1024).toFixed(2) + " MB";
+  };
+  const localBytes = () => {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        total += (key.length + String(localStorage.getItem(key) || "").length) * 2;
+      }
+    } catch (e) { return NaN; }
+    return total;
+  };
+  const paintStorageRows = () => {
+    const row = $("mob-st-row-value");
+    if (row) row.textContent = fmtBytes(localBytes());
+  };
+  const FONT_LEVELS = [
+    { z: 0.92 }, { z: 1 }, { z: 1.08 }, { z: 1.16 }, { z: 1.25 }
+  ];
+  const FONT_LABELS = () => [label("小", "S"), label("标准", "Default"), label("大", "L"), label("更大", "XL"), label("超大", "XXL")];
+  let fontTemp = 1;
+  const applyFontLevel = (idx, temp) => {
+    const level = FONT_LEVELS[Math.max(0, Math.min(FONT_LEVELS.length - 1, idx))];
+    document.documentElement.style.setProperty("--mob-font-scale", String(level.z));
+    const range = $("mob-font-range");
+    if (range) {
+      range.value = String(idx);
+      const pct = Math.round(100 * idx / (FONT_LEVELS.length - 1));
+      range.style.setProperty("--mob-font-fill", pct + "%");
+    }
+    const val = $("mob-font-value");
+    if (val) val.textContent = FONT_LABELS()[Math.max(0, Math.min(FONT_LABELS().length - 1, idx))];
+    if (!temp) fontTemp = idx;
+  };
+  const savedFontLevel = () => {
+    const idx = parseInt(localStorage.getItem("orch.mobFontScale") || "1", 10);
+    return Number.isFinite(idx) ? Math.max(0, Math.min(FONT_LEVELS.length - 1, idx)) : 1;
+  };
   const paintMe = () => {
     const conn = document.getElementById("conn");
     const ok = !!conn && conn.classList.contains("ok");
@@ -396,14 +549,98 @@
     dot.lastElementChild.textContent = ok ? label("已连接", "Connected")
       : (state().v ? label("连接异常", "Offline") : label("连接中…", "Connecting…"));
     const mode = localStorage.getItem("orch.theme") === "dark" ? "dark" : "light";
-    $("mob-theme-seg").innerHTML = [["light", label("日间", "Light")], ["dark", label("夜间", "Dark")]]
+    $("mob-theme-seg").innerHTML = [["light", label("浅色", "Light")], ["dark", label("深色", "Dark")]]
       .map(([key, text]) => '<button type="button" class="' + (mode === key ? "on" : "") +
         '" data-mode="' + key + '">' + esc(text) + '</button>').join("");
     const lang = (typeof window.getLang === "function" ? window.getLang() : "zh");
     $("mob-lang-seg").innerHTML = [["zh", "中文"], ["en", "English"]]
       .map(([key, text]) => '<button type="button" class="' + (lang === key ? "on" : "") +
         '" data-lang="' + key + '">' + text + '</button>').join("");
+    $("mob-haptic").checked = hapticOn();
     $("mob-sound").checked = localStorage.getItem("orch.sound") !== "0";
+    // 字号子页打开时用户可能正在拖滑杆——状态帧不许把临时档位拍回已保存档
+    if (shell.dataset.sub !== "font") applyFontLevel(savedFontLevel());
+    paintStorageRows();
+  };
+
+  /* ---------- 存储子页 ---------- */
+  const paintStoragePage = () => {
+    paintStorageRows();
+    const num = $("mob-st-num");
+    const estimate = navigator.storage && typeof navigator.storage.estimate === "function"
+      ? navigator.storage.estimate() : null;
+    if (!estimate || !num) return;
+    Promise.resolve(estimate).then((info) => {
+      num.textContent = fmtBytes(Number(info && info.usage));
+    }, () => { num.textContent = "—"; });
+  };
+  /* 只清界面状态与草稿；连接、主题、语言、声音、触感、字号、常用专家一律保留 */
+  const UI_CACHE_KEYS = [
+    "orch.availAuto", "orch.hiveView.v3", "orch.inspector", "orch.lastTask", "orch.setTab",
+    "orch.ui-level", "orch.welcomed", "orch.voice_terms", "orch.browser-notify",
+    "orch.workspace-mode.v2", "orch.side-fold", "orch.side.adv", "orch.home.adv",
+    "orch.ws-entered.v1", "su.myver", "su.seen", "tutti.hiddenDirs"
+  ];
+  const clearUiCache = () => {
+    let n = 0;
+    UI_CACHE_KEYS.forEach((key) => {
+      try { if (localStorage.getItem(key) != null) { localStorage.removeItem(key); n += 1; } } catch (e) { /* 忽略 */ }
+    });
+    paintStorageRows();
+    return n;
+  };
+
+  /* ---------- 抽屉 ---------- */
+  const drawer = $("mob-drawer");
+  const drawerMask = $("mob-drawer-mask");
+  const paintDrawer = () => {
+    const items = taskItems();
+    const tasksHead = $("mob-drawer-tasks-head");
+    tasksHead.textContent = label("任务", "Tasks") + " (" + items.length + ")";
+    const dirsHead = $("mob-drawer-dirs-head");
+    const dirCounts = new Map();
+    items.forEach((item) => {
+      const d = dirName(item.task.workdir) || label("未归类", "Other");
+      dirCounts.set(d, (dirCounts.get(d) || 0) + 1);
+    });
+    dirsHead.textContent = label("空间", "Spaces") + " (" + dirCounts.size + ")";
+    $("mob-drawer-tasks").innerHTML = items.slice(0, 12).map((item) => {
+      const st = statusOf(item.task, item.run, item.attention);
+      return '<button type="button" class="mob-drawer-item" data-task="' + esc(item.task.id) + '">' +
+        '<i class="' + st.cls + '" aria-hidden="true"></i><span>' + esc(item.task.title || item.task.id) + '</span></button>';
+    }).join("") || '<p class="mob-drawer-empty">' + esc(label("还没有任务", "No tasks yet")) + '</p>';
+    $("mob-drawer-dirs").innerHTML = Array.from(dirCounts.entries()).map(([d, n]) =>
+      '<button type="button" class="mob-drawer-item" data-drawer-dir="' + esc(d) + '">' +
+      '<svg class="ico" aria-hidden="true"><use href="#i-folder"></use></svg>' +
+      '<span>' + esc(d) + '</span><small style="color:var(--mob-dim)">' + n + '</small></button>').join("");
+  };
+  const openDrawer = () => {
+    paintDrawer();
+    drawer.classList.remove("hidden");
+    drawerMask.classList.remove("hidden");
+    haptic();
+  };
+  const closeDrawer = () => {
+    drawer.classList.add("hidden");
+    drawerMask.classList.add("hidden");
+  };
+
+  /* ---------- 子页 ---------- */
+  const openSub = (name) => {
+    shell.dataset.sub = name;
+    const el = $("mob-sub-" + name);
+    if (el) {
+      el.classList.remove("hidden");
+      if (name === "storage") paintStoragePage();
+    }
+    haptic();
+  };
+  const closeSubs = () => {
+    shell.removeAttribute("data-sub");
+    ["font", "storage"].forEach((name) => {
+      const el = $("mob-sub-" + name);
+      if (el) el.classList.add("hidden");
+    });
   };
 
   const paintBadge = () => {
@@ -417,24 +654,31 @@
   const paintAll = () => {
     if (!media.matches) return;
     paintText();
-    paintHome();
+    paintFeed();
     paintTasks();
+    paintAuto();
+    paintFind();
     paintMe();
     paintBadge();
+    if (drawer && !drawer.classList.contains("hidden")) paintDrawer();
   };
 
   const switchView = (name) => {
     if (!views[name]) return;
     view = name;
+    closeSubs();
     Object.keys(views).forEach((key) => views[key].classList.toggle("hidden", key !== name));
     tabbar.querySelectorAll("[data-mob-tab]").forEach((button) =>
       button.classList.toggle("active", button.dataset.mobTab === name));
+    shell.dataset.view = name;
+    if (name === "auto") refreshAuto();
   };
 
   const showShell = (name) => {
     if (!media.matches) return;
     document.body.classList.add("mob-shell-on");
     document.body.classList.remove("mob-composing-active");
+    closeDrawer();
     switchView(name || view);
     paintAll();
     const scroller = $("mob-views");
@@ -448,11 +692,15 @@
       if (typeof window.toast === "function") window.toast(label("任务不存在或已删除", "Task not found"), true);
       return;
     }
+    closeDrawer();
+    haptic();
     document.body.classList.remove("mob-shell-on", "mob-composing-active");
     if (typeof window.sideOpenTask === "function") window.sideOpenTask(id);
   };
 
   const openComposer = () => {
+    closeDrawer();
+    haptic();
     document.body.classList.add("mob-composing-active");
     document.body.classList.remove("mob-shell-on");
     suppressReturn = true;
@@ -469,11 +717,43 @@
     }, 80);
   };
 
+  /* 从手机壳跳到电脑端页面：壳收起，右上留一枚「手机版」回程胶囊 */
+  let returnChip = null;
+  const ensureReturnChip = () => {
+    if (returnChip) return returnChip;
+    returnChip = document.createElement("button");
+    returnChip.type = "button";
+    returnChip.id = "mob-return";
+    returnChip.textContent = label("手机版", "Mobile");
+    returnChip.addEventListener("click", () => showShell(view));
+    document.body.appendChild(returnChip);
+    return returnChip;
+  };
+  const goDesktop = (tab, sub) => {
+    closeDrawer();
+    document.body.classList.remove("mob-shell-on");
+    if (typeof window.switchTab === "function") window.switchTab(tab);
+    if (sub && typeof window.mkSetTab === "function") window.mkSetTab(sub);
+    ensureReturnChip();
+  };
+  const syncReturnChip = () => {
+    if (!returnChip) return;
+    const show = media.matches &&
+      !document.body.classList.contains("mob-shell-on") &&
+      !document.body.classList.contains("mob-detail-active") &&
+      !document.body.classList.contains("mob-composing-active") &&
+      (!detail || detail.classList.contains("hidden"));
+    returnChip.classList.toggle("hidden", !show);
+  };
+  new MutationObserver(syncReturnChip).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  if (detail) new MutationObserver(syncReturnChip).observe(detail, { attributes: true, attributeFilter: ["class"] });
+
   const onClick = (event) => {
     const decision = event.target.closest("[data-decide]");
     if (decision) {
       event.preventDefault();
       event.stopPropagation();
+      haptic();
       const id = decision.dataset.task;
       const kind = decision.dataset.decide;
       if (kind === "merge") window.gitMerge(id);
@@ -482,22 +762,50 @@
       else if (kind === "retry") window.retryTask(id);
       return;
     }
+    const dirChip = event.target.closest("[data-filter-dir]");
+    if (dirChip) { dirFilter = ""; paintTasks(); return; }
+    const drawerDir = event.target.closest("[data-drawer-dir]");
+    if (drawerDir) {
+      dirFilter = drawerDir.dataset.drawerDir;
+      closeDrawer();
+      switchView("tasks");
+      paintTasks();
+      return;
+    }
+    const findTab = event.target.closest("[data-find-tab]");
+    if (findTab) { goDesktop(findTab.dataset.findTab); return; }
+    const findExpert = event.target.closest("[data-find-expert]");
+    if (findExpert) {
+      haptic();
+      if (typeof window.pickExpert === "function") window.pickExpert(findExpert.dataset.findExpert);
+      openComposer();
+      return;
+    }
     const task = event.target.closest("[data-task]");
     if (task) { openTask(task.dataset.task); return; }
   };
 
   $("mob-home-pending").addEventListener("click", onClick);
   $("mob-home-running").addEventListener("click", onClick);
-  $("mob-home-recent").addEventListener("click", onClick);
   $("mob-task-list").addEventListener("click", onClick);
   $("mob-task-filters").addEventListener("click", (event) => {
+    const dirChip = event.target.closest("[data-filter-dir]");
+    if (dirChip) { dirFilter = ""; paintTasks(); return; }
     const chip = event.target.closest("[data-filter]");
     if (!chip) return;
     filter = chip.dataset.filter;
+    dirFilter = "";
+    haptic();
     paintTasks();
   });
-  $("mob-new-task").addEventListener("click", openComposer);
-  $("mob-tasks-new").addEventListener("click", openComposer);
+  $("mob-drawer-tasks").addEventListener("click", onClick);
+  $("mob-drawer-dirs").addEventListener("click", onClick);
+  $("mob-find-entries").addEventListener("click", onClick);
+  $("mob-find-experts").addEventListener("click", onClick);
+  $("mob-composer").addEventListener("click", openComposer);
+  $("mob-menu").addEventListener("click", openDrawer);
+  drawerMask.addEventListener("click", closeDrawer);
+  $("mob-drawer-new").addEventListener("click", openComposer);
   $("mob-refresh").addEventListener("click", () => {
     if (typeof window.poll === "function") window.poll();
     paintAll();
@@ -505,6 +813,45 @@
   $("mob-me-refresh").addEventListener("click", () => {
     if (typeof window.poll === "function") window.poll();
     paintMe();
+  });
+  $("mob-me-desktop").addEventListener("click", () => {
+    closeDrawer();
+    document.body.classList.remove("mob-shell-on");
+    if (typeof window.enterSettings === "function") window.enterSettings();
+    ensureReturnChip();
+  });
+  $("mob-me-font").addEventListener("click", () => openSub("font"));
+  $("mob-me-storage").addEventListener("click", () => openSub("storage"));
+  shell.querySelectorAll("[data-mob-back]").forEach((button) =>
+    button.addEventListener("click", () => {
+      if (shell.dataset.sub === "font") applyFontLevel(savedFontLevel());   // 不确认即回退
+      closeSubs();
+    }));
+  $("mob-font-range").addEventListener("input", (event) => {
+    fontTemp = parseInt(event.target.value, 10) || 0;
+    applyFontLevel(fontTemp, true);
+  });
+  $("mob-font-ok").addEventListener("click", () => {
+    try { localStorage.setItem("orch.mobFontScale", String(fontTemp)); } catch (e) { /* 忽略 */ }
+    applyFontLevel(fontTemp);
+    closeSubs();
+    if (typeof window.toast === "function") window.toast(label("字号已保存", "Font size saved"));
+  });
+  $("mob-st-cache-clear").addEventListener("click", async () => {
+    if (typeof window.uiConfirm === "function" && !await window.uiConfirm(
+      label("清除界面缓存？页签、折叠、筛选等本机状态会被重置。", "Clear interface cache? Local UI state resets."), 
+      { ok: label("清除", "Clear") })) return;
+    const n = clearUiCache();
+    if (typeof window.toast === "function") window.toast(label("已清除 " + n + " 项", n + " items cleared"));
+    paintStoragePage();
+  });
+  $("mob-st-clearall").addEventListener("click", async () => {
+    if (typeof window.uiConfirm === "function" && !await window.uiConfirm(
+      label("清除全部本机界面缓存？任务数据保存在电脑端，不受影响。", "Clear all local interface cache? Desktop task data is not affected."),
+      { ok: label("全部清除", "Clear all") })) return;
+    const n = clearUiCache();
+    if (typeof window.toast === "function") window.toast(label("已清除 " + n + " 项", n + " items cleared"));
+    paintStoragePage();
   });
   $("mob-theme-seg").addEventListener("click", (event) => {
     const button = event.target.closest("[data-mode]");
@@ -518,6 +865,10 @@
     if (typeof window.setLangBtn === "function") window.setLangBtn(button.dataset.lang);
     paintAll();
   });
+  $("mob-haptic").addEventListener("change", (event) => {
+    try { localStorage.setItem("orch.haptic", event.target.checked ? "1" : "0"); } catch (e) { /* 忽略 */ }
+    haptic();
+  });
   $("mob-sound").addEventListener("change", (event) => {
     localStorage.setItem("orch.sound", event.target.checked ? "1" : "0");
   });
@@ -525,7 +876,7 @@
     const button = event.target.closest("[data-mob-tab]");
     if (!button) return;
     const name = button.dataset.mobTab;
-    if (name === "new") { openComposer(); return; }
+    haptic();
     if (detail && !detail.classList.contains("hidden")) {
       detailWasOpen = false;
       suppressReturn = true;
@@ -539,6 +890,7 @@
     if (!media.matches) {
       detailWasOpen = false;
       document.body.classList.remove("mob-detail-active");
+      syncReturnChip();
       return;
     }
     const open = !!detail && !detail.classList.contains("hidden");
@@ -548,17 +900,31 @@
       document.body.classList.remove("mob-shell-on", "mob-composing-active");
     } else if (detailWasOpen) {
       detailWasOpen = false;
-      if (suppressReturn) { suppressReturn = false; return; }
+      if (suppressReturn) { suppressReturn = false; syncReturnChip(); return; }
       showShell("tasks");
     }
+    syncReturnChip();
   };
   if (detail) new MutationObserver(syncDetail).observe(detail, { attributes: true, attributeFilter: ["class"] });
+  /* 新建表单关掉后壳回位（「返回工作区」等桌面路径不经过本文件）：composing 撤且无详情 → 回壳 */
+  let wasComposing = false;
+  new MutationObserver(() => {
+    const composing = document.body.classList.contains("mob-composing-active");
+    if (!media.matches) { wasComposing = composing; return; }
+    const detailOpen = !!detail && !detail.classList.contains("hidden");
+    if (wasComposing && !composing && !detailOpen &&
+        !document.body.classList.contains("mob-shell-on")) {
+      showShell(view);
+    }
+    wasComposing = composing;
+  }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   new MutationObserver(paintAll).observe(document.documentElement,
     { attributes: true, attributeFilter: ["data-lang", "data-theme", "data-skin"] });
   window.addEventListener("orch:state", paintAll);
   media.addEventListener("change", () => {
     if (!media.matches) {
       document.body.classList.remove("mob-shell-on", "mob-detail-active", "mob-composing-active");
+      if (returnChip) returnChip.classList.add("hidden");
       return;
     }
     paintAll();
@@ -570,6 +936,7 @@
 
   const setup = () => {
     if (!media.matches) return;
+    applyFontLevel(savedFontLevel());
     paintAll();
     syncDetail();
     if (!document.body.classList.contains("mob-composing-active") &&

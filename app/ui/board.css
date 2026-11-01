@@ -4,7 +4,7 @@
  *   1) 主应用同款 token：--bg/--sidebar/--panel/--panel2/--border/--border-strong/
  *      --text/--muted/--accent/--ok/--warn/--bad/--log-bg/--log-text/--shadow，
  *      由 html[data-skin][data-theme] 取值，值与 style.css:33-297 同源。
- *   2) 大屏语义别名：--live（活动/CodeBee=琥珀）、--data（数据/时间=主强调）、
+ *   2) 大屏语义别名：--live（活动/蜂群=琥珀）、--data（数据/时间=主强调）、
  *      --t1/t2/t3 文字层级、--sunk/--term 终端、--card 卡面、--track 空槽。
  * 新增皮肤只需补第 1 层块，本文件布局规则一行不用改；两套值的同步由
  * tests/test_board_tokens.py 守住（抄写不靠自觉）。
@@ -12,103 +12,35 @@
  * 历史包袱已清：v1 的网格底纹/暗角/辉光/水印/轨道动画属装饰高于信息密度，
  * v2/v3 是靠后写覆盖前写的三层叠加，均已删除。 */
 
-/* ---------- 第 1 层：主应用同款 token（兜底 = 经典·夜间） ---------- */
+/* ---------- 第 1 层：主应用同款 token（全部由 --wb-* 派生，跟随 WorkBuddy 8 套主题 + 明暗） ---------- */
 :root {
-  --bg: #091522;
-  --sidebar: #0b1c2c;
-  --panel: rgba(15, 34, 53, .88);
-  --panel2: #132c43;
-  --border: rgba(194, 223, 249, .12);
-  --border-strong: rgba(194, 223, 249, .24);
-  --text: #edf6ff;
-  --muted: #92a9bf;
-  --accent: #53b9f5;
-  --accent2: #a28af5;
-  --ok: #34c98e;
-  --warn: #f5b942;
-  --bad: #f0566a;
-  --log-bg: #161616;
-  --log-text: #c3c9d6;
-  --shadow: 0 22px 60px rgba(0, 0, 0, .30);
+  /* 兜底：未知皮肤（旧 ocean 等）回落 wbbuddy 浅色，避免 --wb-* 缺失导致透明 */
+  --wb-bg: #ffffff; --wb-sidebar: #f7f8fa; --wb-panel: #ffffff; --wb-panel2: #f4f5f7;
+  --wb-border: #ececf0; --wb-border-strong: #dcdce3; --wb-text: #1f2329; --wb-muted: #646a73;
+  --wb-accent: #4e5ba6; --wb-accent2: #7b6cd9; --wb-ok: #2e9e6b; --wb-warn: #b07d1d;
+  --wb-bad: #d54d42; --wb-log-bg: #f7f8fa; --wb-log-text: #3c414a; --wb-shadow: 0 6px 20px rgba(31, 35, 41, .06);
 }
-html[data-theme="light"] {
-  --bg: #f4f7fb; --sidebar: #eef3f8; --panel: rgba(255, 255, 255, .88); --panel2: #eaf0f6;
-  --border: rgba(21, 49, 78, .11); --border-strong: rgba(21, 49, 78, .24);
-  --text: #10253d; --muted: #63758b; --accent: #167dce; --accent2: #7858de;
-  --ok: #139878; --warn: #b07d18; --bad: #d63c55;
-  --log-bg: #f6f6f7; --log-text: #3a4050; --shadow: 0 18px 48px rgba(24, 54, 89, .10);
+/* 全部皮肤（wbbuddy / wb-light / wb-dark / wb-qq / wb-peace / wb-peer / wb-ripple / wb-breeze / wb-buddy）
+ * 的配色都取自 wb-themes.css 的 --wb-*；明暗由 html[data-theme] 切换，本文件不再写死一份。
+ * !important 用来压过 hive-ui.css 的 html[data-skin][data-theme] 强制 token（驾驶舱不加载布局层）。 */
+html[data-skin] {
+  --bg: var(--wb-bg) !important;
+  --sidebar: var(--wb-sidebar) !important;
+  --panel: var(--wb-panel) !important;
+  --panel2: var(--wb-panel2) !important;
+  --border: var(--wb-border) !important;
+  --border-strong: var(--wb-border-strong) !important;
+  --text: var(--wb-text) !important;
+  --muted: var(--wb-muted) !important;
+  --accent: var(--wb-accent) !important;
+  --accent2: var(--wb-accent2) !important;
+  --ok: var(--wb-ok) !important;
+  --warn: var(--wb-warn) !important;
+  --bad: var(--wb-bad) !important;
+  --log-bg: var(--wb-log-bg) !important;
+  --log-text: var(--wb-log-text) !important;
+  --shadow: var(--wb-shadow) !important;
 }
-html[data-skin="ocean"] {
-  --bg: #0e1626; --sidebar: #0a111e; --panel: #17243a; --panel2: #21304a;
-  --border: rgba(255, 255, 255, .10); --border-strong: rgba(255, 255, 255, .20);
-  --text: #e7eefb; --muted: #93a6c4; --accent: #3ba9f5; --accent2: #6d6cf6;
-  --ok: #35c99b; --warn: #f0b429; --bad: #f2637a;
-  --log-bg: #08101c; --log-text: #bccbe4; --shadow: 0 10px 30px rgba(0, 0, 0, .45);
-}
-html[data-skin="ocean"][data-theme="light"] {
-  --bg: #ffffff; --sidebar: #eff5fd; --panel: #ffffff; --panel2: #f0f6fd;
-  --border: #d7e3f4; --border-strong: #b9cde8;
-  --text: #0c1a2c; --muted: #526983; --accent: #1f6fd0; --accent2: #5b4fe0;
-  --ok: #0d9a72; --warn: #a9761a; --bad: #d23c58;
-  --log-bg: #f4f8fe; --log-text: #33475f; --shadow: 0 16px 44px rgba(31, 43, 54, .08);
-}
-html[data-skin="forest"] {
-  --bg: #141d18; --sidebar: #0f1613; --panel: #1d2a23; --panel2: #26362d;
-  --border: rgba(255, 255, 255, .09); --border-strong: rgba(255, 255, 255, .18);
-  --text: #e6f1ea; --muted: #94ac9e; --accent: #35c98c; --accent2: #2bbfa8;
-  --ok: #35c98c; --warn: #e5b154; --bad: #ef6a6a;
-  --log-bg: #0b1310; --log-text: #b9cfc2; --shadow: 0 10px 30px rgba(0, 0, 0, .42);
-}
-html[data-skin="forest"][data-theme="light"] {
-  --bg: #ffffff; --sidebar: #eef6f1; --panel: #ffffff; --panel2: #eff7f2;
-  --border: #d6e7dd; --border-strong: #b9d4c5;
-  --text: #10201a; --muted: #5b7266; --accent: #0e8f61; --accent2: #0d8577;
-  --ok: #0e8f61; --warn: #9c6d12; --bad: #cc3f4d;
-  --log-bg: #f2f8f4; --log-text: #33463c; --shadow: 0 10px 30px rgba(0, 0, 0, .07);
-}
-html[data-skin="amber"] {
-  --bg: #1e1915; --sidebar: #171310; --panel: #2a231d; --panel2: #362c23;
-  --border: rgba(255, 255, 255, .09); --border-strong: rgba(255, 255, 255, .18);
-  --text: #f2e9dd; --muted: #b5a390; --accent: #e79a2b; --accent2: #e2703f;
-  --ok: #3fbf8a; --warn: #e8b44a; --bad: #ea6262;
-  --log-bg: #15110d; --log-text: #dccfbe; --shadow: 0 10px 30px rgba(0, 0, 0, .42);
-}
-html[data-skin="amber"][data-theme="light"] {
-  --bg: #ffffff; --sidebar: #faf3e9; --panel: #ffffff; --panel2: #fbf3e8;
-  --border: #ebdfcd; --border-strong: #d6c3a6;
-  --text: #241b12; --muted: #7c6952; --accent: #b96a12; --accent2: #b8542c;
-  --ok: #0e8f61; --warn: #96650c; --bad: #c93b45;
-  --log-bg: #fdf7ef; --log-text: #4a3c2e; --shadow: 0 10px 30px rgba(0, 0, 0, .07);
-}
-html[data-skin="violet"] {
-  --bg: #16121e; --sidebar: #110d18; --panel: #221b30; --panel2: #2e2440;
-  --border: rgba(255, 255, 255, .10); --border-strong: rgba(255, 255, 255, .20);
-  --text: #efe8fa; --muted: #a99cc2; --accent: #a86cf5; --accent2: #ec4f95;
-  --ok: #35c99b; --warn: #f0b429; --bad: #f2637a;
-  --log-bg: #0d0913; --log-text: #ccc0e2; --shadow: 0 10px 30px rgba(0, 0, 0, .46);
-}
-html[data-skin="violet"][data-theme="light"] {
-  --bg: #ffffff; --sidebar: #f5eefd; --panel: #ffffff; --panel2: #f6effd;
-  --border: #e5d9f6; --border-strong: #cdb9ea;
-  --text: #1c1230; --muted: #6d6090; --accent: #7b3ce0; --accent2: #c92c74;
-  --ok: #0d9a72; --warn: #9c6d12; --bad: #cc3f4d;
-  --log-bg: #f9f4fe; --log-text: #3d3352; --shadow: 0 10px 30px rgba(0, 0, 0, .07);
-}
-html[data-skin="contrast"] {
-  --bg: #000; --sidebar: #000; --panel: #0b0b0b; --panel2: #1c1c1c;
-  --border: #6f6f6f; --border-strong: #c9c9c9;
-  --text: #fff; --muted: #dcdcdc; --accent: #4da3ff; --accent2: #ff9d4d;
-  --ok: #23d18b; --warn: #ffc21a; --bad: #ff5d5d;
-  --log-bg: #000; --log-text: #f2f2f2; --shadow: none;
-}
-html[data-skin="contrast"][data-theme="light"] {
-  --bg: #fff; --sidebar: #fff; --panel: #fff; --panel2: #f0f0f0;
-  --border: #767676; --border-strong: #000;
-  --text: #000; --muted: #4a4a4a; --accent: #0b52c9; --accent2: #b03000;
-  --ok: #05703f; --warn: #7a5200; --bad: #b3001b;
-  --log-bg: #fff; --log-text: #000; --shadow: none;
-}
-
 /* ---------- 第 2 层：大屏语义别名 ---------- */
 :root {
   --mono: "Cascadia Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;

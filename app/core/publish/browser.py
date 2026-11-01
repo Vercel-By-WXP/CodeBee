@@ -789,9 +789,11 @@ class Page:
         # the decorative wrapper owns the hit target.  Native label click keeps
         # the platform's controlled input state in sync; consequential submit
         # buttons still go through the real mouse path above.
+        from . import selectors as _sel
         self.call(
             "(t)=>{const el=[...document.querySelectorAll('label')].find(e=>"
-            "(e.innerText||'').trim()===t&&e.querySelector('input[type=radio]'));"
+            "(e.innerText||'').trim()===t&&e.querySelector('" + _sel.get("radio_input")
+            + "'));"
             "if(el)el.click();return!!el;}", str(text))
         return {"ok": True, "tag": r.get("tag"), "via": "input"}
 

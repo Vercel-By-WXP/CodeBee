@@ -1,0 +1,106 @@
+/* ============================================================================
+ * chat-intent.css —— 对话化②：意图确认卡/结果卡/答案卡（2026-11-01，决策 15）
+ * 设计宪法：卡片 = panel 底 + 1px border + radius 12px + 极浅投影；状态只做
+ * 小点与描边，不做大面积底色；危险动作 = 红描边钮（不用红实底恐吓）；hover
+ * 只变边框，不位移。全部消费 token（--wb-* 家族），十六进制只准在 var() 回落位。
+ * ==========================================================================*/
+
+#rd-chat-turns { margin: 10px 0 0; display: flex; flex-direction: column; gap: 8px; }
+#rd-chat-turns:empty { display: none; }
+
+.ci-card {
+  background: var(--wb-panel, var(--panel, #fff));
+  border: 1px solid var(--wb-border, var(--border, #ececf0));
+  border-radius: 12px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--wb-text, var(--text, #1f2329));
+}
+.ci-card.ci-confirm {
+  border-color: var(--wb-border-strong, var(--border-strong, #dcdce3));
+}
+
+.ci-head {
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: 6px;
+  color: var(--wb-text2, var(--muted, #6b6f76));
+}
+.ci-card.ci-ok .ci-head::before {
+  content: "●";
+  color: var(--wb-ok, var(--ok, #34c98e));
+  margin-right: 6px;
+}
+.ci-card.ci-err .ci-head::before {
+  content: "●";
+  color: var(--wb-bad, var(--bad, #f0566a));
+  margin-right: 6px;
+}
+.ci-card.ci-idle .ci-head::before {
+  content: "●";
+  color: var(--wb-text2, var(--muted, #6b6f76));
+  margin-right: 6px;
+}
+
+.ci-quote {
+  font-size: 12px;
+  color: var(--wb-text2, var(--muted, #6b6f76));
+  border-left: 2px solid var(--wb-border, var(--border, #ececf0));
+  padding-left: 8px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ci-line b { font-weight: 600; }
+.ci-dim { color: var(--wb-text2, var(--muted, #6b6f76)); }
+
+.ci-sub {
+  font-size: 12px;
+  color: var(--wb-text2, var(--muted, #6b6f76));
+  margin-top: 4px;
+}
+
+.ci-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ci-btn {
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ci-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 次按钮 = panel 底 + border-strong 描边 */
+.ci-btn.ci-cancel, .ci-btn.ci-ghost {
+  background: var(--wb-panel, var(--panel, #fff));
+  border: 1px solid var(--wb-border-strong, var(--border-strong, #dcdce3));
+  color: var(--wb-text, var(--text, #1f2329));
+}
+.ci-btn.ci-cancel:hover, .ci-btn.ci-ghost:hover {
+  border-color: var(--wb-accent, var(--accent, #4e5ba6));
+}
+/* 危险动作 = 红描边（审批卡规范：不用红实底恐吓） */
+.ci-btn.ci-allow {
+  background: var(--wb-panel, var(--panel, #fff));
+  border: 1px solid var(--wb-bad, var(--bad, #f0566a));
+  color: var(--wb-bad, var(--bad, #f0566a));
+  font-weight: 600;
+}
+.ci-btn.ci-allow:hover {
+  background: color-mix(in srgb, var(--wb-bad, var(--bad, #f0566a)) 8%, transparent);
+}
+
+/* 窄屏：按钮换行不横滚 */
+@media (max-width: 500px) {
+  .ci-actions { flex-wrap: wrap; }
+  .ci-quote { white-space: normal; }
+}

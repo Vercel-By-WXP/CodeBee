@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import time
 
+from . import selectors as _sel  # P0-a 外置注册表：七猫 Element UI 选择器单一真源
 from .flow_helpers import FlowError
 
 _DIALOG_SEL = ".el-dialog,.el-message-box,[role=dialog]"
@@ -54,7 +55,7 @@ def _qimao_click_dialog_label(page, label, exact=True):
             "const ds=[...document.querySelectorAll(sel)].filter(vis);"
             "ds.sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
             "for(const d of ds){"
-            "const b=[...d.querySelectorAll('button,a,[role=button]')]"
+            "const b=[...d.querySelectorAll('" + _sel.get("qm_btn_scope") + "')]"
             ".find(e=>vis(e)&&(ex?norm(e.innerText)===norm(t)"
             ":norm(e.innerText).includes(norm(t))));"
             "if(b){b.click();return{ok:true};}}return{ok:false};}",
@@ -78,18 +79,21 @@ def _qimao_set_declaration(page, want):
         "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
         "const ds=[...document.querySelectorAll(root)].filter(vis);"
         "const d=ds[ds.length-1];if(!d)return{ok:false,err:'no-dialog'};"
-        "const decl=e=>{const v=e.querySelector('.el-input__inner')||e;"
+        "const decl=e=>{const v=e.querySelector('" + _sel.get("qm_el_input")
+        + "')||e;"
         "const t=norm(v.innerText||v.value||'');"
         "return t==='本人原创'||t==='含AI生成内容'||t.includes('声明');};"
-        "const selEl=[...d.querySelectorAll('.el-select')].find(decl);"
+        "const selEl=[...d.querySelectorAll('" + _sel.get("qm_el_select")
+        + "')].find(decl);"
         "if(!selEl)return{ok:false,err:'no-select'};"
-        "const box=selEl.querySelector('.el-input__inner')||selEl;"
+        "const box=selEl.querySelector('" + _sel.get("qm_el_input") + "')||selEl;"
         "const cur=norm(box.innerText||box.value||'');"
         "if(cur===want)return{ok:true,already:true};"
         "box.click();"
         "let it=null;const t0=Date.now();"
         "while(Date.now()-t0<1500){"
-        "const items=[...document.querySelectorAll('.el-select-dropdown__item')]"
+        "const items=[...document.querySelectorAll('" + _sel.get("qm_el_option")
+        + "')]"
         ".filter(vis);"
         "it=items.find(e=>norm(e.innerText)===norm(want));"
         "if(it)break;}"

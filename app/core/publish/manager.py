@@ -842,6 +842,14 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                           config=mod.CONFIG, auto_submit=auto_submit,
                           shot=lambda n: page.screenshot(ledger.shot_path(plat, task_id, n)),
                           log=logs.append)
+            # P0-b 真页采样：流程跑完页面还开着，顺手把该动作的选择器命中率
+            # 记进自检台账（零模型、完全 fail-open——任何故障不连累发布链）。
+            # 红线记录经 /api/publish/selector-health 的 latest 浮出。
+            try:
+                from . import selector_health as _selh
+                _selh.sample(plat, flow_key, page)
+            except Exception:
+                pass
             new_vols = values.get("_volumes")
             if isinstance(new_vols, list) and new_vols != (book_ref.get("volumes") or []):
                 ledger.update_book(task_id, plat, volumes=new_vols)

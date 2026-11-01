@@ -10,6 +10,7 @@ import datetime
 import re
 import time
 
+from . import selectors as _sel  # P0-a 外置注册表：番茄 arco 选择器单一真源
 from .flow_helpers import (
     FlowError, _fanqie_active_dialog, _fanqie_schedule_conflict,
     _fanqie_submission_limit_changed, _has_new_feedback,
@@ -79,7 +80,7 @@ def _short_click_label(page, label, timeout=8.0):
 def _short_pay_button_text(page):
     try:
         return str(page.call(
-            "()=>{const b=document.querySelector('.publish-short-config-pay button');"
+            "()=>{const b=document.querySelector('" + _sel.get("fq_pay_button") + "');"
             "return b?(b.innerText||'').replace(/\\s+/g,'').trim():'';}",
             timeout=8) or "")
     except Exception:
@@ -202,9 +203,10 @@ def run_fanqie_publish(page, st, i, note, values):
         state = page.call(
             "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
             "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
-            "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
-            "const fs=[...document.querySelectorAll('[role=alert],.arco-message,"
-            ".arco-notification,.arco-modal-notice')].filter(vis)"
+            "const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')].filter(vis);"
+            "const fs=[...document.querySelectorAll('" + _sel.get("fq_alert")
+            + "')].filter(vis)"
             ".map(e=>(e.innerText||'').trim()).filter(Boolean);"
             "return{dialogs:ds.map(d=>(d.innerText||'').trim()),feedback:fs,"
             "body:(document.body.innerText||''),url:location.href};}", timeout=15) or {}
@@ -215,14 +217,16 @@ def run_fanqie_publish(page, st, i, note, values):
         return page.call(
             "(mark,label)=>{const vis=e=>{const r=e.getBoundingClientRect();"
             "return r.width>0&&r.height>0};"
-            "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+            "const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')].filter(vis);"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes(mark));"
             "if(!d)return{ok:false,err:'dialog'};"
             "const norm=x=>String(x||'').replace(/\\s+/g,'').trim();"
             "const es=[...d.querySelectorAll('button,[role=button],label')].filter(vis);"
             "let e=es.find(x=>norm(x.innerText)===norm(label));"
             "if(!e)e=es.find(x=>norm(x.innerText).includes(norm(label)));"
-            "if(!e&&norm(label)==='确认发布')e=d.querySelector('button.arco-btn-primary');"
+            "if(!e&&norm(label)==='确认发布')e=d.querySelector('"
+            + _sel.get("fq_btn_primary") + "');"
             "if(!e)return{ok:false,err:'action'};e.click();return{ok:true};}",
             dialog_mark, label, timeout=15) or {}
 
@@ -233,10 +237,11 @@ def run_fanqie_publish(page, st, i, note, values):
             # Do not include every node whose class contains "modal":
             # Fanqie's title itself is .arco-modal-title, which can
             # become the last text match and hide its switch children.
-            "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+            "const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')].filter(vis);"
             "let d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-            "if(!d)d=document.body;const ss=[...d.querySelectorAll('button[role=switch],"
-            "input[type=checkbox],.arco-switch')].filter(vis);"
+            "if(!d)d=document.body;const ss=[...d.querySelectorAll('"
+            + _sel.get("fq_switch") + "')].filter(vis);"
             "const labeled=ss.filter(s=>(s.closest('label')?.innerText||s.parentElement?.innerText||'').includes('定时发布'));"
             "const s=(labeled.length?labeled:ss).at(-1);if(!s)return false;"
             "const c=String(s.className||'');return s.getAttribute('aria-checked')==='true'||"
@@ -258,7 +263,8 @@ def run_fanqie_publish(page, st, i, note, values):
             "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
             # Scope to actual dialog containers; matching generic
             # modal/dialog classes also catches the title node.
-            "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+            "const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')].filter(vis);"
             "let d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
             "if(!d)d=[...ds].reverse().find(e=>(e.innerText||'').includes('定时发布'));"
             # The live page has briefly rendered the modal without
@@ -268,14 +274,14 @@ def run_fanqie_publish(page, st, i, note, values):
             # scoping returns no container. Fall back to the
             # visible Arco switch itself instead of declaring the
             # timed control missing.
-            "if(!d)d=document.body;const ss=[...d.querySelectorAll('button[role=switch],"
-            "input[type=checkbox],.arco-switch')].filter(vis);"
+            "if(!d)d=document.body;const ss=[...d.querySelectorAll('"
+            + _sel.get("fq_switch") + "')].filter(vis);"
             "const labeled=ss.filter(s=>(s.closest('label')?.innerText||s.parentElement?.innerText||'').includes('定时发布'));"
             "let s=(labeled.length?labeled:ss).at(-1);"
-            "if(!s){const ts=[...d.querySelectorAll('*')].filter(e=>vis(e)&&"
+            "if(!s){const ts=[...d.querySelectorAll('" + _sel.get("any_el") + "')].filter(e=>vis(e)&&"
             "(e.innerText||'').trim()==='定时发布');ts.sort((a,b)=>a.getBoundingClientRect().width-b.getBoundingClientRect().width);"
             "let e=ts[0];for(let n=0;e&&n<5;n++,e=e.parentElement){"
-            "const r=e.getBoundingClientRect();const c=[...e.querySelectorAll('*')].filter(x=>vis(x)&&"
+            "const r=e.getBoundingClientRect();const c=[...e.querySelectorAll('" + _sel.get("any_el") + "')].filter(x=>vis(x)&&"
             "x.getBoundingClientRect().left>=r.left+r.width*.45);if(c.length){"
             "c.sort((a,b)=>(a.getBoundingClientRect().width*a.getBoundingClientRect().height)-"
             "(b.getBoundingClientRect().width*b.getBoundingClientRect().height));s=c[0];break;}}}"
@@ -307,7 +313,8 @@ def run_fanqie_publish(page, st, i, note, values):
                 "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                 "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'"
                 "&&s.pointerEvents!=='none'&&parseFloat(s.opacity||'1')>0;};"
-                "const ss=[...document.querySelectorAll('button[role=switch],.arco-switch')]"
+                "const ss=[...document.querySelectorAll('" + _sel.get("fq_switch_alt")
+                + "')]"
                 ".filter(vis);const s=ss.at(-1);if(!s)return null;const r=s.getBoundingClientRect();"
                 "return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),"
                 "checked:s.getAttribute('aria-checked')==='true'||s.classList.contains('arco-switch-checked')};}",
@@ -317,10 +324,11 @@ def run_fanqie_publish(page, st, i, note, values):
         # Newer Arco builds accept the semantic button click;
         # older builds need the trusted CDP pointer path below.
         dom_clicked = page.call(
-            "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+            "()=>{const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')];"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'))"
             "||[...ds].reverse().find(e=>(e.innerText||'').includes('定时发布'));"
-            "const s=d&&d.querySelector('button[role=switch]');"
+            "const s=d&&d.querySelector('" + _sel.get("fq_switch_bare") + "');"
             "if(!s)return{ok:false};s.click();return{ok:true};}", timeout=10) or {}
         if dom_clicked.get("ok"):
             deadline = time.time() + 1.2
@@ -350,16 +358,17 @@ def run_fanqie_publish(page, st, i, note, values):
     def fq_pick_date(day):
         iso = day.strftime("%Y-%m-%d")
         opened = page.call(
-            "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+            "()=>{const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')];"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-            "const x=d&&d.querySelector('input[placeholder=\"请选择日期\"]');"
+            "const x=d&&d.querySelector('" + _sel.get("fq_date_input") + "');"
             "if(!x)return{ok:false};x.click();return{ok:true};}", timeout=10) or {}
         if not opened.get("ok"):
             raise FlowError("番茄发布设置里找不到日期输入框")
         time.sleep(0.2)
         for _month_try in range(36):
             head = str(page.call(
-                "()=>{const e=document.querySelector('.arco-picker-header-value');"
+                "()=>{const e=document.querySelector('" + _sel.get("fq_picker_value") + "');"
                 "return e?(e.innerText||'').trim():'';}", timeout=10) or "")
             m = re.search(r"(\d{4})年(\d{1,2})月", head)
             if not m:
@@ -368,7 +377,8 @@ def run_fanqie_publish(page, st, i, note, values):
             if diff == 0:
                 break
             moved = page.call(
-                "(forward)=>{const es=[...document.querySelectorAll('.arco-picker-header-icon')]"
+                "(forward)=>{const es=[...document.querySelectorAll('"
+                + _sel.get("fq_picker_nav") + "')]"
                 ".filter(e=>e.getBoundingClientRect().width>0);"
                 "const e=es[forward?2:1];if(!e)return{ok:false};"
                 "e.click();return{ok:true};}", diff > 0, timeout=10) or {}
@@ -376,7 +386,8 @@ def run_fanqie_publish(page, st, i, note, values):
                 raise FlowError("番茄日期面板无法切换月份")
             time.sleep(0.12)
         picked = page.call(
-            "(day)=>{const es=[...document.querySelectorAll('.arco-picker-cell-in-view')]"
+            "(day)=>{const es=[...document.querySelectorAll('" + _sel.get("fq_picker_cell")
+            + "')]"
             ".filter(e=>e.getBoundingClientRect().width>0);"
             "const e=es.find(x=>(x.innerText||'').trim()===String(day));"
             "if(!e)return{ok:false};e.click();return{ok:true};}", day.day, timeout=10) or {}
@@ -384,9 +395,10 @@ def run_fanqie_publish(page, st, i, note, values):
             raise FlowError("番茄日期面板找不到 %s" % iso)
         time.sleep(0.2)
         got = str(page.call(
-            "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+            "()=>{const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')];"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-            "const x=d&&d.querySelector('input[placeholder=\"请选择日期\"]');"
+            "const x=d&&d.querySelector('" + _sel.get("fq_date_input") + "');"
             "return x?x.value:'';}", timeout=10) or "")
         if got != iso:
             raise FlowError("番茄定时日期选择失败：期望 %s，实际 %s" % (iso, got))
@@ -394,36 +406,40 @@ def run_fanqie_publish(page, st, i, note, values):
     def fq_pick_time(slot):
         hhmm = slot.strftime("%H:%M")
         opened = page.call(
-            "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+            "()=>{const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')];"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-            "const x=d&&d.querySelector('input[placeholder=\"请选择时间\"]');"
+            "const x=d&&d.querySelector('" + _sel.get("fq_time_input") + "');"
             "if(!x)return{ok:false};x.click();return{ok:true};}", timeout=10) or {}
         if not opened.get("ok"):
             raise FlowError("番茄发布设置里找不到时间输入框")
         time.sleep(0.2)
         picked = page.call(
-            "(hour,minute)=>{const ps=[...document.querySelectorAll('.arco-timepicker')]"
+            "(hour,minute)=>{const ps=[...document.querySelectorAll('" + _sel.get("fq_timepicker")
+            + "')]"
             ".filter(e=>e.getBoundingClientRect().width>0);const p=ps.at(-1);"
-            "const ls=p&&p.querySelectorAll('.arco-timepicker-list');"
+            "const ls=p&&p.querySelectorAll('" + _sel.get("fq_timepicker_list") + "');"
             "if(!ls||ls.length<2)return{ok:false,err:'panel'};"
-            "const pick=(list,value)=>{const es=[...list.querySelectorAll('.arco-timepicker-cell')];"
+            "const pick=(list,value)=>{const es=[...list.querySelectorAll('" + _sel.get("fq_timepicker_cell") + "')];"
             "const e=es.find(x=>(x.innerText||'').trim()===value);if(!e)return false;"
             "e.click();return true;};return{ok:pick(ls[0],hour)&&pick(ls[1],minute)};}",
             slot.strftime("%H"), slot.strftime("%M"), timeout=10) or {}
         if not picked.get("ok"):
             raise FlowError("番茄时间面板无法选择 %s" % hhmm)
         confirmed = page.call(
-            "()=>{const ps=[...document.querySelectorAll('.arco-timepicker-container')]"
+            "()=>{const ps=[...document.querySelectorAll('" + _sel.get("fq_timepicker_container")
+            + "')]"
             ".filter(e=>e.getBoundingClientRect().width>0);const p=ps.at(-1);"
-            "const b=p&&[...p.querySelectorAll('button')].find(e=>(e.innerText||'').trim()==='确定');"
+            "const b=p&&[...p.querySelectorAll('" + _sel.get("bare_button") + "')].find(e=>(e.innerText||'').trim()==='确定');"
             "if(!b)return{ok:false};b.click();return{ok:true};}", timeout=10) or {}
         if not confirmed.get("ok"):
             raise FlowError("番茄时间面板没有确定按钮")
         time.sleep(0.2)
         got = str(page.call(
-            "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+            "()=>{const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')];"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-            "const x=d&&d.querySelector('input[placeholder=\"请选择时间\"]');"
+            "const x=d&&d.querySelector('" + _sel.get("fq_time_input") + "');"
             "return x?x.value:'';}", timeout=10) or "")
         if got != hhmm:
             raise FlowError("番茄定时时间选择失败：期望 %s，实际 %s" % (hhmm, got))
@@ -431,11 +447,12 @@ def run_fanqie_publish(page, st, i, note, values):
     def fq_read_slot():
         """读发布设置里定时日期/时间输入框的当前值（含平台预填）。"""
         got = page.call(
-            "()=>{const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')];"
+            "()=>{const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+            + "')];"
             "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
             "if(!d)return{};"
-            "const di=d.querySelector('input[placeholder=\"请选择日期\"]');"
-            "const ti=d.querySelector('input[placeholder=\"请选择时间\"]');"
+            "const di=d.querySelector('" + _sel.get("fq_date_input") + "');"
+            "const ti=d.querySelector('" + _sel.get("fq_time_input") + "');"
             "return{date:di?(di.value||'').trim():'',"
             "time:ti?(ti.value||'').trim():''};}", timeout=10) or {}
         out = {}
@@ -595,9 +612,10 @@ def run_fanqie_publish(page, st, i, note, values):
                 confirmed = page.call(
                     "()=>{const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
                     "return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';};"
-                    "const ds=[...document.querySelectorAll('[role=dialog],.arco-modal')].filter(vis);"
+                    "const ds=[...document.querySelectorAll('" + _sel.get("fq_dialog")
+                    + "')].filter(vis);"
                     "const d=[...ds].reverse().find(e=>(e.innerText||'').includes('发布设置'));"
-                    "const e=d&&d.querySelector('button.arco-btn-primary');"
+                    "const e=d&&d.querySelector('" + _sel.get("fq_btn_primary") + "');"
                     "if(!e)return{ok:false,err:'primary'};e.click();return{ok:true};}",
                     timeout=10) or {}
             if not confirmed.get("ok"):
@@ -632,7 +650,7 @@ def run_fanqie_publish(page, st, i, note, values):
                      % trial_day.strftime("%Y-%m-%d"))
                 if "发布设置" not in after_dialog:
                     page.call(
-                        "()=>{const e=[...document.querySelectorAll('button')]"
+                        "()=>{const e=[...document.querySelectorAll('" + _sel.get("bare_button") + "')]"
                         ".find(x=>x.getBoundingClientRect().width>0"
                         "&&(x.innerText||'').trim()==='下一步');"
                         "if(!e)return{ok:false};e.click();return{ok:true};}",
@@ -645,7 +663,7 @@ def run_fanqie_publish(page, st, i, note, values):
                 trial_time = datetime.time(0, 0)
                 if "发布设置" not in after_dialog:
                     page.call(
-                        "()=>{const e=[...document.querySelectorAll('button')]"
+                        "()=>{const e=[...document.querySelectorAll('" + _sel.get("bare_button") + "')]"
                         ".find(x=>x.getBoundingClientRect().width>0"
                         "&&(x.innerText||'').trim()==='下一步');"
                         "if(!e)return{ok:false};e.click();return{ok:true};}",

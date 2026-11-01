@@ -94,7 +94,7 @@ LAUNCH = ("novel", "short_story", "serial_novel", "bid_doc", "code")
 _BUILTIN = {
     # ---- 执行台：目标是「做完且可验证」 ----
     "direct": {
-        "name": "快手", "focus": "一次说清、一次做对，不绕弯",
+        "name": "快答", "focus": "一次说清、一次做对，不绕弯",
         "archetype": "studio", "metric": "一次通过率",
         "deliverable": "结论与产物", "primary_action": "直接交代任务",
     },
@@ -214,6 +214,56 @@ _BUILTIN = {
 }
 
 
+# ---------------------------------------------------------------- 专家大类（1031）
+# 专家面板与类型菜单按此分组展示；键=flow id，未收录的内置/自定义专家落「更多专家」。
+# 真源在本文件：UI 不另存一份映射，目录变化时这里自动跟上（序列化时透传 group/group_order）。
+# 5 大类（1031 收敛：短剧视频/画图并入创作，都是内容创作链一环）；对话速办恒第一位。
+EXPERT_GROUPS = [
+    ("chat", "对话速办"),
+    ("create", "写作创作"),
+    ("code", "代码工程"),
+    ("docs", "文档与职场"),
+    ("research", "调研与选材"),
+    ("more", "更多专家"),
+]
+EXPERT_GROUP_NAMES = dict(EXPERT_GROUPS)
+_FLOW_GROUP = {
+    "direct": "chat",
+    "novel": "create", "serial_novel": "create", "short_story": "create",
+    "article": "create", "speech": "create",
+    "short_drama": "create", "video_script": "create", "handdraw_video": "create",
+    "image": "create",
+    "code": "code", "defect_retro": "code",
+    "doc": "docs", "translation": "docs", "presentation": "docs",
+    "weekly_report": "docs", "email": "docs",
+    "tech_proposal": "docs", "resume": "docs", "bid_doc": "docs",
+    "rank_scan": "research", "research": "research",
+}
+
+
+def expert_group(flow_id):
+    """该流程专家所属大类 key（未收录落「更多专家」）。"""
+    return _FLOW_GROUP.get(str(flow_id or "").strip(), "more")
+
+
+# 组内展示序：_FLOW_GROUP 的书写顺序即产品序（小说家/连载家 在写作组最前等）。
+_FLOW_ORDER = {}
+for _i, _fid in enumerate(_FLOW_GROUP):
+    _FLOW_ORDER.setdefault(_fid, _i)
+
+
+def expert_group_order(flow_id):
+    """排序键：组序 ×100 + 组内序——UI 单字段排序即得「组有序、组内也有序」。"""
+    fid = str(flow_id or "").strip()
+    gi = next((i for i, (k, _) in enumerate(EXPERT_GROUPS) if k == expert_group(fid)), len(EXPERT_GROUPS))
+    return gi * 100 + _FLOW_ORDER.get(fid, 999)
+
+
+def expert_group_name(flow_id):
+    """该流程专家所属大类的显示名（中文源串，前端 t() 直通）。"""
+    return EXPERT_GROUP_NAMES.get(expert_group(flow_id), EXPERT_GROUP_NAMES["more"])
+
+
 def _agents_dir():
     return paths.DATA_DIR / "agents"
 
@@ -322,6 +372,9 @@ def decorate(flow_rows):
                 "metric": agent["metric"],
                 "primary_action": agent["primary_action"],
                 "hidden": agent["hidden"],
+                "group": expert_group(row.get("id")),
+                "group_name": expert_group_name(row.get("id")),
+                "group_order": expert_group_order(row.get("id")),
             }
         out.append(item)
     return out

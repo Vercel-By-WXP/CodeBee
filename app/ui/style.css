@@ -300,6 +300,54 @@ html[data-skin="contrast"][data-theme="light"] {
   --uc-ca: #b03000;
   --uc-out: #05703f;
 }
+/* WorkBuddy 风格（2026-10-30 用户拍板「直接抄样式和风格」）：
+ * 日间=近白画布 #fff + 浅灰侧栏 #f7f8fa + 蓝紫强调 #4E5BA6 系，
+ * 白卡轻投影、无边框分栏、8-12px 圆角——对齐 WorkBuddy 桌面端观感；
+ * 夜间=石墨底 + 同源蓝紫，保持可读。 */
+html[data-skin="wbbuddy"] {
+  --bg: #1c1d21;
+  --sidebar: #17181c;
+  --panel: #232428;
+  --panel2: #2a2b30;
+  --border: rgba(255, 255, 255, .08);
+  --border-strong: rgba(255, 255, 255, .16);
+  --text: #e8e9ec;
+  --muted: #9a9ca6;
+  --accent: #7b86c9;
+  --accent2: #9d8ce0;
+  --ok: #4cc38a;
+  --warn: #e0a94a;
+  --bad: #e8687f;
+  --chip-queued-bg: #2a2b30;
+  --log-bg: #141519;
+  --log-text: #b8bac2;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  --uc-in: #7b86c9;
+  --uc-ca: #9d8ce0;
+  --uc-out: #4cc38a;
+}
+html[data-skin="wbbuddy"][data-theme="light"] {
+  --bg: #ffffff;
+  --sidebar: #f7f8fa;
+  --panel: #ffffff;
+  --panel2: #f4f5f7;
+  --border: #ececf0;
+  --border-strong: #dcdce3;
+  --text: #1f2329;
+  --muted: #646a73;
+  --accent: #4e5ba6;
+  --accent2: #7b6cd9;
+  --ok: #2e9e6b;
+  --warn: #b07d1d;
+  --bad: #d54d42;
+  --chip-queued-bg: #f4f5f7;
+  --log-bg: #f7f8fa;
+  --log-text: #3c414a;
+  --shadow: 0 6px 20px rgba(31, 35, 41, .06);
+  --uc-in: #4e5ba6;
+  --uc-ca: #7b6cd9;
+  --uc-out: #2e9e6b;
+}
 /* 墨金（默认皮肤，Hermes 式古典优雅）：夜间=暖墨底 + 金发丝线 + 象牙文字；
  * 日间=暖纸底 + 墨字 + 深金。日志区两版都保持终端暗色（编辑器式质感）。 */
 html[data-skin="hermes"] {
@@ -2568,21 +2616,6 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 .type-menu-foot .type-item:hover { color: var(--text); }
 .type-menu-foot .ti-ico .ico { width: 15px; height: 15px; }
 .type-menu-foot .ti-name { font-weight: 550; font-size: 12px; }
-/* 模式口径提示（「小说」模式只列 N 个相关类型 + 看全部）：与底部入口同宽，弱化处理 */
-.type-scope {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: 0 -5px; padding: 6px 5px 4px;
-  border-top: 1px solid var(--border);
-  font-size: 11.5px; color: var(--muted);
-}
-.type-scope span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.type-scope button {
-  flex: none; border: 0; background: none; cursor: pointer; padding: 0;
-  font: inherit; font-weight: 550; color: var(--accent);
-}
-.type-scope button:hover { text-decoration: underline; }
-/* 嵌在 sticky 底部入口里时：上边框由 .type-menu-foot 提供，这里只留分隔下边线 */
-.type-menu-foot .type-scope { margin: 0 0 2px; padding: 2px 5px 5px; border-top: 0; border-bottom: 1px solid var(--border); }
 @media (max-width: 720px) {
   /* iOS Safari 聚焦输入控件 ≥16px 才不自动放大页面 */
   .type-pick { font-size: 16px; }
@@ -2766,6 +2799,245 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
 .qitem:hover { color: var(--text); background: var(--panel2); }
 .qitem:active { transform: scale(.99); }
 .qitem .ico { opacity: .9; }
+
+/* 侧栏「更多」折叠（1031 傻瓜化）：高级导航默认收起，一行入口展开。
+ * 展开态 chev 转 90° 指向下；子项容器沿用侧栏纵向节奏。 */
+.side-more-toggle .chev { margin-left: auto; opacity: .6; transition: transform .15s ease; }
+.side-more-toggle.open .chev { transform: rotate(90deg); }
+#side-adv { display: flex; flex-direction: column; gap: 1px; }
+#side-adv .qitem { padding-left: 22px; }   /* 子项缩进一级，看出从属关系 */
+
+/* 主页「高级功能」折叠：胶囊披露钮，居中摆在快速开始下方 */
+.rd-adv-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin: 20px auto 0; padding: 6px 16px;
+  background: none; border: 1px solid var(--border); border-radius: 999px;
+  color: var(--muted); font-size: 12.5px; cursor: pointer; font-family: inherit;
+  transition: background-color .15s, color .15s;
+}
+.rd-adv-toggle:hover { color: var(--text); background: var(--panel2); }
+.rd-adv-toggle .ico { opacity: .7; transition: transform .15s ease; }
+.rd-adv-toggle.open .ico { transform: rotate(90deg); }
+
+/* ── 专家包装（1031）：类型=专家 的头像、行卡与面板 ──────────────────── */
+.exp-av {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 28px; height: 28px; border-radius: 9px;
+  background: var(--eac, #5b7fa6); color: #fff;
+  font-size: 13px; font-weight: 600;
+}
+/* 类型药丸与菜单行里的头像（原图标位），快捷 chips 缩小号 */
+.tp-ico .exp-av, .type-item .ti-ico .exp-av { width: 22px; height: 22px; border-radius: 7px; font-size: 11px; }
+.cmp-chip .exp-av { width: 18px; height: 18px; border-radius: 6px; font-size: 10px; }
+/* 类型菜单行：专家名 + 类型小标签 */
+.ti-name .ti-role {
+  font-style: normal; font-weight: 500; font-size: 11.5px; color: var(--muted);
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--panel2);
+}
+.ti-tag-fav { background: color-mix(in srgb, var(--accent) 12%, transparent) !important; color: var(--accent) !important; }
+/* 专家面板：卡片网格（点开始=选定类型回输入框） */
+.exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; max-height: 58vh; overflow-y: auto; padding: 2px; }
+.exp-card {
+  display: flex; align-items: flex-start; gap: 10px; text-align: left;
+  padding: 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); cursor: pointer; font-family: inherit; color: var(--text);
+  transition: border-color .15s, box-shadow .15s, transform .1s;
+}
+.exp-card:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(0, 0, 0, .06); }
+.exp-card:active { transform: scale(.99); }
+.exp-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.exp-name { font-size: 13.5px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
+.exp-role { font-style: normal; font-weight: 500; font-size: 11px; color: var(--muted); }
+.exp-fav { font-style: normal; font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.exp-desc { font-size: 12.5px; color: var(--muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.exp-go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: 12px; color: var(--accent); opacity: 0; transition: opacity .15s; }
+.exp-card:hover .exp-go { opacity: 1; }
+/* 专家面板分组标题（大类） */
+.exp-group-head {
+  margin: 14px 0 8px; font-size: 12px; font-weight: 650; color: var(--muted);
+  letter-spacing: .05em;
+}
+.exp-group-head:first-child { margin-top: 2px; }
+/* 类型菜单分组小标题 */
+.tm-kicker-row {
+  padding: 7px 10px 3px; font-size: 11px; font-weight: 650;
+  color: var(--muted); letter-spacing: .05em;
+}
+#type-menu .tm-kicker-row:first-child { padding-top: 2px; }
+
+/* ── 专家详情分型 hero（1031）：小说=封面+进度，代码=仓库+步骤 ────────── */
+#exp-hero { margin-bottom: 12px; }
+#exp-hero.hidden { display: none !important; }
+.exp-hero-band {
+  display: flex; align-items: center; gap: 14px;
+  border-radius: 12px; padding: 12px 16px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.exp-hero-band.novel .eh-cover {
+  width: 62px; height: 84px; border-radius: 8px; flex: none;
+  background: linear-gradient(165deg, #3b4a6b, #1a2136); color: #dfe6f2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  box-shadow: 0 4px 12px rgba(31, 38, 55, .25);
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.exp-hero-band.novel .eh-cover b { writing-mode: vertical-rl; font-size: 12.5px; letter-spacing: .3em; font-weight: 600; }
+.exp-hero-band.novel .eh-cover small { font-size: 9px; opacity: .65; }
+.exp-hero-band .eh-main { flex: 1; min-width: 0; }
+.exp-hero-band .eh-name { font-size: 15px; font-weight: 700; }
+.exp-hero-band .eh-stats { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 5px; flex-wrap: wrap; }
+.exp-hero-band .eh-stats b { font-size: 13px; color: var(--text); }
+.exp-hero-band .eh-bar { height: 7px; border-radius: 999px; background: var(--panel2); overflow: hidden; width: 240px; margin-top: 8px; }
+.exp-hero-band .eh-bar i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
+.exp-hero-band .eh-side { flex: none; }
+.eh-pill { border-radius: 999px; padding: 4px 12px; font-size: 11.5px; font-weight: 600; background: var(--panel2); color: var(--muted); display: inline-block; }
+.eh-pill.run { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+.eh-pill.fail { background: color-mix(in srgb, var(--bad) 11%, transparent); color: var(--bad); }
+.eh-pill.done { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+.eh-chrows { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px 14px; }
+/* hero 可点化：章节行/画廊缩略图 hover 反馈（点击经 run 文件端点直开） */
+#exp-hero .ch-row[role="button"] { cursor: pointer; }
+#exp-hero .ch-row[role="button"]:hover { background: var(--panel2); }
+#exp-hero .eh-tile { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+#exp-hero .eh-tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(0, 0, 0, .08); }
+/* 代码型：执行管道 chips + 变更文件 chips */
+.eh-pipe { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-chip {
+  padding: 4px 11px; border-radius: 999px; font-size: 12px;
+  background: var(--panel2); color: var(--muted);
+}
+.pp-chip.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); font-weight: 600; }
+.pp-chip.run { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.eh-files { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.eh-files-head {
+  width: 100%; font-size: 12px; font-weight: 650; color: var(--muted); letter-spacing: .05em;
+}
+.eh-file {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 260px; padding: 4px 11px; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--border);
+  font-size: 12px; font-family: "Cascadia Code", "JetBrains Mono", monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.eh-file[role="button"] { cursor: pointer; transition: border-color .15s, color .15s; }
+.eh-file[role="button"]:hover { border-color: var(--accent); color: var(--accent); }
+.eh-file.more { border-style: dashed; color: var(--muted); }
+/* 章节行评审分徽章（chapter_scores 真源，≥8 分强调） */
+.ch-score {
+  font-size: 11px; font-weight: 650; color: var(--muted);
+  background: var(--panel2); border-radius: 999px; padding: 1px 8px;
+}
+.ch-score.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
+/* hero 下方两张补充卡：圣经节选 + 最近评审维度 */
+.eh-more { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 1100px) { .eh-more { grid-template-columns: 1fr; } }
+.eh-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 15px;
+}
+.eh-card h4 {
+  font-size: 12px; font-weight: 650; color: var(--muted); letter-spacing: .05em;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+}
+.eh-card h4 .eh-hint { font-weight: 500; letter-spacing: 0; }
+.eh-bible-text { font-size: 12.5px; line-height: 1.75; color: var(--text); }
+/* 圣经结构化标签（## 分节 + "- 名：描述" → 人物/规则/伏笔卡） */
+.eh-bible-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.eh-bible-tags .tag {
+  flex: 1 1 40%; min-width: 0; background: var(--panel2);
+  border-radius: 9px; padding: 6px 10px; font-size: 12px; line-height: 1.55;
+}
+.eh-bible-tags .tag b { display: block; font-size: 12.5px; font-weight: 650; }
+.eh-bible-tags .tag .sec {
+  display: block; font-style: normal; font-size: 10px; color: var(--muted);
+  letter-spacing: .04em; margin-bottom: 1px;
+}
+.eh-review .eh-score-big {
+  font-size: 28px; font-weight: 750; color: var(--accent); line-height: 1.15;
+  margin-bottom: 6px;
+}
+.eh-review .eh-dim {
+  display: flex; align-items: center; gap: 8px; margin-top: 7px;
+  font-size: 12px; color: var(--muted);
+}
+.eh-review .eh-dim span { width: 34px; flex: none; }
+.eh-review .eh-dim .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+.eh-review .eh-dim .bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.eh-review .eh-dim b { font-size: 12px; color: var(--text); width: 28px; text-align: right; }
+/* 封面真图（cover_gen done → /api/runs/<id>/cover） */
+.eh-cover-img {
+  width: 62px; height: 84px; border-radius: 8px; flex: none;
+  object-fit: cover; display: block;
+  box-shadow: 0 4px 12px rgba(31, 38, 55, .25);
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.eh-cover-img.eh-noimg { display: none; }
+.exp-hero-band.novel .eh-cover-img + .eh-main { margin-left: 2px; }
+/* 画师型：成品图条 */
+.exp-hero-band.art .eh-stats b { color: var(--text); }
+.eh-gal {
+  margin-top: 10px; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px;
+}
+.eh-tile { border-radius: 9px; overflow: hidden; border: 1px solid var(--border); background: var(--panel); }
+.eh-tile img { width: 100%; height: 72px; object-fit: cover; display: block; }
+.eh-tile-cap {
+  display: block; padding: 3px 7px; font-size: 10.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── 顶栏「⋯ 更多」（1031 顶栏收敛）：二级操作收进菜单 ───────────────── */
+.top-more-wrap { position: relative; display: inline-flex; }
+.top-more-src { display: none !important; }
+.top-more {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 90;
+  min-width: 190px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 12px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.top-more.hidden { display: none; }
+.tm-kicker { padding: 7px 10px 3px; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.tm-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: none; border-radius: 8px;
+  background: none; color: var(--text); font: inherit; font-size: 13px;
+  cursor: pointer; text-align: left;
+}
+.tm-item:hover { background: var(--panel2); }
+.tm-item .ico { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.tm-item.on { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.tm-item.on .ico { color: var(--accent); }
+
+/* ── 快捷导航页画布统一（1031）：非主页的主栏页 = 设置页同款灰画布浮白卡 ──
+ * 结构真源：快捷页（概览/看板/自动化/浏览器/通道体检/运行记录/任务详情）都是
+ * #page-settings 里的 subpage 以主形态展示；home（sub-tasks）保持白画布不动。
+ * 画布色由皮肤 token 派生（--bg 向 --text 偏 6% 灰阶）——跟随任意主题，
+ * 不写死色值（写死=「切肤不动」的根因）。!important 必须：wb-themes 61.3c 有
+ * main{background:var(--wb-bg)!important} 白画布保险，普通规则必输。 */
+html[data-layout] body:not(.settings-mode):not(.files-mode) main:has(#page-settings:not(.hidden)):has(#page-settings .subpage:not(.hidden):not(#sub-tasks)) {
+  background: color-mix(in srgb, var(--bg) 94%, var(--text)) !important;
+}
+html[data-theme="dark"][data-layout] body:not(.settings-mode):not(.files-mode) main:has(#page-settings:not(.hidden)):has(#page-settings .subpage:not(.hidden):not(#sub-tasks)) {
+  background: color-mix(in srgb, var(--bg) 94%, var(--text)) !important;
+}
+/* 页头排版与设置页对齐（panel-head 的 h2 = 设置页 pg-lead 同级观感） */
+html[data-layout] body:not(.settings-mode):not(.files-mode) main:has(#page-settings:not(.hidden)):has(#page-settings .subpage:not(.hidden):not(#sub-tasks)) .panel-head h2 {
+  font-size: 15px; font-weight: 600; letter-spacing: .01em;
+}
+/* 浮卡观感：主形态下的设置容器带一点投影（设置模式同款层级） */
+html[data-layout] body:not(.settings-mode):not(.files-mode) main:has(#page-settings:not(.hidden)):has(#page-settings .subpage:not(.hidden):not(#sub-tasks)) #page-settings {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+}
+/* 通道体检 KPI 卡：白面板上「白上白」近隐形——卡底由皮肤 token 派生（1031） */
+html[data-layout] body:not(.settings-mode):not(.files-mode) main:has(#page-settings:not(.hidden)):has(#page-settings .subpage:not(.hidden):not(#sub-tasks)) .avail-kpi {
+  background: color-mix(in srgb, var(--bg) 94%, var(--text));
+  border-color: var(--border-strong);
+}
+html[data-theme="dark"][data-layout] body:not(.settings-mode):not(.files-mode) main:has(#page-settings:not(.hidden)):has(#page-settings .subpage:not(.hidden):not(#sub-tasks)) .avail-kpi {
+  background: color-mix(in srgb, var(--bg) 94%, var(--text));
+  border-color: var(--border-strong);
+}
 
 /* ================= 运行详情页 · 标签化重构（2026-09-15，追加块） =================
  * 主栏详情从「一根长条 + 右侧窄栏」改为：头部（标题/状态/操作/统计）+ 标签分区 +
@@ -5560,7 +5832,10 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 #run-detail {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(260px, 23vw, 324px);
-  grid-template-areas: "main rail";
+  grid-template-areas:
+    "hero hero"
+    "main rail";
+  grid-template-rows: auto minmax(0, 1fr);
   column-gap: clamp(22px, 3vw, 44px);
   align-items: stretch;
   /* 工作台定高：面板钉满一屏（顶距 92 = topbar 64 + main 上边距 28；底 28 呼吸），
@@ -5569,6 +5844,7 @@ main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
   min-height: 460px;
   padding: 0 0 20px;
 }
+#run-detail > #exp-hero { grid-area: hero; align-self: start; }
 #rd-railcol {
   grid-area: rail;
   position: sticky;
@@ -5874,7 +6150,10 @@ body.rd-log-resizing { cursor: ns-resize; user-select: none; }
 main.chat-fill #run-detail.chat-mode {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(260px, 23vw, 324px);
-  grid-template-areas: "main rail";
+  grid-template-areas:
+    "hero hero"
+    "main rail";
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
 }
@@ -6060,8 +6339,10 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded {
   padding: 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(228px, 19vw, 300px);
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-areas: "main rail";
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "hero hero"
+    "main rail";
   gap: 16px;
   overflow: hidden;
   background: var(--panel);
@@ -9904,3 +10185,178 @@ button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, tra
 .chat-bubble.report .chat-step-meta { color: var(--muted); }
 .sbadge.kbb { background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad); font-weight: 600; }
+
+/* ================= WorkBuddy 观感层（wbbuddy 皮肤专用，2026-10-30）=================
+ * 只在 html[data-skin="wbbuddy"] 下生效，抄 WorkBuddy 桌面端的结构观感：
+ * 侧栏与画布之间用色差分隔不用边框线；卡片纯白、12px 圆角、发丝级投影；
+ * 图标轨融入侧栏底色；按钮胶囊化、主按钮蓝紫实底。删掉本段即回原生观感。 */
+html[data-skin="wbbuddy"] #app { gap: 0; }
+html[data-skin="wbbuddy"] #sidebar {
+  border-right: none;
+  box-shadow: inset -1px 0 0 var(--border);
+}
+html[data-skin="wbbuddy"] #mainwrap { background: var(--bg); }
+/* 图标轨融入侧栏底色（WorkBuddy 左栏是一整块，不分两色） */
+html[data-skin="wbbuddy"] nav.side-rail { background: var(--sidebar); border-right: none; }
+html[data-skin="wbbuddy"] .rail-btn { color: var(--muted); }
+html[data-skin="wbbuddy"] .rail-btn.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 10px;
+}
+html[data-skin="wbbuddy"] .rail-btn:hover { background: color-mix(in srgb, var(--text) 5%, transparent); border-radius: 10px; }
+/* 卡片：白底大圆角轻投影，去边框 */
+html[data-skin="wbbuddy"] .panel {
+  background: var(--panel);
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(31, 35, 41, .05), 0 6px 18px rgba(31, 35, 41, .04);
+}
+html[data-skin="wbbuddy"] .panel-head { border-bottom: 1px solid var(--border); }
+/* 输入卡（新建任务）：WorkBuddy 式大白卡 */
+html[data-skin="wbbuddy"] .cmp-box {
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(31, 35, 41, .05), 0 10px 28px rgba(31, 35, 41, .06);
+}
+html[data-skin="wbbuddy"] .cmp-box:focus-within {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent),
+              0 10px 28px rgba(31, 35, 41, .07);
+}
+/* 主按钮：蓝紫实底胶囊 */
+html[data-skin="wbbuddy"] button.primary {
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+html[data-skin="wbbuddy"] button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+html[data-skin="wbbuddy"] button.ghost {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+}
+html[data-skin="wbbuddy"] button.ghost:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+/* 聊天气泡：自己=蓝紫浅底、他方=白卡 */
+html[data-skin="wbbuddy"] .chat-bubble.me {
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  border: none;
+  border-radius: 14px;
+}
+html[data-skin="wbbuddy"] .chat-bubble.agent {
+  background: var(--panel);
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(31, 35, 41, .05);
+}
+/* 列表行选中态：浅蓝紫胶囊 */
+html[data-skin="wbbuddy"] .task-row.active,
+html[data-skin="wbbuddy"] .side-quick .set-item.active,
+html[data-skin="wbbuddy"] .run-item.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 10px;
+}
+/* 夜间微调：卡片投影减淡 */
+html[data-skin="wbbuddy"][data-theme="dark"] .panel {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+}
+html[data-skin="wbbuddy"][data-theme="dark"] .cmp-box {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+}
+/* 侧栏底色钉死（wbbuddy）：media 层的 --sidebar 覆盖竞争太多，
+ * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与 WorkBuddy 一致 */
+html[data-skin="wbbuddy"] #sidebar,
+html[data-skin="wbbuddy"][data-layout="workbench"] #sidebar {
+  background: #f7f8fa !important;
+  border-right: 1px solid #ececf0 !important;
+}
+html[data-skin="wbbuddy"][data-theme="dark"] #sidebar,
+html[data-skin="wbbuddy"][data-layout="workbench"][data-theme="dark"] #sidebar {
+  background: #17181c !important;
+  border-right-color: #26272c !important;
+}
+/* 图标轨同色 */
+html[data-skin="wbbuddy"] nav.side-rail,
+html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #f7f8fa !important; border-right: none !important; }
+html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #17181c !important; }
+/* 侧栏底色钉死（wbbuddy）：media 层的 --sidebar 覆盖竞争太多，
+ * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与 WorkBuddy 一致 */
+html[data-skin="wbbuddy"] #sidebar,
+html[data-skin="wbbuddy"][data-layout="workbench"] #sidebar {
+  background: #f7f8fa !important;
+  border-right: 1px solid #ececf0 !important;
+}
+html[data-skin="wbbuddy"][data-theme="dark"] #sidebar,
+html[data-skin="wbbuddy"][data-layout="workbench"][data-theme="dark"] #sidebar {
+  background: #17181c !important;
+  border-right-color: #26272c !important;
+}
+/* 图标轨同色 */
+html[data-skin="wbbuddy"] nav.side-rail,
+html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #f7f8fa !important; border-right: none !important; }
+html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #17181c !important; }
+
+/* body 底色对齐（wbbuddy）：desktop-workbench 的 media 层给 body 硬写了 #f5f6f8，
+ * 与白画布主区形成色差断层——钉成同源色。 */
+html[data-skin="wbbuddy"] body,
+html[data-skin="wbbuddy"][data-theme="light"] body { background: #ffffff !important; }
+html[data-skin="wbbuddy"][data-theme="dark"] body { background: #1c1d21 !important; }
+
+/* ================= WorkBuddy 文字观感（1031，wbbuddy 皮肤限定）=================
+ * 参照美图设计室 WorkBuddy 桌面端：干净无衬线、层级靠字重与灰阶不靠装饰——
+ * 大标题 700、导航 500 中黑、分组小标签浅灰小字、正文留白舒展。 */
+html[data-skin] body {
+  font-family: "MiSans", "HarmonyOS Sans SC", "PingFang SC",
+    "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+/* 左栏：品牌行醒目、导航行中黑、分组小标签退后 */
+html[data-skin="wbbuddy"] .brand-name { font-weight: 650; letter-spacing: .2px; }
+html[data-skin="wbbuddy"] .side-quick .qitem { font-weight: 500; }
+html[data-skin="wbbuddy"] .side-quick .qitem:not(.active):not(:hover) { color: #414651; }
+html[data-skin="wbbuddy"][data-theme="dark"] .side-quick .qitem:not(.active):not(:hover) { color: #b9bec8; }
+html[data-skin="wbbuddy"] .side-label { font-size: 12px; font-weight: 500; }
+/* 主页：大标题加粗到本尊级（body 提一档特异性，压过 redesign-layout 同分值后加载的 600），
+ * 快速开始胶囊中黑 */
+html[data-skin="wbbuddy"] body .rd-home-title { font-weight: 700; }
+html[data-skin="wbbuddy"] .rd-qs-btn { font-weight: 500; }
+html[data-skin="wbbuddy"] .rd-section-head h2 { font-weight: 650; }
+/* 任务树行文字与导航同级感 */
+html[data-skin="wbbuddy"] .stask .t { font-weight: 500; }
+
+/* ================= 四页观感提升（1031）：工作台/专家/运行记录/自动化 ================= */
+/* 侧栏「新聊天」首钮显眼化（WorkBuddy 按钮语言：白底描边，hover 强调色） */
+.new-task {
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 9px 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+.new-task:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(0, 0, 0, .07); }
+/* 专家面板：卡片呼吸感 + hover 上浮，头像放大一档 */
+.exp-grid { gap: 12px; }
+.exp-card {
+  border-radius: 14px; padding: 13px 14px;
+  transition: border-color .15s, box-shadow .18s, transform .12s;
+}
+.exp-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .10);
+  transform: translateY(-1px);
+}
+.exp-card .exp-av { width: 32px; height: 32px; border-radius: 10px; font-size: 14px; }
+.exp-name { font-size: 14px; }
+/* 运行记录行 hover 反馈 */
+#sub-runs .list > .item { border-radius: 10px; transition: background-color .12s; }
+#sub-runs .list > .item:hover { background: var(--panel2); }
+/* 自动化：模板卡 hover 上浮，空态柔化 */
+.auto-tpl-grid .card { transition: border-color .15s, box-shadow .18s, transform .12s; }
+.auto-tpl-grid .card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .10);
+  transform: translateY(-1px);
+}
+#sub-automation .empty {
+  border: 1px dashed var(--border); border-radius: 12px;
+  color: var(--muted); background: color-mix(in srgb, var(--bg) 60%, var(--panel));
+}

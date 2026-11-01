@@ -1707,6 +1707,25 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
         pass
 
 
+def _provider_key_fp(provider):
+    """P3 per-key 落账：本次调用实际使用 KEY 的指纹（sha256 前 8 位）。
+    供应商多 KEY 轮换时取当前生效 key；取不到返回空串（不落字段）。"""
+    try:
+        if not isinstance(provider, dict):
+            return ""
+        key = str(provider.get("api_key") or "").strip()
+        if not key:
+            keys = provider.get("keys")
+            if isinstance(keys, list) and keys:
+                key = str(keys[0] or "").strip()
+        if not key:
+            return ""
+        from . import usage as _usage
+        return _usage.key_fp(key)
+    except Exception:
+        return ""
+
+
 def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
     """把一次真实智能体调用记入用量台账；取不到的上下文留空，绝不抛错。
 
@@ -1733,7 +1752,8 @@ def _record_usage(run_id, role, agent, res, source="pipeline", step=0):
             first_token_ms=float((res.get("raw") or {}).get("first_token_ms") or 0.0),
             tokens_per_sec=float((res.get("raw") or {}).get("tokens_per_sec") or 0.0),
             cost_usd=float(res.get("cost_usd") or 0.0),
-            usage=res.get("usage"))
+            usage=res.get("usage"),
+            key_fp=_provider_key_fp(provider))
         # 告警模块：CLI 调用成功/失败上报（provider 名与 usage 台账一致）
         from . import health
         prov = res.get("provider") or agent.get("provider") or {}
@@ -7851,11 +7871,51 @@ def _read_constitution(workdir):
 
 def _read_project_memory(workdir, cap=4000, query=""):
     """Only inject approved, unexpired and fingerprint-verified memory."""
+    # 「对话记忆」开关（2026-10-29 记忆中心）：关闭后提示词不再注入项目记忆，
+    # 已沉淀的记忆原样保留在磁盘上。读取失败按开（fail-open），别把任务打断。
+    try:
+        from . import ui_prefs
+        if not ui_prefs.get("memory_conversation"):
+            return ""
+    except Exception:
+        pass
     try:
         from . import project_memory
         return project_memory.active_text(workdir, cap=cap, query=query)
     except (OSError, ValueError, TypeError):
         return ""
+
+
+def _capture_project_memory(task, run):
+    """run 结束后的候选记忆沉淀；「对话记忆」关闭时静默跳过。"""
+    try:
+        from . import ui_prefs
+        if not ui_prefs.get("memory_conversation"):
+            return None
+    except Exception:
+        pass
+    from . import project_memory
+    return project_memory.capture_run(task, run or {})
+
+
+def _learn_global_memory(run_id):
+    """run 结束后的经验库/知识库收割；「本地记忆与技能」关闭时跳过。"""
+    try:
+        from . import ui_prefs
+        if not ui_prefs.get("memory_local_skills"):
+            return
+    except Exception:
+        pass
+    try:
+        if store.get_run(run_id):
+            skills.learn_async(run_id)
+    except Exception:
+        pass
+    # 知识库闭环：从产出材料提炼可复用知识条目（草稿态，人工转正后参与注入）
+    try:
+        knowledge.learn_async(run_id)
+    except Exception:
+        pass
 
 
 def _write_task_spec(task, workdir):
@@ -8185,6 +8245,87 @@ def _workdir_blocker(task, run_id):
     return None
 
 
+def _workdir_lease_gate(task, run_id):
+    """跨进程原子认领租约（第二道闸，2026-11-01 借鉴 Cumora 原子工作认领）。
+
+    内存互斥（_workdir_blocker）看不见两样东西：同机**第二个 CodeBee 实例**
+    （生产 8765 + 测试实例）指向同一工作目录、以及「检查通过与真正起跑之间」
+    的竞态窗口。这里以独占创建（O_CREAT|O_EXCL）的文件租约再拦一道：拿到
+    租约才继续；被新鲜持有者挡住则走与上方内存互斥**同款**的排队回滚。
+    持有者靠心跳保活，pid 已死/心跳超时可被夺走。任何异常 fail-open——
+    租约是第二道闸，绝不反过来把主流程锁死。force_start 人工逃生口同样
+    适用：夺走租约直接起跑。
+
+    返回 True=放行（并已起心跳线程）；False=已回滚排队，调用方必须 return。
+    """
+    try:
+        from core import workdir_lease as _lease
+    except Exception:
+        return True
+    wd = (task.get("workdir") or "").rstrip("/\\")
+    if not wd:
+        return True
+    _run = store.get_run(run_id) or {}
+    _forced = bool(_run.get("force_start"))
+    try:
+        res = _lease.acquire(wd, run_id, task_id=task.get("id") or "", force=_forced)
+    except Exception:
+        return True
+    if res.get("ok"):
+        if res.get("stale"):
+            try:
+                print("[CodeBee] 工作目录租约原持有者已陈旧，%s 夺走重认领"
+                      % run_id, flush=True)
+            except Exception:
+                pass
+        if not res.get("skipped"):
+            _lease.start_heartbeat(wd, run_id)
+        return True
+    holder = res.get("holder") or {}
+    _bt = str(holder.get("task_id") or holder.get("run_id") or "?")[:24]
+    _resume_at = time.strftime("%Y-%m-%d %H:%M:%S",
+                               time.localtime(time.time() + 60))
+    try:
+        store.update_run(run_id, expected_status="running", status="queued",
+                         started_at="", resume_enqueue_at=_resume_at,
+                         blocked_by=wd,
+                         warnings=["工作目录被另一实例的运行占用（租约持有者 pid=%s），"
+                                   "排队等待（60 秒定时兜底；确认互不冲突可在详情页强制起跑）"
+                                   % holder.get("pid")])
+    except Exception:
+        pass
+    try:
+        store.update_task_status(task.get("id"), "queued")
+    except Exception:
+        pass
+    try:
+        jobs.register_workdir_waiter(
+            wd, {"kind": "orchestration", "run_id": run_id,
+                 "task_id": task.get("id")}, 60)
+    except Exception:
+        pass
+    try:
+        print("[CodeBee] 工作目录租约被「%s」持有（跨实例互斥）：%s 排队等待"
+              % (_bt, task.get("title") or task.get("id")), flush=True)
+    except Exception:
+        pass
+    return False
+
+
+def _workdir_lease_release(run_id):
+    """终态释放工作目录租约 + 停心跳（finally 调用，绝不抛错）。"""
+    try:
+        from core import workdir_lease as _lease
+        _lease.stop_heartbeat(run_id)
+        run = store.get_run(run_id) or {}
+        task = store.get_task(run.get("task_id") or "") if run.get("task_id") else None
+        wd = ((task or {}).get("workdir") or "").rstrip("/\\")
+        if wd:
+            _lease.release(wd, run_id)
+    except Exception:
+        pass
+
+
 def _execute_run_impl_inner(run_id):
     run = store.get_run(run_id)
     if not run:
@@ -8341,6 +8482,13 @@ def _execute_run_impl_inner(run_id):
                 return
     except Exception:
         pass   # 检测失败不挡主流程
+    # 跨进程原子认领租约（第二道闸）：内存互斥之后、起跑之前。被挡=回滚
+    # 排队并 return（与上方互斥同款行为）；fail-open 不挡主流程。
+    try:
+        if not _workdir_lease_gate(task, run_id):
+            return
+    except Exception:
+        pass
     # 代码版本检出：任务指定了基线版本时，先检出任务分支 tutti/<task-id> 再跑流水线。
     # 显式意图不容静默降级——仓库缺失/脏工作区/引用不存在一律中止运行并报错，
     # 绝不带着用户未提交改动切分支、也不悄悄退回当前 HEAD。
@@ -8535,9 +8683,9 @@ def _execute_run_impl_inner(run_id):
     finally:
         _clear_task_budget(run_id)
         # 所有引擎共用完成后的候选记忆沉淀；失败、取消和 partial 不产生成功记录。
+        # 「对话记忆」开关关闭时 _capture_project_memory 返回 None（2026-10-29）。
         try:
-            from . import project_memory
-            memory_entry = project_memory.capture_run(task, store.get_run(run_id) or {})
+            memory_entry = _capture_project_memory(task, store.get_run(run_id) or {})
             if memory_entry:
                 store.update_run(run_id, project_memory_id=memory_entry["id"])
         except Exception as memory_error:
@@ -8641,14 +8789,9 @@ def _execute_run_impl_inner(run_id):
         except Exception:
             pass
         # 自学习闭环：运行结束自动把本次评审暴露的问题沉淀为可复用教训（异步，不阻塞）
+        # 「本地记忆与技能」开关关闭时两个收割都跳过（2026-10-29 记忆中心）。
         try:
-            if store.get_run(run_id):
-                skills.learn_async(run_id)
-        except Exception:
-            pass
-        # 知识库闭环：从产出材料提炼可复用知识条目（草稿态，人工转正后参与注入）
-        try:
-            knowledge.learn_async(run_id)
+            _learn_global_memory(run_id)
         except Exception:
             pass
 
@@ -8714,6 +8857,11 @@ def _execute_run_impl(run_id):
                 run_id, expected_status=current.get("status"), status="failed",
                 ended_at=_now(), error=(repr(exc) or str(exc))[:500])
     finally:
+        try:
+            _workdir_lease_release(run_id)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "工作目录租约释放失败 run=%s", run_id, exc_info=True)
         try:
             _write_terminal_fallback_report(run_id)
         except Exception:

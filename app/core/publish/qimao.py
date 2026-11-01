@@ -10,6 +10,8 @@ zuozhe.qimao.com/api/pc/v1/book/book-option——作者后台 PC 端在 zuozhe.q
 """
 from __future__ import annotations
 
+from .selectors import get as _sel_get  # P0-a 外置注册表：七猫 Element UI 选择器单一真源
+
 CHAPTER_TITLE_SELECTOR = (
     "textarea[placeholder='请输入章节名称，最多20个字'],"
     "input[placeholder*='章节'],input[placeholder*='标题'],input[placeholder*='章名'],"
@@ -40,7 +42,7 @@ CONFIG = {
     # 章节管理页计数（2026-09-28 实机校准）：Element UI 表格，.el-table__row
     # 只中数据行（表头在独立的 header-wrapper 表里），与发章流程的等待选择器同源
     "count_rows_js":
-        "()=>[...document.querySelectorAll('.el-table__row')]"
+        "()=>[...document.querySelectorAll('" + _sel_get("qm_table_row") + "')]"
         ".map(tr => tr.innerText.replace(/\\s+/g, ' ').trim()).filter(Boolean)",
 }
 
@@ -419,11 +421,12 @@ def reconcile_book_id(page, book):
             time.sleep(1.0)
         probe = page.call(
             "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
-            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "const titleVisible=[...document.querySelectorAll('" + _sel_get("scope_broad") + "')]."
             "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
-            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "const create=[...document.querySelectorAll('" + _sel_get("scope_clickable") + "')].some(e=>vis(e)&&"
             "(e.innerText||'').trim().includes('创建作品'));"
-            "const loading=[...document.querySelectorAll('.el-loading-mask,[aria-busy=true]')].some(vis);"
+            "const loading=[...document.querySelectorAll('" + _sel_get("qm_loading")
+            + "')].some(vis);"
             "return{ready:document.readyState==='complete'&&location.href.includes('/front/book-manage'),"
             "create,loading,titleVisible};}" , title, 500)
         if (probe and probe.get("ready") and probe.get("create") and
@@ -467,11 +470,12 @@ def reconcile_short_story_book_id(page, book, allow_ghost=False):
             time.sleep(1.0)
         probe = page.call(
             "(title)=>{const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};"
-            "const titleVisible=[...document.querySelectorAll('a,button,[role=button],span,li,div,section')]."
+            "const titleVisible=[...document.querySelectorAll('" + _sel_get("scope_broad") + "')]."
             "some(e=>vis(e)&&(e.innerText||'').trim()===title);"
-            "const create=[...document.querySelectorAll('button,a,[role=button],span')].some(e=>vis(e)&&"
+            "const create=[...document.querySelectorAll('" + _sel_get("scope_clickable") + "')].some(e=>vis(e)&&"
             "(e.innerText||'').trim().includes('新建短故事'));"
-            "const loading=[...document.querySelectorAll('.el-loading-mask,[aria-busy=true]')].some(vis);"
+            "const loading=[...document.querySelectorAll('" + _sel_get("qm_loading")
+            + "')].some(vis);"
             "return{ready:document.readyState==='complete'&&location.href.includes('/front/book-manage/short'),"
             "create,loading,titleVisible};}", title, 500)
         if (probe and probe.get("ready") and probe.get("create") and

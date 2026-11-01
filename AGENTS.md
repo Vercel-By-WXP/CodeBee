@@ -9,6 +9,9 @@ The user requires all development in `E:/GoOut/MultiAgentOrchestration` directly
 - Port `8765` is the user's production service. Tests must use isolated temporary data and separate test ports; never send test requests to, bind, restart, upgrade, stop, or clear the production service. References to `8765` in unit tests must remain mocked or pure parsing checks (2026-10-16).
 - Never use native browser dialogs (`alert` / `confirm` / `prompt`, bare or `window.*`) in frontend code — they render outside the app (title shows `127.0.0.1:8765`) and can be suppressed by the browser. Use the in-app layers instead: `uiConfirm` / `uiPrompt` from `app/ui/app.js` for confirmations and text input, `openModal` for forms. `tests/test_ui_native_dialog_ban.py` fails on any native call (2026-10-21).
 - Follow the parent `E:/AGENTS.md` project knowledge and session archive requirements.
+- **界面工作必须先读根目录 `DESIGN.md`（设计宪法）**：原则（注意力守恒等）、token 真源
+  `app/ui/wb-themes.css`、组件规范、Do&Don't、Agent 硬约束都在里面；与样式冲突时以它为准
+  （2026-11-01 立法）。品牌参考件（Linear 等）只放 `design/refs/`，不得冒充本产品规范。
 
 ## 迭代计划（跨会话交接，强制）
 

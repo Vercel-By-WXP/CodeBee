@@ -173,6 +173,16 @@ def _code_map_block(task):
     }
 
 
+def _local_memory_on():
+    """「本地记忆与技能」开关（2026-10-29 记忆中心）：经验库/知识库是否参与注入。
+    读取失败按开（fail-open）；插件/外部技能/工程地图不归这个开关管。"""
+    try:
+        from . import ui_prefs
+        return bool(ui_prefs.get("memory_local_skills"))
+    except Exception:
+        return True
+
+
 def prepare(task, run_id=""):
     """Resolve one stable capability snapshot for a run."""
     key = str(run_id or "")
@@ -181,8 +191,13 @@ def prepare(task, run_id=""):
             return _RUNS[key]
     task = dict(task or {})
     scope = str(task.get("type") or "*")
-    sk, skill_ids = skills.block_for(task, stable_order=True, run_id=run_id)
-    kb = knowledge.block_for(task)
+    if _local_memory_on():
+        sk, skill_ids = skills.block_for(task, stable_order=True, run_id=run_id)
+        kb = knowledge.block_for(task)
+    else:
+        # 开关关闭：经验库与知识库整块退出快照，但快照结构不变（消费方
+        # 只看 sections/meta，不感知差异）。
+        sk, skill_ids, kb = "", [], ""
     code_text, code_meta = _code_map_block(task)
     plugin_text, plugin_ids = _plugin_block(task, skill_ids)
     external_text, external_ids = _external_skill_block(task)
