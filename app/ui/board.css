@@ -12,7 +12,7 @@
  * 历史包袱已清：v1 的网格底纹/暗角/辉光/水印/轨道动画属装饰高于信息密度，
  * v2/v3 是靠后写覆盖前写的三层叠加，均已删除。 */
 
-/* ---------- 第 1 层：主应用同款 token（全部由 --wb-* 派生，跟随 WorkBuddy 8 套主题 + 明暗） ---------- */
+/* ---------- 第 1 层：主应用同款 token（全部由 --wb-* 派生，跟随 CodeBee 全部主题 + 明暗） ---------- */
 :root {
   /* 兜底：未知皮肤（旧 ocean 等）回落 wbbuddy 浅色，避免 --wb-* 缺失导致透明 */
   --wb-bg: #ffffff; --wb-sidebar: #f7f8fa; --wb-panel: #ffffff; --wb-panel2: #f4f5f7;
@@ -73,13 +73,19 @@ html[data-skin] {
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; }
 body {
+  font: 14px/1.5 var(--sans);
+  overflow: hidden;
+}
+/* hive-ui.css 后加载，它的 `html, body { background: var(--cb-bg-0) }` / `body { color: var(--cb-text-1) }`
+ * 与本文件同特异度却更晚，会把大屏的底色和字色按死在固定浅/深两色上——皮肤只改强调色，
+ * 内部面板（实时流、卡面）却跟着 --wb-* 走，于是「切了皮肤像没切」甚至局部翻黑不可读。
+ * 抬一级选择器（html[data-skin] body）把底/字抢回来，皮肤才真正落到整页。 */
+html[data-skin] body {
   background:
     radial-gradient(1200px 560px at 14% -16%, var(--data-bg), transparent 62%),
     radial-gradient(900px 520px at 94% 110%, var(--live-bg), transparent 66%),
     var(--bg);
   color: var(--t1);
-  font: 14px/1.5 var(--sans);
-  overflow: hidden;
 }
 .hidden { display: none !important; }
 button { font: inherit; cursor: pointer; }
@@ -112,6 +118,16 @@ button { font: inherit; cursor: pointer; }
 .hd-svc.bad { color: var(--err); }
 .hd-svc.bad i { background: var(--err); }
 .hd-off { font: 11px var(--mono); color: var(--err); border: 1px solid var(--err-bd); border-radius: 4px; padding: 2px 8px; }
+/* 断线徽标即重试入口：大屏前没人会去翻控制台，点它立刻重拉一次 */
+.hd-off[role="button"] { cursor: pointer; }
+.hd-off[role="button"]:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
+/* 尚未拿到过数据时，指标位显示「—」而不是 0：0 是结论，未知不是 */
+#kpis .k-num.pending { color: var(--t3); }
+/* 断线时运行中面板是一块大白板，必须自己说明原因，否则读成「系统里没任务」 */
+.wall-offline {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--t3); font: 12px var(--mono);
+}
 .hd-clock { font: 600 20px var(--mono); color: var(--data); letter-spacing: .5px; min-width: 104px; text-align: right; }
 @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
 

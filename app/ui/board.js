@@ -85,7 +85,8 @@ function submitGate() {
    一次性回退，任何切换都会写回全局偏好，保持两处入口一致。 */
 const SKINS = [["wbbuddy", "CodeBee"], ["wb-light", "浅色"], ["wb-dark", "深色"],
                ["wb-breeze", "有风"], ["wb-qq", "经典 QQ"], ["wb-peace", "紫金秋"],
-               ["wb-peer", "同行"], ["wb-ripple", "涟漪"], ["wb-buddy", "伙伴"]];
+               ["wb-peer", "同行"], ["wb-ripple", "涟漪"], ["wb-buddy", "伙伴"],
+               ["wb-codebee", "蜜巢"]];
 const SKIN_IDS = new Set(SKINS.map((s) => s[0]));
 const _q = new URLSearchParams(location.search);
 
@@ -131,6 +132,12 @@ window.addEventListener("storage", (event) => {
 });
 applySkin();
 
+// 断线徽标就是重试按钮：点它立刻重拉一次，不用等下一个轮询周期
+$("#hd-conn").addEventListener("click", () => poll());
+$("#hd-conn").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); poll(); }
+});
+
 /* ---------------------------------------------------------------- 拉取 */
 let connLost = false;
 
@@ -150,6 +157,31 @@ async function api(path) {
 }
 
 let _pollBusy = false;
+let _fastRetry = 0;
+
+/* 首帧还没成功过就渲染的「0」是假数据：0 是结论，未知不是。
+ * 断线时把指标位打成「—」，等真拿到 payload 再由 render() 覆盖。 */
+const KPI_NUMS = ["#k-running", "#k-queued", "#k-done", "#k-failed", "#k-tokens"];
+function markPending() {
+  KPI_NUMS.forEach((s) => {
+    const el = $(s);
+    if (!el) return;
+    el.textContent = "—";
+    el.classList.add("pending");
+  });
+  const off = $("#wall-offline");
+  if (off) off.classList.remove("hidden");
+}
+function clearPending() {
+  document.querySelectorAll("#kpis .k-num.pending").forEach((el) => el.classList.remove("pending"));
+  const off = $("#wall-offline");
+  if (off) off.classList.add("hidden");
+}
+/* 失败后不等下一个 4s 周期，1.5s 内补一次（同一时刻仍只允许一条在飞） */
+function scheduleFastRetry() {
+  if (_fastRetry) return;
+  _fastRetry = setTimeout(() => { _fastRetry = 0; poll(); }, 1500);
+}
 
 async function poll() {
   // 在飞保护：上一轮未返回时跳过本轮，任何时刻最多占一条轮询连接
@@ -164,6 +196,8 @@ async function poll() {
       if (e && e.message === "401") return;
       if (!connLost) { connLost = true; $("#hd-conn").classList.remove("hidden"); }
       $("#hd-updated").textContent = t("重试连接中");
+      if (!LAST) markPending();
+      scheduleFastRetry();
       return;
     }
     LAST = data;
@@ -179,6 +213,7 @@ let LAST = null;
 const cardEls = new Map();   // task_id -> 卡元素（复用防闪烁）
 
 function render(d) {
+  clearPending();   // 首帧占位的「—」在此让位给真实数字
   const running = Array.isArray(d.running) ? d.running : [];
   const queued = Array.isArray(d.queued) ? d.queued : [];
   const recent = Array.isArray(d.recent) ? d.recent : [];

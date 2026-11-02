@@ -53,7 +53,7 @@
       <em data-i18n="对话">对话</em><b id="hd-chat-alive">0</b><span id="hd-chat-pool">/0</span>
     </div>
     <div class="hd-svc" id="hd-health"><i aria-hidden="true"></i><span id="hd-health-text"></span></div>
-    <div id="hd-conn" class="hd-off hidden" data-i18n="连接断开">连接断开</div>
+    <div id="hd-conn" class="hd-off hidden" role="button" tabindex="0" data-i18n-title="点击立即重试" data-i18n="连接断开">连接断开</div>
     <div class="hd-swap">
       <button class="sw-btn" id="sw-skin" type="button" data-i18n-title="切换全局皮肤"><span data-i18n="皮肤">皮肤</span> <b id="sw-skin-n">—</b></button>
       <button class="sw-btn" id="sw-mode" type="button" data-i18n-title="切换全局明暗"><b id="sw-mode-n">—</b></button>
@@ -67,24 +67,24 @@
   <section id="kpis" aria-label="核心指标" data-i18n-aria="核心指标">
     <div class="kpi k-run">
       <span class="k-lab" data-i18n="运行中">运行中</span>
-      <div class="k-row"><b class="k-num" id="k-running">0</b><span class="k-sub" id="k-run-sub">—</span></div>
+      <div class="k-row"><b class="k-num" id="k-running">—</b><span class="k-sub" id="k-run-sub">—</span></div>
     </div>
     <div class="kpi k-queue">
       <span class="k-lab" data-i18n="排队中">排队中</span>
-      <div class="k-row"><b class="k-num" id="k-queued">0</b><span class="k-sub" id="k-queue-sub">—</span></div>
+      <div class="k-row"><b class="k-num" id="k-queued">—</b><span class="k-sub" id="k-queue-sub">—</span></div>
     </div>
     <div class="kpi k-done">
       <span class="k-lab" data-i18n="今日完成">今日完成</span>
-      <div class="k-row"><b class="k-num" id="k-done">0</b><span class="k-sub" id="k-done-sub">—</span></div>
+      <div class="k-row"><b class="k-num" id="k-done">—</b><span class="k-sub" id="k-done-sub">—</span></div>
       <span class="k-ratio" aria-hidden="true"><i id="k-ratio-fill"></i></span>
     </div>
     <div class="kpi k-fail">
       <span class="k-lab" data-i18n="今日失败">今日失败</span>
-      <div class="k-row"><b class="k-num" id="k-failed">0</b><span class="k-sub" id="k-fail-sub">—</span></div>
+      <div class="k-row"><b class="k-num" id="k-failed">—</b><span class="k-sub" id="k-fail-sub">—</span></div>
     </div>
     <div class="kpi k-use">
       <span class="k-lab" data-i18n="今日消耗">今日消耗</span>
-      <div class="k-row"><b class="k-num" id="k-tokens">0</b><span class="k-sub" id="k-use-sub">—</span></div>
+      <div class="k-row"><b class="k-num" id="k-tokens">—</b><span class="k-sub" id="k-use-sub">—</span></div>
     </div>
   </section>
 
@@ -100,6 +100,7 @@
 
       <div id="wall-cards" class="wall-grid"></div>
 
+      <div id="wall-offline" class="wall-offline hidden" data-i18n="未连接到服务，正在重试…">未连接到服务，正在重试…</div>
       <div id="wall-empty" class="wall-empty hidden">
         <div class="idle-head">
           <div class="idle-ring" aria-hidden="true"><i></i></div>

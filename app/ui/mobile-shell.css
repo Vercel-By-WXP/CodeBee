@@ -1,4 +1,4 @@
-/* 手机壳：WorkBuddy 视觉语言（2026-11-01 按用户截图立法）。
+/* 手机壳：手机端视觉语言（2026-11-01 按用户参考截图立法）。
    画布浅灰 + 白卡圆角 16 + 无边框白圆钮 + 居中页题 + 黑色激活页签 + 绿色开关 +
    灰底胶囊 composer。默认隐藏，只在 <=900px 且 body.mob-shell-on 时显示。
    加载顺序排在所有皮肤之后；颜色一律消费 --wb-* token（缺席时回落通用别名），
@@ -9,7 +9,7 @@
 @media (max-width: 900px) {
   :root {
     --mob-tabbar-h: calc(58px + env(safe-area-inset-bottom));
-    /* WorkBuddy 家族取色：token 真源在 wb-themes.css，这里只做别名 */
+    /* 手机壳取色：token 真源在 wb-themes.css，这里只做别名 */
     --mob-canvas: var(--wb-panel2, var(--panel2));
     --mob-card: var(--wb-panel, var(--panel));
     --mob-line: var(--wb-border, var(--border));
@@ -86,7 +86,7 @@
     background: var(--mob-canvas);
   }
   .mob-sub.hidden { display: none !important; }
-  /* 子页自带返回圆钮 + 居中标题，品牌顶栏让位（对齐 WorkBuddy 二级页） */
+  /* 子页自带返回圆钮 + 居中标题，品牌顶栏让位（对齐二级页规范） */
   #mobile-shell[data-sub] .mob-top { display: none; }
   .mob-sub-head {
     position: sticky; top: 0; z-index: 2;
@@ -591,7 +591,7 @@
   #run-detail .rd-chat-run-status [data-chat-run-expand] { display: none !important; }
   #run-detail .rd-chat-bar textarea { font-size: calc(16px * var(--mob-font-scale, 1)); }
 
-  /* ---------- 详情页 WorkBuddy 化：圆钮返回 + 胶囊 composer + 用户气泡 ---------- */
+  /* ---------- 详情页手机化：圆钮返回 + 胶囊 composer + 用户气泡 ---------- */
   body.mob-detail-active #run-detail .rd-chat {
     background: var(--mob-canvas);
   }

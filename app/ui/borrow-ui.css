@@ -28,6 +28,10 @@
   color: var(--wb-text, #1f2329); font-size: 12.5px; text-align: left;
 }
 #borrow-attention .ba-row:hover { border-color: var(--wb-border-strong, #dcdce3); }
+/* 没有运行/任务落点的行（如发布成功率告警）不做成可点：指针不变手型，避免「点了没反应」 */
+#borrow-attention .ba-row.ba-static { cursor: default; }
+#borrow-attention .ba-row.ba-static:hover { border-color: var(--wb-border, #ececf0); }
+#borrow-attention .ba-row:focus-visible { outline: 2px solid var(--wb-accent, #4e5ba6); outline-offset: 1px; }
 #borrow-attention .ba-tag {
   flex: none; font-size: 11px; padding: 1px 7px; border-radius: 999px;
   border: 1px solid transparent;

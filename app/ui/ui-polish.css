@@ -162,3 +162,40 @@ a { text-underline-offset: 3px; }
     transition-duration: .01ms !important;
   }
 }
+
+/* ── 页头一律左对齐（2026-11-02 用户：「这种给我都改成左对齐」）─────────────
+ * applyPageLead 会把一句白话插成 `.panel-head` 的第二个 flex 子项，于是
+ * 「自动化  到点就自己跑的任务…  ⓘ  ……按钮」全挤在同一行，标题旁挂着半句话。
+ * 这里改成两行栅格：
+ *   第一行 = 标题 + ⓘ + 右侧操作按钮
+ *   第二行 = 白话说明，整行独占、贴左、限宽
+ * 用 grid 而不是 flex-basis 换行：flex 下 `.pg-sub` 会被压缩留在首行
+ * （实测 flex:0 0 100% 也不换行），grid 的显式行号才是确定行为。 */
+.panel-head.is-page-head.has-lead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+}
+.panel-head.is-page-head.has-lead > h2 { grid-column: 1; grid-row: 1; margin: 0; }
+.panel-head.is-page-head.has-lead > .hhelp { grid-column: 2; grid-row: 1; justify-self: start; }
+.panel-head.is-page-head.has-lead > .actions {
+  grid-column: 3; grid-row: 1; justify-self: end; margin-left: 0;
+}
+.panel-head.is-page-head.has-lead > .pg-sub {
+  grid-column: 1 / -1; grid-row: 2;
+  margin: 2px 0 0;
+  max-width: 74ch;
+  text-align: left;
+}
+/* 没走 .panel-head 的页（.pg-lead）：标题与说明本身是块级，只保证贴左、不居中 */
+.pg-lead { text-align: left; }
+.pg-lead > p { margin: 6px 0 0; max-width: 74ch; text-align: left; }
+/* 窄屏：操作按钮不再挤在标题右侧，掉到说明下面一行，仍贴左 */
+@media (max-width: 720px) {
+  .panel-head.is-page-head.has-lead { grid-template-columns: auto minmax(0, 1fr); }
+  .panel-head.is-page-head.has-lead > .actions {
+    grid-column: 1 / -1; grid-row: 3; justify-self: start; margin-top: 6px;
+  }
+}

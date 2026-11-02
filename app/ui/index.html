@@ -36,6 +36,9 @@
 <link rel="stylesheet" href="borrow-ui.css">
 <link rel="stylesheet" href="chat-stream.css">
 <link rel="stylesheet" href="chat-intent.css">
+<!-- 温度层（2026-11-02）：暖光/暖卡/蜜色胶囊，只调形态与派生色，不定义 token 真源；
+     删掉这一行即回滚整层观感（详见 warmth.css 头部注释）。 -->
+<link rel="stylesheet" href="warmth.css">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
@@ -407,7 +410,7 @@
             <div id="op-list" class="op-list" aria-live="polite"></div>
           </div>
         </div>
-        <!-- 1031 顶栏收敛（照 WorkBuddy：顶栏只留最常用的主题与状态）：二级操作统一收进
+        <!-- 1031 顶栏收敛（顶栏只留最常用的主题与状态）：二级操作统一收进
              「⋯ 更多」。真按钮原件留在 #top-more-src（display:none），菜单行只负责 .click()
              触发它们——id、事件绑定、aria 状态、CSS 守卫全部照旧，只是不再占顶栏位置。 -->
         <div class="top-more-wrap">
@@ -488,7 +491,34 @@
         </div>
       </div>
 
-      <!-- 1031 傻瓜化分层：首页=问候+输入框+快速开始（WorkBuddy 同款干净落地页）；
+      <!-- 能力卡（2026-11-02 温度改造 A 方案）：首屏唯一的色块层。
+           三张卡只做一件事——把一句成形指令填进 composer，绝不自动提交；
+           点击路径与「快速开始」完全一致（只填 #f-goal + 聚焦），不新增第二套逻辑。 -->
+      <div class="rd-caps" id="rd-caps">
+        <span class="rd-caps-label" data-i18n="或者，从一个能力开始">或者，从一个能力开始</span>
+        <div class="rd-caps-grid">
+          <button type="button" class="rd-cap" data-tone="a" data-suggest="审一下未提交的改动，指出风险并给出重构建议。">
+            <span class="rd-cap-ico"><svg class="ico" aria-hidden="true"><use href="#i-code"></use></svg></span>
+            <b data-i18n="写代码 / 改代码">写代码 / 改代码</b>
+            <span class="rd-cap-desc" data-i18n="审未提交改动、修失败任务、加一个功能">审未提交改动、修失败任务、加一个功能</span>
+            <span class="rd-cap-go"><span data-i18n="开始">开始</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span>
+          </button>
+          <button type="button" class="rd-cap" data-tone="b" data-suggest="生成本周周报：按真实台账写，没数据的地方留「—」，不要编数字。">
+            <span class="rd-cap-ico"><svg class="ico" aria-hidden="true"><use href="#i-file-text"></use></svg></span>
+            <b data-i18n="写文档 / 写稿">写文档 / 写稿</b>
+            <span class="rd-cap-desc" data-i18n="周报、方案、长篇连载，按你的口径写">周报、方案、长篇连载，按你的口径写</span>
+            <span class="rd-cap-go"><span data-i18n="开始">开始</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span>
+          </button>
+          <button type="button" class="rd-cap" data-tone="c" data-suggest="读我指定的表格，按口径汇总，给出结论和下一步建议。">
+            <span class="rd-cap-ico"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg></span>
+            <b data-i18n="看数据 / 出结论">看数据 / 出结论</b>
+            <span class="rd-cap-desc" data-i18n="读表、跑口径、给结论和下一步">读表、跑口径、给结论和下一步</span>
+            <span class="rd-cap-go"><span data-i18n="开始">开始</span><svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 1031 傻瓜化分层：首页=问候+输入框+快速开始（干净落地页）；
            快捷入口/最近任务属于高级区，默认折起，点「高级功能」展开。 -->
       <button type="button" id="btn-home-adv" class="rd-adv-toggle" onclick="toggleHomeAdvanced()"
               aria-expanded="false" aria-controls="home-adv">
@@ -2470,7 +2500,7 @@
     </aside>
   </div>
 
-  <!-- ================= 手机壳（<=900px 显示；桌面默认隐藏）· WorkBuddy 视觉 =================
+  <!-- ================= 手机壳（<=900px 显示；桌面默认隐藏）· 手机端视觉 =================
        四页签（任务/定时任务/发现/我的）+ 左抽屉 + 字体大小/存储空间子页。
        内容全部由 mobile-workbench.js 从 S.state 绘制；点任务直接进真实详情，
        新任务进真实表单；动作全部走既有实现，不在手机上造第二份真相。 -->
@@ -2797,6 +2827,7 @@
 <script defer src="hive3d.js"></script>
 <script defer src="activity.js"></script>
 <script defer src="app.js"></script>
+<script defer src="home-chips.js"></script>
 <script defer src="memory-center.js"></script>
 <script defer src="borrow-ui.js"></script>
 <script defer src="chat-stream.js"></script>

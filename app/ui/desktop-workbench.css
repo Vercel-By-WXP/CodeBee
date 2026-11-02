@@ -81,7 +81,7 @@
   main.chat-fill { min-height: 0; padding: 20px 24px 16px; overflow: hidden; }
   #mainwrap main.chat-fill > #page-settings.page,
   main.chat-fill #page-settings > #sub-runs.subpage { width: 100%; max-width: none; }
-  main.chat-fill:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 16px; }
+  main.chat-fill:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden)) { padding-bottom: 16px; }
   main.chat-fill #run-detail.chat-mode {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--workbench-task-width);
@@ -101,6 +101,13 @@
     animation: none;
   }
   main.chat-fill #run-detail.chat-mode > .rd-main { height: 100%; min-height: 0; }
+  /* hero 带搬进「作品信息」页签后（app.js relocateRunHero 加 .hero-moved），
+     顶部那一行没有内容了，但 grid 仍按 180px 预留 → 对话区凭空少 180px
+     （2026-11-02 实测 chat 起点比面板顶低 182px）。整行删掉，主区直接顶到上沿。 */
+  main.chat-fill #run-detail.chat-mode.hero-moved {
+    grid-template-areas: "main rail";
+    grid-template-rows: minmax(0, 1fr);
+  }
   /* The expert hero (cover + progress) can be tall; cap it so the chat always
      keeps a usable surface on short windows instead of being squeezed to a sliver. */
   #run-detail.chat-mode #exp-hero {
@@ -124,7 +131,9 @@
     overflow: hidden;
   }
   #run-detail.chat-mode .rd-chat-flow {
-    flex: 1 1 auto;
+    flex: 1 1 0;     /* basis 必须定 0：默认 auto = 消息总高，长对话时容器缩小、shrink 按「基准×系数」
+                        分配，输入条也会被按比例压到几像素（2026-11-02 实案：bar 只剩 22px，
+                        输入框与工具条被挤出可视区，看都看不到） */
     min-height: 0;
     overflow-y: auto;
     width: 100%;
@@ -137,9 +146,11 @@
   }
   /* A tall composer (queued messages / continue note) must never push the
      message stream out of view. Pin it to the bottom and scroll it internally
-     on short windows instead of overflowing the chat surface. */
+     on short windows instead of overflowing the chat surface.
+     输入条一律不参与压缩（flex-shrink: 0）：内容过高由 max-height 封顶 + 内部滚动，
+     这样长对话只会滚动消息流，绝不会把输入框挤成一条线。 */
   #run-detail.chat-mode .rd-chat-bar {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     min-height: 0;
     max-height: 62%;
     overflow-y: auto;
@@ -1094,8 +1105,8 @@
 /* New-task canvas: one focused group for the heading, input and task shortcuts.
  * Conversation composers retain their separate bottom-anchored layout. */
 @media (min-width: 901px) {
-  body:has(#page-settings > #sub-tasks:not(.hidden)) { overflow: hidden; }
-  main:has(> #page-settings > #sub-tasks:not(.hidden)) {
+  body:has(#page-settings:not(.hidden) > #sub-tasks:not(.hidden)) { overflow: hidden; }
+  main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) {
     position: relative;
     min-height: 0;
     padding: 0;
@@ -1103,7 +1114,7 @@
     background: var(--cb-canvas);
   }
 
-  main:has(> #page-settings > #sub-tasks:not(.hidden)) > #page-settings {
+  main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) > #page-settings {
     display: flex;
     flex: 1 1 0%;
     width: 100%;
@@ -1112,7 +1123,7 @@
     margin: 0;
   }
 
-  #page-settings > #sub-tasks:not(.hidden) {
+  #page-settings:not(.hidden) > #sub-tasks:not(.hidden) {
     position: relative;
     flex: 1 1 0%;
     min-height: 0;
@@ -1956,7 +1967,7 @@
     min-height: 0;
   }
 
-  main:has(> #page-settings > #sub-tasks:not(.hidden)) {
+  main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) {
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
   :is(#sub-tasks, #rd-input-slot) .form {

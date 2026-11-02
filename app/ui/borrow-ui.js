@@ -78,10 +78,18 @@
       }
       return "";
     };
+    // 真实落点只认 actions 里的 open_run（或显式 run_id）：`id` 是各 kind 的合成键
+    // （publish_rate 的 id 就是 "pub-rate"），拿它当 run id 去开详情＝点了没反应。
+    const targetOf = (it) => {
+      const acts = Array.isArray(it.actions) ? it.actions : [];
+      const open = acts.filter((a) => a && a.type === "open_run" && a.run_id)[0];
+      return { run: (open && open.run_id) || it.run_id || "", task: it.task_id || "" };
+    };
     const rows = items.slice(0, 5).map((it) => {
       const reason = it.reason ? '<span class="ba-reason">' + _esc(it.reason) + "</span>" : "";
-      return '<button class="ba-row" data-task="' + _esc(it.task_id || "") + '" data-run="' +
-        _esc(it.run_id || it.id || "") + '" data-kind="' + _esc(it.kind || "") + '">' +
+      const tgt = targetOf(it);
+      return '<button class="ba-row" data-task="' + _esc(tgt.task) + '" data-run="' +
+        _esc(tgt.run) + '" data-kind="' + _esc(it.kind || "") + '">' +
         '<span class="ba-tag ba-' + _esc(it.kind || "other") + '">' + _esc(attKindLabel(it.kind)) + "</span>" +
         '<span class="ba-title">' + _esc(it.title || "") + "</span>" + reason +
         '<span class="ba-time">' + _esc(it.time || "") + "</span>" + actBtn(it) + "</button>";
@@ -131,13 +139,27 @@
         }
       });
     });
+    // 行点击 = 打开对应运行详情。**必须走 jumpToRun，不能直接 openRun**：
+    // 详情面板住在 #page-settings 壳里，主页时那层壳是 hidden 的，裸 openRun 只把
+    // #run-detail 的 hidden 摘掉，用户看到的就是「点了没反应」（2026-11-02 实案；
+    // app.js showDetailInMain 里 2026-10-21 同款血账）。jumpToRun 会先把壳翻到
+    // 运行记录子页再开详情。无 run 的项退回任务详情，两者都没有就别做成可点。
     bar.querySelectorAll(".ba-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const rid = row.dataset.run;
-        if (rid && typeof window.openRun === "function") {
-          try { window.openRun(rid); } catch (e) { /* 详情打开失败不打扰 */ }
-        }
-      });
+      const rid = row.dataset.run || "";
+      const tid = row.dataset.task || "";
+      if (!rid && !tid) { row.classList.add("ba-static"); return; }
+      const go = () => {
+        if (rid && typeof window.jumpToRun === "function") { window.jumpToRun(rid); return; }
+        if (tid && typeof window.sideOpenTask === "function") { window.sideOpenTask(tid); return; }
+        if (rid && typeof window.openRun === "function") window.openRun(rid);
+      };
+      row.addEventListener("click", go);
+      // 原生 <button> 自己会把 Enter/Space 转成 click，再绑一遍会连开两次详情
+      if (row.tagName !== "BUTTON") {
+        row.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+        });
+      }
     });
   }
 

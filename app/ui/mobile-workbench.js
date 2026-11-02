@@ -196,7 +196,7 @@
   window.mobileWorkbenchReady = true;
 })();
 
-/* 手机壳：任务 / 定时任务 / 发现 / 我的（WorkBuddy 视觉，2026-11-01）。
+/* 手机壳：任务 / 定时任务 / 发现 / 我的（手机端视觉，2026-11-01）。
    数据全部来自 /api/state 与 /api/automation，动作全部走既有实现。 */
 (() => {
   const media = window.matchMedia("(max-width: 900px)");

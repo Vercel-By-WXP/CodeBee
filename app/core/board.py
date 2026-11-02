@@ -23,7 +23,14 @@ def payload():
     now = time.time()
     if _CACHE["data"] is not None and now - _CACHE["ts"] < _TTL:
         return _CACHE["data"]
-    data = _build()
+    try:
+        data = _build()
+    except Exception:
+        # 重建失败（磁盘抖动、台账被锁）时给上一份快照，不要让大屏整页归零：
+        # 全 0 会被读成「系统里一个任务都没有」，那是假结论。
+        if _CACHE["data"] is not None:
+            return _CACHE["data"]
+        raise
     _CACHE["ts"] = now
     _CACHE["data"] = data
     return data

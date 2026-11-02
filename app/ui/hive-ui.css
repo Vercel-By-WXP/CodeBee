@@ -226,7 +226,7 @@ body.settings-mode main:not(.browser-page-active) > #page-settings {
   flex: 0 1 1280px;
   margin-inline: auto;
 }
-body.settings-mode main:has(> #page-settings > #sub-tasks:not(.hidden)) > #page-settings {
+body.settings-mode main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) > #page-settings {
   flex: 0 1 1280px;
 }
 body.settings-mode main.browser-page-active > #page-settings {
@@ -322,54 +322,15 @@ body.settings-mode #mainwrap > main > #page-settings:has(> #sub-models:not(.hidd
   border-radius: var(--cb-radius-md);
 }
 
-/* The board reuses the shared tokens; logs alone may use the deeper log surface. */
-body:has(#board) {
-  background: var(--cb-bg-0);
-  color: var(--cb-text-1);
-}
-body:has(#board) #hd,
-body:has(#board) #board,
-body:has(#board) .panel,
-body:has(#board) .kpi {
-  background: var(--cb-bg-0);
-  color: var(--cb-text-1);
-}
-body:has(#board) #hd {
-  border-bottom-color: var(--cb-line);
-  background: var(--cb-bg-nav);
-}
-body:has(#board) .panel,
-body:has(#board) .kpi {
-  border-color: var(--cb-line);
-  background: var(--cb-bg-1);
-  box-shadow: var(--cb-shadow-card);
-}
+/* 大屏（board.html）曾在这里被整体改写成 hive 的固定调色板：底/卡面/文字全取
+ * --cb-bg-* / --cb-text-*（只随 data-theme 变），而 board.css 第 1 层又用 !important
+ * 把 --bg/--text/--panel 抢成 --wb-*。两套 token 打架，落到用户眼里就是「切了皮肤
+ * 只改强调色、底色纹丝不动」，且 --card/--t1 这类别名走 hive、底子走皮肤时局部会
+ * 出现深底配深字。token 真源是 wb-themes.css（DESIGN.md），所以此处只保留与配色
+ * 无关的排布，配色一律交回 board.css 的 --wb-* 派生。 */
 body:has(#board) .panel { border-radius: var(--cb-radius-lg); }
 body:has(#board) #main { gap: 16px; }
 body:has(#board) .wall-grid { gap: 10px; }
-body:has(#board) .wall-card,
-body:has(#board) .run-card { background: var(--cb-bg-2); }
-body:has(#board) .dw-log,
-body:has(#board) .dw-log-body,
-body:has(#board) .dw-log-body pre {
-  background: var(--cb-log-bg);
-  color: var(--cb-log-text);
-}
-body:has(#board) {
-  --live: var(--cb-info);
-  --live-hi: var(--cb-info);
-  --live-bg: color-mix(in srgb, var(--cb-info) 12%, transparent);
-  --live-bd: color-mix(in srgb, var(--cb-info) 40%, transparent);
-  --data: var(--cb-brand);
-  --data-bg: color-mix(in srgb, var(--cb-brand) 10%, transparent);
-  --data-bd: color-mix(in srgb, var(--cb-brand) 36%, transparent);
-  --good: var(--cb-success);
-  --err: var(--cb-danger);
-  --card: var(--cb-bg-2);
-  --t1: var(--cb-text-1);
-  --t2: var(--cb-text-2);
-  --t3: var(--cb-text-3);
-}
 
 /* Settings reference styles contain fixed light surfaces. Remap the complete
  * settings shell to semantic tokens in both modes so the theme toggle changes

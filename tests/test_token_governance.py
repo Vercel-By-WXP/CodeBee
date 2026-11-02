@@ -29,7 +29,7 @@ UI = Path(__file__).resolve().parents[1] / "app" / "ui"
 WB_FAMILY = ("--wb-panel", "--wb-panel2", "--wb-border", "--wb-border-strong",
              "--wb-text", "--wb-accent", "--wb-accent2")
 SKIN_IDS = ("wbbuddy", "wb-light", "wb-dark", "wb-breeze", "wb-qq",
-            "wb-peace", "wb-peer", "wb-ripple", "wb-buddy")
+            "wb-peace", "wb-peer", "wb-ripple", "wb-buddy", "wb-codebee")
 DUP_FREEZE = 115          # 冷冻线（死皮肤两文件删除后基线 104 + 余量），破线=必须收敛
 THEMES = "wb-themes.css"
 

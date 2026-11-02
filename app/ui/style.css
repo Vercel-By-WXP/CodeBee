@@ -300,9 +300,9 @@ html[data-skin="contrast"][data-theme="light"] {
   --uc-ca: #b03000;
   --uc-out: #05703f;
 }
-/* WorkBuddy 风格（2026-10-30 用户拍板「直接抄样式和风格」）：
+/* 默认皮肤 wbbuddy（2026-10-30 用户拍板「直接抄参考样式和风格」）：
  * 日间=近白画布 #fff + 浅灰侧栏 #f7f8fa + 蓝紫强调 #4E5BA6 系，
- * 白卡轻投影、无边框分栏、8-12px 圆角——对齐 WorkBuddy 桌面端观感；
+ * 白卡轻投影、无边框分栏、8-12px 圆角——对齐桌面端观感；
  * 夜间=石墨底 + 同源蓝紫，保持可读。 */
 html[data-skin="wbbuddy"] {
   --bg: #1c1d21;
@@ -2868,6 +2868,11 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
 /* ── 专家详情分型 hero（1031）：小说=封面+进度，代码=仓库+步骤 ────────── */
 #exp-hero { margin-bottom: 12px; }
 #exp-hero.hidden { display: none !important; }
+/* hero 带搬进「作品信息」页签后的槽位（见 app.js relocateRunHero）：
+   面板为空时槽位不占位；hero 自己在槽位里不再叠外边距 */
+.bm-hero-slot:empty { display: none; }
+.bm-hero-slot { margin-bottom: 18px; }
+.bm-hero-slot > #exp-hero { margin-bottom: 0; }
 .exp-hero-band {
   display: flex; align-items: center; gap: 14px;
   border-radius: 12px; padding: 12px 16px;
@@ -2894,10 +2899,32 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
 .eh-pill.run { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
 .eh-pill.fail { background: color-mix(in srgb, var(--bad) 11%, transparent); color: var(--bad); }
 .eh-pill.done { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
-.eh-chrows { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px 14px; }
+.eh-chrows { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+/* 章节行（hero 下方最近 5 章）：紧凑胶囊——状态点 + 章号 + 评审分 + 字数同一行。
+ * 曾直接复用 .ch-row，被下方「章节评审」卡的 .ch-row（全局、后加载、纵向
+ * 带边框）抢走几何：五章排成五张竖排小卡、章号与字数各占一行、横跨整栏
+ * 拉开——2026-11-02 用户截图「格式要不得」。现独立命名 eh-chrow 彻底脱钩，
+ * 评审卡的 .ch-row 保持原样。 */
+.eh-chrows .eh-chrow {
+  display: inline-flex; align-items: center; gap: 7px; min-width: 0;
+  padding: 4px 11px; border-radius: 999px; border: 1px solid transparent;
+  background: var(--panel2); font-size: 12px; line-height: 1.6; color: var(--muted);
+}
+.eh-chrows .eh-chrow .d {
+  width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: var(--muted);
+}
+.eh-chrows .eh-chrow .d.ok { background: var(--ok); }
+.eh-chrows .eh-chrow .n { color: var(--text); font-weight: 600; white-space: nowrap; }
+.eh-chrows .eh-chrow .w {
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 /* hero 可点化：章节行/画廊缩略图 hover 反馈（点击经 run 文件端点直开） */
-#exp-hero .ch-row[role="button"] { cursor: pointer; }
-#exp-hero .ch-row[role="button"]:hover { background: var(--panel2); }
+#exp-hero .eh-chrow[role="button"] { cursor: pointer; }
+#exp-hero .eh-chrow[role="button"]:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
 #exp-hero .eh-tile { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 #exp-hero .eh-tile:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(0, 0, 0, .08); }
 /* 代码型：执行管道 chips + 变更文件 chips */
@@ -2930,6 +2957,9 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
 .ch-score.ok { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
 /* hero 下方两张补充卡：圣经节选 + 最近评审维度 */
 .eh-more { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* 空槽必须彻底消失：内层 margin 不折叠，空 .eh-more 会在 hero 卡与章节胶囊之间
+ * 白占 12px（实测 hero→胶囊 24px 而设计值是 12px），一并把胶囊行距定到 16px。 */
+.eh-more:empty { display: none; }
 @media (max-width: 1100px) { .eh-more { grid-template-columns: 1fr; } }
 .eh-card {
   background: var(--panel); border: 1px solid var(--border);
@@ -2972,7 +3002,64 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
   border: 1px solid rgba(255, 255, 255, .12);
 }
 .eh-cover-img.eh-noimg { display: none; }
-.exp-hero-band.novel .eh-cover-img + .eh-main { margin-left: 2px; }
+.exp-hero-band.novel .eh-coverbox + .eh-main { margin-left: 2px; }
+/* 封面位（2026-11-02）：真图/占位与「生成封面」按钮竖排成一列。之前封面位
+ * 是裸块、零点击行为，深蓝圆角摆在首屏最左就像个按钮，点了没反应；现在
+ * 按钮就在它下面，点到哪都有反馈。宽度锁 62px 与封面图同宽，不出竖条错位。 */
+.eh-coverbox {
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  width: 62px; flex: none;
+}
+.eh-cover-gen {
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  width: 100%; padding: 4px 2px; border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  color: var(--accent); font-size: 10.5px; line-height: 1.25; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.eh-cover-gen span { white-space: nowrap; }
+/* 桌面 62px 宽只放得下四个字，图标平时收起；生成中转圈时才露出来 */
+.eh-cover-gen .ico { width: 11px; height: 11px; flex: none; display: none; }
+.eh-cover-gen.busy .ico { display: inline-block; }
+.eh-cover-gen:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--panel));
+  border-color: var(--accent);
+}
+.eh-cover-gen:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 已有封面图时弱化成次级按钮：首屏注意力该在书名和进度上，不在「换封面」。
+ * 但仍要让「能点」看得出来——纯 muted 在浅色底上跟禁用态一模一样。 */
+.eh-cover-gen.has-img {
+  color: color-mix(in srgb, var(--text) 68%, transparent);
+  border-color: var(--line); background: var(--panel);
+}
+.eh-cover-gen.has-img:hover { color: var(--accent); border-color: var(--accent); }
+.eh-cover-gen.busy, .eh-cover-gen[disabled] { cursor: default; opacity: .72; }
+/* 封面占位「默认效果」：书脊高光 + 角部柔光 + 细噪点质感，不生成图时也不发死 */
+.exp-hero-band.novel .eh-cover { position: relative; overflow: hidden; }
+.exp-hero-band.novel .eh-cover::before {
+  content: ""; position: absolute; inset: auto -20px -24px auto;
+  width: 58px; height: 58px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(122, 162, 255, .55), transparent 70%);
+}
+.exp-hero-band.novel .eh-cover::after {
+  content: ""; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, .38), transparent);
+}
+.exp-hero-band.novel .eh-cover b,
+.exp-hero-band.novel .eh-cover small { position: relative; z-index: 1; }
+/* 「生成封面」确认弹窗（页面级，替掉底部卡片内的内联预览） */
+.cover-ask-hint { margin: 0 0 10px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.cover-ask-label {
+  font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
+  color: var(--muted); margin-bottom: 6px;
+}
+.cover-ask-prompt {
+  max-height: 220px; overflow: auto; padding: 10px 12px;
+  border-radius: 8px; background: var(--panel2); border: 1px solid var(--line);
+  font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+}
 /* 画师型：成品图条 */
 .exp-hero-band.art .eh-stats b { color: var(--text); }
 .eh-gal {
@@ -3489,7 +3576,7 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 }
 
 /* ---------------- 作品信息（独立 TAB：番茄/七猫平台卡片，字段内联逐条复制） ---------------- */
-.rd-bookmeta { padding: 4px 0 24px; max-width: 1120px; }
+.rd-bookmeta { padding: 12px 0 28px; max-width: 1120px; }
 .bm-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; padding: 0 2px; }
 .bm-head .ico { color: var(--accent); width: 16px; height: 16px; }
 .bm-head .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
@@ -3503,8 +3590,11 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .bm-guide b { color: var(--text); font-size: 13.5px; font-weight: 600; }
 .bm-guide p { margin: 5px 0 0; font-size: 12.5px; line-height: 1.75; color: var(--muted); }
 
-/* 平台卡片：两列自适应；窄屏自动堆叠。悬浮轻抬 + 描边渐亮，观感呼应蜂巢格 */
+/* 平台卡片：两列自适应；窄屏自动堆叠。悬浮轻抬 + 描边渐亮，观感呼应蜂巢格。
+ * 卡片组之间必须有间距：封面卡是第二个 .bm-cards，缺这条时两张组会边框贴边框
+ *（2026-11-02 用户「咋都没有间隔哟」的第一现场，实测 0px）。 */
 .bm-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 18px; }
+.bm-cards + .bm-cards { margin-top: 18px; }
 .bm-card { display: flex; flex-direction: column; border: 1px solid var(--border);
   border-radius: var(--r-lg); background: var(--panel); overflow: hidden; min-width: 0;
   box-shadow: var(--shadow); transition: border-color .18s, transform .18s; }
@@ -3527,7 +3617,7 @@ details.sf-dir > summary i, a.sf-file i { font-style: normal; color: var(--muted
 .bm-card-head button { font-size: 12.5px; padding: 5px 12px; }
 
 /* 字段区：标签固定宽右对齐、值占满；整卡 padding 拉开呼吸感；hover 才点亮复制按钮 */
-.bm-fields { padding: 6px 18px 14px; }
+.bm-fields { padding: 10px 18px 16px; }
 .bm-f { display: flex; align-items: baseline; gap: 14px; padding: 11px 0;
   border-bottom: 1px solid var(--border); min-width: 0; }
 .bm-f:last-child { border-bottom: 0; padding-bottom: 6px; }
@@ -5118,26 +5208,30 @@ main .panel.wide {
 /* Hive: keep the stage relationship, remove the heavy nested panel treatment. */
 #run-detail .rd-hive { margin-top: 0; }
 #run-detail .rd-hive .sec-title { margin-bottom: 12px; }
-#rd-hive-cells { gap: 0; }
+/* 2026-11-02 用户「咋没有间隔啊，好丑啊」：这一层原先把泳道拆成「无边框 + 透明底 +
+ * 通栏发丝线」的连续列表（想学 Codex 的留白密度），但泳道和格子的边界一起消失后，
+ * 01/02/03 三段与各自的格子全糊成一片文字墙。恢复「轻卡片泳道 + 行化格子」两层：
+ * 泳道 = 1px 描边 + 12px 圆角 + 面板底（段与段之间 10px），格子 = 通栏行（行间 8px，
+ * 只剩左侧状态条 + 顶部分隔线），密度不变但层级回来了。 */
+#rd-hive-cells { gap: 10px; }
 #rd-hive-cells .hive-lane {
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  padding: 13px 0 14px;
-  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  background: var(--panel);
   box-shadow: none;
 }
 #rd-hive-cells .hive-lane:last-child { border-bottom: 1px solid var(--border); }
 #rd-hive-cells .hive-lane::before {
-  left: 0; right: auto; width: 56px; height: 2px;
-  border-radius: 0;
+  left: 14px; right: auto; width: 56px; height: 2px;
+  border-radius: 999px;
 }
 #rd-hive-cells .hive-lane.lane-active {
-  border-color: var(--accent);
-  box-shadow: none;
-  background: color-mix(in srgb, var(--accent) 2%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 2%, var(--panel));
 }
-#rd-hive-cells .lane-head { margin-bottom: 6px; }
+#rd-hive-cells .lane-head { margin-bottom: 10px; }
 #rd-hive-cells .lane-idx {
   width: 28px; height: 24px;
   clip-path: none;
@@ -5391,15 +5485,15 @@ body.inspector-open #run-detail #rd-log.rd-logdrawer {
    内边距相加恒定溢出 → 页面永远多出一条滚动条）。改为 main 挂 flex 把内容区
    原样让给子页，composer 在其中垂直居中；内容超高（矮窗口）时 flex 不压缩，
    main 照常滚动，其它子页不受影响。 */
-main:has(> #page-settings > #sub-tasks:not(.hidden)) {
+main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) {
   display: flex;
   flex-direction: column;
   padding-bottom: 36px;
 }
-main:has(> #page-settings > #sub-tasks:not(.hidden)) > #page-settings { flex: 1 0 auto; }
+main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) > #page-settings { flex: 1 0 auto; }
 /* 运行记录/详情子页：详情面板定高一屏（顶距 92 + 底距 28 与其 height 公式对齐），
    底部内边距收紧——否则文档高出一截，窗口滚动条又会回来 */
-main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
+main:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden)) { padding-bottom: 28px; }
 #sub-tasks {
   flex: 1 0 auto;
   display: flex;
@@ -6178,7 +6272,7 @@ main.chat-fill #run-detail.chat-mode > .rd-main { overflow: hidden; }
   }
   /* 输入条往视口底压：4298 的详情态 28px 底距 + 工作台呼吸 + 条自身边距
      叠出来 42px 太悬浮；浮卡模式收到 ~22px（同特异性靠文件序靠后取胜） */
-  main:has(> #page-settings > #sub-runs:not(.hidden)) { padding-bottom: 8px; }
+  main:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden)) { padding-bottom: 8px; }
   main.chat-fill #run-detail.chat-mode > .rd-main { height: 100%; }
   main.chat-fill #run-detail.chat-mode > #rd-railcol {
     position: fixed;
@@ -6410,12 +6504,14 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
    点击区域仍覆盖整行，CLI 日志入口不变；这样蜂巢更接近 Codex 的留白和信息密度。 */
 #rd-hive-cells .lane-cells {
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 0 18px;
+  gap: 10px 18px;
 }
+/* 格子从「纯文字行」升一格：淡面板底 + 8px 圆角，多行密集排布（评审 22 格）
+ * 时能看出是一格一格，而不是一段连续文字；状态仍然靠左侧 2px 竖条 + 顶部进度点。 */
 #rd-hive-cells .hive-cell {
-  min-height: 68px; padding: 9px 4px 9px 12px;
-  border: 0; border-top: 1px solid var(--border); border-radius: 0;
-  background: transparent; box-shadow: none;
+  min-height: 68px; padding: 9px 10px 9px 12px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: color-mix(in srgb, var(--panel2) 52%, transparent); box-shadow: none;
 }
 #rd-hive-cells .hive-cell::before {
   top: 10px; bottom: 10px; left: 0; right: auto; width: 2px; height: auto;
@@ -6429,9 +6525,9 @@ main.chat-fill #run-detail.chat-mode.rd-chat-expanded .rd-pane[data-pane="chat"]
   border-color: var(--border); background: color-mix(in srgb, var(--accent) 3%, transparent);
 }
 #rd-hive-cells .hive-cell:hover,
-#rd-hive-cells .hive-cell:hover {
+#rd-hive-cells .hive-cell:focus-visible {
   transform: none; background: color-mix(in srgb, var(--accent) 6%, transparent);
-  box-shadow: none; outline-offset: -2px;
+  box-shadow: none; outline: 2px solid var(--accent); outline-offset: -2px;
 }
 #rd-hive-cells .hc-tail { background: transparent; padding: 2px 0 0; }
 #rd-hive-cells .hc-meta { margin-top: 5px; }
@@ -6766,7 +6862,7 @@ body.welcome-open { overflow: hidden; }
 
 /* ---------------- 一键发布：平台卡内的发布行（追加于文件尾，防并行重排） ---------------- */
 .bm-pub {
-  margin: 0 18px 14px; padding: 10px 12px 8px; border-top: 1px dashed var(--border);
+  margin: 10px 18px 16px; padding: 14px 12px 12px; border-top: 1px dashed var(--border);
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
 }
 .pb-badge {
@@ -6780,7 +6876,7 @@ body.welcome-open { overflow: hidden; }
 .pb-book { font-size: 12px; color: var(--muted); max-width: 220px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 多账号（2026-10-18）：账号 chips + 账号下拉，跟发布行同字号 */
-.pb-accounts { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin: 2px 0; }
+.pb-accounts { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin: 4px 0; }
 .pb-acc-chip { display: inline-flex; align-items: center; gap: 4px;
   font-size: 12px; color: var(--muted);
   border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; }
@@ -6788,7 +6884,7 @@ body.welcome-open { overflow: hidden; }
 .pb-acc-sel { max-width: 160px; font-size: 12.5px; }
 .pb-err { width: 100%; font-size: 12px; color: #c23b3b; word-break: break-all; }
 .pb-chapters { width: 100%; display: flex; flex-direction: column; gap: 4px;
-  margin-top: 4px; max-height: 240px; overflow: auto; }
+  margin-top: 8px; max-height: 240px; overflow: auto; }
 .pb-hint { font-size: 11.5px; color: var(--muted); }
 .pb-ch-item { text-align: left; justify-content: flex-start; font-size: 12.5px; }
 
@@ -6796,7 +6892,7 @@ body.welcome-open { overflow: hidden; }
  * （重新生成）= 12.5px / 9px 圆角 / 400 字重 / 5px 12px——发布行按钮完全
  * 同规格，不再用药丸形与加重字重；主操作仅以 accent 描边区分层级。
  * 只作用于 .bm-pub 内，不动全局 button.primary/ghost。 */
-.bm-pub { gap: 6px 8px; }
+.bm-pub { gap: 14px 8px; }
 .bm-pub button {
   font-size: 12.5px; line-height: 1; padding: 5px 12px; border-radius: 9px; font-weight: 400;
 }
@@ -9313,7 +9409,7 @@ button.ghost, button.primary, button.danger { font-size: 13px; font-weight: 550;
   main, html[data-skin="ocean"][data-theme="light"] main {
     min-height: 0; padding: 20px max(12px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
-  main:has(> #page-settings > #sub-tasks:not(.hidden)) { display: block; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+  main:has(> #page-settings:not(.hidden) > #sub-tasks:not(.hidden)) { display: block; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
   #sub-tasks { min-height: 0; display: block; }
   :is(#sub-tasks, #rd-input-slot) .composer { margin: 0 auto; padding: 0; max-width: 680px; }
   :is(#sub-tasks, #rd-input-slot) .hero-row { margin-bottom: 16px; text-align: left; justify-content: flex-start; align-items: flex-start; }
@@ -10186,8 +10282,8 @@ button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, tra
 .sbadge.kbb { background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad); font-weight: 600; }
 
-/* ================= WorkBuddy 观感层（wbbuddy 皮肤专用，2026-10-30）=================
- * 只在 html[data-skin="wbbuddy"] 下生效，抄 WorkBuddy 桌面端的结构观感：
+/* ================= 桌面观感层（wbbuddy 皮肤专用，2026-10-30）=================
+ * 只在 html[data-skin="wbbuddy"] 下生效，桌面端的结构观感：
  * 侧栏与画布之间用色差分隔不用边框线；卡片纯白、12px 圆角、发丝级投影；
  * 图标轨融入侧栏底色；按钮胶囊化、主按钮蓝紫实底。删掉本段即回原生观感。 */
 html[data-skin="wbbuddy"] #app { gap: 0; }
@@ -10196,7 +10292,7 @@ html[data-skin="wbbuddy"] #sidebar {
   box-shadow: inset -1px 0 0 var(--border);
 }
 html[data-skin="wbbuddy"] #mainwrap { background: var(--bg); }
-/* 图标轨融入侧栏底色（WorkBuddy 左栏是一整块，不分两色） */
+/* 图标轨融入侧栏底色（左栏是一整块，不分两色） */
 html[data-skin="wbbuddy"] nav.side-rail { background: var(--sidebar); border-right: none; }
 html[data-skin="wbbuddy"] .rail-btn { color: var(--muted); }
 html[data-skin="wbbuddy"] .rail-btn.active {
@@ -10213,7 +10309,7 @@ html[data-skin="wbbuddy"] .panel {
   box-shadow: 0 1px 3px rgba(31, 35, 41, .05), 0 6px 18px rgba(31, 35, 41, .04);
 }
 html[data-skin="wbbuddy"] .panel-head { border-bottom: 1px solid var(--border); }
-/* 输入卡（新建任务）：WorkBuddy 式大白卡 */
+/* 输入卡（新建任务）：大白卡 */
 html[data-skin="wbbuddy"] .cmp-box {
   border: none;
   border-radius: 16px;
@@ -10265,7 +10361,7 @@ html[data-skin="wbbuddy"][data-theme="dark"] .cmp-box {
   box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
 }
 /* 侧栏底色钉死（wbbuddy）：media 层的 --sidebar 覆盖竞争太多，
- * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与 WorkBuddy 一致 */
+ * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与默认观感一致 */
 html[data-skin="wbbuddy"] #sidebar,
 html[data-skin="wbbuddy"][data-layout="workbench"] #sidebar {
   background: #f7f8fa !important;
@@ -10281,7 +10377,7 @@ html[data-skin="wbbuddy"] nav.side-rail,
 html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #f7f8fa !important; border-right: none !important; }
 html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #17181c !important; }
 /* 侧栏底色钉死（wbbuddy）：media 层的 --sidebar 覆盖竞争太多，
- * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与 WorkBuddy 一致 */
+ * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与默认观感一致 */
 html[data-skin="wbbuddy"] #sidebar,
 html[data-skin="wbbuddy"][data-layout="workbench"] #sidebar {
   background: #f7f8fa !important;
@@ -10303,8 +10399,8 @@ html[data-skin="wbbuddy"] body,
 html[data-skin="wbbuddy"][data-theme="light"] body { background: #ffffff !important; }
 html[data-skin="wbbuddy"][data-theme="dark"] body { background: #1c1d21 !important; }
 
-/* ================= WorkBuddy 文字观感（1031，wbbuddy 皮肤限定）=================
- * 参照美图设计室 WorkBuddy 桌面端：干净无衬线、层级靠字重与灰阶不靠装饰——
+/* ================= 文字观感（1031，wbbuddy 皮肤限定）=================
+ * 参照桌面端规范：干净无衬线、层级靠字重与灰阶不靠装饰——
  * 大标题 700、导航 500 中黑、分组小标签浅灰小字、正文留白舒展。 */
 html[data-skin] body {
   font-family: "MiSans", "HarmonyOS Sans SC", "PingFang SC",
@@ -10325,7 +10421,7 @@ html[data-skin="wbbuddy"] .rd-section-head h2 { font-weight: 650; }
 html[data-skin="wbbuddy"] .stask .t { font-weight: 500; }
 
 /* ================= 四页观感提升（1031）：工作台/专家/运行记录/自动化 ================= */
-/* 侧栏「新聊天」首钮显眼化（WorkBuddy 按钮语言：白底描边，hover 强调色） */
+/* 侧栏「新聊天」首钮显眼化（按钮语言：白底描边，hover 强调色） */
 .new-task {
   background: var(--panel); border: 1px solid var(--border-strong);
   border-radius: 10px; padding: 9px 12px;
@@ -10360,3 +10456,23 @@ html[data-skin="wbbuddy"] .stask .t { font-weight: 500; }
   border: 1px dashed var(--border); border-radius: 12px;
   color: var(--muted); background: color-mix(in srgb, var(--bg) 60%, var(--panel));
 }
+
+/* ── 「作品信息」页签的间距层级（2026-11-02，用户「优化样式，咋都没有间隔哟」）
+ * hero 带搬进本页签后，这里是「带边框卡片」的堆叠；原来服务纯文本列表的
+ * 4~6px 间距在卡片堆叠下全部贴死（实测封面卡与平台卡之间 0px、发布块与
+ * 空态之间 0px、发布块内按钮行距 6px）。统一成三级节奏：
+ *   区块之间 18px：hero ↔ 小标题 ↔ 卡片组 ↔ 卡片组
+ *   卡片之内 14~16px：卡片头 ↔ 内容 ↔ 发布块
+ *   子元素 8~10px：按钮行 / 章节胶囊 / 账号 chips
+ * 选择器必须与中段 `#run-detail .rd-pane…` 同特异度（那边 5085 用
+ * `padding: 0 0 24px`、5099 用 `min-height:38px; margin:0 0 14px` 定死），
+ * 否则抬不动 padding 与小标题下距。 */
+#run-detail .rd-pane[data-pane="bookmeta"] #rd-bookmeta { padding: 12px 0 28px; }
+#run-detail .rd-pane .rd-bookmeta .bm-head { margin: 0 0 16px; }
+/* 平台卡：内容区左右与卡片头对齐（18px），上下留呼吸 */
+.bm-card .bm-empty { padding: 24px 18px 22px; }
+/* 发布块里的错误提示独占一行时，与上方按钮行拉开（原来 6px 贴在一起） */
+.bm-pub .pb-err { margin-top: 2px; line-height: 1.65; }
+/* 小标题行窄屏会折成两行（hint 的 flex-basis 240px 撑不住时）：让「任务运行中」
+ * 这类提示靠右自成一行，否则它贴着左边读起来像标题的续行（1071px 实测）。 */
+#run-detail .rd-bookmeta .bm-head .bm-warn { margin-left: auto; }

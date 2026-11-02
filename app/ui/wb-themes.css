@@ -19,7 +19,7 @@
    ========================================================================== */
 
 /* ---------- 61.1 通用 token（画布 / 面板 / 正文 / 强调） ---------- */
-/* wbbuddy（WorkBuddy 风格皮肤）：--wb-* 映射到同源色板，供 61.3c 全局映射层
+/* wbbuddy（默认皮肤）：--wb-* 映射到同源色板，供 61.3c 全局映射层
  * 取值（任何皮肤都必须给 --wb-* 一份定义，否则 var() 无效值会砸穿全局）。 */
 html[data-skin="wbbuddy"] {
   --wb-shadow: 0 6px 20px rgba(31, 35, 41, .06);
@@ -253,7 +253,7 @@ html[data-skin="wb-buddy"] {
 }
 
 /* ---------- 61.2 聊天工作台 token（画布 / 列表 / 选中 / 气泡） ---------- */
-/* wbbuddy：WorkBuddy 风格——白画布 + 浅灰列 + 蓝紫强调 + 白卡气泡 */
+/* wbbuddy：默认观感——白画布 + 浅灰列 + 蓝紫强调 + 白卡气泡 */
 html[data-skin="wbbuddy"] body {
   --wx-bg: #ffffff; --wxa-bg: #ffffff;
   --wx-panel: #ffffff; --wxa-panel: #ffffff;
@@ -574,7 +574,7 @@ html[data-theme="dark"][data-skin="wb-buddy"] {
  * + !important），特异性高于主题块本身；这里用同样的 !important + 更高特异性
  * （html[data-layout][data-skin] = 0,2,1，与前层同权重但本文件最后加载）把
  * 主题色板真正落到全局变量上——否则换主题只换聊天窗，主区仍是白底。 */
-html[data-layout][data-skin="wbbuddy"], html[data-layout][data-skin="wb-light"], html[data-layout][data-skin="wb-dark"], html[data-layout][data-skin="wb-qq"], html[data-layout][data-skin="wb-peace"], html[data-layout][data-skin="wb-peer"], html[data-layout][data-skin="wb-ripple"], html[data-layout][data-skin="wb-breeze"], html[data-layout][data-skin="wb-buddy"] {
+html[data-layout][data-skin="wbbuddy"], html[data-layout][data-skin="wb-light"], html[data-layout][data-skin="wb-dark"], html[data-layout][data-skin="wb-qq"], html[data-layout][data-skin="wb-peace"], html[data-layout][data-skin="wb-peer"], html[data-layout][data-skin="wb-ripple"], html[data-layout][data-skin="wb-breeze"], html[data-layout][data-skin="wb-buddy"], html[data-layout][data-skin="wb-codebee"] {
   --bg: var(--wb-bg) !important;
   --sidebar: var(--wb-sidebar) !important;
   --panel: var(--wb-panel) !important;
@@ -636,8 +636,8 @@ html[data-layout][data-skin="wbbuddy"], html[data-layout][data-skin="wb-light"],
   --cb-danger: var(--wb-bad) !important;
 }
 /* 画布：首页 / 主区背景一律跟主题走（顶掉 linear-theme 的纯白/纯黑硬写） */
-html[data-layout][data-skin="wbbuddy"] main, html[data-layout][data-skin="wb-light"] main, html[data-layout][data-skin="wb-dark"] main, html[data-layout][data-skin="wb-qq"] main, html[data-layout][data-skin="wb-peace"] main, html[data-layout][data-skin="wb-peer"] main, html[data-layout][data-skin="wb-ripple"] main, html[data-layout][data-skin="wb-breeze"] main, html[data-layout][data-skin="wb-buddy"] main,
-html[data-layout][data-skin="wbbuddy"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-light"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-dark"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-qq"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-peace"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-peer"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-ripple"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-breeze"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-buddy"] main:has(> #page-home:not(.hidden)) {
+html[data-layout][data-skin="wbbuddy"] main, html[data-layout][data-skin="wb-light"] main, html[data-layout][data-skin="wb-dark"] main, html[data-layout][data-skin="wb-qq"] main, html[data-layout][data-skin="wb-peace"] main, html[data-layout][data-skin="wb-peer"] main, html[data-layout][data-skin="wb-ripple"] main, html[data-layout][data-skin="wb-breeze"] main, html[data-layout][data-skin="wb-buddy"] main, html[data-layout][data-skin="wb-codebee"] main,
+html[data-layout][data-skin="wbbuddy"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-light"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-dark"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-qq"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-peace"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-peer"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-ripple"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-breeze"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-buddy"] main:has(> #page-home:not(.hidden)), html[data-layout][data-skin="wb-codebee"] main:has(> #page-home:not(.hidden)) {
   background: var(--wb-bg) !important;
 }
 
@@ -961,4 +961,128 @@ html[data-layout] body.settings-mode #page-settings .wb-theme-card .wb-thumb-mor
   border: 1px dashed var(--st-ctl-line);
   color: var(--st-sub);
   font-size: 12px;
+}
+
+/* ==========================================================================
+   61.7 CodeBee 专属主题：蜜巢（wb-codebee，2026-11-02 第二版·大地暖色）
+   --------------------------------------------------------------------------
+   第一版教训（同日夜）：拿品牌真源 --cb-brand #0b8f78 当强调色，配骨白底，
+   实拍是「药房/实验室」的肃冷调，用户直接判「冰冷、丑」。绿色负责「专业」，
+   不负责「温度」——温度来自暖纸底 + 暖色主色 + 圆润形态三者叠加。
+   第二版改大地色系（跟既有 9 套的冷/紫/橘都拉开）：
+     ① 奶油纸画布（#fbf4ea）——不是骨白，是带黄相的暖纸，白卡浮在上面有厚度；
+     ② 陶土橙强调（--wb-accent #ab5430）——赤陶色，暖而不艳，白字对比 ≈5.6:1；
+     ③ 蜂蜜金次强调（--wb-accent2 #d79a3f）——只做高光/徽标/选中底；
+     ④ 文字用咖啡墨（#2c231a）而非中性黑——纯黑在暖底上会显脏、显硬。
+   状态色与主色严格分轴：成功橄榄绿（#4e8a55）、警示芥末（#9a7b12，比 accent2
+   更暗更黄）、失败绯红（#b02a37，比 accent 更冷更红），避免「主按钮=危险」错觉。
+   夜间版走暖夜：咖啡底 + 琥珀强调（#e09155），不用石墨灰——石墨是 61.3b 的公共
+   冷底，与本主题气质冲突，故自带独立夜间块（同 wbbuddy 策略）。
+   ========================================================================== */
+
+/* ---------- 61.7a 通用 token（日间：奶油纸） ---------- */
+html[data-skin="wb-codebee"] {
+  --wb-shadow: 0 10px 26px rgba(126, 92, 52, .11);
+  --wb-bg: #f8f5f0;
+  --wb-sidebar: #fcfaf6;
+  --wb-panel: #ffffff;
+  --wb-panel2: #f3ede4;
+  --wb-border: #eae3d8;
+  --wb-border-strong: #d8cbb9;
+  --wb-text: #2b2622;
+  --wb-muted: #837a6d;
+  --wb-accent: #b0502c;
+  --wb-accent2: #d69a44;
+  --wb-ok: #4f8a56;
+  --wb-warn: #9a7714;
+  --wb-bad: #b02a37;
+  --wb-log-bg: #fcfaf6;
+  --wb-log-text: #3a3129;
+  --wb-chip-queued-bg: #f1e9dd;
+  --wb-bg-art: #f8f5f0;
+  --wb-uc-in: #b0502c;
+  --wb-uc-ca: #d69a44;
+  --wb-uc-out: #4a7fa8;
+}
+/* ---------- 61.7b 通用 token（夜间：暖夜咖啡） ---------- */
+html[data-theme="dark"][data-skin="wb-codebee"] {
+  --wb-shadow: 0 16px 40px rgba(0, 0, 0, .46);
+  --wb-bg: #17130f;
+  --wb-sidebar: #131009;
+  --wb-panel: #201a15;
+  --wb-panel2: #292019;
+  --wb-border: #342a21;
+  --wb-border-strong: #473a2d;
+  --wb-text: #f1e7d9;
+  --wb-muted: #a5937f;
+  --wb-accent: #e09155;
+  --wb-accent2: #edbb6a;
+  --wb-ok: #74b57c;
+  --wb-warn: #e2b24a;
+  --wb-bad: #ef7c74;
+  --wb-log-bg: #120f0c;
+  --wb-log-text: #cbbcab;
+  --wb-chip-queued-bg: #292019;
+  --wb-bg-art: #17130f;
+  --wb-uc-in: #e09155;
+  --wb-uc-ca: #edbb6a;
+  --wb-uc-out: #7fb0d4;
+}
+
+/* ---------- 61.7c 聊天工作台 token（列表 / 选中 / 气泡） ---------- */
+html[data-skin="wb-codebee"] body {
+  --wx-bg: #f8f5f0; --wxa-bg: #f8f5f0;
+  --wx-panel: #ffffff; --wxa-panel: #ffffff;
+  --wx-list-bg: #fcfaf6; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #f6f0e7; --wx-rail: 60px; --wxa-rail-bg: #f6f0e7; --wxa-rail: 60px;
+  --wx-line: #eae3d8; --wxa-line: #eae3d8;
+  --wx-hover: #f5efe6; --wxa-hover: #f5efe6;
+  --wxa-sel: #f8dfca; --wx-sel: #f8dfca;
+  --wx-green: #b0502c; --wxa-green: #b0502c;
+  --wx-me: #fbe7d6; --wxa-bubble-me: #fbe7d6;
+  --wx-me-text: #6b3018;
+  --wx-txt: #2c231a; --wxa-text: #2c231a;
+  --wx-dim: #8b7a64; --wxa-dim: #8b7a64;
+  --wx-sub: #7a6a56;
+  --wxa-time: #b8a894;
+  --wxa-search: #f3ece2;
+  --cum-canvas: #f6f1e9; --cum-rail: #f9f5ef;
+  --cum-accent: #b0502c; --cum-accent-deep: #8f3f20;
+  --cum-badge: #d69a44; --cum-bubble: #ffffff; --cum-bubble-line: #eee6da;
+}
+html[data-theme="dark"][data-skin="wb-codebee"] body {
+  --wx-bg: #17130f; --wxa-bg: #17130f;
+  --wx-panel: #201a15; --wxa-panel: #201a15;
+  --wx-list-bg: #131009; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #100d0a; --wx-rail: 60px; --wxa-rail-bg: #100d0a; --wxa-rail: 60px;
+  --wx-line: #342a21; --wxa-line: #342a21;
+  --wx-hover: #241d17; --wxa-hover: #241d17;
+  --wxa-sel: #4a2f20; --wx-sel: #4a2f20;
+  --wx-green: #e09155; --wxa-green: #e09155;
+  --wx-me: #33231a; --wxa-bubble-me: #33231a;
+  --wx-me-text: #f6e2cf;
+  --wx-txt: #f1e7d9; --wxa-text: #f1e7d9;
+  --wx-dim: #a5937f; --wxa-dim: #a5937f;
+  --wx-sub: #8f7f6c;
+  --wxa-time: #7d6e5d;
+  --wxa-search: #241d17;
+  --cum-canvas: #120f0c; --cum-rail: #100d0a;
+  --cum-accent: #e09155; --cum-accent-deep: #d0874a;
+  --cum-badge: #edbb6a; --cum-bubble: #201a15; --cum-bubble-line: #2e251d;
+}
+
+/* ---------- 61.7d 设置面板跟随主题（夜间块必须排在 61.4 公共夜间之后取胜） ---------- */
+html[data-skin="wb-codebee"] body.settings-mode {
+  --st-canvas: #f8f5f0; --st-card: #ffffff; --st-nav: #fcfaf6;
+  --st-line: #eae3d8; --st-border: #eae3d8; --st-text: #2b2622; --st-sub: #837a6d;
+  --st-strong: #57321c; --st-mint: #f8dfca; --st-mint-2: #f8dfca; --st-mint-ink: #6b3018;
+  --st-ctl: #ffffff; --st-ctl-line: #ece4d8; --st-primary: #b0502c;
+  --st-hover: rgba(176, 80, 44, .06);
+}
+html[data-theme="dark"][data-skin="wb-codebee"] body.settings-mode {
+  --st-canvas: #17130f; --st-card: #201a15; --st-nav: #131009;
+  --st-line: #342a21; --st-border: #342a21; --st-text: #f1e7d9; --st-sub: #a5937f;
+  --st-strong: #fbf1e2; --st-mint: #4a2f20; --st-mint-2: #4a2f20; --st-mint-ink: #f3d6bd;
+  --st-ctl: #241d17; --st-ctl-line: #3a2f25; --st-primary: #e09155;
+  --st-hover: rgba(255, 255, 255, .06);
 }

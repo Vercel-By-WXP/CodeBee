@@ -104,6 +104,12 @@
   #exp-hero { margin-bottom: 10px; }
   #exp-hero .exp-hero-band { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
   #exp-hero .eh-cover, #exp-hero .eh-cover-img { width: 48px; height: 66px; }
+  /* 封面位下挂按钮后总宽跟着封面走，窄屏只留图标，否则 390px 又溢出 */
+  #exp-hero .eh-coverbox { width: 48px; gap: 4px; }
+  /* 只留图标时别让它继承 44px 触摸高度：48×44 的空图标块比封面还抢眼 */
+  #exp-hero .eh-cover-gen { padding: 0; height: 30px; min-height: 30px; border-radius: 6px; }
+  #exp-hero .eh-cover-gen span { display: none; }
+  #exp-hero .eh-cover-gen .ico { width: 13px; height: 13px; display: inline-block; }
   #exp-hero .eh-side { flex-basis: 100%; display: flex; justify-content: flex-end; }
   #exp-hero .eh-bar { width: 100%; }
   #exp-hero .eh-stats { gap: 10px; }

@@ -101,6 +101,25 @@ def _has_content(data):
     return False
 
 
+# 明显无法产出纯文本的模型（语音合成 / 语音识别 / 文生图 / 文生视频），
+# 调了也只会返回空或被网关拒，还会白白阻塞整页 120s。这些名字中文本模型
+# 命中概率极低（claude/gemini/glm/qwen/deepseek 等都不含下列词段），故只做
+# 保守排除，绝不误伤正常文本模型。
+_NON_TEXT_MODEL = (
+    "stepaudio", "tts", "asr", "stt", "whisper", "speech", "voice",
+    "audio", "wav", "sound", "dall", "flux", "sora", "kling", "wan",
+    "veo", "imagen",
+)
+
+
+def _is_text_model(model_name):
+    """模型是否可能产出纯文本总结。仅排除明显非文本的语音 / 生成类模型。"""
+    n = (model_name or "").lower()
+    if n.startswith(("claude", "gemini")):   # 全系多模态但完全支持文本
+        return True
+    return not any(k in n for k in _NON_TEXT_MODEL)
+
+
 def generate_summary(force=False, lang="zh"):
     """生成（或取缓存的）四段记忆总结。返回 {text, hash, generated_at, from_cache}
     或 {text: None, hash, reason}。text 为 None 时前端回落到确定性模板。"""
@@ -124,6 +143,10 @@ def generate_summary(force=False, lang="zh"):
         if not orch:
             return {"text": None, "hash": src_hash, "reason": "no_orchestrator"}
         prov, model = orch
+        if not _is_text_model(model):
+            # 解析到的编排者是一个语音/生成类模型，调了也返回不了文本总结，
+            # 直接回落前端确定性模板，避免整页阻塞 120s。
+            return {"text": None, "hash": src_hash, "reason": "unsupported_model"}
         prompt = _build_prompt(data, lang=lang)
         res = modelhub.chat(prov.get("id"), model, prompt, max_tokens=1200, timeout=120)
         text = (res.get("text") or "").strip() if res.get("ok") else ""

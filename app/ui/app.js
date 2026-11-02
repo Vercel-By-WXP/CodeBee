@@ -643,7 +643,7 @@ function flowDesc(f) {
 
 /* ── 专家包装（1031）：每个任务类型=一位专家 ──────────────────────────
  * 流程自带 agent 人设（name/focus）——UI 上一律以「专家」呈现：头像=人名
- * 首字+姓名散列色（浅底白字，WorkBuddy 观感），类型菜单/输入卡药丸/快捷
+ * 首字+姓名散列色（浅底白字），类型菜单/输入卡药丸/快捷
  * chips 全用同一套。与插件市场「专家」页共用名单观念：常用（roster）在
  * 菜单置顶打标。 */
 const EXPERT_AV_PALETTE = ["#5b7fa6", "#6f9a6f", "#a3865f", "#8b7fa8", "#5f9a97", "#a67f72", "#8a8a5f", "#5f8aa8"];
@@ -7455,8 +7455,17 @@ function expertHeroPaint(kind, o) {
   if (!host) return;
   const key = o.runKey || o.taskKey || "";
   if (!kind || !key) { host.classList.add("hidden"); return; }
-  if (host.dataset.key === key && host.dataset.kind === kind) { host.classList.remove("hidden"); return; }
-  host.dataset.key = key; host.dataset.kind = kind;
+  // 封面状态也是签名的一部分：只判 key 的话，「生成中 → 出图」这一段永远
+  // 停在旧占位上（cover_gen 变了，runKey/taskKey 都没变，守卫会整帧跳过）。
+  // 单独存 covKey 而不是拼进 dataset.key——heroTaskOf 拿 key 反解任务，
+  // 加了后缀就解不到，hero 会被判成「搬不动」。
+  const cov = o.cover || null;   // 封面继承链上解析好的 cover_gen（调用方算好）
+  const covKey = cov ? [cov.status || "", cov.run_id || "", cov.at || ""].join(":") : "";
+  if (host.dataset.key === key && host.dataset.kind === kind
+      && (host.dataset.covKey || "") === covKey) {
+    host.classList.remove("hidden"); relocateRunHero(); return;
+  }
+  host.dataset.key = key; host.dataset.kind = kind; host.dataset.covKey = covKey;
   host.classList.remove("hidden");
   const flow = flowById(o.type) || {};
   const nm = (flow.agent && flow.agent.name) || o.title || t("专家");
@@ -7467,10 +7476,25 @@ function expertHeroPaint(kind, o) {
   // hero 可点化：章节行/画廊缩略图经 run 文件端点直开（连载链共享 workdir，任意 run 皆可读）
   const fileRid = o.runKey || o.galleryRunId || "";
   window.expHeroOpen = function (u) { if (u) window.open(u, "_blank", "noopener"); };
-  const cov = o.cover || null;   // 封面继承链上解析好的 cover_gen（调用方算好）
   const covImg = (cov && cov.status === "done" && cov.run_id)
     ? urlAuth("/api/runs/" + encodeURIComponent(cov.run_id) + "/cover" +
       (cov.at ? "?ts=" + encodeURIComponent(cov.at) : ""))
+    : "";
+  // 封面位自带生成入口（2026-11-02 用户：顶部封面「默认搞一个效果，旁边或下面
+  // 加一个生成按钮」）。此前这块是纯占位、零点击行为，深色圆角一摆就像按钮，
+  // 点了毫无反应。现在图/占位与按钮竖排成 .eh-coverbox，按钮走 heroCoverGen
+  // 的同一条「先预览提示词再确认」链，与底部封面卡共用后端，不是第二套逻辑。
+  const covSt = (cov && cov.status) || "";
+  const covBusy = covSt === "running";
+  const coverBtn = o.taskId
+    ? '<button class="eh-cover-gen' + (covBusy ? " busy" : "") + (covImg ? " has-img" : "") + '"' +
+      (covBusy ? " disabled" : ' onclick="heroCoverGen(\'' + jsq(o.taskId) + '\')"') +
+      ' title="' + esc(covBusy ? t("封面生成中，完成后这里会自动更新")
+        : t(covImg ? "重新生成封面图" : "生成竖版封面（产出 cover.png）")) + '">' +
+      (covBusy
+        ? '<svg class="ico spin" aria-hidden="true"><use href="#i-refresh"/></svg>'
+        : '<svg class="ico" aria-hidden="true"><use href="#' + (covImg ? "i-refresh" : "i-preview") + '"/></svg>') +
+      "<span>" + esc(covBusy ? t("生成中") : (covImg ? t("换封面") : t("生成封面"))) + "</span></button>"
     : "";
   if (kind === "novel") {
     // 评分表可二次喂分：运行级随包 chapter_scores；任务级异步拉最近 run 补齐
@@ -7500,7 +7524,7 @@ function expertHeroPaint(kind, o) {
               ? urlAuth("/api/runs/" + encodeURIComponent(fileRid) + "/file?name=" +
                 encodeURIComponent("chapter-" + r.no + ".md"))
               : "";
-            return '<div class="ch-row"' + (u ? ' role="button" tabindex="0" data-u="' + esc(u) +
+            return '<div class="eh-chrow"' + (u ? ' role="button" tabindex="0" data-u="' + esc(u) +
               '" onclick="expHeroOpen(this.dataset.u)" title="' + esc(t("点击阅读本章")) + '"' : "") +
               '><span class="d ok"></span><span class="n">' + t("第 ") + r.no + t(" 章") + '</span>' + scHtml +
               '<span class="w">' + (r.words || 0) + t(" 字") + "</span></div>";
@@ -7509,10 +7533,12 @@ function expertHeroPaint(kind, o) {
     };
     host.innerHTML =
       '<div class="exp-hero-band novel">' +
+      '<div class="eh-coverbox">' +
       (covImg
         ? '<img class="eh-cover-img" src="' + esc(covImg) + '" alt="cover" ' +
           'onerror="this.classList.add(&quot;eh-noimg&quot;)">'
-        : '<div class="eh-cover"><b>' + esc(String(o.title || nm).slice(0, 8)) + "</b><small>" + esc(t("封面")) + "</small></div>") +
+        : '<div class="eh-cover"><b>' + esc(String(o.title || nm).slice(0, 8)) + "</b><small>" + esc(t("未设封面")) + "</small></div>") +
+      coverBtn + "</div>" +
       '<div class="eh-main"><div class="eh-name">' + esc(t(o.title || nm)) + "</div>" +
       '<div class="eh-stats" id="exp-hero-stats">' + esc(t("章节 / 字数 采集中…")) + "</div>" +
       '<div class="eh-bar"><i></i></div></div>' +
@@ -7666,6 +7692,50 @@ function expertHeroPaint(kind, o) {
         : "";
     }).catch(() => {});
   }
+  relocateRunHero();
+}
+/* hero 带（封面 / 书名 / 章节·字数进度 / 最近 5 章）在连载任务里改挂「作品信息」页签。
+ * 原位置是详情页顶部独占一整行：110px 起步、章节行一多更高，把对话区压成一条缝，
+ * 右栏也被挤（2026-11-02 用户截图「把整个页面都压坏了」→「建议放到作品信息」）。
+ * 实现方式是**搬 DOM 节点**而不是复制内容：/writing 的异步回填、章节行的重绘
+ * 都还写同一个 #exp-hero，不用两处维护。非连载（图像/代码型）保持原位不动。 */
+let _detachedHero = null;   // 面板重建时 hero 会短暂脱离文档，留引用防止丢失
+/* hero 当前对应哪个任务：任务级 key 是 task id，运行级 key 是 run id（转一次
+ * task_id）。拿不到就不搬，宁可维持旧位置也不要把 hero 塞进看不见的页签。 */
+function heroTaskOf(hero) {
+  const key = (hero && hero.dataset && hero.dataset.key) || "";
+  const st = S.state || {};
+  const all = (st.tasks || []).concat(st.archived_tasks || []);
+  let t = all.find((x) => x.id === key) || null;
+  if (!t) {
+    const r = (st.runs || []).find((x) => x.id === key);
+    if (r) t = all.find((x) => x.id === r.task_id) || null;
+  }
+  return t || S.lastRunTask || null;
+}
+function relocateRunHero() {
+  // 节点被摘出文档后 querySelector 就找不到它了（重建面板时的那一瞬），
+  // 必须留一个引用兜底，否则 hero 会在重绘瞬间永久丢失
+  const hero = $("exp-hero") || _detachedHero;
+  const detail = $("run-detail");
+  if (!hero || !detail) return;
+  const isNovel = !!hero.querySelector(".exp-hero-band.novel");
+  const pane = $("rd-bookmeta");
+  // 只有「作品信息」页签真能用（连载/短篇才有建书资料）才搬；否则搬进一个永远
+  // 不显示的页签里 = hero 直接消失。任务从 hero 自己的 key 反解，别依赖调用时序。
+  const task = heroTaskOf(hero);
+  if (isNovel && pane && task && bmNeedsPanel(task)) {
+    // 页签内容还没渲染时先直接挂进面板（hidden 一起隐藏），渲染后由
+    // renderBookMetaPanel 的 #bm-hero-slot 接管，避免 DOM 被 innerHTML 重建冲掉
+    const slot = pane.querySelector("#bm-hero-slot") || pane;
+    if (hero.parentElement !== slot) slot.insertBefore(hero, slot.firstChild);
+    detail.classList.add("hero-moved");   // 顶部 hero 行整行删掉，把高度还给主区
+    _detachedHero = null;
+    return;
+  }
+  if (hero.parentElement !== detail) detail.insertBefore(hero, detail.firstChild);
+  detail.classList.remove("hero-moved");
+  _detachedHero = null;
 }
 window.expertHeroPaint = expertHeroPaint;
 
@@ -9197,10 +9267,16 @@ function renderBookMetaPanel(task) {
     return;
   }
   const src = bmRootTask(task);          // 都是用第一个：开书资料读链上根任务
+  // hero 带被搬到本页签时，先摘出 DOM 再重建面板——innerHTML 会把里面的
+  // 封面/进度/章节行一起销毁（异步回填认的是同一个节点，丢了就不再回来）
+  const heroNode = $("exp-hero");
+  // hero 可能挂在槽位里（父节点不是 box 本身），一律走它自己的父节点摘除
+  if (heroNode && box.contains(heroNode)) { _detachedHero = heroNode; heroNode.parentElement.removeChild(heroNode); }
   const inherited = src.id !== task.id;
   const bm = src.book_meta || {};
   const taskBusy = task.status === "running" || task.status === "queued";
-  let html = '<div class="bm-head"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
+  let html = '<div class="bm-hero-slot" id="bm-hero-slot"></div>' +
+    '<div class="bm-head"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>' +
     '<span class="sec-title">' + t("作品信息") + "</span>" +
     (inherited ? '<span class="bm-inherit" title="' + esc(src.title || src.id) + '">' +
       esc(t("继承自首批") + "《" + (src.title || src.id) + "》") + "</span>" : "") +
@@ -9330,6 +9406,7 @@ function renderBookMetaPanel(task) {
   box.classList.remove("hidden");
   box.innerHTML = html;
   box.dataset.taskId = task.id;   // 跨任务守卫标记：展开态/输入保护只对同一任务生效
+  relocateRunHero();              // 把 hero 带接回 #bm-hero-slot（上一步摘出来的那个节点）
   pbRefreshSelectionDialog(task);
   // TAB 徽章：已生成平台数（生成中显示 ●，随下次轮询刷新）
   const badge = document.querySelector('#rd-tabs .rd-tab[data-tab="bookmeta"] .rd-badge');
@@ -9387,6 +9464,42 @@ window.coverGen = async function (taskId) {
     toast(t("已开始生成封面，完成后这里会自动更新"));
     await refreshState(); render();
   } catch (e) { toast(t("封面生成失败：") + e.message, true); }
+};
+
+/* 封面位上的生成入口（hero 带左侧，2026-11-02）：与底部封面卡共用同一条
+ * 「先预览提示词、确认后才付费生成」的链，只是把确认框抬成页面级弹窗——
+ * 底部那份预览框渲染在封面卡内部，从顶部点过去根本看不见，等于又一次
+ * 「点了没反应」。成功后作废详情与 hero 的渲染签名，「生成中」与「出图」
+ * 两态才会立刻重绘（hero 平时只按 runKey 判重，cover_gen 变化察觉不到）。 */
+window.heroCoverGen = async function (taskId) {
+  if (!taskId) return;
+  let prompt = "";
+  try {
+    const r = await api("/api/tasks/" + encodeURIComponent(taskId) + "/cover/prompt");
+    prompt = (r && r.prompt) || "";
+  } catch (e) {
+    toast(t("封面提示词获取失败：") + e.message, true);
+    return;
+  }
+  openModal(t("生成封面"),
+    '<div class="cover-ask">' +
+      '<p class="cover-ask-hint">' +
+      esc(t("确认后才会调用图像接口，产出 cover.png 落在任务运行目录。")) + "</p>" +
+      '<div class="cover-ask-label">' + esc(t("图像提示词（自动组装）")) + "</div>" +
+      '<div class="cover-ask-prompt">' +
+      esc(prompt || t("暂无提示词，将按书名与分类自动组装")) + "</div>" +
+    "</div>",
+    '<button class="ghost" onclick="closeModal()">' + t("取消") + "</button>" +
+    '<button class="primary" onclick="heroCoverGo(\'' + jsq(taskId) + '\')">' +
+    t("确认生成") + "</button>");
+};
+window.heroCoverGo = function (taskId) {
+  closeModal();
+  const hero = $("exp-hero");
+  if (hero) hero.dataset.covKey = "";
+  S.taskSig = "";
+  S.runDetailSig = "";
+  window.coverGen(taskId);
 };
 
 /* 生成前提示词预览（drama-skills 借鉴③「先预览确认再生产」）：只读拉取
@@ -15771,6 +15884,8 @@ const SKINS = [
     theme: "linear-gradient(135deg,#e9f6f5,#b9e0dc)", hero: "linear-gradient(135deg,#dcf2f0,#8fc9c3)" },
   { id: "wb-buddy", name: t("伙伴"), desc: t("暖杏画布 + 橘红强调，轻松活泼"),
     theme: "linear-gradient(135deg,#fdf4ec,#f4d7bd)", hero: "linear-gradient(135deg,#fbeadb,#eeb98f)" },
+  { id: "wb-codebee", name: t("蜜巢"), desc: t("奶油纸底 + 陶土橙强调 + 蜂蜜金点缀，CodeBee 专属（日夜双版）"),
+    theme: "linear-gradient(135deg,#fdf6ec,#f2d3ad)", hero: "linear-gradient(135deg,#fdf7ef,#eac9a0)" },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 const SKIN_KEY = "orch.skin";
@@ -15785,13 +15900,13 @@ const LAYOUT_KEY = "orch.layout";
 
 function currentSkin() {
   const s = localStorage.getItem(SKIN_KEY) || "";
-  return SKIN_IDS.has(s) ? s : "wbbuddy";   // 值缺失/非法（旧皮肤 id 等）一律回落 WorkBuddy 风格
+  return SKIN_IDS.has(s) ? s : "wbbuddy";   // 值缺失/非法（旧皮肤 id 等）一律回落默认皮肤
 }
 
 /* 布局独立于皮肤，默认工作台；首次进入由 applyAppearance() 把该默认值落盘，
  * 之后用户显式选过的布局不会被换肤等操作带走。 */
 function currentLayout() {
-  // 1031 钉死工作台：WorkBuddy 观感（品牌行+导航+任务树+hero 主页）以 workbench
+  // 1031 钉死工作台：桌面观感（品牌行+导航+任务树+hero 主页）以 workbench
   // 骨架为准；classic 双布局会带来两套皮要养，傻瓜化原则下不留。旧 localStorage
   // 值照旧保留但不再生效；布局切换 UI 已随设置移植下线。
   return "workbench";
@@ -15881,7 +15996,11 @@ function renderHome() {
   if (dateEl) {
     const now = new Date();
     const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
-    dateEl.textContent = (now.getMonth() + 1) + " 月 " + now.getDate() + " 日 · 星期" + weekdays[now.getDay()];
+    /* 时段问候：一天里第一眼看到的是人话，不是一串日期（用户反馈「页面冰冷」）。
+     * 问候只做「在场感」，不承载任何状态，所以不带按钮、不带提示。 */
+    const h = now.getHours();
+    const greet = h < 5 ? "夜深了" : h < 11 ? "早上好" : h < 13 ? "中午好" : h < 18 ? "下午好" : "晚上好";
+    dateEl.textContent = t(greet) + " · " + (now.getMonth() + 1) + " 月 " + now.getDate() + " 日 · 星期" + weekdays[now.getDay()];
   }
 
   // 快捷入口里的通道体检摘要：复用体检页缓存，60 秒内不重复请求
@@ -15958,6 +16077,13 @@ function showHome() {
   const main = document.querySelector("main");
   if (main) main.classList.remove("browser-page-active");
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("hidden", p.id !== "page-home"));
+  // 子页也要显式收掉：boot 直落主页时只有本函数在跑，switchTab/exitSettings 里
+  // 那句「只留 sub-tasks」的 toggle 从未执行，于是 #sub-tasks 停在 HTML 初始的
+  // 未隐藏状态。desktop-workbench 的 main:has(> #page-settings > #sub-tasks:not(.hidden))
+  // 只看 #sub-tasks 自身的类（外壳藏了照样命中）→ 主页被按「任务表单页」锁成
+  // overflow:hidden，整页滚不动（2026-11-02 用户截图实案）。回任务表单的每条路
+  // 都会重新 toggle 出 sub-tasks，这里统一藏干净不留脏状态。
+  document.querySelectorAll("#page-settings .subpage").forEach((d) => d.classList.add("hidden"));
   document.querySelectorAll(".set-item").forEach((b) => b.classList.remove("active"));
   document.querySelectorAll(".qitem").forEach((b) => b.classList.toggle("active", b.id === "btn-q-home"));
   document.querySelectorAll(".rail-btn[data-rail-page]").forEach((b) => b.classList.remove("active"));
@@ -18075,7 +18201,13 @@ ATLAS._init = function(data) {
     function buildSky() {
       sky.length = 0;
       const top = (arr, n) => arr.slice().sort((a, b) => b.karma - a.karma).slice(0, n);
-      const chosen = [].concat(packs, top(lessons, 46), top(knowledge, 18), top(projects, 12));
+      // 星图是「TOP LOADED」：每环按 karma 取头部，环上有固定座位数。
+      // 经验包曾不设上限——记忆库涨到 99 个包后内环（半径最小、周长最短）
+      // 上星体间距只有 7px，比星体本身还窄，99 颗连成一条实心黑带；叠上光晕
+      // 整张图糊成一片（2026-11-02 用户「图太模糊了」）。座位数按环周长给
+      // （内环 48 / 中环 46 / 外环 18 / 最外 12，≈124 与清晰版同量级）；
+      // 被截掉的条目仍在记忆流列表里，状态行显示「载入 X / 共 Y」。
+      const chosen = [].concat(top(packs, 48), top(lessons, 46), top(knowledge, 18), top(projects, 12));
       const groups = { pack: [], lesson: [], knowledge: [], project: [] };
       chosen.forEach(it => groups[it.source].push(it));
       Object.keys(groups).forEach(src => {
@@ -18120,13 +18252,30 @@ ATLAS._init = function(data) {
 
     function resize() {
       const r = atlasWrap.getBoundingClientRect();
-      W = Math.max(200, r.width); H = Math.max(200, r.height);
-      DPR = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+      // 面板还没量出真实尺寸（刚挂载、正在展开、父级还 hidden）时不烘焙占位
+      // 尺寸：旧实现 Math.max(200, 0) = 200，画布只有 200px 宽却被 CSS 拉到
+      // 整栏显示，星体被放大 2-3 倍，全成毛毛球、轨道刻度几乎看不见——
+      // 2026-11-02 用户截图「图太模糊了」根因。尺寸没到就等下一帧。
+      const cssW = Math.round(r.width), cssH = Math.round(r.height);
+      if (cssW < 40 || cssH < 40) return;
+      const sizeChanged = (cssW !== W || cssH !== H);
+      W = cssW; H = cssH;
+      // 下限 1：浏览器缩到 80%/67%（大屏上很常见）时 devicePixelRatio < 1，
+      // 照抄会让画布后备像素少于 CSS 像素、被放大显示——文字是矢量仍清晰，
+      // 只有画布发虚，正是「图太模糊」的典型体征。上限 3 兼顾 4K/移动端。
+      DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      const bw = Math.round(W * DPR), bh = Math.round(H * DPR);
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw; canvas.height = bh;
+      }
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       cx = W / 2; cy = H * .52;
       R = Math.min(W * .45, H * .44);
-      makeStars();
+      // 星星只在尺寸真的变了（或无星）时重排：自愈检查会反复调本函数，
+      // 每次都重随机会让星尘闪成噪点。
+      if (sizeChanged || !stars.length) makeStars();
     }
 
     function layout(now) {
@@ -18304,9 +18453,14 @@ ATLAS._init = function(data) {
         const selected = state.selectedId === n.id;
         const alpha = matched ? 1 : .12;
         const col = nodeColor(n);
-        const size = 1.5 + n.it.karma * 4.5 + (selected ? 1.2 : 0);
+        // 半径上限收到 4.8：旧公式 karma≈1 的星一颗就 6px 半径（12px 直径），
+        // 而中环座位间距只有 ~15px——星星比缝隙还大，整环连成一条链。
+        // 压平后仍是「越大越重要」的语义，但每颗星留得住自己的轮廓。
+        const size = 1.4 + n.it.karma * 3.4 + (selected ? 1.2 : 0);
         const pulse = state.beam && state.beam.has(n.id) ? 1 + .16 * Math.sin(t * .005 + idx) : 1;
-        const gs = (9 + size * 3) * pulse;
+        // 光晕收一圈：环上星体挨得近时大光晕互相糊成一片（用户「模糊」观感），
+        // 缩小外圈让每颗星保留可分辨的边缘，核心实心点尺寸不变。
+        const gs = (7 + size * 2.4) * pulse;
         ctx.globalAlpha = alpha;
         if (matched && (n.it.karma > .55 || (state.matches && state.matches.has(n.id)))) {
           ctx.drawImage(spriteFor(col), n.x - gs / 2, n.y - gs / 2, gs, gs);
@@ -18371,6 +18525,12 @@ ATLAS._init = function(data) {
 
     function frame(now) {
       syncPalette();
+      // 自愈：ResizeObserver 偶发漏报（面板从 hidden 展开、窗口拖动、跨屏 DPR
+      // 变化）会让画布停留在旧尺寸被拉伸显示——每帧比一次 CSS 尺寸与 DPR，
+      // 不等就重排。DPR 变化（换显示器、浏览器缩放）不触发任何 resize 事件，
+      // 是「画布发虚」最常见的一种：文字重绘清晰、画布仍按旧比例放大。
+      if (W < 40 || Math.abs(canvas.clientWidth - W) > 1 || Math.abs(canvas.clientHeight - H) > 1
+          || Math.abs((window.devicePixelRatio || 1) - DPR) > 0.01) resize();
       state.time = now;
       state.mouse.x += (state.mouse.tx - state.mouse.x) * .06;
       state.mouse.y += (state.mouse.ty - state.mouse.y) * .06;
@@ -18418,7 +18578,7 @@ ATLAS._init = function(data) {
         if (state.q) statusEl.innerHTML = '命中 <b>' + fmt(m ? m.size : 0) + '</b> 条 · 星图 <b>' + fmt(inSky) + '</b> 体';
         else if (state.gfilter) statusEl.innerHTML = '治理 · <b>' + esc2(GF_LABEL[state.gfilter]) + '</b> · <b>' + fmt(inSky) + '</b> 体';
         else if (state.source !== 'all') statusEl.innerHTML = '来源 · <b>' + esc2(SOURCE_LABEL[state.source]) + '</b> · <b>' + fmt(inSky) + '</b> 体';
-        else statusEl.innerHTML = '载入 <b>' + sky.length + '</b> 个记忆体';
+        else statusEl.innerHTML = '载入 <b>' + sky.length + '</b> / ' + fmt(TOTALS.all) + ' 个记忆体';
       }
     }
 
@@ -22247,7 +22407,7 @@ function openBoard() {
 }
 window.openBoard = openBoard;
 
-/* 顶栏「⋯ 更多」（1031 顶栏收敛，照 WorkBuddy：顶栏只留主题与状态）：
+/* 顶栏「⋯ 更多」（1031 顶栏收敛：顶栏只留主题与状态）：
    菜单行不自己实现功能，而是触发 #top-more-src 里的原件——原件的事件绑定、
    aria、CSS 守卫全部不变，这里只负责开合、同步选中态、点外关闭。 */
 const TOP_MORE_ACTIONS = {
@@ -24682,6 +24842,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const goal = $("f-goal");
     if (b && goal && b.dataset.suggest) {
       goal.value = b.dataset.suggest;
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+      goal.focus();
+    }
+  });
+  /* 能力卡：与「快速开始」同一条路径——只填 #f-goal 并聚焦，绝不自动提交。
+   * 单列一格 handler 而不复用上面的监听，是因为卡片在另一个容器里（#rd-caps），
+   * 混用会让「谁负责填充」变成两处真相。 */
+  const capsBox = $("rd-caps");
+  if (capsBox) capsBox.addEventListener("click", (e) => {
+    const c = e.target.closest(".rd-cap");
+    const goal = $("f-goal");
+    if (c && goal && c.dataset.suggest) {
+      goal.value = c.dataset.suggest;
       goal.dispatchEvent(new Event("input", { bubbles: true }));
       goal.focus();
     }

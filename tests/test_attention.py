@@ -97,7 +97,11 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(res["items"][0]["kind"], "stuck_queued")
 
     def test_sorted_desc_and_limit(self):
-        runs = [_run("r%d" % i, ended="2026-10-%02dT08:00:00" % (i + 1))
+        # 日期必须相对 self.now 生成：原先写死 2026-10-01..05，而窗口是 now-30d，
+        # 到 11-02 时 10-03 08:00 已跌出窗口，用例自己烂掉（只剩 2 条 → 假红）
+        runs = [_run("r%d" % i,
+                     ended=time.strftime("%Y-%m-%dT%H:%M:%S",
+                                         time.localtime(self.now - (i + 1) * 86400)))
                 for i in range(5)]
         with mock.patch.object(store, "list_runs", return_value=runs), \
              mock.patch.object(store, "list_tasks", return_value=[]):

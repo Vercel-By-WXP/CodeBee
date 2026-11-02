@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import locale
 import logging
 import os
 import re
@@ -104,6 +105,29 @@ def _ports_linux():
     return []
 
 
+def _decode_console(raw):
+    """解 Windows 控制台子进程的字节输出。
+
+    外部命令（netstat / PowerShell）重定向输出时按代码页编码，简中机器是
+    936/GBK：直接按 UTF-8 解会把中文进程名变成“�”。先严格按 UTF-8 解，
+    失败再回落到本地代码页（POSIX 回落到 UTF-8 replace），仍然解不动才用
+    replace 兜底——宁可少一两个字，也不整列变方块。"""
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    for enc in (locale.getpreferredencoding(False), "gbk", "utf-8"):
+        try:
+            text = raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        if "\ufffd" not in text:
+            return text
+    return raw.decode("utf-8", "replace")
+
+
 def _ports_windows(with_names=True):
     """Windows：netstat -ano -p TCP 拿端口，PowerShell 一次性补进程名。"""
     try:
@@ -113,7 +137,7 @@ def _ports_windows(with_names=True):
     except (OSError, subprocess.TimeoutExpired):
         return []
     ports = []
-    for ln in proc.stdout.decode("utf-8", "replace").splitlines():
+    for ln in _decode_console(proc.stdout).splitlines():
         parts = ln.split()
         if len(parts) < 5 or parts[0] != "TCP" or parts[3] != "LISTENING":
             continue
@@ -131,10 +155,15 @@ def _ports_windows(with_names=True):
         try:
             pn = subprocess.run(
                 ["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-                 "-NoProfile", "-Command",
+                 "-NoProfile", "-NonInteractive", "-Command",
+                 # 重定向输出时 PowerShell 5.1 用控制台代码页（简中=936/GBK）编码，
+                 # 中文进程名（微信/QQ 等）按 UTF-8 解就是一片“�”。先把它按键
+                 # 时钉成 UTF-8，再兜一层本地代码页解码——2026-11-02 用户截图
+                 # 「进程名乱码」实案。
+                 "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
                  "Get-Process | Select-Object Id,ProcessName | ConvertTo-Json -Compress"],
                 capture_output=True, timeout=15)
-            procs = json.loads(pn.stdout.decode("utf-8", "replace"))
+            procs = json.loads(_decode_console(pn.stdout))
             if isinstance(procs, dict):
                 procs = [procs]
             name_map = {p.get("Id"): p.get("ProcessName", "") for p in procs}
