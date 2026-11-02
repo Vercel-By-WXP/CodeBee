@@ -88,9 +88,9 @@
     grid-template-areas:
       "hero hero"
       "main rail";
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 180px) minmax(0, 1fr);
     column-gap: var(--workbench-gap);
-    height: 100%;
+    height: calc(100vh - 120px);
     width: 100%;
     max-width: none;
     min-height: 0;
@@ -101,22 +101,48 @@
     animation: none;
   }
   main.chat-fill #run-detail.chat-mode > .rd-main { height: 100%; min-height: 0; }
+  /* The expert hero (cover + progress) can be tall; cap it so the chat always
+     keeps a usable surface on short windows instead of being squeezed to a sliver. */
+  #run-detail.chat-mode #exp-hero {
+    max-height: 100%;
+    overflow: auto;
+  }
   #run-detail.chat-mode .rd-pane[data-pane="chat"] {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
     min-height: 0;
     padding: 0;
     overflow: hidden;
   }
   #run-detail.chat-mode .rd-pane:not([data-pane="chat"]) { padding-right: 0; }
-  #run-detail.chat-mode .rd-chat { min-height: 0; }
+  #run-detail.chat-mode .rd-chat {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
   #run-detail.chat-mode .rd-chat-flow {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     width: 100%;
     max-width: var(--workbench-reading-width);
-    min-height: 0;
     padding: 24px 24px 28px;
     gap: 28px;
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
     scrollbar-gutter: stable;
+  }
+  /* A tall composer (queued messages / continue note) must never push the
+     message stream out of view. Pin it to the bottom and scroll it internally
+     on short windows instead of overflowing the chat surface. */
+  #run-detail.chat-mode .rd-chat-bar {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 62%;
+    overflow-y: auto;
   }
   .chat-bubble.agent { font-size: 14px; line-height: 1.8; }
   .chat-bubble.me { border: 0; border-radius: 16px; padding: 12px 16px; }
