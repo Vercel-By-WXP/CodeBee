@@ -98,6 +98,35 @@ def test_design_md_documents_wb_family():
     assert not lost, "DESIGN.md 丢了家族 token 记载：%s" % "；".join(lost)
 
 
+def test_warm_skin_is_the_first_run_default_and_preserves_user_choice():
+    """新安装默认蜜巢；有效的显式主题偏好仍优先。"""
+    index = (UI / "index.html").read_text(encoding="utf-8", errors="replace")
+    app = (UI / "app.js").read_text(encoding="utf-8", errors="replace")
+    board_html = (UI / "board.html").read_text(encoding="utf-8", errors="replace")
+    board_js = (UI / "board.js").read_text(encoding="utf-8", errors="replace")
+
+    assert 'localStorage.getItem("orch.skin") || "wb-codebee"' in index
+    assert 'const s = localStorage.getItem(SKIN_KEY) || "";' in app
+    assert 'return SKIN_IDS.has(s) ? s : "wb-codebee";' in app
+    assert 'localStorage.getItem("orch.boardSkin") || "wb-codebee"' in board_html
+    assert 'localStorage.getItem("orch.boardSkin") || "wb-codebee"' in board_js
+    assert 'return SKIN_IDS.has(v) ? v : "wb-codebee";' in board_js
+
+
+def test_shared_workbench_style_layer_uses_theme_tokens():
+    """壳层样式不绑定单一皮肤，背景/描边必须跟随当前主题 token。"""
+    css = (UI / "style.css").read_text(encoding="utf-8", errors="replace")
+    start = css.index("/* ================= 工作台共享观感层")
+    end = css.index("/* ================= 四页观感提升", start)
+    shell = css[start:end]
+
+    assert 'html[data-layout="workbench"] #sidebar' in shell
+    assert "background: var(--sidebar) !important;" in shell
+    assert "border-right: 1px solid var(--border) !important;" in shell
+    assert 'data-skin="wbbuddy"' not in shell
+    assert "#f7f8fa" not in shell
+
+
 def _dup_vars():
     """跨文件重复定义的 var 名单（在 ≥2 个 CSS 文件里都有 `--x:` 定义）。"""
     texts = _css_texts()

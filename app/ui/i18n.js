@@ -12,7 +12,7 @@
   const EN = {
         "微信群聊摘要": "WeChat group chat digests",
   "CodeBee": "CodeBee",
-  "白画布 + 浅灰侧栏 + 蓝紫强调，默认观感": "White canvas, light-gray sidebar, blue-violet accent (default)",
+  "白画布 + 浅灰侧栏 + 蓝紫强调，清爽克制": "White canvas, light-gray sidebar, blue-violet accent, clean and restrained",
   "机制与策略": "Mechanism & Strategy",
     "路由评分权重外置为 data/strategy.json（热更，保存即生效，重启不丢）。启用挑战者后，每次自动选将在生产链路旁路记一笔「挑战者会选谁」，对账报告汇总分歧率与潜在挽回——机制层改动先攒证据、再人工采用（借鉴 Raven Evolver，绝不自动换将）。": "Routing score weights live in data/strategy.json (hot-reloaded; saving takes effect immediately and survives restarts). With a challenger enabled, every automatic pick also logs \"whom the challenger would pick\" in a side channel; the reconciliation report summarizes divergence and potential saves — mechanism changes gather evidence first, then are adopted manually (borrowed from Raven Evolver; never auto-switching).",
     "路由权重": "Routing weights",

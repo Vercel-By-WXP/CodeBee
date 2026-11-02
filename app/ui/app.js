@@ -15862,11 +15862,12 @@ function saveVoiceTerms() {
 
 /* ---------------------------------------------------------- 外观：布局 + 皮肤 + 明暗（换肤） */
 /* 布局与配色是两条独立配置：布局只改页面骨架（data-layout），配色只改变量（data-skin）。
- * 调色板全部在 style.css / skin-gradients.css（html[data-skin="X"]，每套含夜间/日间
- * 两版变量）；这里只放顺序与文案。卡片预览色块用 skinPalette 从 CSS 变量实时取值，
- * 不在 JS 里重复写色值——改色只需要动 CSS，预览与真实界面不会各自漂移。 */
+ * 调色板真源在 wb-themes.css（html[data-skin="X"]，每套含日夜两版变量）；这里只放顺序与文案。
+ * 卡片预览色块用 skinPalette 从 CSS 变量实时取值，真实界面与预览共用同一份色板。 */
 const SKINS = [
-  { id: "wbbuddy", name: t("CodeBee"), desc: t("白画布 + 浅灰侧栏 + 蓝紫强调，默认观感"),
+  { id: "wb-codebee", name: t("蜜巢"), desc: t("奶油纸底 + 陶土橙强调 + 蜂蜜金点缀，CodeBee 专属（日夜双版）"),
+    theme: "linear-gradient(135deg,#fdf6ec,#f2d3ad)", hero: "linear-gradient(135deg,#fdf7ef,#eac9a0)" },
+  { id: "wbbuddy", name: t("CodeBee"), desc: t("白画布 + 浅灰侧栏 + 蓝紫强调，清爽克制"),
     theme: "linear-gradient(135deg,#ffffff,#e8eaf2)", hero: "linear-gradient(135deg,#f2f3f8,#d5d9ee)" },
   { id: "wb-light", name: t("浅色"), desc: t("浅冰蓝画布 + 薄荷选中，清爽通透"),
     theme: "linear-gradient(135deg,#eaf6f8,#cfe6ea)", hero: "linear-gradient(135deg,#d9f0f2,#a9dde3)" },
@@ -15884,8 +15885,6 @@ const SKINS = [
     theme: "linear-gradient(135deg,#e9f6f5,#b9e0dc)", hero: "linear-gradient(135deg,#dcf2f0,#8fc9c3)" },
   { id: "wb-buddy", name: t("伙伴"), desc: t("暖杏画布 + 橘红强调，轻松活泼"),
     theme: "linear-gradient(135deg,#fdf4ec,#f4d7bd)", hero: "linear-gradient(135deg,#fbeadb,#eeb98f)" },
-  { id: "wb-codebee", name: t("蜜巢"), desc: t("奶油纸底 + 陶土橙强调 + 蜂蜜金点缀，CodeBee 专属（日夜双版）"),
-    theme: "linear-gradient(135deg,#fdf6ec,#f2d3ad)", hero: "linear-gradient(135deg,#fdf7ef,#eac9a0)" },
 ];
 const SKIN_IDS = new Set(SKINS.map((s) => s.id));
 const SKIN_KEY = "orch.skin";
@@ -15900,7 +15899,7 @@ const LAYOUT_KEY = "orch.layout";
 
 function currentSkin() {
   const s = localStorage.getItem(SKIN_KEY) || "";
-  return SKIN_IDS.has(s) ? s : "wbbuddy";   // 值缺失/非法（旧皮肤 id 等）一律回落默认皮肤
+  return SKIN_IDS.has(s) ? s : "wb-codebee";   // 保留显式选择；仅新用户/非法值回落温暖默认主题
 }
 
 /* 布局独立于皮肤，默认工作台；首次进入由 applyAppearance() 把该默认值落盘，

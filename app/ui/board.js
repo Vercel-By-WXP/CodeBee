@@ -83,16 +83,15 @@ function submitGate() {
 /* ---------------------------------------------------------------- 换肤
    主工作台和驾驶舱共用 orch.skin / orch.theme。旧版驾驶舱独立偏好只作
    一次性回退，任何切换都会写回全局偏好，保持两处入口一致。 */
-const SKINS = [["wbbuddy", "CodeBee"], ["wb-light", "浅色"], ["wb-dark", "深色"],
+const SKINS = [["wb-codebee", "蜜巢"], ["wbbuddy", "CodeBee"], ["wb-light", "浅色"], ["wb-dark", "深色"],
                ["wb-breeze", "有风"], ["wb-qq", "经典 QQ"], ["wb-peace", "紫金秋"],
-               ["wb-peer", "同行"], ["wb-ripple", "涟漪"], ["wb-buddy", "伙伴"],
-               ["wb-codebee", "蜜巢"]];
+               ["wb-peer", "同行"], ["wb-ripple", "涟漪"], ["wb-buddy", "伙伴"]];
 const SKIN_IDS = new Set(SKINS.map((s) => s[0]));
 const _q = new URLSearchParams(location.search);
 
 function skin() {
-  const v = _q.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "wbbuddy";
-  return SKIN_IDS.has(v) ? v : "wbbuddy";
+  const v = _q.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "wb-codebee";
+  return SKIN_IDS.has(v) ? v : "wb-codebee";
 }
 function mode() {
   const v = _q.get("mode") || localStorage.getItem("orch.theme") || localStorage.getItem("orch.boardTheme") || "light";

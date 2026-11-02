@@ -14,13 +14,13 @@
 
 /* ---------- 第 1 层：主应用同款 token（全部由 --wb-* 派生，跟随 CodeBee 全部主题 + 明暗） ---------- */
 :root {
-  /* 兜底：未知皮肤（旧 ocean 等）回落 wbbuddy 浅色，避免 --wb-* 缺失导致透明 */
-  --wb-bg: #ffffff; --wb-sidebar: #f7f8fa; --wb-panel: #ffffff; --wb-panel2: #f4f5f7;
-  --wb-border: #ececf0; --wb-border-strong: #dcdce3; --wb-text: #1f2329; --wb-muted: #646a73;
-  --wb-accent: #4e5ba6; --wb-accent2: #7b6cd9; --wb-ok: #2e9e6b; --wb-warn: #b07d1d;
-  --wb-bad: #d54d42; --wb-log-bg: #f7f8fa; --wb-log-text: #3c414a; --wb-shadow: 0 6px 20px rgba(31, 35, 41, .06);
+  /* 兜底：未知皮肤回落到 wb-codebee 暖色，避免 --wb-* 缺失导致透明 */
+  --wb-bg: #f8f5f0; --wb-sidebar: #fcfaf6; --wb-panel: #ffffff; --wb-panel2: #f3ede4;
+  --wb-border: #eae3d8; --wb-border-strong: #d8cbb9; --wb-text: #2b2622; --wb-muted: #837a6d;
+  --wb-accent: #b0502c; --wb-accent2: #d69a44; --wb-ok: #4f8a56; --wb-warn: #9a7714;
+  --wb-bad: #b02a37; --wb-log-bg: #fcfaf6; --wb-log-text: #3a3129; --wb-shadow: 0 10px 26px rgba(126, 92, 52, .11);
 }
-/* 全部皮肤（wbbuddy / wb-light / wb-dark / wb-qq / wb-peace / wb-peer / wb-ripple / wb-breeze / wb-buddy）
+/* 全部皮肤（wb-codebee / wbbuddy / wb-light / wb-dark / wb-qq / wb-peace / wb-peer / wb-ripple / wb-breeze / wb-buddy）
  * 的配色都取自 wb-themes.css 的 --wb-*；明暗由 html[data-theme] 切换，本文件不再写死一份。
  * !important 用来压过 hive-ui.css 的 html[data-skin][data-theme] 强制 token（驾驶舱不加载布局层）。 */
 html[data-skin] {

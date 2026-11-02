@@ -8,10 +8,10 @@
 (function () {
   try {
     var query = new URLSearchParams(location.search);
-    document.documentElement.dataset.skin = query.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "wbbuddy";
+    document.documentElement.dataset.skin = query.get("skin") || localStorage.getItem("orch.skin") || localStorage.getItem("orch.boardSkin") || "wb-codebee";
     document.documentElement.dataset.theme = query.get("mode") || localStorage.getItem("orch.theme") || localStorage.getItem("orch.boardTheme") || "light";
   } catch (_) {
-    document.documentElement.dataset.skin = "wbbuddy";
+    document.documentElement.dataset.skin = "wb-codebee";
     document.documentElement.dataset.theme = "light";
   }
 })();

@@ -1,21 +1,21 @@
 /* CodeBee UI refresh — layered, low-noise workbench polish.
  * Intentionally presentation-only: existing DOM contracts and application behavior remain intact. */
 :root {
-  --ui-radius-xs: 7px;
-  --ui-radius-sm: 10px;
-  --ui-radius-md: 14px;
-  --ui-radius-lg: 18px;
+  --ui-radius-xs: 6px;
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
   --ui-ease: cubic-bezier(.2,.75,.25,1);
-  --ui-focus: color-mix(in srgb, var(--accent, #6d8cff) 74%, white);
+  --ui-focus: color-mix(in srgb, var(--accent) 74%, var(--panel));
   --ui-surface-shadow: 0 8px 28px rgba(0, 0, 0, .08);
   --ui-card-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .025);
   --ui-control-height: 36px;
 }
-* { scrollbar-color: color-mix(in srgb, var(--muted, #888) 32%, transparent) transparent; scrollbar-width: thin; }
+* { scrollbar-color: color-mix(in srgb, var(--muted) 32%, transparent) transparent; scrollbar-width: thin; }
 *::-webkit-scrollbar { width: 9px; height: 9px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted, #888) 27%, transparent); border: 2px solid transparent; border-radius: 99px; background-clip: padding-box; }
-*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted, #888) 48%, transparent); border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 27%, transparent); border: 2px solid transparent; border-radius: 99px; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted) 48%, transparent); border: 2px solid transparent; background-clip: padding-box; }
 :where(button, input, textarea, select, a, [tabindex]):focus-visible {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
@@ -24,7 +24,7 @@ button, input, textarea, select { font-family: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 button:not(:disabled) { transition: background-color .16s var(--ui-ease), border-color .16s var(--ui-ease), color .16s var(--ui-ease), box-shadow .16s var(--ui-ease), transform .16s var(--ui-ease); }
 button:disabled { cursor: not-allowed; }
-::selection { background: color-mix(in srgb, var(--accent, #6d8cff) 28%, transparent); }
+::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 html { scrollbar-gutter: stable; }
 body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 #app { isolation: isolate; }
@@ -41,7 +41,7 @@ body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; 
   border-radius: 12px;
   border: 1px solid transparent;
 }
-.rail-btn:hover { border-color: var(--border); transform: translateY(-1px); }
+.rail-btn:hover { border-color: var(--border); }
 .rail-btn.active { border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); }
 #sidebar {
   border-right: 1px solid var(--border);
@@ -56,7 +56,7 @@ body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; 
   border-radius: 12px;
   box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 3px 9px rgba(0,0,0,.06);
 }
-#btn-new-task:hover, .new-task:hover { transform: translateY(-1px); box-shadow: var(--ui-card-shadow); }
+#btn-new-task:hover, .new-task:hover { box-shadow: var(--ui-card-shadow); }
 .side-quick { gap: 3px; }
 .qitem {
   min-height: 37px;
@@ -95,7 +95,7 @@ button.primary:hover:not(:disabled), .primary:hover:not(:disabled) {
   box-shadow: 0 1px 0 rgba(255,255,255,.14) inset, 0 5px 14px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 button.ghost, button.secondary, .icon-btn, .brand-tool {
-  border-radius: 10px;
+  border-radius: var(--ui-radius-sm);
 }
 button.ghost:hover:not(:disabled), button.secondary:hover:not(:disabled), .icon-btn:hover:not(:disabled) {
   border-color: var(--border-strong);
@@ -103,7 +103,7 @@ button.ghost:hover:not(:disabled), button.secondary:hover:not(:disabled), .icon-
 }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 textarea, select {
-  border-radius: 10px;
+  border-radius: var(--ui-radius-sm);
   transition: border-color .16s var(--ui-ease), box-shadow .16s var(--ui-ease), background-color .16s var(--ui-ease);
 }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
@@ -127,7 +127,7 @@ textarea:focus, select:focus {
 .modal-wrap, .cmdk-mask, .welcome-wrap { backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
 .modal, .cmdk, .welcome-card {
   border: 1px solid var(--border-strong);
-  border-radius: 18px;
+  border-radius: var(--ui-radius-lg);
   box-shadow: 0 24px 80px rgba(0,0,0,.22);
 }
 .modal-head, .modal-foot { gap: 10px; }
@@ -140,7 +140,7 @@ textarea:focus, select:focus {
 a { text-underline-offset: 3px; }
 :where(.activity-row, .mobile-task, .mobile-workspace, .help-toc button) { transition: background-color .15s var(--ui-ease), border-color .15s var(--ui-ease); }
 @media (hover: hover) and (pointer: fine) {
-  .activity-row:hover, .mobile-task:hover { transform: translateX(1px); }
+  .activity-row:hover, .mobile-task:hover { background: color-mix(in srgb, var(--accent2) 7%, transparent); }
 }
 @media (min-width: 901px) {
   .topbar { min-height: 58px; }

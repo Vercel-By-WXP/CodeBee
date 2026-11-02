@@ -16,17 +16,33 @@
    加载位置：index.html 最后一份 <link>；删掉那一行即回滚整层。
    ========================================================================== */
 
+/* 组件级派生变量集中在这里：从当前主题 token 计算，不重复维护色板。 */
+html[data-layout="workbench"] {
+  --ui-warm-glow: color-mix(in srgb, var(--accent2, var(--accent)) 8%, transparent);
+  --ui-warm-label: color-mix(in srgb, var(--accent) 48%, var(--muted));
+  --ui-warm-border: color-mix(in srgb, var(--border) 74%, var(--accent2, var(--accent)) 26%);
+  --ui-warm-border-soft: color-mix(in srgb, var(--accent2, var(--accent)) 26%, transparent);
+  --ui-warm-border-hover: color-mix(in srgb, var(--accent2, var(--accent)) 40%, transparent);
+  --ui-warm-surface: color-mix(in srgb, var(--accent2, var(--accent)) 11%, var(--panel));
+  --ui-warm-surface-hover: color-mix(in srgb, var(--accent2, var(--accent)) 19%, var(--panel));
+  --ui-warm-focus: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  --ui-warm-input-shadow: 0 16px 36px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 2px 5px color-mix(in srgb, var(--accent2, var(--accent)) 6%, transparent);
+  --ui-warm-card-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 8%, transparent);
+  --ui-warm-card-hover-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 13%, transparent);
+  --ui-warm-accent-wash: color-mix(in srgb, var(--accent) 15%, transparent);
+  --ui-warm-secondary-wash: color-mix(in srgb, var(--accent2, var(--accent)) 26%, transparent);
+  --ui-warm-success-wash: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+html[data-theme="dark"][data-layout="workbench"] {
+  --ui-warm-glow: color-mix(in srgb, var(--accent2, var(--accent)) 7%, transparent);
+}
+
 /* ---------- 70.1 首页画布：一层极淡暖光（宁可看不见，也不要糊成粉色滤镜） ---------- */
 html[data-layout="workbench"] #page-home {
   background-image:
-    radial-gradient(1100px 520px at 62% -22%,
-      color-mix(in srgb, var(--accent2, var(--accent)) 8%, transparent), transparent 74%);
+    radial-gradient(1100px 520px at 62% -22%, var(--ui-warm-glow), transparent 74%);
   background-repeat: no-repeat;
-}
-html[data-theme="dark"][data-layout="workbench"] #page-home {
-  background-image:
-    radial-gradient(1100px 520px at 62% -22%,
-      color-mix(in srgb, var(--accent2, var(--accent)) 7%, transparent), transparent 76%);
 }
 
 /* ---------- 70.2 首页排印：缓一点、暖一点 ---------- */
@@ -45,47 +61,45 @@ html[data-layout="workbench"] #page-home .rd-home-sub {
 
 /* ---------- 70.3 输入卡：暖底 + 暖影 + 暖聚焦环 ---------- */
 html[data-layout="workbench"] #page-home .cmp-box,
-html[data-layout] :is(#sub-tasks, #rd-input-slot) .cmp-box {
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .cmp-box {
   background: var(--panel);
-  border-color: color-mix(in srgb, var(--border) 74%, var(--accent2, var(--accent)) 26%);
-  box-shadow:
-    0 16px 36px color-mix(in srgb, var(--accent) 10%, transparent),
-    0 2px 5px rgba(90, 66, 40, .05);
+  border-color: var(--ui-warm-border);
+  box-shadow: var(--ui-warm-input-shadow);
   transition: box-shadow .18s ease, border-color .18s ease;
 }
 html[data-layout="workbench"] #page-home .cmp-box:focus-within,
-html[data-layout] :is(#sub-tasks, #rd-input-slot) .cmp-box:focus-within {
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .cmp-box:focus-within {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
   box-shadow:
     0 16px 38px color-mix(in srgb, var(--accent) 15%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+    var(--ui-warm-focus);
 }
 /* 输入区本身不要第二层白底，让它融进卡面 */
 html[data-layout="workbench"] #page-home .cmp-box textarea,
-html[data-layout] :is(#sub-tasks, #rd-input-slot) .cmp-box textarea {
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .cmp-box textarea {
   background: transparent;
 }
 html[data-layout="workbench"] #page-home .cmp-bar,
-html[data-layout] :is(#sub-tasks, #rd-input-slot) .cmp-bar {
+html[data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .cmp-bar {
   border-top-color: color-mix(in srgb, var(--border) 62%, var(--accent2, var(--accent)) 38%);
 }
 
 /* ---------- 70.4 快速开始：蜜色胶囊（首屏第一块颜色） ---------- */
 html[data-layout="workbench"] .rd-qs-label {
-  color: color-mix(in srgb, var(--accent) 48%, var(--muted));
+  color: var(--ui-warm-label);
   letter-spacing: .06em;
 }
 html[data-layout="workbench"] .rd-qs-btn {
   padding: 9px 16px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent2, var(--accent)) 26%, transparent);
-  background: color-mix(in srgb, var(--accent2, var(--accent)) 11%, var(--panel));
+  border: 1px solid var(--ui-warm-border-soft);
+  background: var(--ui-warm-surface);
   color: var(--text);
   transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 html[data-layout="workbench"] .rd-qs-btn:hover {
-  background: color-mix(in srgb, var(--accent2, var(--accent)) 19%, var(--panel));
-  border-color: color-mix(in srgb, var(--accent2, var(--accent)) 40%, transparent);
+  background: var(--ui-warm-surface-hover);
+  border-color: var(--ui-warm-border-hover);
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 html[data-layout="workbench"] .rd-qs-btn .ico {
@@ -95,18 +109,18 @@ html[data-layout="workbench"] .rd-qs-btn .ico {
 /* ---------- 70.5 高级功能折叠钮：别让它像禁用态 ---------- */
 html[data-layout="workbench"] .rd-adv-toggle {
   color: color-mix(in srgb, var(--accent) 52%, var(--muted));
-  border-color: color-mix(in srgb, var(--border) 68%, var(--accent2, var(--accent)) 32%);
+  border-color: var(--ui-warm-border);
 }
 html[data-layout="workbench"] .rd-adv-toggle:hover {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent2, var(--accent)) 12%, transparent);
+  background: var(--ui-warm-surface);
   border-color: color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 /* ---------- 70.6 通用交互件：hover 用暖薄底，不用灰 ---------- */
-html[data-layout] .icon-btn:hover,
-html[data-layout] .brand-tool:hover {
-  background: color-mix(in srgb, var(--accent2, var(--accent)) 14%, transparent);
+html[data-layout="workbench"] .icon-btn:hover,
+html[data-layout="workbench"] .brand-tool:hover {
+  background: var(--ui-warm-surface-hover);
   color: var(--accent);
 }
 
@@ -122,7 +136,7 @@ html[data-layout="workbench"] #page-home .rd-caps-label {
   display: block;
   font-size: 12px;
   letter-spacing: .06em;
-  color: color-mix(in srgb, var(--accent) 48%, var(--muted));
+  color: var(--ui-warm-label);
   margin-bottom: 11px;
 }
 html[data-layout="workbench"] #page-home .rd-caps-grid {
@@ -137,10 +151,10 @@ html[data-layout="workbench"] #page-home .rd-cap {
   gap: 8px;
   text-align: left;
   padding: 14px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent2, var(--accent)) 30%);
+  border-radius: 12px;
+  border: 1px solid var(--ui-warm-border);
   background: var(--panel);
-  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: var(--ui-warm-card-shadow);
   cursor: pointer;
   font: inherit;
   color: var(--text);
@@ -148,7 +162,7 @@ html[data-layout="workbench"] #page-home .rd-cap {
 }
 html[data-layout="workbench"] #page-home .rd-cap:hover {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 13%, transparent);
+  box-shadow: var(--ui-warm-card-hover-shadow);
 }
 html[data-layout="workbench"] #page-home .rd-cap-ico {
   width: 36px;
@@ -157,19 +171,19 @@ html[data-layout="workbench"] #page-home .rd-cap-ico {
   display: grid;
   place-items: center;
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
+  background: var(--ui-warm-accent-wash);
+  box-shadow: inset 0 0 0 1px var(--ui-warm-accent-wash);
 }
 html[data-layout="workbench"] #page-home .rd-cap-ico .ico { width: 18px; height: 18px; stroke-width: 1.9; }
 html[data-layout="workbench"] #page-home .rd-cap[data-tone="b"] .rd-cap-ico {
   color: color-mix(in srgb, var(--accent2, var(--accent)) 62%, var(--text));
-  background: color-mix(in srgb, var(--accent2, var(--accent)) 26%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent2, var(--accent)) 26%, transparent);
+  background: var(--ui-warm-secondary-wash);
+  box-shadow: inset 0 0 0 1px var(--ui-warm-secondary-wash);
 }
 html[data-layout="workbench"] #page-home .rd-cap[data-tone="c"] .rd-cap-ico {
   color: var(--ok);
-  background: color-mix(in srgb, var(--ok) 16%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 18%, transparent);
+  background: var(--ui-warm-success-wash);
+  box-shadow: inset 0 0 0 1px var(--ui-warm-success-wash);
 }
 html[data-layout="workbench"] #page-home .rd-cap b {
   font-size: 13.5px;
@@ -177,7 +191,7 @@ html[data-layout="workbench"] #page-home .rd-cap b {
   letter-spacing: -.005em;
 }
 html[data-layout="workbench"] #page-home .rd-cap-desc {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -186,7 +200,7 @@ html[data-layout="workbench"] #page-home .rd-cap-go {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: color-mix(in srgb, var(--accent) 78%, var(--text));
 }
 html[data-layout="workbench"] #page-home .rd-cap-go .ico { width: 12px; height: 12px; }

@@ -3996,12 +3996,11 @@ html[data-skin="paper"] body::before { content: none; }
 .brand-name { color: var(--accent); letter-spacing: .02em; }
 .brand { border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, transparent); }
 
-/* 3) 主按钮：主色光晕 + 顶部内高光 + 悬停轻上浮（:active 回压手感保留） */
+/* 3) 主按钮：主色光晕 + 顶部内高光，hover 只变亮度不改变位置 */
 .primary {
   box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 28%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, .14);
 }
-.primary:hover { transform: translateY(-1px); }
 .primary:active { transform: translateY(0); }
 html[data-skin="contrast"] .primary { box-shadow: none; }
 
@@ -4633,14 +4632,12 @@ body::before {
   margin: 16px 4px 8px; min-height: 42px; border-radius: 12px;
   background: linear-gradient(110deg, var(--accent), color-mix(in srgb, var(--accent2) 82%, var(--accent)));
   color: #fff; border: 0; box-shadow: 0 9px 20px color-mix(in srgb, var(--accent) 24%, transparent);
-  transition: transform .18s ease, box-shadow .18s ease;
+  transition: box-shadow .18s ease, background-color .18s ease;
 }
-.new-task:hover { transform: translateY(-1px); box-shadow: 0 12px 24px color-mix(in srgb, var(--accent) 34%, transparent); }
+.new-task:hover { box-shadow: 0 12px 24px color-mix(in srgb, var(--accent) 34%, transparent); }
 .side-search { min-height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--panel) 68%, transparent); }
 .side-quick { margin-top: 8px; }
-.qitem, .set-item { border-radius: 10px; min-height: 36px; transition: background .16s ease, color .16s ease, transform .16s ease; }
-/* 悬停位移只留给 .qitem：.set-item 所在的设置导航是独立滚动容器，右移 2px 会顶出横向滚动条 */
-.qitem:hover { transform: translateX(2px); }
+.qitem, .set-item { border-radius: 10px; min-height: 36px; transition: background .16s ease, color .16s ease; }
 .qitem.active, .set-item.active { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); color: var(--text); }
 .side-label { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; }
 .side-tasks { padding-top: 3px; }
@@ -4654,8 +4651,8 @@ body::before {
 }
 .page-title { font-family: var(--font-display); font-size: 16px; letter-spacing: .02em; }
 .top-actions { gap: 8px; }
-.pill, .icon-btn { border-color: var(--border); background: color-mix(in srgb, var(--panel) 70%, transparent); transition: all .16s ease; }
-.pill:hover, .icon-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.pill, .icon-btn { border-color: var(--border); background: color-mix(in srgb, var(--panel) 70%, transparent); transition: border-color .16s ease, color .16s ease, background-color .16s ease; }
+.pill:hover, .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 .conn { border-radius: 999px; padding: 6px 10px; background: color-mix(in srgb, var(--ok) 12%, var(--panel)); font-size: 11px; }
 
 main { padding: 28px clamp(16px, 4vw, 56px) 70px; }
@@ -4681,8 +4678,8 @@ main { padding: 28px clamp(16px, 4vw, 56px) 70px; }
 .cmp-box { margin-top: 14px; border-radius: 16px; background: color-mix(in srgb, var(--panel) 72%, transparent); border-color: var(--border-strong); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); transition: border .18s, box-shadow .18s; }
 .cmp-box textarea { min-height: 92px; font-size: 15px; line-height: 1.6; }
 .cmp-send .primary { width: 40px; height: 40px; box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent); }
-.cmp-chip { border-radius: 999px; min-height: 30px; background: color-mix(in srgb, var(--panel2) 52%, transparent); transition: all .16s ease; }
-.cmp-chip:hover { transform: translateY(-1px); }
+.cmp-chip { border-radius: 999px; min-height: 30px; background: color-mix(in srgb, var(--panel2) 52%, transparent); transition: background-color .16s ease, border-color .16s ease, color .16s ease; }
+.cmp-chip:hover { background: var(--panel2); }
 
 .card { border-radius: 14px; background: color-mix(in srgb, var(--panel) 58%, transparent); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 10px 24px rgba(7, 24, 45, .10); }
@@ -10282,143 +10279,92 @@ button.avail-model:hover { border-color: color-mix(in srgb, var(--text) 30%, tra
 .sbadge.kbb { background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad); font-weight: 600; }
 
-/* ================= 桌面观感层（wbbuddy 皮肤专用，2026-10-30）=================
- * 只在 html[data-skin="wbbuddy"] 下生效，桌面端的结构观感：
- * 侧栏与画布之间用色差分隔不用边框线；卡片纯白、12px 圆角、发丝级投影；
- * 图标轨融入侧栏底色；按钮胶囊化、主按钮蓝紫实底。删掉本段即回原生观感。 */
-html[data-skin="wbbuddy"] #app { gap: 0; }
-html[data-skin="wbbuddy"] #sidebar {
-  border-right: none;
-  box-shadow: inset -1px 0 0 var(--border);
+/* ================= 工作台共享观感层（主题 token 驱动，2026-11-02）=================
+ * 所有皮肤共用同一套壳层结构，色彩只读语义变量；换肤不再依赖重复的硬编码覆盖。
+ * 描边优先、阴影克制，交互保持稳定不位移。 */
+html[data-layout="workbench"] #app { gap: 0; }
+html[data-layout="workbench"] #sidebar {
+  background: var(--sidebar) !important;
+  border-right: 1px solid var(--border) !important;
+  box-shadow: none;
 }
-html[data-skin="wbbuddy"] #mainwrap { background: var(--bg); }
-/* 图标轨融入侧栏底色（左栏是一整块，不分两色） */
-html[data-skin="wbbuddy"] nav.side-rail { background: var(--sidebar); border-right: none; }
-html[data-skin="wbbuddy"] .rail-btn { color: var(--muted); }
-html[data-skin="wbbuddy"] .rail-btn.active {
+html[data-layout="workbench"] #mainwrap { background: var(--bg); }
+html[data-layout="workbench"] nav.side-rail {
+  background: var(--sidebar) !important;
+  border-right: 0 !important;
+}
+html[data-layout="workbench"] .rail-btn { color: var(--muted); }
+html[data-layout="workbench"] .rail-btn.active {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
   border-radius: 10px;
 }
-html[data-skin="wbbuddy"] .rail-btn:hover { background: color-mix(in srgb, var(--text) 5%, transparent); border-radius: 10px; }
-/* 卡片：白底大圆角轻投影，去边框 */
-html[data-skin="wbbuddy"] .panel {
+html[data-layout="workbench"] .rail-btn:hover {
+  background: color-mix(in srgb, var(--accent2, var(--accent)) 10%, var(--panel));
+}
+html[data-layout="workbench"] .panel {
   background: var(--panel);
-  border: none;
-  border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(31, 35, 41, .05), 0 6px 18px rgba(31, 35, 41, .04);
-}
-html[data-skin="wbbuddy"] .panel-head { border-bottom: 1px solid var(--border); }
-/* 输入卡（新建任务）：大白卡 */
-html[data-skin="wbbuddy"] .cmp-box {
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(31, 35, 41, .05), 0 10px 28px rgba(31, 35, 41, .06);
-}
-html[data-skin="wbbuddy"] .cmp-box:focus-within {
-  border-color: transparent;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent),
-              0 10px 28px rgba(31, 35, 41, .07);
-}
-/* 主按钮：蓝紫实底胶囊 */
-html[data-skin="wbbuddy"] button.primary {
-  background: var(--accent);
-  border: none;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-html[data-skin="wbbuddy"] button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
-html[data-skin="wbbuddy"] button.ghost {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: transparent;
+  border-radius: 12px;
+  box-shadow: var(--ui-card-shadow, 0 1px 2px rgba(0, 0, 0, .04));
 }
-html[data-skin="wbbuddy"] button.ghost:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-/* 聊天气泡：自己=蓝紫浅底、他方=白卡 */
-html[data-skin="wbbuddy"] .chat-bubble.me {
-  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
-  border: none;
-  border-radius: 14px;
-}
-html[data-skin="wbbuddy"] .chat-bubble.agent {
+html[data-layout="workbench"] .panel-head { border-bottom: 1px solid var(--border); }
+html[data-layout="workbench"] .cmp-box {
   background: var(--panel);
-  border: none;
-  border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(31, 35, 41, .05);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--ui-card-shadow, 0 1px 2px rgba(0, 0, 0, .04));
 }
-/* 列表行选中态：浅蓝紫胶囊 */
-html[data-skin="wbbuddy"] .task-row.active,
-html[data-skin="wbbuddy"] .side-quick .set-item.active,
-html[data-skin="wbbuddy"] .run-item.active {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+html[data-layout="workbench"] .cmp-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent),
+    var(--ui-card-shadow, 0 1px 2px rgba(0, 0, 0, .04));
+}
+html[data-layout="workbench"] button.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+html[data-layout="workbench"] button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--text));
+}
+html[data-layout="workbench"] button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+html[data-layout="workbench"] button.ghost:hover:not(:disabled) { background: var(--panel2); }
+html[data-layout="workbench"] .chat-bubble.me {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+  border-radius: 14px;
+}
+html[data-layout="workbench"] .chat-bubble.agent {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 5%, transparent);
+}
+html[data-layout="workbench"] .task-row.active,
+html[data-layout="workbench"] .side-quick .set-item.active,
+html[data-layout="workbench"] .run-item.active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
   border-radius: 10px;
 }
-/* 夜间微调：卡片投影减淡 */
-html[data-skin="wbbuddy"][data-theme="dark"] .panel {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
-}
-html[data-skin="wbbuddy"][data-theme="dark"] .cmp-box {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
-}
-/* 侧栏底色钉死（wbbuddy）：media 层的 --sidebar 覆盖竞争太多，
- * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与默认观感一致 */
-html[data-skin="wbbuddy"] #sidebar,
-html[data-skin="wbbuddy"][data-layout="workbench"] #sidebar {
-  background: #f7f8fa !important;
-  border-right: 1px solid #ececf0 !important;
-}
-html[data-skin="wbbuddy"][data-theme="dark"] #sidebar,
-html[data-skin="wbbuddy"][data-layout="workbench"][data-theme="dark"] #sidebar {
-  background: #17181c !important;
-  border-right-color: #26272c !important;
-}
-/* 图标轨同色 */
-html[data-skin="wbbuddy"] nav.side-rail,
-html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #f7f8fa !important; border-right: none !important; }
-html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #17181c !important; }
-/* 侧栏底色钉死（wbbuddy）：media 层的 --sidebar 覆盖竞争太多，
- * 直接在 #sidebar 上落 var(--wb-sidebar) 保持与默认观感一致 */
-html[data-skin="wbbuddy"] #sidebar,
-html[data-skin="wbbuddy"][data-layout="workbench"] #sidebar {
-  background: #f7f8fa !important;
-  border-right: 1px solid #ececf0 !important;
-}
-html[data-skin="wbbuddy"][data-theme="dark"] #sidebar,
-html[data-skin="wbbuddy"][data-layout="workbench"][data-theme="dark"] #sidebar {
-  background: #17181c !important;
-  border-right-color: #26272c !important;
-}
-/* 图标轨同色 */
-html[data-skin="wbbuddy"] nav.side-rail,
-html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #f7f8fa !important; border-right: none !important; }
-html[data-skin="wbbuddy"][data-theme="dark"] nav.side-rail { background: #17181c !important; }
-
-/* body 底色对齐（wbbuddy）：desktop-workbench 的 media 层给 body 硬写了 #f5f6f8，
- * 与白画布主区形成色差断层——钉成同源色。 */
-html[data-skin="wbbuddy"] body,
-html[data-skin="wbbuddy"][data-theme="light"] body { background: #ffffff !important; }
-html[data-skin="wbbuddy"][data-theme="dark"] body { background: #1c1d21 !important; }
-
-/* ================= 文字观感（1031，wbbuddy 皮肤限定）=================
- * 参照桌面端规范：干净无衬线、层级靠字重与灰阶不靠装饰——
- * 大标题 700、导航 500 中黑、分组小标签浅灰小字、正文留白舒展。 */
-html[data-skin] body {
+html[data-layout="workbench"] body { background: var(--bg) !important; }
+html[data-layout] body {
   font-family: "MiSans", "HarmonyOS Sans SC", "PingFang SC",
     "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
 }
-/* 左栏：品牌行醒目、导航行中黑、分组小标签退后 */
-html[data-skin="wbbuddy"] .brand-name { font-weight: 650; letter-spacing: .2px; }
-html[data-skin="wbbuddy"] .side-quick .qitem { font-weight: 500; }
-html[data-skin="wbbuddy"] .side-quick .qitem:not(.active):not(:hover) { color: #414651; }
-html[data-skin="wbbuddy"][data-theme="dark"] .side-quick .qitem:not(.active):not(:hover) { color: #b9bec8; }
-html[data-skin="wbbuddy"] .side-label { font-size: 12px; font-weight: 500; }
-/* 主页：大标题加粗到本尊级（body 提一档特异性，压过 redesign-layout 同分值后加载的 600），
- * 快速开始胶囊中黑 */
-html[data-skin="wbbuddy"] body .rd-home-title { font-weight: 700; }
-html[data-skin="wbbuddy"] .rd-qs-btn { font-weight: 500; }
-html[data-skin="wbbuddy"] .rd-section-head h2 { font-weight: 650; }
-/* 任务树行文字与导航同级感 */
-html[data-skin="wbbuddy"] .stask .t { font-weight: 500; }
+html[data-layout="workbench"] .brand-name { font-weight: 650; letter-spacing: .2px; }
+html[data-layout="workbench"] .side-quick .qitem { font-weight: 500; }
+html[data-layout="workbench"] .side-quick .qitem:not(.active):not(:hover) { color: var(--muted); }
+html[data-layout="workbench"] .side-label { font-size: 12px; font-weight: 500; }
+html[data-layout="workbench"] body .rd-home-title { font-weight: 700; }
+html[data-layout="workbench"] .rd-qs-btn { font-weight: 500; }
+html[data-layout="workbench"] .rd-section-head h2 { font-weight: 650; }
+html[data-layout="workbench"] .stask .t { font-weight: 500; }
 
 /* ================= 四页观感提升（1031）：工作台/专家/运行记录/自动化 ================= */
 /* 侧栏「新聊天」首钮显眼化（按钮语言：白底描边，hover 强调色） */
