@@ -166,6 +166,13 @@ _MODEL_UNAVAILABLE = (
     # 免费通道已死，不是成功（runner 侧按假成功拦截，见 _GENERIC_DEAD_BANNERS）。
     "free api service has ended",
 )
+# litellm 路由失败：模型名没带 provider 前缀（如 "nvidia/..." 这种 OpenRouter
+# 模型 id 写法被原样透传给 litellm）。这是确定性配置错，归 UPSTREAM_CONFIG 而非
+# 进网络重试梯反复磨（2026-11-02 实案：aider 单步重试 9 次、并自动打开文档链接）。
+_LITELLM_PROVIDER_NOT_PROVIDED = (
+    "llm provider not provided",
+    "pass in the llm provider",
+)
 _CONTEXT_OVERFLOW = (
     "input exceeds the maximum length", "maximum context length",
     "context length exceeded", "context window exceeded",
@@ -212,6 +219,10 @@ def classify_error_text(error):
     if (any(marker in text for marker in _MODEL_UNAVAILABLE)
             or re.search(r"\bmodel(?:\s+[^:\n]{1,80})?\s+is\s+not\s+configured\b", text)):
         return ErrorCode.MODEL_UNAVAILABLE
+    if any(marker in text for marker in _LITELLM_PROVIDER_NOT_PROVIDED):
+        # 见 _LITELLM_PROVIDER_NOT_PROVIDED 注释：确定性配置错，归 UPSTREAM_CONFIG
+        # （base_url/端点/前缀配置不匹配），不进网络重试梯盲磨。
+        return ErrorCode.UPSTREAM_CONFIG
     if any(marker in text for marker in _CONTEXT_OVERFLOW):
         return ErrorCode.CONTEXT_OVERFLOW
     # 计费拒绝的强信号先于 401/403 正则：网关用 403 包装「预扣费失败」时，

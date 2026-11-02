@@ -797,6 +797,14 @@ def run_process(argv=None, shell_cmd=None, stdin_text=None, cwd=None, env=None,
         # 5A：env 关键字环境变量注入用户传入的 env（属于有意注入，例如模型 API key）
         full_env.update({str(k): str(v) for k, v in env.items()})
     full_env = _augment_windows_shell_path(full_env, is_windows=(os.name == "nt"))
+    # 服务进程启动的子工具（aider/codex/claude 等）在 Windows 上经
+    # webbrowser.open → os.startfile 自动打开外部浏览器（2026-11-02：aider 把
+    # litellm 报错的文档链接当"是否打开"提示，--yes-always 下直接确认打开，单 run
+    # 弹多次）。无头服务器不应让任一子工具弹浏览器。注入 BROWSER 指向静默 noop：
+    # webbrowser 在 BROWSER 设值时注册为 GenericBrowser 并调用它而非系统默认
+    # （已实证 Windows 生效）。仅当调用方未显式指定时兜底。
+    if "BROWSER" not in full_env:
+        full_env["BROWSER"] = _noop_browser_command()
     try:
         # 死本地代理兜底（2026-10-26 实案：系统代理残留指向已退出的 Clash，
         # 子进程 CLI 继承后全部 10061）。ensure() 同时承担 TTL 复检；os.environ
@@ -1793,6 +1801,44 @@ _ARGV_PROMPT_SAFE = 20000
 _ARGV_PROMPT_SHIM_SAFE = 6000
 
 
+def _normalize_aider_model(model, env):
+    """把模型名归一成 aider/litellm 需要的 provider 前缀写法。
+
+    litellm 靠 provider 前缀路由；裸名或前缀与本次实际注入的端点协议不符都会
+    报 ``LLM Provider NOT provided``，aider 在 ``--yes-always`` 下会把该报错里的
+    文档链接自动打开浏览器（2026-11-02 实案）。前缀按注入端点协议定：
+    ``ANTHROPIC_BASE_URL`` = anthropic 面（Bigmodel 等）、``OPENAI_API_BASE`` =
+    openai 兼容面（OpenRouter/OpenAI 等）；都没有 = CLI 本机默认场景，模型名
+    保持用户原样。
+
+    关键修正：模型名里自带的 ``nvidia/...`` 是 OpenRouter 的模型 id 写法，不是
+    litellm 的 provider 前缀——旧逻辑只认裸名会漏掉这一整类、原样透传致错。已带
+    正确协议前缀（``anthropic/`` 或 ``openai/``）则尊重原值，避免重复前缀。
+    """
+    if not model:
+        return model
+    env = env or {}
+    if env.get("ANTHROPIC_BASE_URL") and not model.startswith("anthropic/"):
+        return "anthropic/" + model
+    if env.get("OPENAI_API_BASE") and not model.startswith("openai/"):
+        return "openai/" + model
+    return model
+
+
+def _noop_browser_command():
+    """返回喂给 ``BROWSER`` 环境变量的静默 noop 命令（含 ``%s`` 占位符）。
+
+    Python 的 ``webbrowser`` 在 ``BROWSER`` 设值时把它注册为 ``GenericBrowser``，
+    ``webbrowser.open(url)`` 会调用该命令替代系统默认浏览器。Windows 用
+    ``rundll32``（无参即静默退出、不弹窗、不起进程）；POSIX 用 ``true``。
+    已实证 Windows 下 ``BROWSER=rundll32.exe %s`` 可拦住 aider 的自动弹窗。
+    """
+    if os.name == "nt":
+        return "rundll32.exe %s"
+    import shutil
+    return (shutil.which("true") or "/bin/true") + " %s"
+
+
 def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=None):
     """构建一次 CLI 调用的 (argv, stdin_text, prompt, tmp_files)。model 可为 None=CLI 默认。
     images 为图片附件绝对路径：codex 用 -i 原生附图；其余 kind 忽略（调用方已过滤）。
@@ -1915,16 +1961,10 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             # 不影响评审出分；写模式保留 git 交给作者位使用。
             argv += ["--no-git"]
         if model:
-            # litellm 靠 provider 前缀路由，裸模型名直接报
-            # "LLM Provider NOT provided"。前缀按本条尝试实际注入的端点协议定：
-            # ANTHROPIC_BASE_URL=anthropic 面（Bigmodel 等）、OPENAI_API_BASE=
-            # openai 兼容面；都没有=CLI 本机默认场景，模型名保持用户原样
-            envd = agent.get("env") or {}
-            if "/" not in model:
-                if envd.get("ANTHROPIC_BASE_URL"):
-                    model = "anthropic/" + model
-                elif envd.get("OPENAI_API_BASE"):
-                    model = "openai/" + model
+            # aider 经 litellm 路由：模型名必须带正确的 provider 前缀，否则报
+            # "LLM Provider NOT provided" 并由 aider 自动打开文档链接（见
+            # _normalize_aider_model 注释，2026-11-02 实案）。
+            model = _normalize_aider_model(model, agent.get("env") or {})
             argv += ["--model", model]
     else:  # generic：模板把 {prompt}/{session} 嵌进参数（注意 cmd 行长度限制）
         tmpl = agent.get("argv_template") or ["-p", "{prompt}"]
