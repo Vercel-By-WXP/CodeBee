@@ -7,7 +7,8 @@
      ③ 投影是中性黑灰，白卡浮不起来，没有「纸」的厚度；
      ④ 文字是中性黑/中性灰，在冷白底上显硬。
    对策（全部消费既有 token，不定义任何色值真源，换主题自动跟随）：
-     a. 首页顶部一层极淡暖光（accent2 派生），把「光」加进来；
+     a. 首页顶部一层极淡暖光（accent2 派生），把「光」加进来（蜜巢皮肤除外，
+        那套的光由 demo-skin.css 的 main 渐变负责，见 70.1）；
      b. 输入卡：微暖底 + 暖投影 + 焦点暖环 → 卡片有厚度，像放在桌上的纸；
      c. 快捷胶囊：蜜色底 + 暖边 + 强调色箭头 → 首屏终于有了一块颜色；
      d. 排印：副标题放宽行高、标签用小字距；
@@ -38,10 +39,22 @@ html[data-theme="dark"][data-layout="workbench"] {
   --ui-warm-glow: color-mix(in srgb, var(--accent2, var(--accent)) 7%, transparent);
 }
 
-/* ---------- 70.1 首页画布：一层极淡暖光（宁可看不见，也不要糊成粉色滤镜） ---------- */
-html[data-layout="workbench"] #page-home {
-  background-image:
-    radial-gradient(1100px 520px at 62% -22%, var(--ui-warm-glow), transparent 74%);
+/* ---------- 70.1 首页画布：一层极淡暖光（宁可看不见，也不要糊成粉色滤镜） ----------
+ * 蜜巢（wb-codebee）除外：那套皮肤的「光」由 demo-skin.css 的 main 三层渐变负责，
+ * 且 demo-skin 用 `background: transparent` 简写落回 #page-home。本规则若继续匹配，
+ * 会被那条同特异性（1,1,1）+ 更晚加载的简写整条重置 —— DevTools 里表现为
+ * background-image / background-repeat 双双划红线（2026-11-03 用户截图确认）。
+ * 故选择器显式排除 codebee；[data-skin] 的存在性要求顺带避免 JS 落皮肤前一帧闪一下。
+ *
+ * 2026-11-03 血账：原先这里是 `radial-gradient(1100px 520px at 62% -22%, …)`，
+ * 挂在 #page-home 上。可 #page-home 是 max-width 788px 的**局部位**，渐变被它的
+ * 上/左/右三边裁成一块硬边矩形 —— 在非 codebee 皮肤下（wb-light 等浅冷底）这块
+ * 「亚克力板」比背景暗 3~5 级，肉眼就是一整块方框浮在画布上（用户原话「背景上
+ * 有个框感觉不安逸」）。像素实测：框内 #E9F2F6 / 框外 #EEF6F9，边界锐利。
+ * 现在改成挂在 main 上的**竖向线性**渐变：整幅页宽，左右天然无缝，只从内容区顶部
+ * 淡出到 44%，没有可被裁出来的边。:has 不支持时整条不生效（退回纯净画布，安全）。 */
+html[data-layout="workbench"][data-skin]:not([data-skin="wb-codebee"]) main:has(> #page-home:not(.hidden)) {
+  background-image: linear-gradient(180deg, var(--ui-warm-glow), transparent 44%);
   background-repeat: no-repeat;
 }
 
@@ -134,7 +147,7 @@ html[data-layout="workbench"] #page-home .rd-caps {
 }
 html[data-layout="workbench"] #page-home .rd-caps-label {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: .06em;
   color: var(--ui-warm-label);
   margin-bottom: 11px;
@@ -186,12 +199,12 @@ html[data-layout="workbench"] #page-home .rd-cap[data-tone="c"] .rd-cap-ico {
   box-shadow: inset 0 0 0 1px var(--ui-warm-success-wash);
 }
 html[data-layout="workbench"] #page-home .rd-cap b {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: -.005em;
 }
 html[data-layout="workbench"] #page-home .rd-cap-desc {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -200,7 +213,7 @@ html[data-layout="workbench"] #page-home .rd-cap-go {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: color-mix(in srgb, var(--accent) 78%, var(--text));
 }
 html[data-layout="workbench"] #page-home .rd-cap-go .ico { width: 12px; height: 12px; }

@@ -1,0 +1,1793 @@
+/* ==========================================================================
+   72. demo-parity.css（2026-11-02，「完全按照 demo 来」）
+   --------------------------------------------------------------------------
+   真源：`design/codebee-demo/`（index.html + theme.css）。
+   本层只做一件事：把产品现有 DOM 的**骨架尺寸与排布**改成 demo 的，不改功能。
+
+   对照（左＝demo theme.css，右＝本层落地）：
+     .titlebar        38px / padding 0 0 0 14px      → .topbar 同尺寸
+     .side            228px / padding 10px 9px 8px    → --side-w: 228px + 同内距
+     .main            画布 canvas-1 + scene 渐变圆环  → main 背景 + .cb-scene
+     .home-inner      max-width 788 / margin auto     → .rd-home 同参数
+     .task-head       56px / padding 0 20px           → #rd-rail 的 .detail-head
+     .rd-tabs         任务条下一行                    → #rd-tabs 同位置
+     .chat-inner      max-width 790 / padding 24 26 8 → #run-detail > .rd-main
+     .dock            padding 8px 26px 14px + 内层 790 → .rd-chat-bar
+     .settings        居中浮层 1120 / 圆角 16         → body.settings-mode #page-settings
+
+   回滚：删掉 index.html 里 `demo-parity.css` 那一行 <link> 即可（本层零 JS 依赖；
+   圆环装饰由 demo-parity.js 注入的 `.cb-scene` 提供，删 <link> 后它无样式、不可见）。
+   ========================================================================== */
+
+/* ---------- 1. 窗口骨架：标题栏 38 + 侧栏 244 + 单列主区 ---------- */
+/* 侧栏 228 → 244（11-03）：字号整体抬一档后，228 里任务名只剩 4 个字（参考产品同尺寸
+   侧栏给了更宽的名字列）。244 基本抵掉字宽增量，任务名回到 6~7 字。 */
+html[data-layout="workbench"] {
+  --side-w: 244px;
+  /* demo 没有右侧状态栏；把列宽归零，主区才拿得回 280px */
+  --status-rail-w: 0px;
+}
+
+html[data-layout="workbench"] #mainwrap {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+html[data-layout="workbench"] #status-sidebar {
+  display: none !important;
+}
+
+/* 标题栏：demo 是 38px、白底、下发丝线 */
+html[data-layout="workbench"] .topbar {
+  min-height: 38px;
+  height: 38px;
+  padding: 0 10px 0 14px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: none;
+}
+
+html[data-layout="workbench"] .topbar .page-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: var(--text);
+}
+
+html[data-layout="workbench"] .topbar .pill {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* ---------- 2. 左栏：228 / 内距 10 9 8 / 行高 34 ---------- */
+html[data-layout="workbench"] #sidebar {
+  padding: 10px 9px 8px;
+  gap: 1px;
+  background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  border-right: 1px solid var(--border);
+}
+
+html[data-layout="workbench"] #sidebar .brand-row {
+  min-height: 34px;
+  padding: 0 10px;
+  margin-bottom: 2px;
+}
+
+html[data-layout="workbench"] #sidebar .brand-name {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: .2px;
+  color: var(--wb-accent, var(--text));
+}
+
+/* 七行导航：34px 高、8px 圆角、13.2px 字 */
+html[data-layout="workbench"] #wb-side-nav .nav-row,
+html[data-layout="workbench"] #sidebar .nav-row,
+html[data-layout="workbench"] #sidebar .side-link {
+  height: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 14.5px;
+  gap: 10px;
+}
+
+html[data-layout="workbench"] #sidebar .nav-row .ico,
+html[data-layout="workbench"] #sidebar .side-link .ico {
+  width: 15px;
+  height: 15px;
+}
+
+/* 分区小标题：padding 14 9 5 / 11px */
+html[data-layout="workbench"] #sidebar .side-label {
+  padding: 14px 9px 5px;
+  font-size: 12.5px;
+  letter-spacing: .2px;
+  text-transform: none;
+}
+
+/* 任务行：31px / 7px 圆角 / 12.8px */
+html[data-layout="workbench"] #sidebar .stask,
+html[data-layout="workbench"] #sidebar .sdir summary {
+  height: 31px;
+  min-height: 31px;
+  padding: 0 9px 0 11px;
+  border-radius: 7px;
+  font-size: 14.5px;
+}
+
+/* ---------- 3. 主区画布：demo .scene::before 的柔光 + 三段青蓝 ---------- */
+html[data-layout="workbench"] main {
+  position: relative;
+  padding: 0;
+  overflow-y: auto;
+  background:
+    radial-gradient(880px 600px at 51% 36%, rgba(255, 255, 255, .93) 0%, rgba(255, 255, 255, .62) 40%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(152deg,
+      var(--wb-bg, var(--bg)) 0%,
+      color-mix(in srgb, var(--wb-bg, var(--bg)) 86%, var(--wb-uc-out, var(--accent))) 46%,
+      color-mix(in srgb, var(--wb-bg, var(--bg)) 72%, var(--wb-uc-out, var(--accent))) 100%);
+  background-attachment: fixed;
+}
+
+/* 圆环装饰层（demo .ring.r1~r5）：由 demo-parity.js 注入到 main 首个子节点，
+   绝对定位铺满主区、纯装饰、不挡点击。
+   特异性必须压过下面那条 `main > * { position: relative }`（0,1,2）——否则
+   .cb-scene 被改成 relative、inset 失效、高度塌成 0，菱形全被 overflow 裁掉
+   （2026-11-02 实测：25 片全消失）。 */
+html[data-layout="workbench"] main > .cb-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cb-scene .ring {
+  position: absolute;
+  left: 53%;
+  top: 44%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  border: 1px solid var(--scene-line, rgba(146, 199, 223, .42));
+  transform: rotate(-14deg) scaleY(.72);
+}
+
+.cb-scene .ring.r1 { width: 520px; height: 520px; }
+.cb-scene .ring.r2 { width: 760px; height: 760px; opacity: .8; }
+.cb-scene .ring.r3 { width: 1000px; height: 1000px; opacity: .6; }
+.cb-scene .ring.r4 { width: 1260px; height: 1260px; opacity: .38; }
+.cb-scene .ring.r5 { width: 1520px; height: 1520px; opacity: .22; }
+
+/* 菱形漂浮层（demo .hexfield + .kite）：必须自己撑满 —— .kite 的 top/left 是百分比，
+   容器没 inset 就会全部挤在顶部一行（实测 25 片连成一条黑带）。 */
+.cb-scene .kitefield {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.cb-scene .kite {
+  position: absolute;
+  fill: rgba(122, 188, 219, .46);
+  animation: cb-kite-drift 11s ease-in-out infinite alternate;
+}
+
+@keyframes cb-kite-drift {
+  from { transform: translate3d(0, 0, 0) rotate(var(--rot, 0deg)); }
+  to { transform: translate3d(7px, -16px, 0) rotate(calc(var(--rot, 0deg) + 10deg)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-scene .kite { animation: none; transform: rotate(var(--rot, 0deg)); }
+}
+
+/* 主区里的页面要压在圆环之上 */
+html[data-layout="workbench"] main > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 4. 首页：max-width 788 / margin auto / padding 30 26 34 ---------- */
+html[data-layout="workbench"] .rd-home {
+  max-width: 788px;
+  margin: 0 auto;
+  padding: 30px 26px 34px;
+}
+
+html[data-layout="workbench"] .rd-home-title {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 28px;
+  line-height: 1.4;
+  font-weight: 650;
+  letter-spacing: .3px;
+}
+
+html[data-layout="workbench"] .rd-home-sub {
+  margin: 0 auto 24px;
+  max-width: 580px;
+  text-align: center;
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+/* 问候/日期行：对齐 demo .home-greet 居中（demo 是居中纯文本问候）。
+   原 .rd-home-date 是 display:flex 行，text-align 不生效，须用 justify-content 居中整行（含 accent 短杠）。 */
+html[data-layout="workbench"] .rd-home-date {
+  justify-content: center;
+}
+
+html[data-layout="workbench"] #page-home .rd-input-card {
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 34px rgba(70, 130, 158, .13), 0 1px 2px rgba(20, 50, 60, .04);
+}
+
+/* ---------- 5. 任务详情：任务条 56 + 页签 + 居中 790 内容列 ---------- */
+/* 5.0 高度链（2026-11-02）。demo 是固定高度列：
+       .view.active { display:flex; flex-direction:column; height:100% }
+       .task-head / .rd-tabs { flex: 0 0 auto }
+       .chat-scroll { flex: 1 1 0; min-height: 0; overflow: auto }
+       .dock { flex: 0 0 auto }
+     产品里这条链**只有 main.chat-fill（直连任务）才打通**（style.css 3821），
+     普通运行的详情页仍是「main 整个滚动」→ .rd-main 只有内容高、输入坞跟着内容跑，
+     宽屏下再被 1320 盒子一框，看上去既没留白也不是 demo 的样子。
+     这里对「详情在主页打开」补同一套链：main → #page-settings → #sub-runs → #run-detail。
+     条件里必须带 `#page-settings:not(.hidden)`：`:has` 只看目标元素自身，
+     祖先隐藏时照样命中（style.css 3116 那次整页滚不动的实案）。 */
+html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode)
+  main:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden) > #run-detail:not(.hidden)) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode)
+  main:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden) > #run-detail:not(.hidden)) > #page-settings {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  gap: 0;
+}
+
+/* #run-detail 是 #sub-runs 的直接子节点；只有详情打开时才需要这层 flex 链，
+   运行记录列表（#run-detail 隐藏）仍走外层滚动，别把列表裁掉。 */
+html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode)
+  main:has(#sub-runs:not(.hidden) > #run-detail:not(.hidden)) > #page-settings > #sub-runs {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* 设置态是同一个壳（浮层 1120），子页也要撑满浮层内部的剩余高度，
+   否则 #run-detail 的 height:100% 在一个 auto 高度的块里塌成 0。 */
+html[data-layout="workbench"] body.settings-mode #page-settings > #sub-runs:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* 注意特异性，更要注意**匹配**：#run-detail 实际住在 `#page-settings > #sub-runs`
+   里，历史上所有写成 `#page-settings > #run-detail`（子选择器）的规则一条都没生效
+   —— style.css 6156 的 1320 限宽、settings-v3 259 的居中都是空转。这里用后代选择器
+   才真的命中；特异性 (2,1,1) 压过 style.css 5928 的 `#run-detail{display:grid}`。 */
+html[data-theme][data-layout="workbench"] #page-settings #run-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  min-height: 0;
+  column-gap: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+/* 5.1 右栏 = demo 的横向任务条 + 页签行。
+   产品原本给直连任务（chat-mode）另设计了一套「右上角悬浮任务卡 + 主区满铺对话」：
+     style.css:6299  main.chat-fill #run-detail.chat-mode > #rd-railcol { position: fixed;
+                     top: 76px; right: …; width: var(--rd-card-w) }
+     style.css:6330  #run-detail.chat-mode .rd-pane[data-pane="chat"] { padding-right: 卡宽 }
+   与 demo 的顶栏**完全相反**。不把这一层推翻，任务条就缩在右上角一坨、页签被
+   挤到屏幕中间（2026-11-02 实拍就是这个样子）。 */
+html[data-layout="workbench"] #run-detail.chat-mode > #rd-railcol,
+html[data-layout="workbench"] main.chat-fill #run-detail.chat-mode > #rd-railcol,
+html[data-layout="workbench"] #run-detail > #rd-railcol {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  order: -1;
+  flex: 0 0 auto;
+  /* 列里只有「任务条 + 日志控制台」两个块：用 flex 列而不是 block。
+     日志抽屉的高度是 flex 基准（flex: 0 1 auto / 拖拽写入的 0 1 <px>），
+     在 block 父级里这两个值全是空操作——顶边手柄拖不动、两行日志也撑出空白卡
+     （2026-11-03 用户二次截图）。 */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 2;
+  overflow: visible;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+html[data-layout="workbench"] #rd-rail {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  overflow: visible;   /* style.css:5962 是 hidden（卡片形态）；横条要放下 ••• 弹层 */
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 5.1b 压住「直连任务浮卡」那几条高特异性规则：它们都是
+   `main.chat-fill #run-detail.chat-mode #rd-rail { display:flex; padding:16px; … }`
+   （conversation-reference.css:300、desktop-workbench.css:187/1394/1489），
+   特异度 (1,3,1)。这里必须把同一串前缀写全再叠 `html[data-layout]` 才压得住，
+   否则 #rd-rail 仍是 flex 列 + 12~16px 内距，任务条上下各多一道白边。 */
+html[data-layout="workbench"] main.chat-fill #run-detail.chat-mode #rd-rail,
+html[data-layout="workbench"] #run-detail.chat-mode #rd-rail,
+html[data-layout="workbench"] #run-detail #rd-rail {
+  display: block;
+  flex: 0 0 auto;
+  flex-direction: row;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 5.2 任务条：demo .task-head = height 56 / flex row / gap 9 / padding 0 20。
+   style.css:5968 把它设成 flex-direction: column（竖排右栏卡的写法）——实测正是
+   「标题占满一行、状态徽标掉到第二行、右侧按钮叠上去」的原因。 */
+html[data-layout="workbench"] #rd-rail > .detail-head {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 9px;
+  height: 56px;
+  min-height: 56px;
+  margin: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+html[data-layout="workbench"] #rd-rail > .detail-head::before {
+  display: none;   /* style.css:5982 的 "TASK DETAIL" 眉标：demo 任务条没有 */
+}
+
+html[data-layout="workbench"] #rd-rail > .detail-head > #btn-back {
+  order: 0;
+  align-self: center;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 9px 0 7px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: transparent;
+}
+
+/* style.css:5996 给标题写死 `width: calc(100% - 26px)`——竖排卡片里对的，
+   横排里它把 flex 基准撑成整行宽，标题反而被右侧操作区压到 0 宽（实测 x 与
+   #rd-status 重叠、截图里标题直接消失）。基准归零交给 flex-grow 分配。 */
+html[data-layout="workbench"] #rd-rail > .detail-head > #rd-title {
+  order: 1;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: .1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+html[data-layout="workbench"] #rd-rail > .detail-head > #rd-status {
+  order: 2;
+  flex: 0 0 auto;
+  align-self: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 22px;
+}
+
+/* style.css:6007 把操作区写成 grid 两列 + width:100% + 上边框（竖排卡片形态）。
+   横排任务条里它会让两个图标按钮分列左右两端、并把标题顶成 0 宽。 */
+html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions {
+  order: 3;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border-top: 0;
+}
+
+html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions > button {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 任务动态：与 demo 任务条右侧的图标按钮同尺寸。
+   style.css 把它绝对定位到卡片右上角，横排里要收回流内。 */
+html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions #rd-context-toggle {
+  position: static;
+  top: auto;
+  right: auto;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14.5px;
+  line-height: 1;
+}
+
+/* conversation-reference.css:299 把「任务动态」按钮直接 display:none 了；
+   改成顶栏形态后它就是任务条上的一个普通图标按钮，恢复显示（demo 任务条同样有图标按钮）。 */
+html[data-layout="workbench"] #rd-context-toggle {
+  display: inline-flex !important;
+}
+
+/* 5.3 任务动态（#rd-context）原本常驻在右侧浮卡里；demo 没有这一块。
+   留在流里会撑出 500+px 把页签顶到屏幕中间（实测 513px）。收成右上角下拉浮层，
+   由任务条上的「任务动态」按钮开合（.context-open），功能不丢、骨架不歪。 */
+html[data-layout="workbench"] #rd-rail > #rd-context {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 45;
+  width: 332px;
+  max-height: min(62vh, 560px);
+  margin: 0;
+  padding: 8px 12px 12px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(6, 18, 35, .16), 0 2px 10px rgba(6, 18, 35, .08);
+}
+
+html[data-layout="workbench"] #rd-rail:not(.context-open) > #rd-context {
+  display: none;
+}
+
+/* 5.4 「对话导航胶囊」（#rd-chat-nav）是 chat-mode 的替代导航：页签条已被收起时
+   用它进其它分区。demo 的页签条始终在，两套导航并存就是重复＋错位，这里关掉。 */
+html[data-layout="workbench"] #rd-chat-nav {
+  display: none !important;
+}
+
+/* 5.5 对话区不再给悬浮卡让位（那段 padding-right 是浮卡布局的配套） */
+html[data-layout="workbench"] #run-detail.chat-mode .rd-pane[data-pane="chat"],
+html[data-layout="workbench"] #run-detail.chat-mode .rd-pane:not([data-pane="chat"]) {
+  padding-right: 0;
+}
+
+html[data-layout="workbench"] #run-detail.chat-mode .rd-chat-flow,
+html[data-layout="workbench"] #run-detail.chat-mode .rd-chat-bar {
+  max-width: none;
+}
+
+/* 页签：任务条下一行，左右 20px 对齐（demo .rd-tabs）。
+   style.css 里 `#rd-rail > #rd-tabs` 是**竖排导航**（flex-direction: column），
+   demo 是横排，必须同层级改回 row，否则五个页签竖着堆成五行。 */
+html[data-layout="workbench"] #rd-rail > #rd-tabs,
+html[data-layout="workbench"] #rd-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin: 0;
+  padding: 0 20px;
+  height: 38px;
+  min-height: 38px;
+  border: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  background: transparent;
+}
+
+/* 页签本体：demo .rd-tab = 28 高 / padding 0 11 / radius 7 / 12.2px / gap 6。
+   产品是 30 高 + 图标 + 徽标，尺寸对不齐会显得整行"高矮不齐"。 */
+html[data-layout="workbench"] #rd-rail > #rd-tabs .rd-tab {
+  width: auto;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+  background: transparent;
+}
+
+html[data-layout="workbench"] #rd-rail > #rd-tabs .rd-tab:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+html[data-layout="workbench"] #rd-rail > #rd-tabs .rd-tab.active,
+html[data-layout="workbench"] #rd-rail > #rd-tabs .rd-tab.on {
+  background: var(--acc-soft, var(--panel2));
+  color: var(--acc-ink, var(--text));
+  font-weight: 600;
+}
+
+html[data-layout="workbench"] #rd-rail > #rd-tabs .rd-tab .tab-ico {
+  width: 12px;
+  height: 12px;
+  opacity: .7;
+}
+
+/* 「更多 ▾」在 demo 里就是一个普通 .rd-tab（无边框），产品是带框的 23px 小按钮 */
+html[data-layout="workbench"] #rd-tabs .rd-tabs-more-wrap {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+}
+
+html[data-layout="workbench"] #rd-tabs .rd-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+html[data-layout="workbench"] #rd-tabs .rd-more-btn:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+html[data-layout="workbench"] #rd-tabs .rd-more-btn[aria-expanded="true"] {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+/* 对话页签：不依赖 .chat-mode 也能撑满内容列（demo 的 chat-scroll 行为） */
+html[data-layout="workbench"] #run-detail > .rd-main > .rd-pane[data-pane="chat"] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* .rd-chat 是对话页签内的三明治：流式内容（1 1 0 滚动）+ 输入坞（0 0 auto）。
+   定式见记忆：滚动内容区必须 flex: 1 1 0（基准归零），否则几千像素的内容高会
+   按 flex-basis 抢收缩额，把输入条压成 22px。 */
+html[data-layout="workbench"] #run-detail .rd-chat {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+html[data-layout="workbench"] #run-detail .rd-chat-flow {
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 24px 26px 8px;
+  overflow-y: auto;
+}
+
+/* 内容列：demo 是 .chat-inner 790 居中，但那一版没有右侧常驻分区面板。
+   现在面板钉在右上角占了 188 + 间距的一条（见 11.x 节），790 居中的结果是
+   「面板压住内容右缘、左边又空出 200+」——11-03 用户实拍：「两边是不是空太多了」。
+   改为**吃满剩余宽度，右侧只把面板那一条让出来**：内容左起 26、右止面板左沿。
+   1180 上是宽屏上限（再宽一行字太长），窄屏下 100% 自然收缩。 */
+html[data-layout="workbench"] #run-detail > .rd-main {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  max-width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 0 var(--rd-panel-w, 204px) 0 0;   /* 右：常驻分区面板 188 + 间距，左交给页签内距 */
+  overflow: hidden;
+}
+
+/* 内容列让位（--rd-panel-w）：2026-11-03 起面板里还住着「操作」按钮区与
+   「任务信息」折叠段，40px 图标条已经装不下 → 窄屏也保持 188 全功能，
+   让位不再分档。 */
+html[data-layout="workbench"] #run-detail { --rd-panel-w: 204px; }
+
+/* 非对话页签自己滚（步骤 / 成果 / 蜂巢 / 作品信息 …）：demo .steps-inner 20 26 28 */
+html[data-layout="workbench"] #run-detail > .rd-main > .rd-pane:not([data-pane="chat"]) {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 24px 26px 28px;
+  overflow-y: auto;
+}
+
+/* 步骤页签：完整对齐 demo .step-row —— 「圆形序号 + 文本块(h4 标题 / p 描述) + 右端 meta」。
+   无卡面无描边，靠顶部细分隔线分条；圆形 step 徽标按状态着色
+   （done=绿 / running·queued·blocked=琥珀 / 其余=强调青）。 */
+html[data-layout="workbench"] #run-detail #rd-steps .step {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 11px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step:first-child { border-top: 0; }
+html[data-layout="workbench"] #run-detail #rd-steps .step:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-n {
+  flex: 0 0 auto;
+  width: 21px; height: 21px; border-radius: 50%; margin-top: 1px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step.done .step-n {
+  background: color-mix(in srgb, #3f7d61 14%, var(--panel));
+  border-color: color-mix(in srgb, #3f7d61 30%, var(--border));
+  color: #3f7d61;
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step.running .step-n,
+html[data-layout="workbench"] #run-detail #rd-steps .step.queued .step-n,
+html[data-layout="workbench"] #run-detail #rd-steps .step.blocked .step-n {
+  background: color-mix(in srgb, #a1742b 14%, var(--panel));
+  border-color: color-mix(in srgb, #a1742b 30%, var(--border));
+  color: #a1742b;
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-body {
+  flex: 1 1 auto; min-width: 0;
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-body h4 {
+  margin: 0 0 3px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-body h4 .tag {
+  height: auto; padding: 1px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 400; color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-body p {
+  margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted);
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-prov {
+  margin-left: 6px; font-size: 12px; color: color-mix(in srgb, var(--muted) 82%, transparent);
+}
+html[data-layout="workbench"] #run-detail #rd-steps .lrow-meta {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding-top: 1px; font-size: 12.5px; color: var(--muted); white-space: nowrap;
+}
+html[data-layout="workbench"] #run-detail #rd-steps .step-dur {
+  font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+}
+/* 焦点/闪烁：保留强调染色，但不要退回卡片底 */
+html[data-layout="workbench"] #run-detail #rd-steps .step.focus,
+html[data-layout="workbench"] #run-detail #rd-steps .step.flash {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* 智能体回复：demo 是平铺正文（`.ai-text` 无卡面无描边），产品 workbench 层给它
+   套了白卡 + 描边 + 投影（style.css 10368）。对话页里每条回复都顶一个卡片，
+   整列看上去全是方框、也不是 demo 的样子 —— 这里退回平铺。 */
+html[data-layout="workbench"] .chat-bubble.agent {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* 成果页签：报告平铺（demo .steps-inner 里没有重描边卡片），成品文件按 demo .model-row 列表 */
+html[data-layout="workbench"] #run-detail #rd-report.report {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+html[data-layout="workbench"] #run-detail #rd-pane-result .sec-title {
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--text);
+  margin: 4px 0 10px;
+}
+html[data-layout="workbench"] #run-detail #rd-arts .files-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 13px 0 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+html[data-layout="workbench"] #run-detail #rd-arts .fc-row {
+  padding: 11px 2px;
+}
+html[data-layout="workbench"] #run-detail .rd-outcome {
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* 输入坞：demo .dock 是贴底一条，内层面板与正文同宽（790 - 2×26 = 738） */
+html[data-layout="workbench"] .rd-chat-bar {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  margin: 8px 26px 14px;
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--panel) 92%, var(--bg)) 72%,
+    transparent);
+}
+
+/* ---------- 6. 设置：demo 的居中浮层（overlay 20 内距 / 卡片 1120 / 圆角 16） ----------
+   特异性台账（这页踩过两次，别再靠"看着像没生效"猜）：
+     settings-v3.css:76  `html[data-layout] body.settings-mode #mainwrap main`
+       { padding: 0 !important }                                   → (1,3,2)
+   它比任何只写 `body.settings-mode main`（(0,2,3)）的规则都高，所以光加 !important
+   也没用——**选择器必须把 #mainwrap 写进来**才在同一层级比赢。实测：内联
+   `main.style.padding = "20px"` 都会被它压回去（普通声明输给 !important）。 */
+html[data-layout="workbench"] body.settings-mode #mainwrap main {
+  padding: 20px !important;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--wb-uc-out, var(--accent)) 12%, var(--bg)) !important;
+  backdrop-filter: none;
+}
+
+html[data-layout="workbench"] body.settings-mode #page-settings {
+  max-width: 1120px;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  /* settings-v3.css:80 给的是 `padding: 26px 40px 72px`（无浮层形态的内距，
+     特异性 (1,3,1)）。浮层形态下这层内距要归零，改由内部 .subpage 承担呼吸。 */
+  padding: 0 !important;
+  gap: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 30px 70px rgba(46, 84, 102, .24);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 设置子页内部：内容列宽 940 居中 + 上下呼吸（demo .set-pane 18 22 36） */
+html[data-layout="workbench"] body.settings-mode #page-settings > .subpage {
+  padding: 18px 22px 36px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ---------- 7. 二级页面（运行记录 / 概览 / 专家 / 市场 / 自动化 …） ----------
+   demo 的页面系统（theme.css「通用页面系统」）：
+     .view-page.active { background:#fbfdfe }          ← 平底，不吃首页那层渐变
+     .page-wrap { max-width:1180; margin:0 auto; padding:24px 28px 52px }
+   产品这边 `main { padding: 0 }`（第 3 节按 demo 归零）之后，若再让 .subpage
+   顶到 1440（style.css 8371），整块面板就贴死主区两侧——正是用户反复说的
+   「这些页面都没有加 margin」。这里把 1180 + 28px 内距补回来。 */
+html[data-layout="workbench"] #page-settings > .subpage:not(#sub-tasks):not(#sub-browser) {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding: 24px 28px 52px;
+}
+
+/* 任务详情态不要这一档：demo 的 .task-head / .rd-tabs 是通栏，内容列另有 790 上限 */
+html[data-layout="workbench"] #page-settings > #sub-runs:has(> #run-detail:not(.hidden)) {
+  max-width: none;
+  padding: 0;
+}
+
+/* 平底画布：demo 二级页是 #fbfdfe、任务详情是 canvas-1(#f7fbfd)，两者都不用渐变。
+   !important 且同特异性：style.css 3116 那条把二级页刷成灰底（bg 94% + text），
+   普通规则压不过，会把 demo 的清爽底色盖掉。 */
+html[data-layout="workbench"] body:not(.settings-mode):not(.files-mode)
+  main:has(#page-settings:not(.hidden)):has(#page-settings > .subpage:not(.hidden):not(#sub-tasks)) {
+  background: #fbfdfe !important;
+}
+
+html[data-theme="dark"][data-layout="workbench"] body:not(.settings-mode):not(.files-mode)
+  main:has(#page-settings:not(.hidden)):has(#page-settings > .subpage:not(.hidden):not(#sub-tasks)) {
+  background: var(--wb-bg, var(--bg)) !important;
+}
+
+/* 圆环装饰只属于首页（demo 的二级页/任务页都有不透明底色，把 .scene 整层盖住） */
+html[data-layout="workbench"] main:not(:has(> #page-home:not(.hidden))) > .cb-scene {
+  display: none;
+}
+
+/* ---------- 8. 首页按 demo 样张摊开 ----------
+   样张顺序（design/codebee-demo 首页）：待处理卡 → 问候 → 主标题 → 副标题 →
+   输入卡 → 最近动态。产品这边「快速开始 / 或从一个能力开始」两块在 demo 里没有，
+   留着就把首屏挤成另一个样子（用户 2026-11-02 第三次贴图：「这个样式哟，不要搞错了哟」），
+   收进「高级功能」折叠区——入口不丢，首屏对得上。 */
+html[data-layout="workbench"] #page-home #rd-quick-start,
+html[data-layout="workbench"] #page-home #rd-caps {
+  display: none;
+}
+
+/* 竖直居中：demo .home{display:flex} + .home-inner{margin:auto} */
+html[data-layout="workbench"] main:has(> #page-home:not(.hidden)) {
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-layout="workbench"] .rd-home {
+  max-width: 788px;
+  margin: auto;
+}
+
+/* 8.1 待处理卡 = demo .need-card（米黄底 + 暖描边）
+   2026-11-03 用户：「这个要不放到对话框下面去？」——原先 order:-1 把它顶到
+   问候语上方（demo 的 .need-card 位置），现在 DOM 挂在输入卡之后、这里不再
+   抢排位；间距交给上方 14px，下方由「高级功能」按钮自身 margin-top 20 撑开。 */
+html[data-layout="workbench"] #page-home #borrow-attention {
+  order: 0;
+  margin: 14px 0 0;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-card {
+  display: block;
+  border: 1px solid #f0dccb;
+  background: #fffdfa;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 2px rgba(120, 70, 30, .04);
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 2px 8px;
+  border: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: #8a5a3a;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 7px 6px;
+  font-size: 12.5px;
+  color: #5a5f62;
+  text-align: left;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-row:hover {
+  background: #fdf6ef;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-tag {
+  flex: none;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  border: 1px solid #e5eef3;
+  background: #f7fafc;
+  color: #6b8591;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-failed_run {
+  border-color: #f2dedb;
+  background: #fdf3f2;
+  color: #a8564b;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-publish_rate,
+html[data-layout="workbench"] #borrow-attention .ba-paused_task,
+html[data-layout="workbench"] #borrow-attention .ba-serial_gap,
+html[data-layout="workbench"] #borrow-attention .ba-automation_late {
+  border-color: #f4e6cc;
+  background: #fdf6ea;
+  color: #a1742b;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-stuck_queued,
+html[data-layout="workbench"] #borrow-attention .ba-dead_override {
+  border-color: #dcecf4;
+  background: #eef7fb;
+  color: #3c7285;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b6058;
+  font-weight: 400;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-reason {
+  display: none;   /* demo 的 need-row 只有 标签 / 一句话 / 时间 / 动作 */
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-time {
+  flex: none;
+  font-size: 12px;
+  color: #ab9b8d;
+}
+
+html[data-layout="workbench"] #borrow-attention .ba-act {
+  flex: none;
+  height: 27px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid #e2ebf1;
+  background: #fff;
+  color: #4e6a76;
+  font-size: 12.5px;
+}
+
+/* 8.2 最近动态 = demo .home-recent（顶部发丝线 + 平铺名单）
+   真源是 chat-stream.js 原生注入的 `#rd-chat-feed`（composer 之下、快速开始之上）。
+   2026-11-03 修正：原先这里还从高级区搬了一块 `.rd-recent-tasks` 过来，两处都叫
+   「最近动态」——实测首页并排出现两个同名列表。现在只留原生这一块，并把它的
+   卡片式 .cs-row 摊平成 demo 的平铺行（无卡面 / 无描边 / 无投影，只用发丝线与状态小点）。 */
+html[data-layout="workbench"] #page-home #rd-chat-feed {
+  margin: 26px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #e8f1f6;
+}
+
+html[data-layout="workbench"] #rd-chat-feed .cs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 2px 4px;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: #8ea1aa;
+}
+
+/* 原生给了 16×2px 的强调短杠（::before），demo .recent-head 没有，去掉 */
+html[data-layout="workbench"] #rd-chat-feed .cs-head::before { display: none; }
+
+html[data-layout="workbench"] #rd-chat-feed .cs-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* demo .recent-row：平铺行，无卡面 */
+html[data-layout="workbench"] #rd-chat-feed .cs-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #3d525c;
+  text-align: left;
+}
+
+html[data-layout="workbench"] #rd-chat-feed .cs-row:hover {
+  background: rgba(255, 255, 255, .72);
+  border-color: transparent;
+}
+
+html[data-layout="workbench"] #rd-chat-feed .cs-dot {
+  width: 6px;
+  height: 6px;
+}
+
+html[data-layout="workbench"] #rd-chat-feed .cs-text {
+  font-size: 12.5px;
+  color: #3d525c;
+}
+
+html[data-layout="workbench"] #rd-chat-feed .cs-text b {
+  font-weight: 500;
+}
+
+html[data-layout="workbench"] #rd-chat-feed .cs-time,
+html[data-layout="workbench"] #rd-chat-feed .cs-sep {
+  font-size: 12px;
+  color: #a3b2ba;
+}
+
+/* 「高级功能」是产品的折起入口，demo 没有这一行；排到最近动态之后，
+   首屏顺序就等于 demo：待处理 → 问候 → 主标题 → 输入卡 → 最近动态。 */
+html[data-layout="workbench"] #page-home #btn-home-adv {
+  order: 6;
+  margin-top: 10px;
+}
+
+/* ---------- 5.6 任务条操作收纳区（demo 顶栏只有 3 个 ghost 按钮） ----------
+   产品 .rd-actions 有 12 个按状态显隐的按钮，56px 横条放不下（实测标题被挤成
+   「失败」两个字）。它们由 demo-parity.js 移进「任务信息」弹层的这块区域。
+
+   任务信息（统计/时限/概览）2026-11-03 两次改判后落在右上角：
+   ① 先收进面板当折叠段（「非常用的可以折叠」）；
+   ② 用户实拍「任务信息太长了，放到右上角点了按钮弹出框看」→ 现在由任务条上的
+      仪表盘按钮（#rd-meta-toggle）开合一张浮层，与「任务动态」同一个落点
+      （task bar 下方右上角），默认 .hidden。
+
+   ⚠ 浮层**不能**写进 #rd-tabs-more：那张常驻面板只有 188 宽且 overflow-y:auto，
+   放进去会被裁掉；DOM 挂在 #rd-rail 下（index.html 里有注释）。 */
+html[data-layout="workbench"] #rd-rail > #rd-meta-popover {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  left: auto;
+  z-index: 46;
+  width: min(332px, calc(100vw - 32px));
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(6, 18, 35, .16), 0 2px 10px rgba(6, 18, 35, .08);
+}
+
+html[data-layout="workbench"] #rd-rail > #rd-meta-popover.hidden { display: none !important; }
+
+/* 浮层要压过主区内容：#rd-railcol 是 z-index:2 的层叠上下文，只给浮层写
+   z-index:46 也盖不住主区里带层级的卡片（实拍成果文件行的「12KB ⬇」穿透上来）。
+   开浮层时把整列提到 70——「任务动态」用的是同一片右上角，一并提。 */
+html[data-layout="workbench"] #run-detail > #rd-railcol.meta-open,
+html[data-layout="workbench"] #run-detail > #rd-railcol.context-open { z-index: 70; }
+
+/* 目标那句话在浮层里只是「这是哪次运行」的提示，不必铺满整屏（本任务目标 300+ 字，
+   实拍把 5 行统计顶到要滚）。标题 2 行、目标 3 行截断，完整内容任务头里还有。 */
+html[data-layout="workbench"] #rd-meta-popover .rd-overview-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-height: 3.2em;
+}
+html[data-layout="workbench"] #rd-meta-popover .rd-overview-goal {
+  max-height: 4.6em;
+  overflow: hidden;
+}
+
+/* 浮层标题：一眼确认这是「任务信息」，不跟内容抢注意力 */
+html[data-layout="workbench"] #rd-meta-popover .rd-meta-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;   /* style.css 的 .rd-meta-popover-head 是 space-between（旧浮层带 ×） */
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+html[data-layout="workbench"] #rd-meta-popover .rd-meta-popover-head .ico {
+  width: 14px;
+  height: 14px;
+}
+
+/* 操作按钮区：面板 188 宽，横排挤不下 → 竖排，每个按钮整行 */
+html[data-layout="workbench"] #rd-tabs-more .cb-actions-shelf {
+  padding: 0 2px 8px;
+  margin: 0 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+html[data-layout="workbench"] #rd-tabs-more .cb-shelf-h {
+  padding: 2px 6px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  color: var(--muted);
+}
+
+html[data-layout="workbench"] #rd-tabs-more .cb-shelf-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+html[data-layout="workbench"] #rd-tabs-more .cb-shelf-body > button {
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 顶栏仪表盘按钮：与「任务动态」同尺寸同形态；展开态加深底 */
+html[data-layout="workbench"] #rd-rail > .detail-head > .rd-actions #rd-meta-toggle {
+  position: static;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html[data-layout="workbench"] #rd-meta-toggle .ico {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+html[data-layout="workbench"] #rd-meta-toggle[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--panel2);
+}
+
+/* 统计条在 332 浮层里单列键值行（redesign-layout.css 已把 .stat 做成两端对齐），
+ * 指标值溢出省略号兜底，错误红字放开换行（信息不能截没） */
+html[data-layout="workbench"] #rd-meta-popover .rd-meta-strip {
+  display: block;
+  font-size: 12.5px;
+}
+html[data-layout="workbench"] #rd-meta-popover .rd-meta-strip .stat { min-width: 0; }
+html[data-layout="workbench"] #rd-meta-popover .rd-meta-strip .stat.err { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word; }
+html[data-layout="workbench"] #rd-meta-popover .rd-timeout-row { padding: 10px 2px 0; }
+html[data-layout="workbench"] #rd-meta-popover .rd-timeout-row select { width: 100%; max-width: none; margin-top: 4px; }
+
+/* 概览块在 332 浮层里必须单列（style.css 给的是 1fr + auto 两列，是给旧宽浮层
+   排的）：两列下「任务 DAG」与「运行时能力证据」会并排挤成细条，长 token 直接
+   叠在一起（2026-11-03 实拍：DAG 节点文字透到能力证据上面）。 */
+html[data-layout="workbench"] #rd-meta-popover #rd-overview {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 8px !important;
+  padding: 10px 2px 0;
+  font-size: 12.5px;
+}
+
+html[data-layout="workbench"] #rd-meta-popover #rd-overview > * { min-width: 0; }
+html[data-layout="workbench"] #rd-meta-popover #rd-overview .rd-dag,
+html[data-layout="workbench"] #rd-meta-popover #rd-overview .rd-capability-evidence,
+html[data-layout="workbench"] #rd-meta-popover #rd-overview .rd-contract { margin-top: 0; }
+
+/* 瘦身（2026-11-03 用户「请一起优化」）：DAG / 运行时能力证据 / 任务契约是三块
+   诊断级内容（「穿越」实测合计 ~1400px，浮层 1916 高就是这么来的），默认收起，
+   点浮层底部「运行详情」再摊开（#rd-meta-popover.is-full，收浮层时自动复位）。 */
+html[data-layout="workbench"] #rd-meta-popover:not(.is-full) #rd-overview > .rd-dag,
+html[data-layout="workbench"] #rd-meta-popover:not(.is-full) #rd-overview > .rd-capability-evidence,
+html[data-layout="workbench"] #rd-meta-popover:not(.is-full) #rd-overview > .rd-contract { display: none; }
+
+/* 「运行详情」开关：浮层底部整行 ghost，展开态箭头转 180° */
+html[data-layout="workbench"] #rd-meta-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  margin: 8px 0 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+html[data-layout="workbench"] #rd-meta-more:hover { color: var(--text); background: var(--panel2); }
+html[data-layout="workbench"] #rd-meta-more .ico { width: 13px; height: 13px; transition: transform .16s ease; }
+html[data-layout="workbench"] #rd-meta-more[aria-expanded="true"] .ico { transform: rotate(180deg); }
+
+/* ---------- 6.2 设置首页（#sub-__home）：demo .pane-head 的字阶 ----------
+   demo 的设置页头是 h2 15.2/650 + p 12.2（margin 4 0 0）+ 14px 下距。
+   产品这条是 h1 22px 起步，浮层一放大就比 demo 重一头。 */
+html[data-layout="workbench"] body.settings-mode #page-settings .sh-head {
+  margin: 0 0 14px;
+}
+
+html[data-layout="workbench"] body.settings-mode #page-settings .sh-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: .1px;
+  color: var(--text);
+}
+
+html[data-layout="workbench"] body.settings-mode #page-settings .sh-sub {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* 子页吃满浮层剩余高度（否则内容少的页下面留一大截白，滚动条也不在浮层内） */
+html[data-layout="workbench"] body.settings-mode #page-settings > .subpage {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---------- 6.3 「变更摘要」浮卡 #change-summary 的收起 ----------
+   它是 `position: fixed; z-index: 32`（详情页展示本次运行的 git 变更 +1344/-0）。
+   实测路径：详情页 → 返回 → 打开设置，这张卡不会跟着收起，直接浮在设置浮层
+   右上角压住「外观」卡（用户看到的"设置页面乱"）。
+   设置/文件模式都要强制收起：设置浮层是最终态，任何 fixed 浮卡都不该盖在上面。 */
+html[data-layout="workbench"] body.settings-mode #change-summary,
+html[data-layout="workbench"] body.files-mode #change-summary {
+  display: none !important;
+}
+
+/* ---------- 9. 设置页卡片与标题：按 demo .set-pane / .card / .card-h 收口 ----------
+   demo 设置页（theme.css 419-439）：
+     .set-pane  padding 18 22 36
+     .pane-head margin-bottom 14；h2 15.2px/650；p 12.2px/1.6
+     .card      padding 4px 18px；radius 12；border 1px；margin-bottom 14
+     .card-h    padding 13px 0 12px；h3 13.2px/650
+   产品这边是两套设计语言在打架，拼出一个和 demo 都不像的混合体：
+     · settings-v3.css:252 用 !important 给 panel `padding:6px 20px 10px; margin:0 0 6px`
+       → 卡片之间只隔 6px（demo 14px），整页的卡是贴在一起堆着的；
+     · desktop-workbench.css:966 用 `:not(#sub-tasks):not(#sub-models)` 堆出
+       3 个 id 的特异性，把 panel-head h2 定成 27px —— 约等于 demo 的 1.8 倍，
+       16 个设置页的标题全成了大字报，而 demo 这里是 15.2px。
+   探针 scratch/probe-allpages.mjs 实测：27px×16 页、panel 下距 6、内层卡圆角 14。
+   本节按 demo 数值一次性收口（同等 id 数 + !important，压过上面两条）。 */
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel,
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel.wide {
+  padding: 4px 18px !important;
+  margin: 0 0 14px !important;
+  border-radius: 12px !important;
+}
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head {
+  margin: 0 !important;
+  padding: 13px 0 12px !important;
+  min-height: 0 !important;
+  border-bottom: 0 !important;
+}
+/* 页面标题档 = demo .pane-head h2 的 15.2px/650（不是 27px 大字报）。
+   判据用 JS applyPageLead() 打的 `is-page-head`：它只给「第一个
+   `.panel.wide > .panel-head`」打标，而自带页头的页（概览/看板/体检/浏览器/
+   星图）会提前 return 不打标 —— 正好是「页面标题 vs 卡片标题」的语义边界，
+   比用 `.panel ~ .panel` 或 `:not(:first-child)` 猜位置要准（后者会误伤
+   #sub-appearance：它的第一个 panel 前面还有 .seg，第一个 panel 反被当成卡片）。 */
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head.is-page-head > h2 {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+  letter-spacing: .01em !important;
+}
+/* 其余 panel-head 的 h2 是卡片标题 = demo .panel-h h3 的 13.2px/650 */
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head:not(.is-page-head) > h2 {
+  font-size: 14.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+/* demo .pane-head p = 12.2px / 1.6 */
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head .pg-sub {
+  margin: 4px 0 0 !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  font-weight: 400 !important;
+}
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .hint {
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+/* 内层小卡圆角：demo 全文只有 12（.card / .stat / .panel），产品散着 14 / 10 / 8 */
+html[data-layout="workbench"] body.settings-mode #page-settings > .subpage .card {
+  border-radius: 12px !important;
+}
+/* 补漏三页：它们不走通用 .panel 通道（tasks 是表单、models 是双列、memory 用
+   .mem-card），但沿用了 settings-v3.css:253 那条 `margin:0 0 6px !important`，
+   卡片间距同样是 6px、同样和 demo 的 14px 差一截。scoped 到具体 subpage id，
+   特异性 (2 id) 压过 settings-v3 的 (1 id)。 */
+html[data-layout="workbench"] body.settings-mode #page-settings > #sub-models > .panel.wide {
+  margin: 0 0 14px !important;
+  border-radius: 12px !important;
+}
+/* 任务页（新建任务表单）与模型接入页都不能是「卡中卡」：#page-settings 本身
+   已经是浮层大卡（第 6 节 radius16 + 大投影），里面的 .panel.wide 再包一层
+   白卡边框就是用户说的「两层框」。拍平内层——只留外层浮层一圈框。 */
+html[data-layout="workbench"] body.settings-mode #page-settings > #sub-tasks > .panel.wide,
+html[data-layout="workbench"] body.settings-mode #page-settings > #sub-models > .panel.wide {
+  margin: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+/* memory 的卡多一层 .mem-wrap（#sub-memory > .mem-wrap > .mem-card），
+   不能像上面两页那样用直接子选择器，否则选不中、下距停在 6px。 */
+html[data-layout="workbench"] body.settings-mode #page-settings > #sub-memory .mem-card {
+  margin: 0 0 14px !important;
+  border-radius: 12px !important;
+}
+
+/* ---------- 10. main 通道页面：标题与卡片按 demo .page-head / .panel 统一 ----------
+   demo 普通页面（theme.css 540-558）：
+     .page-head  margin-bottom 18；h2 19px/650/letter-spacing .2px；p 12.4px/1.65
+     .panel      padding 2px 18px 8px；radius 12；margin-bottom 14
+     .panel-h    padding 13px 0 11px；h3 13.2px/650
+     .stat       padding 14px 16px 15px；radius 12
+   走 main 通道的这几页不经 body.settings-mode，第 9 节管不到，标题于是各自为政：
+     概览 .ov-title 25px、看板 .kb-title 20px、可用性 .avail-title 26px、
+     星图 .a-title / 工作台 .wb-title 18px，运行记录与自动化的页面标题 15px。
+   统一到 demo 的页面标题档 19px/650。 */
+html[data-layout="workbench"] #page-settings > #sub-overview .ov-title,
+html[data-layout="workbench"] #page-settings > #sub-kanban .kb-title,
+html[data-layout="workbench"] #page-settings > #sub-availability .avail-title,
+html[data-layout="workbench"] #page-settings > #sub-atlas .a-title,
+html[data-layout="workbench"] #page-settings > #sub-browser .wb-title {
+  font-size: 20px !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+  letter-spacing: .2px !important;
+}
+/* 运行记录 / 自动化没有独立 h1，页面标题就是第一个 panel 的 panel-head h2
+   （同样是 applyPageLead 打 is-page-head 的那个），按 demo .page-head h2 给 19px */
+html[data-layout="workbench"] body:not(.settings-mode)
+  #page-settings > #sub-runs > .panel.wide > .panel-head.is-page-head > h2,
+html[data-layout="workbench"] body:not(.settings-mode)
+  #page-settings > #sub-automation > .panel.wide > .panel-head.is-page-head > h2 {
+  font-size: 20px !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+  letter-spacing: .2px !important;
+}
+/* 概览页自带 .ov-head 当页面标题，applyPageLead() 见到 ownTitle 会提前 return、
+   不打 is-page-head，所以它里面的每个 panel-head h2 都是卡片标题。 */
+html[data-layout="workbench"] body:not(.settings-mode)
+  #page-settings > #sub-overview > .panel > .panel-head > h2 {
+  font-size: 14.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+/* 概览面板：demo .panel 的 2px 18px 8px + .panel-h 的 13px 0 11px 节奏 */
+html[data-layout="workbench"] body:not(.settings-mode)
+  #page-settings > #sub-overview > .panel.wide {
+  padding: 2px 18px 8px !important;
+  margin: 0 0 14px !important;
+  border-radius: 12px !important;
+}
+html[data-layout="workbench"] body:not(.settings-mode)
+  #page-settings > #sub-overview > .panel.wide > .panel-head {
+  padding: 13px 0 11px !important;
+  margin: 0 !important;
+  border-bottom: 0 !important;
+}
+/* 可用性 KPI 卡：demo .stat 的 14px 16px 15px / radius 12 */
+html[data-layout="workbench"] #page-settings > #sub-availability .avail-kpi {
+  padding: 14px 16px 15px !important;
+  border-radius: 12px !important;
+}
+/* 运行记录：panel 里再套一层 `#run-list .item` 卡片（白底 / 圆角 / min-height 64）
+   = 双层卡片，和 demo「.panel 里是平铺 .lrow」不符。改成 demo .lrow：
+   透明底、无描边无圆角、12px 0 内距、顶部发丝线（首行无）、列表 gap 归零
+   （间距交给分隔线，否则 10px gap + 分隔线会双倍留白）。 */
+html[data-layout="workbench"] #page-settings > #sub-runs #run-list {
+  gap: 0;
+}
+html[data-layout="workbench"] #page-settings > #sub-runs #run-list > .item {
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  border-radius: 0;
+  padding: 12px 0;
+}
+html[data-layout="workbench"] #page-settings > #sub-runs #run-list > .item:first-child {
+  border-top: 0;
+}
+html[data-layout="workbench"] #page-settings > #sub-runs #run-list > .item:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+/* 自动化模板卡：内层 .card 圆角 14 → demo 全文统一的 12 */
+html[data-layout="workbench"] #page-settings > #sub-automation .card {
+  border-radius: 12px !important;
+}
+/* 用量页 KPI 卡：对齐 demo .stat 的 14px 16px 15px / radius 12 */
+html[data-layout="workbench"] #page-settings > #sub-usage .kpi {
+  padding: 14px 16px 15px !important;
+  border-radius: 12px !important;
+}
+/* ---------- 11. 页签行整行取消：右上角一枚「⋯」承载全部分区 ----------
+   用户原话：「不要这一行，全部放到右边，比如使用几个点点点代表按钮，不要更多按钮」。
+   于是 #rd-tabs 高度归零、只留一个绝对定位宿主，三个主分区（对话/步骤/成果）
+   与五个低频分区同在一张菜单里（index.html 里三个主分区已搬进 #rd-tabs-more）。
+   **没有动任何分页 JS**：DOM 仍在 #rd-tabs 内，applyRdTabs 的
+   `#rd-tabs .rd-tab` 后代查询、点击委托、aria-selected、键盘左右切换全部照旧。
+
+   两个坑（上一版踩过）：
+   ① 裁剪。#rd-tabs 原本是横向滚动容器（overflow-x:auto），绝对定位子元素只要
+      包含块还在它里面就会被裁掉 —— 把 position:relative 设上去后 rect 一切正常、
+      屏幕上却一个像素都没有。现在行没了，直接 overflow:visible。
+   ② 不能写死 top：任务动态（#rd-context）在页签行上方，展开会把这段整体下推。
+      这里 top:24px 成立的前提是 #rd-tabs 高度已归零、顶边就在任务条下沿，
+      而 24px 正好等于内容列 .rd-main / .rd-chat-flow 的 padding-top ——
+      按钮因此与内容列顶边齐平；动态展开时整段一起下移，不会压住动态列表。 */
+html[data-layout="workbench"] #rd-rail > #rd-tabs {
+  position: relative;
+  overflow: visible;
+  height: 0;
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap {
+  position: absolute;
+  top: 24px;
+  right: 20px;
+  margin-left: 0;
+  z-index: 5;
+}
+/* 「⋯」：30 圆形描边按钮。三点用 stroke 画（.ico 是 fill:none / stroke:currentColor），
+   靠 linecap:round 变成圆点。hover 与展开态都加深底与字色。 */
+html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap .rd-more-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  gap: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+  color: var(--text);
+  justify-content: center;
+}
+html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap .rd-more-btn:hover,
+html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap .rd-more-btn[aria-expanded="true"] {
+  background: var(--panel2);
+  color: var(--text);
+}
+html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap .rd-more-btn .dots {
+  width: 17px;
+  height: 17px;
+  /* 必须写在 CSS 里：.ico 的 stroke-width:1.7 会盖掉 SVG 上的呈现属性 */
+  stroke-width: 2.9;
+  display: block;
+}
+/* 窄屏（<1241）沿用同一套「⋯」，只把右边距收窄：内容列 790 居中在 1100 视口下
+   两侧只剩 36px，按钮再往外顶就会压到卡片描边。 */
+@media (max-width: 1240px) {
+  html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap {
+    right: 6px;
+  }
+}
+/* 下拉面板：全项目从来没有给它写过定位（app.js toggleRdTabsMore 是按
+   「fixed + 点击时实测坐标」写的，CSS 侧一直缺这条），所以它一直是个流内元素：
+   展开时把 .rd-tabs-more-wrap 撑成 297 宽、把按钮挤到一边、自己浮到左边。
+   页签行内时只是「看着有点歪」，右置到右上角后就会明显飞出去，这里补齐。
+   浮层竖排，每行一个分区；.rd-badge 由 6094 行的 margin-left:auto 推到行尾。 */
+html[data-layout="workbench"] #rd-tabs-more {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 208px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, .14);
+}
+/* 菜单里两组的发丝分隔：上面是主分区（对话/步骤/成果），下面是低频分区 */
+html[data-layout="workbench"] #rd-tabs-more > .rd-more-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--border);
+}
+/* 菜单里的页签要左对齐、整行可点：页签行里那条
+   `#rd-rail > #rd-tabs .rd-tab`（0,3,2）会压成 28 高、居中、0 11 内距，
+   所以这里必须用同特异度（两个 id + 一个类）并写在后面才覆盖得住。 */
+html[data-layout="workbench"] #rd-rail > #rd-tabs #rd-tabs-more > .rd-tab {
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  justify-content: flex-start;
+  font-size: 14px;
+}
+html[data-layout="workbench"] #rd-rail > #rd-tabs #rd-tabs-more > .rd-tab:hover {
+  background: var(--panel2);
+}
+
+/* ---------- 11.1 分区列表常驻右上角（2026-11-03 用户：「不要三个点了吧，直接展示吧」） ----------
+   三点按钮藏掉，原来点开的浮层常驻摊开。定位沿用 .rd-tabs-more-wrap 的
+   right/top（wrap 仍挂在 #rd-tabs 这个 position:relative 的零高宿主上，
+   随任务动态展开一起下移），面板从 wrap 的右边缘往左铺开。
+
+   面板 188 宽**不分屏宽两档**了：11-03 起面板里还住着「操作」按钮区（shelf）
+   与「任务信息」折叠段（见 11.4），40px 图标条装不下；窄屏同样全功能，
+   内容列让位 --rd-panel-w 统一 204。窄屏只修 right 别顶出视口。 */
+html[data-layout="workbench"] #rd-tabs > .rd-tabs-more-wrap .rd-more-btn {
+  display: none !important;
+}
+html[data-layout="workbench"] #rd-tabs-more.is-pinned {
+  position: absolute;
+  top: 0;
+  right: -10px;              /* 负边距越过 wrap 右沿 10px：面板左边界 1232 > 内容列 1224 */
+  left: auto;
+  z-index: 6;
+  width: 188px;
+  min-width: 0;
+  max-height: calc(100vh - 150px);   /* 分区 + 操作 + 信息折叠可能超过矮窗口，兜底内滚 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+}
+/* 任务动态浮层（#rd-context，z-index 45）展开时占的是同一片右上角：
+   两层叠在一起既看不清也容易点错，展开期间把常驻分区面板让开，
+   但保留占位（visibility，不是 display），任务动态收起后不再重排。 */
+html[data-layout="workbench"] #rd-rail.context-open #rd-tabs > .rd-tabs-more-wrap {
+  visibility: hidden;
+}
+/* 常驻面板不需要阴影层级的「浮起感」，但要有明确的可点范围：
+   行高 30 → 8 项 + 分隔约 268，与内容列顶对齐（top 由 wrap 的 24px 给出）。 */
+/* 行内文字与图标档位：必须凑够 (3,3,1) 才压得住上面那条
+   `#rd-rail > #rd-tabs #rd-tabs-more > .rd-tab`（3,2,1 的高特异度规则）。 */
+html[data-layout="workbench"] #rd-rail > #rd-tabs #rd-tabs-more.is-pinned > .rd-tab {
+  font-size: 14px;
+}
+html[data-layout="workbench"] #rd-rail > #rd-tabs #rd-tabs-more.is-pinned > .rd-tab .tab-ico {
+  width: 14px;
+  height: 14px;
+  opacity: .75;
+}
+html[data-layout="workbench"] #rd-rail > #rd-tabs #rd-tabs-more.is-pinned > .rd-tab.active .tab-ico {
+  opacity: 1;
+}
+@media (max-width: 1240px) {
+  html[data-layout="workbench"] #rd-tabs-more.is-pinned {
+    right: 4px;              /* 收进视口内：-20 时 1100 下面板右沿(1092)顶出可视区(1090) */
+  }
+}
+
+/* ---------- 11.2 hero 回退改挂面板底部（2026-11-03 用户截图箭头指向面板下方：
+   「这块挡住页面了，要不放到右边菜单下面？」）----------
+   hero 搬不进「作品信息」页签时（页签不可用 / 非小说型），原先回退到详情页
+   顶部独占一整行，把正文整块压下去。app.js relocateRunHero 现在把它追加到
+   #rd-tabs-more 末尾（分区菜单 + 任务信息之下），顶部行随之消失
+   （#run-detail 加 .hero-rail 供样式与守测挂钩）。188px 窄列重排：
+   封面缩到 62×84，书名/统计/进度条竖排，章节胶囊自然换行。 */
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero {
+  margin: 0;
+  padding: 9px 2px 2px;
+  border-top: 1px solid var(--border);
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .exp-hero-band {
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  gap: 8px 10px;
+  padding: 0; background: none; border: 0; border-radius: 0;
+}
+/* coverbox 拆栏（display:contents）：封面归第一行左侧，「生成封面」按钮用 order
+   挪到第二行铺满整宽——原布局按钮挤在 62px 封面正下方，四字小按钮很局促。 */
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-coverbox {
+  display: contents;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-cover-hit {
+  order: 0; width: 62px; height: 84px;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-cover {
+  padding: 10px 6px 20px;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-cover-title {
+  font-size: 11px;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-main {
+  order: 1; flex: 1 1 0; min-width: 0;
+  align-self: flex-start;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-name {
+  font-size: 13.5px; line-height: 1.35; word-break: break-word;
+}
+/* 统计一行排开（「1 章 · 4,126 字」），不再竖列叠字 */
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-stats {
+  flex-direction: row; flex-wrap: wrap; align-items: baseline;
+  gap: 2px 8px; margin-top: 3px; font-size: 11.5px;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-stats b { font-size: 12.5px; }
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-bar {
+  width: 100%; margin-top: 5px;
+}
+/* 状态胶囊（失败/已完成）在面板里是重复信息：详情页头部与「任务信息」都已有
+   状态，且它独占一行把卡片撑松（2026-11-03 用户圈红问「这个失败是干啥的，
+   是否可以不要」）——面板内不显示。顶部回退位（移动端）保持原样。
+   同一块 hero 搬进「作品信息」页签时同样隐掉：页头已有状态徽标，
+   页签里那颗只是重复（用户「要不放到作品信息里面去吧」后的同一视觉元素）。 */
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-side,
+html[data-layout="workbench"] .bm-hero-slot .eh-side {
+  display: none;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-cover-gen {
+  order: 2; flex: 1 1 100%;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-chrows {
+  margin-top: 10px; gap: 6px;
+}
+html[data-layout="workbench"] #rd-tabs-more > #exp-hero .eh-chrows .eh-chrow {
+  font-size: 12px; padding: 3px 9px;
+}
+/* 三个特例页的页头也统一到 demo 档（第 9 节把它们排除在通用通道外了）：
+   #sub-tasks 是新建任务表单、#sub-models 是双列接入页，两者的 h2 分别是 16px/640
+   与 15px/600；memory 的页标题走 .pg-lead h1（settings-v3.css:236 的 15px/600）。
+   demo 的页头档统一是 15.2px/650。 */
+/* 注：#sub-tasks 里唯一的 h2 是「工作区和任务」（移动端工作区列表的区块标题，
+   在 .mobile-workspaces-head 里、不在 panel-head 中），不属于页面标题档，保持不动。 */
+html[data-layout="workbench"] body.settings-mode
+  #page-settings > #sub-models > .panel.wide > .panel-head.is-page-head > h2 {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+}
+html[data-layout="workbench"] body.settings-mode #page-settings .pg-lead h1 {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+  letter-spacing: .01em !important;
+}
+
+/* ---------- 12. 并排浏览器：主区让位，不再被面板压住 ----------
+   2026-11-03 用户两次贴同一张图：「并排浏览器实际挡住了页面」。
+   #sub-browser 在并排态是 position:fixed / right:0 / width:--browser-split-width
+   （desktop-workbench.css:1845 起），不占栅格 —— 所以 main 必须自己把这一条让出来。
+   desktop-workbench 里本来有一条
+     body.browser-split-open main.chat-fill { padding-right: calc(宽度 + 20px) }  (0,2,2)
+   但第 5 节给详情页接滚动链的那条
+     main:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden) > #run-detail:not(.hidden))
+   写的是 `padding: 0`，特异性 (3,6,3) 一票否决，让位整条空转。
+   实测：1679 视口下对话列右缘 1343 / 面板左沿 909（压 434px）；1440 压 513px。
+   这里必须**照抄整条选择器再叠 .browser-split-open**（改写成更短的
+   `body.browser-split-open main:has(…)` 会少掉 :not(.settings-mode):not(.files-mode)
+   那 2 个类，特异性掉到 (3,5,3) 反而输给原规则——实测 padding 仍是 0）。 */
+@media (min-width: 901px) {
+  /* 兜底：没走到详情 flex 链的主区（首页 / 列表页）也一起让 */
+  html[data-layout="workbench"] body.browser-split-open:not(.settings-mode):not(.files-mode) main {
+    padding-right: calc(var(--browser-split-width, min(50vw, 760px)) + 16px);
+  }
+  html[data-layout="workbench"] body.browser-split-open:not(.settings-mode):not(.files-mode)
+    main:has(> #page-settings:not(.hidden) > #sub-runs:not(.hidden) > #run-detail:not(.hidden)) {
+    padding-right: calc(var(--browser-split-width, min(50vw, 760px)) + 16px);
+  }
+  /* 常驻分区面板（188）＋ 让位（204）在并排态会吃掉内容列一大半：
+     1440 视口下内容列只剩 450，正文排到 194px —— 每行一个字（11-03 实拍）。
+     并排时把面板退回「⋯」弹出式：demo-parity.js 摘掉 .is-pinned 并置 hidden，
+     让位归零，正文吃满收缩后的整宽；关掉并排自动恢复常驻。
+     这条 display:none 是兜底：万一 js 没跑到，宁可暂时没面板也不能压正文。 */
+  html[data-layout="workbench"] body.browser-split-open #rd-tabs-more.is-pinned {
+    display: none;
+  }
+  html[data-layout="workbench"] body.browser-split-open #run-detail {
+    --rd-panel-w: 0px;
+  }
+  /* 11.1 为了「面板常驻」把 ⋯ 藏了；并排态要靠它开面板，重新放出来 */
+  html[data-layout="workbench"] body.browser-split-open #rd-tabs > .rd-tabs-more-wrap .rd-more-btn {
+    display: inline-flex !important;
+  }
+  /* ⋯ 落在内容列右上角（wrap 的 top:24 / right:20），30px 圆钮会压住正文首行右端；
+     正文右侧多留一条，首屏文字不钻到按钮底下。 */
+  html[data-layout="workbench"] body.browser-split-open #run-detail .rd-chat-flow {
+    padding-right: 46px;
+  }
+}

@@ -1,0 +1,239 @@
+/* composer-add-menu.css（2026-11-03）—— 输入行「＋」菜单的二级结构
+ *
+ * 为什么重做：旧弹层把「添加文件 / 工作流 / 浏览器 / 目标 / 计划模式 / 绘图」+
+ * 插件·技能·智能体全量目录 + 工作区文件 + 会话列表塞进一张卡片，实测 628 行、
+ * 内容高 29834px——用户要滚 60 屏才能看到「连接器」在哪。菜单的第一职责是
+ * 「让我选一类东西」，不是「把仓库摊开」。
+ *
+ * 新结构（对齐参考截图）：
+ *   一级卡片：6 行（添加文件 / 引用对话中的文件 / ─ / 模式 / 专家 / 技能 / 连接器），
+ *             每行一个图标 + 文案 + 右侧 chevron；
+ *   二级浮层：贴一级卡片右侧，内含搜索框 + 列表 + 底部动作（召唤更多专家等）。
+ *
+ * 只覆盖「外观与层级」，行为全在 composer-add-menu.js（覆盖层，删掉即回滚成旧单卡）；
+ * 数据一律走既有接口（/api/flows、/api/capabilities、/api/dir/scan）与既有动作
+ * （data-add-action / data-add-capability / data-add-chat / pickExpert），
+ * 因此 app.js 里的点击委托一行不用改。
+ *
+ * 色/字号全走 token（DESIGN.md §2），不写死十六进制。
+ */
+
+@media (min-width: 901px) {
+  /* 一级卡片：收窄到 214，去掉旧版的滚动（6 行不滚），给二级浮层让出右侧空间 */
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu {
+    width: 214px;
+    max-height: none;
+    overflow: visible;
+    padding: 6px;
+    border-radius: 14px;
+  }
+
+  .cmp-add-list { display: grid; gap: 1px; }
+
+  .cmp-add-row {
+    display: flex;
+    width: 100%;
+    height: 40px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .12s ease, color .12s ease;
+  }
+  /* 行图标压到接近正文的对比（截图里图标比说明文字更实）；accent 只给展开中的那一行 */
+  .cmp-add-row > .ico { width: 16px; height: 16px; flex: none; color: color-mix(in srgb, var(--text) 72%, var(--muted)); }
+  .cmp-add-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmp-add-row > .cmp-add-row-chev { width: 14px; height: 14px; margin-left: auto; flex: none; color: var(--muted); opacity: .65; }
+  .cmp-add-row:hover,
+  .cmp-add-row:focus-visible { background: var(--panel2); outline: none; }
+  /* 二级浮层张开的那一行：淡 accent 底 + accent 图标（截图里的高亮行） */
+  .cmp-add-row.is-pane {
+    background: color-mix(in srgb, var(--accent) 11%, var(--panel));
+    color: var(--text);
+  }
+  .cmp-add-row.is-pane > .ico,
+  .cmp-add-row.is-pane > .cmp-add-row-chev { color: var(--accent); opacity: 1; }
+
+  .cmp-add-sep { height: 1px; margin: 5px 8px; background: var(--border); }
+
+  /* 二级浮层：贴一级卡片右沿、与卡片底对齐（菜单向上弹时自动向上生长） */
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu > .cmp-add-flyout {
+    position: absolute;
+    z-index: 1;
+    left: calc(100% + 8px);
+    bottom: 0;
+    display: flex;
+    width: 250px;
+    max-height: min(392px, calc(100dvh - 60px));
+    flex-direction: column;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: 0 12px 36px rgba(24, 32, 42, .17);
+  }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu > .cmp-add-flyout.hidden { display: none; }
+
+  /* 下面放不下时 JS 给一级卡片打 .is-up 翻到按钮上方（主页输入卡贴得低，
+     271px 高的菜单向下弹会顶出视口）——这是覆盖主页「向下弹」那条规则的唯一出口。 */
+  html[data-layout="workbench"] #page-home #rd-input-slot .cmp-add-wrap > .cmp-add-menu.is-up {
+    top: auto;
+    bottom: calc(100% + 10px);
+  }
+
+  /* 主页输入卡贴页头，菜单改为向下展开 → 浮层也要顶部对齐（is-down 由 JS 实测，
+     不靠布局选择器猜；卡片向上弹时默认底对齐，正好复刻截图里「浮层比卡片矮一截」）。 */
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu > .cmp-add-flyout.is-down {
+    top: 0;
+    bottom: auto;
+  }
+
+  .cmp-fly-back { display: none; }
+
+  .cmp-fly-head { position: relative; display: flex; align-items: center; margin-bottom: 6px; }
+  .cmp-fly-head > .ico {
+    position: absolute;
+    left: 10px;
+    width: 15px;
+    height: 15px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .cmp-fly-head > input {
+    width: 100%;
+    height: 34px;
+    padding: 0 10px 0 32px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: var(--panel2);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+  }
+  .cmp-fly-head > input::placeholder { color: var(--muted); }
+  .cmp-fly-head > input:focus {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: var(--panel);
+    outline: none;
+  }
+
+  /* 定高由 max-height 封顶、容器高度仍随内容（auto）：列表必须 basis:auto + shrink:1，
+     写成 flex:1 1 0 时没有「多余空间」可分配，列表会直接塌成 0 高。 */
+  .cmp-fly-list { display: grid; min-height: 0; flex: 0 1 auto; align-content: start; gap: 1px; overflow-y: auto; overscroll-behavior: contain; }
+
+  .cmp-fly-row {
+    display: flex;
+    width: 100%;
+    min-height: 36px;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .cmp-fly-row > .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
+  .cmp-fly-row > b { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .cmp-fly-row:hover,
+  .cmp-fly-row:focus-visible { background: var(--panel2); outline: none; }
+  .cmp-fly-row[disabled] { cursor: not-allowed; opacity: .52; }
+  .cmp-fly-row[disabled]:hover { background: transparent; }
+  .cmp-fly-row .exp-av { --av: 24px; border-radius: 50%; flex: none; }
+
+  .cmp-fly-check { width: 15px; height: 15px; margin-left: auto; flex: none; color: var(--accent); font-size: 13px; }
+  .cmp-fly-row.is-on .cmp-fly-check::before { content: "✓"; }
+  .cmp-fly-note { margin-left: auto; flex: none; color: var(--muted); font-size: 11.5px; font-style: normal; }
+  .cmp-fly-state { margin-left: auto; flex: none; color: var(--muted); font-size: 11.5px; font-style: normal; }
+
+  .cmp-fly-kicker { padding: 8px 8px 3px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+  .cmp-fly-empty { margin: 0; padding: 8px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+  .cmp-fly-foot { flex: 0 0 auto; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border); }
+  .cmp-fly-tip { margin: 0; padding: 6px 8px 2px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .cmp-fly-foot .cmp-fly-row { color: var(--text); }
+  .cmp-fly-foot .cmp-fly-row > .ico { color: var(--muted); }
+  .cmp-fly-more > .ico:last-child { margin-left: auto; transform: rotate(45deg); }
+}
+
+@media (max-width: 900px) {
+  /* 窄屏放不下并排两层：二级浮层就地换成「返回 + 搜索 + 列表」，回到一级用顶部返回行 */
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu { width: min(320px, calc(100vw - 32px)); }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu > .cmp-add-flyout.hidden { display: none; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap.is-pane > .cmp-add-menu > .cmp-add-list { display: none; }
+
+  .cmp-fly-back {
+    display: flex;
+    width: 100%;
+    height: 34px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+  }
+  .cmp-fly-back > .ico { width: 14px; height: 14px; transform: rotate(180deg); }
+  .cmp-fly-back:hover { background: var(--panel2); color: var(--text); }
+
+  .cmp-fly-head { position: relative; display: flex; align-items: center; margin: 4px 0 6px; }
+  .cmp-fly-head > .ico { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+  .cmp-fly-head > input {
+    width: 100%;
+    height: 34px;
+    padding: 0 10px 0 32px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: var(--panel2);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+  }
+  .cmp-fly-list { display: grid; max-height: min(52dvh, 380px); align-content: start; gap: 1px; overflow-y: auto; }
+  .cmp-fly-row {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+  }
+  .cmp-fly-row > .ico { width: 16px; height: 16px; flex: none; color: var(--muted); }
+  .cmp-fly-row > b { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .cmp-fly-row:hover { background: var(--panel2); }
+  .cmp-fly-row[disabled] { opacity: .52; }
+  .cmp-fly-row .exp-av { --av: 26px; border-radius: 50%; flex: none; }
+  .cmp-fly-check { margin-left: auto; color: var(--accent); }
+  .cmp-fly-row.is-on .cmp-fly-check::before { content: "✓"; }
+  .cmp-fly-note, .cmp-fly-state { margin-left: auto; color: var(--muted); font-size: 12px; font-style: normal; }
+  .cmp-fly-kicker { padding: 8px 8px 3px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .cmp-fly-empty { margin: 0; padding: 8px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .cmp-fly-foot { flex: 0 0 auto; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border); }
+  .cmp-fly-tip { margin: 0; padding: 6px 8px 2px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .cmp-fly-more > .ico:last-child { margin-left: auto; transform: rotate(45deg); }
+}

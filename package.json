@@ -24,6 +24,13 @@
   "files": [
     "app",
     "bin",
+    "skills/zentao-autofix/zfix",
+    "skills/zentao-autofix/knowledge",
+    "skills/zentao-autofix/recipes",
+    "skills/zentao-autofix/SKILL.md",
+    "skills/zentao-autofix/README.md",
+    "skills/zentao-autofix/DESIGN.md",
+    "skills/zentao-autofix/zfix.py",
     "tools/render_handdraw.py",
     "tools/wx_reader.py",
     "tools/run_end_autocommit.py",

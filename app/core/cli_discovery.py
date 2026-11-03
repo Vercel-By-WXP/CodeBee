@@ -99,7 +99,11 @@ def probe(spec, *, timeout=3, environ=None):
               "supports_stdin": bool(spec.get("supports_stdin", True)),
               "output_format": spec.get("output_format", "text"), "error": ""}
     if not path:
-        result["install_hint"] = "安装 %s 并确保其位于 PATH" % executable
+        # 前端负责 i18n：这里只给可翻译的中文源串（key）+ 占位参数，
+        # 前端用 t(key, arg) 渲染；zh 模式 key 原样返回，en 模式走字典。
+        result["install_hint_key"] = "安装 {0} 并确保其位于 PATH"
+        result["install_hint_arg"] = executable
+        result["install_hint"] = "安装 %s 并确保其位于 PATH" % executable  # 兼容旧缓存
         return result
     for flag in (spec.get("version_flag", "--version"), "--help"):
         try:

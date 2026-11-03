@@ -1,0 +1,423 @@
+/* composer-context.css（2026-11-03）—— 输入卡「专家胶囊行 + 底部上下文条」
+ *
+ * 用户两张参考图（桌面端观感）：
+ *   ① 输入框上方是一排「分组页签 + 专家胶囊」，选人就在第一屏，不用点开下拉；
+ *   ② 输入框底部是一条「文件夹 ▾ / 分支 ▾」（…默认权限 ▾）的上下文条，
+ *      路径只露目录名，不再把整条绝对路径铺在卡顶。
+ *
+ * 落点：DOM 由 composer-context.js 注入/搬运，本文件只管观感。
+ *   - .ccx-pick  : 卡片上方的页签 + 胶囊行（.cmp-box 的兄弟节点，跟着卡走）
+ *   - .ccx-foot  : 卡片底部的上下文条，承接 #f-workdir 与 #row-git（ID 不变）
+ *   - .cmp-pills : 两条都搬走后变成空壳，隐藏；#cmp-quick 被胶囊行取代，隐藏
+ *
+ * 颜色一律走 --wb-* / --panel / --border / --accent 家族，不写死色值。
+ * 特异性统一带 :is(#sub-tasks, #rd-input-slot) 前缀（1,2,x），压过 style.css
+ * 里同前缀的旧规则；不写 !important。
+ */
+
+/* ---------------- 1. 专家页签 + 胶囊行 ---------------- */
+.ccx-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 auto 10px;
+}
+
+/* 分组页签：一枚浅底药丸里排开，选中项是白底浮起（参考桌面端观感） */
+.ccx-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel2) 82%, transparent);
+}
+.ccx-tab {
+  min-height: 26px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .14s, background .14s;
+}
+.ccx-tab:hover { color: var(--text); }
+.ccx-tab.on {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 10%, transparent);
+}
+.ccx-tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
+}
+
+/* 专家胶囊：头像 + 人名，选中态 accent 描边 + 淡底。
+ * 只排一行（2026-11-03 用户：「默认展示一行吧」）：放不下的由 foldChips() 折进
+ * 「更多专家」，不换行 —— 首屏高度就不会因为切分组而忽高忽低。 */
+.ccx-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  overflow: hidden;
+}
+.ccx-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 3px 12px 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .14s, background .14s, border-color .14s;
+}
+.ccx-chip .exp-av { --av: 20px; border-radius: 50%; flex: none; }
+.ccx-chip:hover { border-color: var(--border-strong); background: var(--panel2); }
+.ccx-chip.on {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  color: var(--accent);
+  font-weight: 600;
+}
+.ccx-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
+}
+/* 「更多专家」是出口不是选项：弱化成描边胶囊 */
+.ccx-chip.ccx-more {
+  padding: 3px 12px;
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+}
+.ccx-chip.ccx-more:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.ccx-more .ico { width: 13px; height: 13px; flex: none; }
+
+/* 「还有几位没显示」的计数（2026-11-03 用户：「折掉了不提示，看到 7 颗就以为是全部」）。
+ * 固定最小宽：变成 +12 时宽度不变，否则量宽 → 折位 → 再量宽 会抖。 */
+.ccx-more-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 16px;
+  margin-left: 1px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel2));
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ccx-more-n[hidden] { display: none; }
+/* 有东西被折起来时，这颗出口从「弱化的虚线」转正：这才是真的还有内容 */
+.ccx-chip.ccx-more.has-folded {
+  border-style: solid;
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+}
+
+/* ---------------- 2. 底部上下文条 ---------------- */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0 0;
+}
+
+/* 两条上下文搬走后 .cmp-pills 是空壳（里面还剩空白文本节点，:empty 不成立，
+ * 由 JS 打 .ccx-gone）；#cmp-quick 已被上方胶囊行取代，收掉避免两排重复 */
+:is(#sub-tasks, #rd-input-slot) .cmp-pills.ccx-gone { display: none; }
+/* 此处必须用完整父子链：desktop-workbench.css 有一条
+ * `#page-settings > :is(#sub-tasks, #rd-input-slot) .cmp-quick{display:flex}`
+ * （特异性 2,1,0，在 min-width:901 媒体查询里），单靠本层自己的 :is() 前缀压不住 */
+#page-settings > :is(#sub-tasks, #rd-input-slot) .cmp-quick { display: none; }
+/* 底栏「当前专家」胶囊（2026-11-03 用户：上方点完，对话框里看不出选了谁 ——
+ * 「在对话框里面是不是要体现一下」）。原先是 display:none，理由是「上方胶囊行
+ * 已经一目了然」，实测不成立：胶囊太多、高亮太淡，选完根本没反馈。
+ * 现在底栏常驻一颗：头像 + 专家名 + chevron，跟参考产品输入行的身份胶囊同一位置语言。
+ *   真源仍是隐藏的 #f-type；这颗是它的人脸（app.js 的 syncTypeBtn 每次 change 都重写
+ *   头像与名字），点开还是原生 #type-menu 完整列表 —— 交互一行没动。
+ *   顺序用 order 摆到「＋ 添加 / 运行设置」之后，与参考输入行一致。 */
+:is(#sub-tasks, #rd-input-slot) .cmp-bar .att-strip { order: 1; }
+:is(#sub-tasks, #rd-input-slot) .cmp-bar .cmp-mode { order: 2; display: inline-flex; }
+:is(#sub-tasks, #rd-input-slot) .cmp-bar .cmp-send { order: 3; }
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick {
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 9px 3px 5px;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick:hover {
+  border-color: var(--border-strong);
+  background: var(--panel);
+}
+/* 选中的专家是「这次谁在干」，比旁边的运行设置更该被看见：名字前那颗头像给人格感 */
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .tp-ico .exp-av { --av: 20px; border-radius: 50%; }
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick .tp-name { max-width: 120px; }
+:is(#sub-tasks, #rd-input-slot) .cmp-mode .type-pick .chev { width: 12px; height: 12px; opacity: .8; }
+
+/* 目录胶囊：[文件夹] 目录名 [▾]；点名字=就地改路径，点▾=最近文件夹 */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd {
+  position: relative;
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(62%, 340px);
+  min-height: 26px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: text;
+  transition: color .14s, background .14s, border-color .14s;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd:hover {
+  border-color: var(--border);
+  background: var(--panel2);
+  color: var(--text);
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd > .ico {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .ccx-cwd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd.ccx-empty .ccx-cwd { color: var(--muted); }
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd .input-row { flex: 1 1 auto; min-width: 0; gap: 2px; }
+/* 非编辑态：输入框缩成 0 宽但保持可聚焦（pickFolder 取消后 pkRefocus 会 focus 它，
+ * focus 事件再把胶囊切进编辑态，手输能力不丢） */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd:not(.ccx-editing) input {
+  flex: 0 0 0;
+  width: 0;
+  height: 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd:not(.ccx-editing) .wd-pick-btn { display: none; }
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd.ccx-editing {
+  flex: 1 1 auto;
+  max-width: 100%;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--panel);
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd.ccx-editing .ccx-cwd { display: none; }
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd.ccx-editing input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 22px;
+  padding: 1px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font-size: 12.5px;
+  opacity: 1;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd .wd-menu-btn {
+  width: 20px;
+  min-height: 20px;
+  border-radius: 999px;
+}
+/* 菜单从胶囊下方翻到上方：上下文条已经在卡片底部，向下会被卡边裁掉 */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .wd-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+}
+
+/* 非 Git 目录：分支胶囊缺席时把「没有分支」本身讲清楚（虚线胶囊，不是按钮）
+ * 2026-11-03 用户反馈「当前属于哪个分支也没呈现出来」——默认工作目录不是仓库时
+ * probeGit 会把 #row-git 整块隐藏，界面上就只剩一个文件夹，看着像功能丢了。 */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .ccx-git-no {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 2px 9px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: help;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot .ccx-git-no[hidden] { display: none; }
+
+/* 分支胶囊：[分支图标] 分支名 [▾]（原生下拉换成分支/标签/提交，值真源仍是 #f-git-rev） */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git {
+  position: relative;
+  display: inline-flex;
+  /* #row-git 带 .field 类（默认 flex-direction:column），不显式写 row 会折成
+   * 「图标一行、下拉一行」的 56px 高块 */
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  max-width: min(48%, 260px);
+  min-width: 0;
+  margin: 0;
+  padding: 2px 18px 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  transition: color .14s, background .14s, border-color .14s;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git:hover {
+  border-color: var(--border);
+  background: var(--panel2);
+  color: var(--text);
+}
+/* 只留图标，去掉「代码版本」四个字（语义由分支名自己表达） */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git label .ico {
+  width: 13px;
+  height: 13px;
+  color: currentColor;
+}
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git .hint { display: none; }
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #f-git-rev {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 190px;
+  min-height: 22px;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: currentColor;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+/* 下拉小箭头（select 自身不能 ::after，挂在胶囊上） */
+:is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  opacity: .55;
+  pointer-events: none;
+}
+
+/* ---------------- 3. 对话页（运行详情）上下文条 ----------------
+ * 用户贴 `#rd-chat-bar`：「对话这里面这个也一起改了吧」。一行只读摆开
+ * 「谁在执行 / 哪个目录 / 哪个分支」，与首页同一套语言。
+ *
+ * 作用域一律 `#run-detail #rd-chat`（双 id）：style.css 里 `#run-detail.chat-mode …`
+ * 是「单 id + 单类」，单个 `.rd-chat` 前缀压不过它，改了等于没改（血账见 MEMORY）。
+ * 这里三个胶囊都是 state 不是控件（任务开跑后目录/分支改不了，/chat 也没有换专家
+ * 的入口），所以 cursor 是 default、不挂 click。 */
+#run-detail #rd-chat .ccx-rd-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+#run-detail #rd-chat .ccx-rd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: default;
+}
+#run-detail #rd-chat .ccx-rd-chip .ico { width: 12px; height: 12px; flex: none; }
+#run-detail #rd-chat .ccx-rd-expert { padding-left: 4px; color: var(--text); }
+#run-detail #rd-chat .ccx-rd-av { display: inline-flex; flex: none; }
+#run-detail #rd-chat .ccx-rd-av .exp-av { --av: 18px; border-radius: 50%; flex: none; }
+#run-detail #rd-chat .ccx-rd-chip .ccx-rd-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#run-detail #rd-chat .ccx-rd-chip.is-muted { border-style: dashed; }
+/* 窄屏：三枚挤不下就让它换行，但单枚不许撑破卡片 */
+@media (max-width: 720px) {
+  #run-detail #rd-chat .ccx-rd-foot { gap: 4px; }
+  #run-detail #rd-chat .ccx-rd-chip { font-size: 11.5px; }
+}
+
+/* 窄屏：页签可横滚、胶囊行左对齐，避免把首屏挤成两行以上 */
+@media (max-width: 720px) {
+  .ccx-pick { align-items: stretch; gap: 6px; }
+  .ccx-tabs {
+    align-self: stretch;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* 横滚有更多内容时右沿渐隐（纯 CSS 无「还有更多」探测，常驻 20px 渐隐；
+       滚到头时渐隐的是留白，无信息损失——实测页签行右侧留白充足。
+       mask 只取 alpha：currentColor(α=1)→transparent(α=0)，不写死色值（宪法 §2） */
+    -webkit-mask-image: linear-gradient(to right, currentColor 0, currentColor calc(100% - 20px), transparent 100%);
+    mask-image: linear-gradient(to right, currentColor 0, currentColor calc(100% - 20px), transparent 100%);
+  }
+  .ccx-tabs::-webkit-scrollbar { display: none; }
+  .ccx-chips { justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ccx-chips::-webkit-scrollbar { display: none; }
+  :is(#sub-tasks, #rd-input-slot) .ccx-foot .cmp-wd,
+  :is(#sub-tasks, #rd-input-slot) .ccx-foot #row-git { max-width: 100%; }
+}

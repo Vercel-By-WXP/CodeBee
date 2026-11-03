@@ -52,9 +52,19 @@ class _TempData(unittest.TestCase):
 
 class RegistryTest(_TempData):
     def test_builtin_profiles_present(self):
+        # 2026-11-03 菜单收敛：list_specs()（= 菜单/欢迎页清单）只剩 default；
+        # novel/hive/dossier 收进 _LEGACY_BUILTIN，spec()/names() 仍认。
+        self.assertEqual([s["id"] for s in profile.list_specs()], ["default"])
+        # names() 是「--profile 能写什么」的口径，legacy 仍在列
         self.assertIn("default", profile.names())
         self.assertIn("novel", profile.names())
-        self.assertIn("hive", profile.names())
+
+    def test_legacy_profiles_still_resolvable(self):
+        """历史发行版不在菜单，但显式点名必须还能用（老 state / --profile）。"""
+        for pid, want in (("novel", "CodeBee 小说版"),
+                          ("hive", "CodeBee"), ("dossier", "CodeBee 成稿台")):
+            self.assertEqual((profile.spec(pid) or {}).get("name"), want,
+                             "%s 应仍可解析" % pid)
 
     def test_user_spec_is_discovered(self):
         self.write_spec("bid", {"name": "标书版", "flows": ["bid_doc", "doc"]})
@@ -77,7 +87,7 @@ class RegistryTest(_TempData):
         d.mkdir(parents=True, exist_ok=True)
         (d / "broken.json").write_text("{not json", encoding="utf-8")
         self.assertNotIn("broken", profile.names())
-        self.assertIn("novel", profile.names())  # 坏文件不影响其它形态
+        self.assertEqual([s["id"] for s in profile.list_specs()], ["default"])  # 坏文件不影响菜单
 
     def test_extends_inherits_unknown_fields_from_base(self):
         self.write_spec("mynovel", {"extends": "novel", "name": "我的小说线",
@@ -104,7 +114,9 @@ class SelectTest(_TempData):
     def test_explicit_unknown_profile_raises(self):
         with self.assertRaises(profile.ProfileError) as ctx:
             profile.select("nope", allow_prompt=False)
-        self.assertIn("novel", str(ctx.exception))  # 报错里要列出可选
+        # 报错要列出可选：菜单只有 default，但 legacy（novel 等）仍算合法可选
+        self.assertIn("default", str(ctx.exception))
+        self.assertIn("novel", str(ctx.exception))
 
     def test_env_is_lenient(self):
         os.environ[profile.ENV_VAR] = "nope-not-real"

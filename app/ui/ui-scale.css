@@ -1,0 +1,107 @@
+/* ============================================================================
+ * 界面字号（2026-11-03）：整体缩放三档 —— 设置 → 外观 → 「界面字号」
+ * ----------------------------------------------------------------------------
+ * 背景：11-03 全站 1257 处 font-size 是绝对 px 阶梯（scratch/type_scale.py），
+ * 改 html{font-size} 只影响 rem，px 不跟随——「整体调大调小」不能走 root 字号。
+ *
+ * 机制：CSS zoom 挂**根元素**（html）。zoom 参与**布局**（不像 transform
+ * 只缩渲染），等效浏览器级 Ctrl+ +/−，但只作用于本应用；坐标 API
+ * （getBoundingClientRect / innerWidth / elementFromPoint）保持同一视觉
+ * 坐标系，弹层钳位逻辑不破。实测（HeadlessChrome 156）两条关键行为：
+ *   ① fixed + inset:0 的全屏遮罩（.modal-wrap / .token-gate / .cv-layer）
+ *      **不受影响**——仍正好铺满视口，flex 居中的卡片也居中在视口内；
+ *   ② **视口单位不缩放**：100vh / 100dvh / 100vw 仍按未缩放视口解析，
+ *      再被 zoom 放大 → `#app { height:100dvh }` 在 125% 档视觉溢出 25%。
+ *      所以所有「用视口单位定尺寸」的骨架与弹层必须除回 zoom（--uz）。
+ *
+ * 为什么不挂 body：挂 body 一样不解决视口单位，还把 html 上的
+ * font-size / 断点单位（em 媒体查询）与 body 拆成两套坐标系，徒增坑。
+ *
+ * 回滚：默认档（100）**不写 data-uiscale 属性**——不落 zoom，零影响；
+ * 删掉 index.html 里这一行 link 即整块回滚（第 2 节补偿规则全部带
+ * html[data-uiscale] 前缀，默认档一条都不命中）。
+ *
+ * 档位与写法约定：
+ *   - 只认 html[data-uiscale="90" / "110" / "125"] 三个值（白名单见
+ *     app.js 的 UI_SCALE_STEPS）；其它值匹配不到规则＝回到 100。
+ *   - 「代码字号」（#cs-size）只管代码内容（--code-size 变量），与这里
+ *     的整页观感互不相干——两处设置页文案已互相指路。
+ * ==========================================================================*/
+
+/* ---------- 1. 档位：zoom + 补偿系数 --uz ---------- */
+html[data-uiscale="90"]  { zoom: .9;   --uz: .9; }
+html[data-uiscale="110"] { zoom: 1.1;  --uz: 1.1; }
+html[data-uiscale="125"] { zoom: 1.25; --uz: 1.25; }
+
+/* ---------- 2. 视口单位补偿 ----------
+ * 原文件里的 100vh/100dvh/100vw 在 zoom 下视觉放大、溢出视口；把参与
+ * 定尺寸的视口单位除回 --uz（固定 px 项不用动——它们在元素坐标系里
+ * 本来就会被 zoom 等比放大）。每条都照抄原选择器并加 html[data-uiscale]
+ * 前缀抬高特异性，只在非默认档命中。 */
+
+/* 2.1 全屏骨架：#app / #mainwrap（style.css:505/507、desktop-workbench.css:1958、
+ *     mobile-workbench.css:4 的 var fallback 同为视口高，一并覆盖） */
+html[data-uiscale] #app,
+html[data-uiscale] #mainwrap { height: calc(100vh / var(--uz)); min-height: 0; }
+
+/* 2.2 工作台对话区（desktop-workbench.css:93）：calc(100vh - 120px) */
+html[data-uiscale] main.chat-fill #run-detail.chat-mode { height: calc(100vh / var(--uz) - 120px); }
+
+/* 2.3 右栏检查器（style.css:1377 旧 height:100vh；hive-ui.css:171 新 100dvh） */
+html[data-uiscale] body.inspector-open #inspector { height: calc(100dvh / var(--uz)); }
+
+/* 2.4 记忆星图整页（atlas.css:20）：height/max-height: calc(100dvh - 54px) */
+html[data-uiscale] #sub-atlas { height: calc(100dvh / var(--uz) - 54px); max-height: calc(100dvh / var(--uz) - 54px); }
+
+/* 2.5 对话右栏与分区面板的滚动钳位（conversation-reference.css:382 / demo-parity.css:1631） */
+html[data-uiscale] main.chat-fill #run-detail.chat-mode #rd-rail { max-height: calc(100vh / var(--uz) - 104px); }
+html[data-uiscale] #rd-tabs-more { max-height: calc(100vh / var(--uz) - 150px); }
+
+/* 2.6 输入行「＋」二级菜单 / 类型菜单 / 快捷指令（composer-add-menu.css:76、
+ *     reference-composer.css:51/115、redesign-layout.css:1224/1229、chat-quickprompts.css:29、
+ *     chat-delivery.css:7）：min(固定顶, calc(100dvh|100vw - N))——固定顶不动，视口项除回 */
+html[data-uiscale] :is(#sub-tasks, #rd-input-slot) .cmp-add-wrap > .cmp-add-menu { max-height: min(392px, calc(100dvh / var(--uz) - 60px)); }
+html[data-uiscale] :is(#sub-tasks, #rd-input-slot) .cmp-add-menu { max-height: min(470px, calc(100dvh / var(--uz) - 150px)); }
+html[data-uiscale] :is(#sub-tasks, #rd-input-slot) #type-menu { max-height: min(360px, calc(100dvh / var(--uz) - 180px)); }
+html[data-uiscale][data-layout="workbench"] #page-home #rd-input-slot #type-menu { max-height: min(360px, calc(100dvh / var(--uz) - 40px)); }
+html[data-uiscale][data-layout="workbench"] #page-home #rd-input-slot .cmp-add-menu { max-height: min(470px, calc(100dvh / var(--uz) - 40px)); }
+html[data-uiscale] #run-detail .chat-send-menu { max-width: calc(100vw / var(--uz) - 48px); }
+html[data-uiscale] .chat-quick-menu { width: min(340px, calc(100vw / var(--uz) - 32px)); }
+
+/* 2.7 浮动新任务卡（desktop-workbench.css:1966-1973、redesign-layout.css:305-324）：
+ *     left/width 公式里的 100vw 除回——固定项（--side-w 等）在元素坐标系内自动放大 */
+html[data-uiscale][data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .form {
+  left: calc(var(--side-w, 216px) + (100vw / var(--uz) - var(--side-w, 216px) - var(--status-rail-w, 280px)) / 2);
+  width: min(900px, calc(100vw / var(--uz) - var(--side-w, 216px) - var(--status-rail-w, 280px) - 48px));
+}
+html[data-uiscale][data-layout="workbench"] body.side-collapsed :is(#sub-tasks, #rd-input-slot) .form {
+  left: calc((100vw / var(--uz) - var(--status-rail-w, 280px)) / 2);
+  width: min(900px, calc(100vw / var(--uz) - var(--status-rail-w, 280px) - 48px));
+}
+html[data-uiscale][data-layout="workbench"] body.inspector-open :is(#sub-tasks, #rd-input-slot) .form {
+  left: calc(var(--side-w, 216px) + (100vw / var(--uz) - var(--side-w, 216px) - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px)) / 2);
+  width: min(900px, calc(100vw / var(--uz) - var(--side-w, 216px) - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px) - 48px));
+}
+html[data-uiscale][data-layout="workbench"] body.side-collapsed.inspector-open :is(#sub-tasks, #rd-input-slot) .form {
+  left: calc((100vw / var(--uz) - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px)) / 2);
+  width: min(900px, calc(100vw / var(--uz) - var(--status-rail-w, 280px) - var(--workbench-inspector-width, 320px) - 48px));
+}
+@media (max-width: 900px) {
+  html[data-uiscale][data-layout="workbench"] :is(#sub-tasks, #rd-input-slot) .form {
+    bottom: max(48px, calc((100dvh / var(--uz) - 400px) / 2), env(safe-area-inset-bottom));
+    max-height: calc(100dvh / var(--uz) - 48px);
+    left: calc((100vw / var(--uz) + var(--workbench-rail-width, 52px) + var(--side-w, 288px)) / 2);
+    width: min(900px, calc(100vw / var(--uz) - var(--workbench-rail-width, 52px) - var(--side-w, 288px) - 48px));
+  }
+}
+
+/* 2.8 并排浏览器右栏宽度（desktop-workbench.css:1876/1816） */
+html[data-uiscale] body.browser-split-open { --browser-split-width: calc(100vw / var(--uz) - var(--workbench-rail-width, 42px)); }
+html[data-uiscale] .cmp-recent-pop { width: min(300px, calc(100vw / var(--uz) - 32px)); }
+
+/* 2.9 封面灯箱大图（style.css:3120）与访客卡（style.css:1287 附近 token-gate 卡宽） */
+html[data-uiscale] .cv-img { max-height: calc(100vh / var(--uz) - 150px); }
+html[data-uiscale] .token-gate .gate-card { width: min(360px, calc(100vw / var(--uz) - 48px)); }
+
+/* 2.10 设置浮层大卡内部的滚动钳位（demo-parity.css:1118 类浮层宽度） */
+html[data-uiscale] #rd-meta-popover { max-height: calc(100vh / var(--uz) - 150px); }

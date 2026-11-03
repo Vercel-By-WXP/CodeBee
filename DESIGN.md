@@ -62,6 +62,16 @@
   分组小标签 12px；meta/数字 12–13px。
 - 字重阶梯：500（导航/行）→ 600（页头）→ 700（仅大标题与强调数字）；**不用 800+**。
 - 中文永不 italic；数字用 tabular-nums（进度条、KPI）。
+- **界面字号（用户可调，2026-11-03）**：设置 → 外观 → 「界面字号」，四档
+  90/100/110/125，存 localStorage `orch.uiscale`（本设备），index.html 内联脚本
+  首屏预涂防闪跳。实现是 `app/ui/ui-scale.css`：`html[data-uiscale]` 挂 **CSS
+  zoom** + `--uz` 变量。两条实测结论务必记住：① 全站字号是 px 阶梯，改
+  `html{font-size}` 无效，只能 zoom；② **根 zoom 不缩放视口单位**——所有
+  `100vh/dvh/vw` 定尺寸的骨架/弹层要在该作用域下改写为
+  `calc(100vh / var(--uz) - Npx)`（新写视口单位规则时同步补一条）；fixed
+  `inset:0` 遮罩不受影响、无需补偿。无障碍级设置：两种语言模式（简单/高级）
+  下都必须直接可见 → 外观页新增小节标题用 `div.sec-title` 而非 `h3.sec-title`
+  （后者第 2 个起被 `foldAdvancedFields` 折叠）。守测 `tests/test_ui_scale_setting.py`。
 
 ## 4. 组件规范
 
@@ -77,6 +87,11 @@
 - **状态章**：胶囊 12px，状态色描边或 10% 底色 + 深色文字，禁止纯色块白字。
 - **弹层**：一律用应用内组件（`uiConfirm` / `uiPrompt` / `openModal`）。
   **原生 `alert/confirm/prompt` 全仓禁止**（`tests/test_ui_native_dialog_ban.py` 把关）。
+- **二级菜单**（2026-11-03 立规，`＋` 菜单为样板）：一级只放**分类**（每行＝图标 +
+  名称 + 右侧 chevron，40px 行高，最多 7 行、不滚动），二级浮层贴右沿展开，
+  内含搜索框 + 列表 + **钉在滚动区外**的底部动作。判据：把目录级数据（几十上百条）
+  直接摊进一级卡片＝违规（旧 `＋` 菜单实测 628 行 / 29834px）。一级卡片必须
+  `overflow: visible` 且二级浮层高度按视口实测钳位，不许长出屏幕。
 - **审批卡**（高危动作统一形态）：内联卡片 = 危险描述一行 +「发生了什么」一句 +
   Allow/Deny 两钮；Allow 用红描边钮。用于取消运行、删除/解绑、强制起跑等
   不可逆或影响他人产出的动作。
@@ -107,6 +122,13 @@
 - 改 `app/ui/{index.html,app.js,i18n.js}` 后必跑 `node cloud/phone-relay/sync-ui.mjs`
   重建手机镜像（逐字节对账守测会红）。
 - 新增用户可见文案必须走 `t()` + i18n.js 词条（中英双份）。
+- 写 `position: fixed` 贴视口之前，先查祖先链上的 `transform / filter /
+  backdrop-filter / contain`（非 none 的会给 fixed 建包含块，`fixed` 退化成「相对
+  这个祖先」）与 `z-index` 层叠上下文（有就把你的 z-index 关在里面，照样被遮罩或
+  兄弟节点压住）。本仓这两个坑同时长在 `#run-detail`（`backdrop-filter: blur(18px)`）
+  与 `#rd-railcol`（`blur(10px)` + `z-index: 2`）上：量 `offsetParent` 和
+  `containingBlockChain` 再写坐标，别照抄设计稿的 `left:50%/bottom:24`（11-03 两起
+  事故：任务信息浮层飞到 `y=-368`、日志弹窗 `y=-240` 加「看得见点不着」）。
 
 **Don't**
 - 不写死颜色/字号——token 化（写死色三连案在册）。

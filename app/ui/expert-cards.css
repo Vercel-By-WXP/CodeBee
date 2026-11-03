@@ -1,0 +1,157 @@
+/* ============================================================================
+   专家名录 v2（2026-11-03）
+   22 位专家从「首字方块 + 卡片墙」升级为「人像 + 一句话简介」的名录行。
+   真源：app/ui/avatars/<flow_id>.webp（22 张，共 79KB），由 app.js 的
+   expertAvHtml(name, fid) 按 flow id 取图 —— 必须按 id，不能按名字：
+   名单里有两位「画师」（image / handdraw_video），按名字会撞成同一张脸。
+
+   本文件是覆盖层（index.html 末位引入），只加不删：
+   - 不动物理结构里已有的 .mk-tile / .mk-add-dot 两个钩子，点击委托照旧；
+   - 颜色一律走 token，不写死十六进制；
+   - 窄屏 3 列 → 2 列 → 1 列。
+   ============================================================================ */
+
+/* ---------- 1. 头像：22 张人像雪碧图 + 首字回退 ----------
+   --av 必须严格等于容器实际边长（下面每个上下文各自声明），背景图按
+   「6 列 × 4 行 × --av」缩放，再用 --sc / --sr 把对应格子移到视窗里。 */
+.exp-av {
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  --av: 28px;                    /* 与 style.css 的 .exp-av 28px 对齐 */
+}
+.exp-av .exp-av-ch { position: relative; z-index: 0; }
+.exp-av .exp-av-pic {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-image: url("avatars/sprite.webp");
+  background-repeat: no-repeat;
+  background-size: calc(var(--av) * 6) calc(var(--av) * 4);
+  background-position: calc(var(--sc) * var(--av) * -1) calc(var(--sr) * var(--av) * -1);
+}
+/* 各处原有尺寸（22 / 18 / 32）保留，同步声明 --av，并把方角改成圆形 */
+.type-item .ti-ico .exp-av,
+.tp-ico .exp-av { --av: 22px; border-radius: 50%; }
+.cmp-chip .exp-av { --av: 18px; border-radius: 50%; }
+.exp-card .exp-av { --av: 32px; border-radius: 50%; }
+
+/* ---------- 2. 专家页：三列名录 ---------- */
+#sub-market .exp-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 48px;
+  row-gap: 0;
+  align-content: start;
+}
+@media (max-width: 1180px) {
+  #sub-market .exp-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+}
+@media (max-width: 820px) {
+  #sub-market .exp-list { grid-template-columns: minmax(0, 1fr); column-gap: 0; }
+}
+
+/* ---------- 3. 单行：头像 + 名字 + 简介 ----------
+   覆盖 market-v2.css 的卡片形态（1,1,0）。这里用 `.mk-tile.exp-row`（1,2,0），
+   后加载 + 更高特异性，两条都占。 */
+#sub-market .mk-tile.exp-row {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+  min-height: 0;
+  padding: 12px 44px 12px 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  cursor: pointer;
+  transition: background-color .12s ease;
+}
+#sub-market .mk-tile.exp-row:hover {
+  background: var(--panel2);
+  border-bottom-color: transparent;
+  border-radius: 10px;
+  box-shadow: none;
+  transform: none;
+}
+#sub-market .mk-tile.exp-row:last-child { border-bottom-color: var(--border); }
+
+#sub-market .exp-row .exp-av {
+  width: 44px;
+  height: 44px;
+  --av: 44px;
+  font-size: 17.5px;
+  box-shadow: 0 0 0 1px rgba(20, 16, 12, .06);
+}
+#sub-market .exp-row-body { flex: 1 1 auto; min-width: 0; }
+#sub-market .exp-row h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#sub-market .exp-row p {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+  min-height: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 加号：默认藏，悬停整行才现；已在名单的常显绿勾（沿用 .on 配色） */
+#sub-market .exp-row .exp-row-add {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  opacity: 0;
+}
+#sub-market .exp-row:hover .exp-row-add { opacity: .8; }
+#sub-market .exp-row .exp-row-add.on { opacity: 1; }
+#sub-market .exp-row .exp-row-add .ico { width: 13px; height: 13px; }
+
+/* ---------- 4. 左栏专家面板 / 类型菜单：人像比首字更需要一点体积 ---------- */
+.exp-card .exp-av { box-shadow: 0 0 0 1px rgba(20, 16, 12, .06); }
+.type-item .ti-ico .exp-av { box-shadow: 0 0 0 1px rgba(20, 16, 12, .06); }
+
+/* ---------- 5. 专家弹层（openExperts）：比默认 620 更宽，3 列名录取代 2 列，整体更矮 ----------
+   默认 .modal 是 620 宽 + 100vh-48 高，22 位专家在 2 列下排 11 行 → 又高又挤。
+   注意：#modal 是整屏遮罩层（.modal-wrap，inset:0），真正的对话框卡片是它内部的
+   .modal —— 尺寸必须写在 `#modal.exp-modal .modal` 上，写到 #modal 上会把遮罩一起
+   收窄，导致弹层贴左、遮罩断层（2026-11-03 实拍踩过）。
+   这里把卡片放宽到 860、列数锁 3，并给名录一个明确高度上限（比默认 58vh 更矮），
+   让名录横向铺开、纵向压扁，头尾始终可见。 */
+#modal.exp-modal .modal {
+  max-width: 860px;
+  max-height: min(84vh, 680px);
+}
+#modal.exp-modal .exp-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 14px;
+  max-height: min(46vh, 400px);   /* 名录区限高 + 内部滚动，弹层整体更矮 */
+  overflow-y: auto;
+}
+/* 窄屏回 2 列 → 1 列，避免卡片被压太窄 */
+@media (max-width: 720px) {
+  #modal.exp-modal .exp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  #modal.exp-modal .exp-grid { grid-template-columns: minmax(0, 1fr); }
+}

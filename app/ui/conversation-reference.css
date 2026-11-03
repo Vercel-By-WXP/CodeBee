@@ -5,12 +5,21 @@
   --chat-muted: var(--muted);
   --chat-rule: var(--border);
   --chat-user-bg: var(--panel2);
+  /* 字阶 token（2026-11-03 第二轮，对齐参考件实测：过程行 13px、正文近黑、行距 27px）：
+   * 正文 13.5 / 过程 12.5 / meta 12 —— DESIGN.md §3「正文 13.5–14」的本档。
+   * 只在这一处定义，下面各角色引用 var()，改字号只改这里。 */
+  --chat-fs: 13.5px;        /* 正文 / 用户气泡 / 输入框 */
+  --chat-lh: 1.72;          /* 正文行高 → 23px 行盒（参考件 27px = 行盒 21 + 行间隙 6） */
+  --chat-fs-sm: 12.5px;     /* 过程区：思考摘要、工具行、状态行 */
+  --chat-fs-xs: 12px;       /* meta：时间、字数、模型名 */
 }
 html[data-theme="light"] .rd-chat {
-  --chat-text: #505052;
-  --chat-muted: #929295;
-  --chat-rule: #ebebed;
-  --chat-user-bg: #f3f3f4;
+  /* 参考件正文近黑、过程行 #7f7f7f；旧值 #505052 / #929295 是「一律中灰」，
+   * 字号降下来以后中灰会糊，层级本来就该靠颜色拉开。 */
+  --chat-text: #2b2b30;
+  --chat-muted: #87878d;
+  --chat-rule: #ececef;
+  --chat-user-bg: #f4f4f5;
 }
 html[data-theme="light"] main.chat-fill { background: #fff; }
 
@@ -23,7 +32,7 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
   gap: 24px;
   color: var(--chat-text);
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
 }
 #run-detail .rd-chat-run-status,
@@ -41,7 +50,7 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 .rd-chat .chat-bubble.agent {
   padding: 0;
   color: var(--chat-text);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
 }
 .rd-chat .chat-user-message { max-width: 74%; min-width: 0; }
@@ -52,15 +61,15 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
   border-radius: 18px;
   background: var(--chat-user-bg);
   color: var(--chat-text);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
   white-space: pre-wrap;
 }
-.rd-chat .chat-meta {
+#run-detail #rd-chat .chat-meta {
   min-height: 18px;
-  margin: 7px 0 0;
+  margin: 10px 0 0;
   color: var(--chat-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .rd-chat .chat-user-message > .chat-meta { justify-content: flex-end; padding-inline: 4px; }
@@ -71,38 +80,55 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 .rd-chat .chat-act:focus-visible,
 .rd-chat .chat-log-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-/* Reasoning stays expandable; tool lines read like the reference's activity
- * feed rather than a nested card. Long commands have a full-text tooltip. */
-.rd-chat .chat-think {
-  margin: 0 0 16px;
+/* 2026-11-03 用户「对话内容样式不好看」：过程区原先每条都画一条底线 + 方框描边，
+ * 一屏里横线层层堆叠，把答案的注意力抢光了。改成「一行灰细字」——折叠态没有框、
+ * 没有线，只有标题 + 字数 + 箭头；展开后内容靠一根发丝竖线归位。
+ * 选择器用 #run-detail #rd-chat 双 id：style.css 里 `#run-detail.chat-mode .chat-think`
+ * 那一套（单 id + 单类）会压过单个 `.rd-chat` 前缀，必须抬到同一层才算数。 */
+#run-detail #rd-chat .chat-think {
+  margin: 0 0 18px;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--chat-muted);
-  font-size: 14px;
+  font-size: 13.5px;
 }
-.rd-chat .chat-think .ct-head,
-.rd-chat details.chat-think > summary {
-  min-height: 24px;
-  padding: 0 0 9px;
-  border-bottom: 1px solid var(--chat-rule);
+#run-detail #rd-chat .chat-think .ct-head,
+#run-detail #rd-chat details.chat-think > summary {
+  min-height: 22px;
+  padding: 0;
+  border-bottom: 0;
+  border-left: 0;
+  color: var(--chat-muted);
+  font-size: 13.5px;
   font-weight: 400;
   opacity: 1;
 }
-.rd-chat .chat-think .ct-body {
-  padding: 12px 0 4px;
+#run-detail #rd-chat details.chat-think[open] > summary { color: var(--chat-text); }
+#run-detail #rd-chat .chat-think .ct-body {
+  margin-top: 10px;
+  padding: 2px 0 2px 14px;
+  /* 只留一根竖线：style.css 的 `#run-detail.chat-mode .chat-think .ct-body` 给过
+   * `border-top: 1px`，只写 border-left 会把它留在原地（实拍里那段思考还是带框）。 */
+  border: 0;
+  border-left: 2px solid var(--chat-rule);
+  color: var(--chat-muted);
   font: inherit;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.75;
   opacity: 1;
 }
-.rd-chat .chat-think .ct-live { border: 0; padding: 0 4px; font-size: 12px; }
-.rd-chat .chat-think .ct-dot { width: 5px; height: 5px; background: currentColor; }
-.rd-chat .chat-think .ct-len { color: inherit; font-size: 12px; opacity: .8; }
-.rd-chat .ct-acts {
+#run-detail #rd-chat .chat-think .ct-live { border: 0; padding: 0 4px; font-size: 12.5px; }
+#run-detail #rd-chat .chat-think .ct-dot { width: 5px; height: 5px; background: currentColor; }
+#run-detail #rd-chat .chat-think .ct-len { color: inherit; font-size: 12.5px; opacity: .8; }
+#run-detail #rd-chat .ct-acts {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px 0 0;
+  gap: 8px;
+  padding: 10px 0 2px;
+  /* 同上：style.css 给过 `border-top: 1px`，不显式清掉的话实时块下面会多一条横线，
+   * 和左边那根竖线一起看就像又套了个框。 */
+  border: 0;
   font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.6;
@@ -112,7 +138,7 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 .rd-chat .chat-activity-row .ico,
 .rd-chat .chat-log-btn .ico { flex: none; width: 14px; height: 14px; margin-top: 4px; }
 .rd-chat .chat-activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rd-chat .chat-log-btn { display: inline-flex; align-items: flex-start; gap: 7px; color: var(--chat-muted); font-size: 13px; opacity: 1; }
+.rd-chat .chat-log-btn { display: inline-flex; align-items: flex-start; gap: 7px; color: var(--chat-muted); font-size: 14.5px; opacity: 1; }
 .rd-chat .chat-actions { margin-top: 12px; }
 
 .rd-chat .chat-result {
@@ -122,12 +148,49 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
   border-radius: 0;
   background: transparent;
 }
-.rd-chat .chat-result .cr-head { font-size: 13px; font-weight: 400; color: var(--chat-muted); }
+.rd-chat .chat-result .cr-head { font-size: 14.5px; font-weight: 400; color: var(--chat-muted); }
 .rd-chat .chat-result.bad .cr-head { color: var(--bad); }
 .rd-chat .chat-result.partial .cr-head { color: var(--warn); }
 .rd-chat .chat-result .cr-meta,
 .rd-chat .chat-result .cr-files-title { color: var(--chat-muted); }
 .rd-chat .chat-markdown code { border: 0; background: var(--chat-user-bg); }
+
+/* 正文节奏（2026-11-03）：把答案读成一份文档，而不是一段聊天记录。
+ * 段距放大到 15px、列表用轻圆点、小标题只比正文重半级（不再按 1.45em 放大），
+ * 这样「改了什么：」这类加粗段首自然成为小标题，不必再叠一层视觉噪音。 */
+#run-detail #rd-chat .chat-markdown { line-height: 1.78; }
+#run-detail #rd-chat .chat-markdown > :first-child { margin-top: 0; }
+#run-detail #rd-chat .chat-markdown > :last-child { margin-bottom: 0; }
+#run-detail #rd-chat .chat-markdown p { margin: 0 0 15px; }
+#run-detail #rd-chat .chat-markdown h1,
+#run-detail #rd-chat .chat-markdown h2,
+#run-detail #rd-chat .chat-markdown h3,
+#run-detail #rd-chat .chat-markdown h4,
+#run-detail #rd-chat .chat-markdown h5,
+#run-detail #rd-chat .chat-markdown h6 {
+  margin: 24px 0 10px;
+  font-size: 15.5px;
+  font-weight: 650;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+#run-detail #rd-chat .chat-markdown h1,
+#run-detail #rd-chat .chat-markdown h2 { font-size: 16.5px; }
+#run-detail #rd-chat .chat-markdown ul,
+#run-detail #rd-chat .chat-markdown ol { margin: 8px 0 15px; padding-left: 1.45em; }
+#run-detail #rd-chat .chat-markdown li { padding-left: .2em; }
+#run-detail #rd-chat .chat-markdown li + li { margin-top: 7px; }
+#run-detail #rd-chat .chat-markdown li::marker { color: var(--chat-muted); }
+#run-detail #rd-chat .chat-markdown ul ul,
+#run-detail #rd-chat .chat-markdown ul ol,
+#run-detail #rd-chat .chat-markdown ol ul,
+#run-detail #rd-chat .chat-markdown ol ol { margin: 6px 0 2px; }
+#run-detail #rd-chat .chat-markdown blockquote { margin: 14px 0; }
+#run-detail #rd-chat .chat-markdown hr { margin: 22px 0; }
+/* 以加粗开头的段落 = 作者写的「小标题」（**改了什么：** …）。给它比普通段距
+ * 更大的一点上留白，层级才立得住；纯文字段落不受任何影响。 */
+#run-detail #rd-chat .chat-markdown p:has(> strong:first-child) { margin-top: 20px; }
+#run-detail #rd-chat .chat-markdown > p:has(> strong:first-child):first-child { margin-top: 0; }
 
 /* Git receipt in the conversation: a compact, quiet work log that keeps the
  * important file-level affordances beside the answer that produced them. */
@@ -149,15 +212,15 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 }
 .rd-chat .chat-change-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rd-chat .chat-change-title .ico { width: 15px; height: 15px; color: var(--chat-muted); flex: none; }
-.rd-chat .chat-change-title strong { font-size: 13px; font-weight: 600; white-space: nowrap; }
-.rd-chat .chat-change-stats { display: inline-flex; gap: 7px; font: 12px var(--mono); }
+.rd-chat .chat-change-title strong { font-size: 14.5px; font-weight: 600; white-space: nowrap; }
+.rd-chat .chat-change-stats { display: inline-flex; gap: 7px; font: 13px var(--mono); }
 .rd-chat .chat-change-stats b:first-child,
 .rd-chat .chat-change-lines b:first-child { color: var(--ok); }
 .rd-chat .chat-change-stats b:last-child,
 .rd-chat .chat-change-lines b:last-child { color: var(--bad); }
 .rd-chat .chat-change-branch {
   min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--chat-muted); font: 11px var(--mono);
+  color: var(--chat-muted); font: 12.5px var(--mono);
 }
 .rd-chat .chat-change-files { padding: 3px 0; }
 .rd-chat .chat-change-file {
@@ -175,15 +238,15 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 .rd-chat .chat-change-file .gs.m { color: var(--warn); }
 .rd-chat .chat-change-file .gs.n { color: var(--ok); }
 .rd-chat .chat-change-file .gs.d { color: var(--bad); }
-.rd-chat .chat-change-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--mono); }
-.rd-chat .chat-change-lines { display: inline-flex; gap: 7px; margin-left: auto; font: 11px var(--mono); flex: none; }
-.rd-chat .chat-change-chevron { color: var(--chat-muted); font-size: 18px; line-height: 1; flex: none; }
-.rd-chat .chat-change-more { padding: 3px 13px 7px; color: var(--chat-muted); font-size: 12px; }
+.rd-chat .chat-change-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px var(--mono); }
+.rd-chat .chat-change-lines { display: inline-flex; gap: 7px; margin-left: auto; font: 12.5px var(--mono); flex: none; }
+.rd-chat .chat-change-chevron { color: var(--chat-muted); font-size: 20px; line-height: 1; flex: none; }
+.rd-chat .chat-change-more { padding: 3px 13px 7px; color: var(--chat-muted); font-size: 13px; }
 .rd-chat .chat-change-foot {
   display: flex; justify-content: flex-end; gap: 7px; padding: 8px 10px;
   border-top: 1px solid var(--chat-rule);
 }
-.rd-chat .chat-change-foot button { min-height: 27px; padding: 4px 10px; font-size: 12px; }
+.rd-chat .chat-change-foot button { min-height: 27px; padding: 4px 10px; font-size: 13px; }
 .rd-chat .chat-change-undo { color: var(--bad); }
 .rd-chat .chat-change-undo:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
 .rd-chat .chat-change-submit { color: var(--panel); background: var(--accent); border-color: var(--accent); }
@@ -211,17 +274,34 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 
 /* Compact execution feed and composer, matching the conversation reference. */
 .rd-chat .chat-step-meta { display: none; }
-.rd-chat .chat-tool-group { margin: 14px 0 18px; color: var(--chat-muted); font: 13px/1.65 var(--font-ui); }
-.rd-chat .chat-tool-group > summary,
-.rd-chat .chat-tool-row > summary {
+#run-detail #rd-chat .chat-tool-group { margin: 12px 0 18px; color: var(--chat-muted); font: 13.5px/1.7 var(--font-ui); }
+#run-detail #rd-chat .chat-tool-group > summary,
+#run-detail #rd-chat .chat-tool-row > summary {
   display: flex; align-items: center; gap: 7px; min-width: 0; cursor: pointer; list-style: none;
-  padding: 3px 0; font-weight: 400;
+  padding: 2px 0; font-weight: 400;
+}
+#run-detail #rd-chat .chat-tool-row + .chat-tool-row { margin-top: 2px; }
+/* 运行中的工具组默认收起后，唯一能看出「正在干活」的地方就是这一行：
+ * 图标改为呼吸点、文字提亮一档，展开箭头保持弱化。 */
+#run-detail #rd-chat .chat-tool-group.is-live > summary { color: var(--chat-text); }
+#run-detail #rd-chat .chat-tool-group.is-live > summary .ico {
+  color: var(--accent);
+  animation: chat-live-breathe 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  #run-detail #rd-chat .chat-tool-group.is-live > summary .ico { animation: none; opacity: .75; }
+}
+#run-detail #rd-chat .chat-activity-more {
+  margin-top: 2px;
+  color: var(--chat-muted);
+  font-size: 12.5px;
+  opacity: .8;
 }
 .rd-chat .chat-tool-group summary::-webkit-details-marker { display: none; }
 .rd-chat .chat-tool-group .ico { flex: none; width: 14px; height: 14px; }
 .rd-chat .chat-tool-group summary:focus-visible,
 .rd-chat .chat-change-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.rd-chat .chat-tool-count { font-size: 11px; opacity: .8; }
+.rd-chat .chat-tool-count { font-size: 12.5px; opacity: .8; }
 .rd-chat .chat-tool-chevron { transition: transform .12s; }
 .rd-chat .chat-tool-group:not([open]) .chat-tool-chevron { transform: rotate(-90deg); }
 .rd-chat .chat-tool-list { max-height: 240px; overflow: auto; overscroll-behavior: contain; padding: 4px 4px 0 0; }
@@ -230,10 +310,10 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 .rd-chat .chat-tool-row.running > summary { color: var(--accent); }
 .rd-chat .chat-tool-detail { padding: 5px 0 9px 21px; color: var(--chat-text); }
 .rd-chat .chat-tool-detail pre { margin: 0 0 6px; max-height: 180px; overflow: auto; white-space: pre-wrap;
-  overflow-wrap: anywhere; font: 11.5px/1.6 var(--mono); padding: 8px; border-radius: 8px; background: var(--chat-user-bg); }
-.rd-chat .chat-tool-empty { padding: 7px 0 7px 21px; font-size: 12px; }
+  overflow-wrap: anywhere; font: 12.5px/1.6 var(--mono); padding: 8px; border-radius: 8px; background: var(--chat-user-bg); }
+.rd-chat .chat-tool-empty { padding: 7px 0 7px 21px; font-size: 13px; }
 .rd-chat .chat-cli-log { margin: 10px 0 0; border: 0; background: transparent; }
-.rd-chat .chat-cli-log > summary { padding: 0; font-size: 12px; color: var(--chat-muted); }
+.rd-chat .chat-cli-log > summary { padding: 0; font-size: 13px; color: var(--chat-muted); }
 .rd-chat .chat-cli-log-text { margin-top: 8px; border: 1px solid var(--chat-rule); border-radius: 10px; }
 
 .rd-chat .chat-change-row { justify-content: flex-end; }
@@ -250,7 +330,7 @@ html[data-theme="light"] main.chat-fill { background: #fff; }
 #run-detail.chat-mode .rd-chat-run-status {
   width: calc(100% - 72px); max-width: 708px; min-height: 36px; margin: 6px auto; padding: 4px 10px;
   border: 1px solid var(--chat-rule); border-radius: 999px; background: var(--panel);
-  color: var(--chat-muted); font-size: 12px;
+  color: var(--chat-muted); font-size: 13px;
 }
 #run-detail.chat-mode .rd-chat-run-label { color: var(--chat-text); font-weight: 400; background: transparent; padding: 0; }
 .rd-chat .rd-chat-run-goal { color: var(--chat-muted); }
@@ -271,7 +351,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .rd-chat-tools .chat-send-default,
 .rd-chat .rd-chat-tools .chat-stop { display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--text); color: var(--panel); }
-.rd-chat .chat-stop { font-size: 13px; cursor: pointer; }
+.rd-chat .chat-stop { font-size: 14.5px; cursor: pointer; }
 .rd-chat .chat-send-default #rd-chat-send-label { display: none; }
 .rd-chat .chat-delivery-hint { display: none; }
 #run-detail.chat-mode .rd-chat-run-status button,
@@ -283,7 +363,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-execution-message { margin: 16px 0; }
 @media (max-width: 720px) {
   #run-detail .rd-chat-run-status,
-  #run-detail.chat-mode .rd-chat-run-status { width: calc(100% - 32px); font-size: 11px; }
+  #run-detail.chat-mode .rd-chat-run-status { width: calc(100% - 32px); font-size: 12.5px; }
   #run-detail.chat-mode .rd-chat-run-status button { min-width: 40px; width: 40px; height: 40px; min-height: 40px; padding: 0; }
   #run-detail.chat-mode .rd-chat-run-status [data-chat-run-pause] { min-width: 46px; width: 46px; }
   #run-detail.chat-mode .rd-chat-run-status { min-height: 44px; gap: 3px; padding: 2px 6px; }
@@ -291,8 +371,8 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
   #run-detail.chat-mode .rd-chat-bar textarea { min-height: 42px; height: 42px; }
   .rd-chat .rd-chat-tools .chat-send-default,
   .rd-chat .rd-chat-tools .chat-stop { width: 40px; height: 40px; min-height: 40px; }
-  .rd-chat .rd-chat-bar textarea { font-size: 16px; }
-  .rd-chat .chat-tool-group { font-size: 12px; }
+  .rd-chat .rd-chat-bar textarea { font-size: 17.5px; }
+  .rd-chat .chat-tool-group { font-size: 13px; }
 }
 
 /* Live task context in the conversation rail. */
@@ -307,12 +387,12 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 #rd-rail > .rd-context { flex: 1 1 auto; min-width: 0; min-height: 0; max-height: min(57vh, 580px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 .rd-context-section { padding: 11px 2px; border-top: 1px solid var(--border); }
 .rd-context-section:first-child { border-top: 0; padding-top: 2px; }
-.rd-context-heading, .rd-context-subhead { display: flex; align-items: center; gap: 8px; min-height: 23px; color: var(--muted); font-size: 12px; }
+.rd-context-heading, .rd-context-subhead { display: flex; align-items: center; gap: 8px; min-height: 23px; color: var(--muted); font-size: 13px; }
 .rd-context-heading span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rd-context-subhead > span { margin-left: 8px; }
 .rd-context-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); }
 .rd-context-icon .ico, .rd-context-row .ico, .rd-context-source .ico, .rd-context-link .ico { width: 14px; height: 14px; flex: none; }
-.rd-context-row, .rd-context-step, .rd-context-source, .rd-context-link { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); text-align: left; font-size: 12px; }
+.rd-context-row, .rd-context-step, .rd-context-source, .rd-context-link { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); text-align: left; font-size: 13px; }
 .rd-context-row { min-height: 31px; padding: 4px 5px; }
 .rd-context-row > .ico:first-child { color: var(--muted); }
 .rd-context-row > .ico:last-child { margin-left: auto; color: var(--muted); }
@@ -323,7 +403,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-context-add, .rd-context-del { font: 600 11px var(--mono); }
 .rd-context-add { color: var(--ok); }
 .rd-context-del { color: var(--bad); }
-.rd-context-muted { color: var(--muted); font-size: 11px; }
+.rd-context-muted { color: var(--muted); font-size: 12.5px; }
 .rd-context-empty { display: block; padding: 6px 5px; }
 .rd-context-steps { margin-top: 4px; }
 .rd-context-step { align-items: flex-start; min-height: 30px; padding: 5px 4px; line-height: 1.5; white-space: normal; }
@@ -356,12 +436,12 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-fail-head,
 .rd-chat .chat-review-head {
   display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-  min-width: 0; font-size: 12px; line-height: 1.5;
+  min-width: 0; font-size: 13px; line-height: 1.5;
 }
 .rd-chat .chat-fail-title,
 .rd-chat .chat-review-title {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12.5px; font-weight: 600;
+  font-size: 14px; font-weight: 600;
 }
 .rd-chat .chat-fail-title { color: var(--bad); }
 .rd-chat .chat-fail-title .ico { width: 13px; height: 13px; }
@@ -373,19 +453,19 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
   color: var(--bad);
   font: 600 10.5px/1.5 var(--mono);
 }
-.rd-chat .chat-fail-reason { color: var(--chat-muted); font-size: 11.5px; }
+.rd-chat .chat-fail-reason { color: var(--chat-muted); font-size: 12.5px; }
 .rd-chat .chat-fail-meta,
 .rd-chat .chat-review-meta {
   display: inline-flex; align-items: center; gap: 5px;
   min-width: 0; margin-left: auto;
-  color: var(--chat-muted); font-size: 11.5px;
+  color: var(--chat-muted); font-size: 12.5px;
 }
 .rd-chat .chat-fail-meta .chat-acts2,
 .rd-chat .chat-review-meta .chat-acts2 { margin-left: 2px; }
 .rd-chat .chat-fail-body {
   margin-top: 8px;
   color: var(--chat-text);
-  font-size: 13px; line-height: 1.65;
+  font-size: 14.5px; line-height: 1.65;
 }
 .rd-chat .chat-fail-tag {
   display: inline-block; margin-right: 7px; padding: 0 5px;
@@ -396,7 +476,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 }
 .rd-chat .chat-fail-body code {
   color: color-mix(in srgb, var(--chat-text) 88%, var(--muted));
-  font: 12px/1.6 var(--mono);
+  font: 13px/1.6 var(--mono);
   overflow-wrap: anywhere;
 }
 .rd-chat .chat-fail-diag { margin-left: 2px; color: color-mix(in srgb, var(--chat-muted) 40%, var(--chat-text)); }
@@ -408,7 +488,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-fail-attempt {
   display: flex; align-items: baseline; gap: 9px;
   padding: 2px 0;
-  color: var(--chat-muted); font-size: 11.5px;
+  color: var(--chat-muted); font-size: 12.5px;
 }
 .rd-chat .chat-fail-attempt b { min-width: 44px; color: var(--chat-text); font: 500 11.5px var(--mono); }
 .rd-chat .chat-fail-nth { margin-left: auto; opacity: .75; }
@@ -422,14 +502,14 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-review-flag {
   padding: 0 6px; border-radius: 5px;
   color: var(--chat-muted); background: color-mix(in srgb, var(--muted) 12%, transparent);
-  font-size: 10.5px; font-weight: 600;
+  font-size: 12px; font-weight: 600;
 }
 .rd-chat .chat-review-flag.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .rd-chat .chat-review-flag.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .rd-chat .chat-review-scores {
   display: flex; align-items: center; flex-wrap: wrap; gap: 5px 6px;
   margin-top: 5px;
-  color: var(--chat-muted); font-size: 11.5px;
+  color: var(--chat-muted); font-size: 12.5px;
 }
 .rd-chat .chat-review-avg { margin-right: 3px; color: var(--chat-text); font-weight: 600; }
 .rd-chat .chat-score-chip {
@@ -441,7 +521,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-score-chip b { color: var(--chat-text); font: 600 11px var(--mono); }
 .rd-chat .chat-review-lead {
   margin-top: 7px;
-  color: var(--chat-text); font-size: 13px; line-height: 1.65;
+  color: var(--chat-text); font-size: 14.5px; line-height: 1.65;
 }
 .rd-chat .chat-review-list {
   display: flex; flex-direction: column; gap: 9px;
@@ -450,7 +530,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 }
 .rd-chat .chat-review-item {
   display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start;
-  font-size: 13px; line-height: 1.65;
+  font-size: 14.5px; line-height: 1.65;
 }
 .rd-chat .chat-review-item > div:only-child { grid-column: 1 / -1; }
 .rd-chat .chat-sev {
@@ -463,12 +543,12 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-sev.critical { color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
 .rd-chat .chat-review-dim { margin-right: 6px; color: var(--chat-text); font-weight: 600; }
 .rd-chat .chat-review-note { color: var(--chat-text); }
-.rd-chat .chat-review-more { margin-top: 7px; color: var(--chat-muted); font-size: 11.5px; }
+.rd-chat .chat-review-more { margin-top: 7px; color: var(--chat-muted); font-size: 12.5px; }
 
 /* 运行中：状态行而不是答案正文——呼吸点 + 执行中标签。 */
 .rd-chat .chat-live-status {
   display: flex; align-items: center; gap: 8px;
-  color: var(--chat-muted); font-size: 13px;
+  color: var(--chat-muted); font-size: 14.5px;
 }
 .rd-chat .chat-live-dot {
   flex: none; width: 6px; height: 6px; border-radius: 50%;
@@ -483,7 +563,7 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
 .rd-chat .chat-live-tag {
   padding: 0 7px; border-radius: 999px;
   color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
-  font-size: 10.5px;
+  font-size: 12px;
 }
 
 @media (max-width: 720px) {
@@ -493,3 +573,106 @@ html[data-theme] #run-detail.chat-mode .rd-chat-bar {
   .rd-chat .chat-review-meta { width: 100%; margin-left: 0; }
   .rd-chat .chat-fail-attempt b { min-width: 40px; }
 }
+
+/* ═══ 2026-11-03 16:45 · 对话字阶对齐参考件（用户：「对话里面文字样式和大小和字体按照附件的来」）
+ *
+ * 参考件是桌面端同类产品的对话页截图，1920 宽，逐像素量过：
+ *   · 过程行（一行一条的步骤）CJK 字宽 = 13px，墨迹 12px，色 #7f7f7f
+ *   · 用户消息 / 助手名 近黑 #191919，行距 27px（≈21px 行盒 + 6px 行间隙）
+ *   · 输入框占位 13–14px
+ * 本产品原值：正文 15px / 行高 1.78 / 色 #505052（中灰），标题 15.5–16.5。
+ * 也就是「字号比参考大 15%，颜色又比参考浅」——两者叠起来就是又大又糊。
+ * DESIGN.md §3 本来就写「正文 13.5–14px、行高 1.6–1.8、meta 12–13px」，
+ * 这一版按参考件落回规范区间：正文 13.5 / 过程 12.5 / meta 12，主色转近黑、过程行转浅灰。
+ *
+ * 一条真源：字号、行高、字色只在 `.rd-chat` 上定义一次，下面各角色只引用 token
+ * （改大小只改这 3 个变量；`tests/test_ui_chat_typography.py` 盯的也是这 3 个）。
+ * 字体族不动：`--font-ui`（MiSans → HarmonyOS Sans → PingFang → YaHei）与参考件在本机
+ * 解析到同一套系统字体，视觉差距来自字号/字重/字色，不是缺字体文件。
+ * token 定义在文件头的 `.rd-chat` / `html[data-theme="light"] .rd-chat` 两块里。 */
+
+/* 正文与气泡 */
+#run-detail .rd-chat-flow,
+#run-detail.chat-mode .rd-chat-flow {
+  font-family: var(--font-ui);
+  font-size: var(--chat-fs);
+  line-height: var(--chat-lh);
+  letter-spacing: 0;
+}
+/* 血账：style.css:7765 是 `#run-detail.chat-mode .chat-bubble.agent`（1 id + 2 类
+ * = (1,2,0)），一个字号的 id 就压掉了 `.rd-chat .chat-bubble.agent`（0,3,0）。
+ * 实测第一版只写单 `.rd-chat` 前缀 → 正文还是 15px（CDP matchedCSSRules 抓到的
+ * 就是这条）。所有正文/气泡规则一律抬到 `#run-detail #rd-chat` 双 id。 */
+#run-detail #rd-chat .chat-bubble.agent {
+  font-size: var(--chat-fs);
+  line-height: var(--chat-lh);
+}
+#run-detail #rd-chat .chat-bubble.me {
+  padding: 8px 14px 10px;
+  font-size: var(--chat-fs);
+  line-height: 1.65;
+}
+
+/* 答案正文的节奏：字号降下来以后，段距/标题/列表按同一比例收一档，
+   否则「小字 + 15px 段距」会读成一屏散句（参考件段间只比行距多 4–6px）。 */
+#run-detail #rd-chat .chat-markdown { line-height: 1.7; }
+#run-detail #rd-chat .chat-markdown p { margin: 0 0 13px; }
+#run-detail #rd-chat .chat-markdown ul,
+#run-detail #rd-chat .chat-markdown ol { margin: 7px 0 13px; }
+#run-detail #rd-chat .chat-markdown li + li { margin-top: 6px; }
+#run-detail #rd-chat .chat-markdown h1,
+#run-detail #rd-chat .chat-markdown h2,
+#run-detail #rd-chat .chat-markdown h3,
+#run-detail #rd-chat .chat-markdown h4,
+#run-detail #rd-chat .chat-markdown h5,
+#run-detail #rd-chat .chat-markdown h6 {
+  margin: 20px 0 9px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+#run-detail #rd-chat .chat-markdown h1,
+#run-detail #rd-chat .chat-markdown h2 { font-size: 15.5px; }
+#run-detail #rd-chat .chat-markdown p:has(> strong:first-child) { margin-top: 17px; }
+#run-detail #rd-chat .chat-markdown blockquote { margin: 12px 0; }
+#run-detail #rd-chat .chat-markdown hr { margin: 18px 0; }
+
+/* meta：时间 / 字数 / 模型 */
+#run-detail #rd-chat .chat-meta {
+  min-height: 16px;
+  margin: 8px 0 0;
+  font-size: var(--chat-fs-xs);
+  line-height: 1.5;
+}
+
+/* 过程区：思考摘要 / 展开正文 / 工具行 / 状态行 */
+#run-detail #rd-chat .chat-think { font-size: var(--chat-fs-sm); }
+#run-detail #rd-chat .chat-think .ct-head,
+#run-detail #rd-chat details.chat-think > summary { font-size: var(--chat-fs-sm); }
+#run-detail #rd-chat .chat-think .ct-body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+#run-detail #rd-chat .chat-tool-group {
+  font-family: var(--font-ui);
+  font-size: var(--chat-fs-sm);
+  line-height: 1.65;
+}
+.rd-chat .chat-log-btn,
+.rd-chat .chat-result .cr-head { font-size: 13px; }
+.rd-chat .chat-live-status { font-size: 13px; }
+.rd-chat .chat-change-title strong { font-size: 13.5px; }
+
+/* 评审卡 / 失败卡：原本 14.5px 比正文还大，和参考件「辅信息一律小于正文」相反 */
+.rd-chat .chat-fail-head,
+.rd-chat .chat-review-head { font-size: 12.5px; }
+.rd-chat .chat-fail-title,
+.rd-chat .chat-review-title { font-size: 13.5px; }
+.rd-chat .chat-fail-body,
+.rd-chat .chat-review-lead,
+.rd-chat .chat-review-item { font-size: 13px; line-height: 1.65; }
+
+/* 输入框：与正文同号（参考件占位 13–14px）；移动端 17.5px 的防缩放规则不动 */
+#run-detail .rd-chat-bar textarea { font-size: var(--chat-fs); line-height: 1.6; }
+.rd-chat .rd-chat-continue-note { font-size: 12.5px; }

@@ -67,6 +67,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import atomic, jobs, operations, paths, settings, store, tlsctx
+from . import zfix_bridge   # 禅道知识桥（指纹/根因/沉淀/预防；内部全兜异常，降级不影响本链路）
 
 try:
     import chinese_calendar as _hcal   # 法定节假日+调休数据（chinesecalendar）
@@ -1512,6 +1513,14 @@ def _goal_text(bug, side=None, images=0):
     """bug → 修复目标提示词。side 给出时附端约束；images>0 时提示先读附件截图。"""
     bid = bug.get("id")
     lines = ["修复禅道 Bug #%s：%s" % (bid, str(bug.get("title") or "").strip())]
+    # 知识桥：同指纹历史修法 + 防复发规则，AI 开工前必读（引擎降级时为空，
+    # goal 原样，行为与无桥一致——见 zfix_bridge.goal_extras）
+    try:
+        extras = zfix_bridge.goal_extras(bug)
+    except Exception:
+        extras = ""
+    if extras:
+        lines.extend(["", extras])
     steps = _strip_html(bug.get("steps"))
     if steps:
         lines.append("")
@@ -2006,6 +2015,26 @@ def _finish_ok(claim, cfg):
                % ("，指回报告人 " + opened if opened else ""))
     _notify("🐛✅ 禅道 Bug #%s 已修复并 resolve\n%s\n修复任务：%s"
             % (bid, claim.get("title") or "", "、".join(t.get("task_id") or "" for t in tasks)))
+    # 知识桥：修好即落档（指纹+根因），这是「同类问题下次秒认」的唯一输入。
+    # 根因文本取排查结论 + 各端验证结论；AI 修复说明在 run.notes 里拿不到
+    # 结构化字段时，reason 至少带上排查依据，绝不落空档案。
+    try:
+        bug_text_bits = [tri.get("reason")]
+        for t in tasks:
+            v = ((runs.get(t.get("run_id")) or {}).get("verdict") or {})
+            if v:
+                bug_text_bits.append("验证通过" if v.get("pass") or v.get("publishable") else "验证完成")
+        zfix_bridge.record_fix(
+            {"id": claim.get("bug_id"), "title": claim.get("title"),
+             "steps": tri.get("reason") or ""},
+            project=str(claim.get("product") or "zentao"),
+            root_cause=str(claim.get("root_cause") or "") or "unknown",
+            reason=("排查：%s；%s" % (tri.get("reason") or "无",
+                                     "；".join(x for x in bug_text_bits[1:] if x) or "验证通过"))
+            if tri.get("reason") else "修复成功（排查结论未记录）",
+            files=[], verify_ok=True, outcome="fixed")
+    except Exception:
+        log.debug("zentao: 知识桥落档失败", exc_info=True)
 
 
 # CodeBee 自身崩溃形态：run.error 是裸 Python 异常 repr（如 NameError(...)，
@@ -2066,6 +2095,17 @@ def _finish_failed(claim, cfg):
     _notify("🐛❌ 禅道 Bug #%s 连续 %d 次自动修复未成功（%s），已停止重试，"
             "请人工接管（禅道页可「立即处理」重新触发）\n%s\n失败：%s\n修复任务：%s"
             % (bid, attempts, kind, claim.get("title") or "", why, task_ids))
+    # 知识桥：反复修不动的指纹也是知识——它标记「这条路修不动」，下次同指纹
+    # 认领时历史经验段会如实提示，避免 AI 反复撞同一堵墙。
+    try:
+        zfix_bridge.record_fix(
+            {"id": claim.get("bug_id"), "title": claim.get("title"), "steps": why},
+            project=str(claim.get("product") or "zentao"),
+            root_cause=str(claim.get("root_cause") or "") or "unknown",
+            reason="自动修复连续 %d 次失败（%s）：%s" % (attempts, kind, why),
+            files=[], verify_ok=False, outcome="failed")
+    except Exception:
+        log.debug("zentao: 知识桥失败落档异常", exc_info=True)
 
 
 def _refresh_claim_runs(claim):
@@ -2127,6 +2167,19 @@ def _route_one(bug, profile, cfg, notify=True):
     need_manual 存量的重排查（仍无解时不重复群通知）。返回动作文案或 None。"""
     bid = str(bug.get("id") or "")
     tri = _triage(bug, profile, cfg)
+    # 知识桥：指纹 + 根因初判 + 复发计数（引擎降级时 fp=""、rep.count=0，
+    # claim 结构不变，主链路行为与无桥一致）
+    fp = ""
+    rep = {"count": 0, "last": "", "bugs": []}
+    cause = ""
+    try:
+        fp = zfix_bridge.fingerprint(bug)
+        if fp:
+            rep = zfix_bridge.repeat_info(fp)
+            cause = zfix_bridge.classify_cause(tri.get("reason"),
+                                               bug.get("title"), bug.get("steps"))
+    except Exception:
+        fp = ""
     base_claim = {
         "bug_id": bug.get("id"), "product": profile.get("product"),
         "title": str(bug.get("title") or "")[:120],
@@ -2134,7 +2187,15 @@ def _route_one(bug, profile, cfg, notify=True):
         "attempts": 0, "claimed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         # 归档字段就地归零：reopen 重走排查覆盖老 claim 时不能残留 True
         "archived": False, "archived_by": "", "archived_at": "", "archive_reason": "",
+        # 知识桥字段（空值=引擎降级；老台账无这些键也不影响既有读取方）
+        "fingerprint": fp, "root_cause": cause,
+        "repeat_count": int(rep.get("count") or 0),
     }
+    if rep.get("count"):
+        base_claim["repeat_note"] = ("同指纹已修过 %d 次（%s）——先查历史修法，"
+                                     "别再走一遍老路" % (rep["count"],
+                                                          "、".join("#" + b for b in rep.get("bugs", [])[:4])))
+    repeat_prefix = ("🔁第%d次同类问题 " % (rep["count"] + 1)) if rep.get("count") else ""
     opened = _acct(bug.get("openedBy"))
 
     if tri["side"] == "unknown":
@@ -2240,9 +2301,13 @@ def _route_one(bug, profile, cfg, notify=True):
     with _LOCK:
         _STATE["claims"][bid] = base_claim
         _save_locked()
-    _notify("🐛🔍 认领禅道 Bug #%s（%s问题·%s）：%s\n修复任务：%s"
+    _notify("🐛🔍 认领禅道 Bug #%s（%s问题·%s）：%s\n修复任务：%s%s"
             % (bid, tri["side"], "由规则" if tri.get("by") == "rule" else "AI 判定",
-               bug.get("title") or "", "、".join(t["task_id"] for t in tasks)))
+               bug.get("title") or "", "、".join(t["task_id"] for t in tasks),
+               ("\n⚠️ 同指纹历史已修 %d 次（#%s），修复任务已附历史经验——"
+                "反复出现请考虑根治而非再打补丁"
+                % (rep["count"], "、#".join(rep.get("bugs", [])[:3]))
+                if rep.get("count") else "")))
     return "fixing"
 
 
@@ -2465,8 +2530,16 @@ def _poll_unlocked(force=False):
 
 
 def fire_due():
-    """automation._tick 每拍调用：内部自节流，没到点/未启用时零开销返回。"""
+    """automation._tick 每拍调用：内部自节流，没到点/未启用时零开销返回。
+
+    知识桥蒸馏挂在这里（内部另带 6h 节流）：轮询没开也照蒸——档案来自
+    手动扫描/历史台账，不依赖轮询开关。
+    """
     _ensure_loaded()
+    try:
+        zfix_bridge.learn_if_due()
+    except Exception:
+        pass
     with _LOCK:
         if not (_STATE.get("config") or {}).get("poll_enabled"):
             return None
@@ -2669,7 +2742,9 @@ def view():
                 "claims": [dict(c) for c in claims],
                 "last_scan": _STATE.get("last_scan") or "",
                 "next_scan": _STATE.get("next_scan") or "",
-                "last_error": _STATE.get("last_error") or ""}
+                "last_error": _STATE.get("last_error") or "",
+                # 知识库概况（引擎降级时 {"available": False}，前端可判空隐藏）
+                "knowledge": zfix_bridge.knowledge_view()}
 
 
 def _test_reset():
@@ -2686,4 +2761,5 @@ def _test_reset():
         _OLD_FORM["form"] = ""
         _REST_LAST_ERR["msg"] = ""
         _IMG_CACHE.clear()
+        zfix_bridge._test_reset()
         globals()["_LOADED"] = True

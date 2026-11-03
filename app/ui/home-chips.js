@@ -13,6 +13,11 @@
  *   不读 app.js 的内部 const（WORKSPACE_MODES / workspaceChoice 都没挂 window，读不到），
  *   只包装 window.pickQuickType + 用 MutationObserver 装饰已渲染的 DOM，
  *   这样 app.js 换模式/切语言重绘时本层自动跟上，且原逻辑一行不动、删掉本文件即回滚。
+ *
+ * 2026-11-03 追加（用户：「点了内容不会变」）：示例预填从「只在框空时填」改成
+ *   「框里那段还是我们填的就换掉」。判据是 data-ccx-auto 记下的原文 —— 用户一改
+ *   就作废，所以自己写的内容永远不会被换掉；没有金句示例的专家则清空上一位的示例，
+ *   占位符交给 app.js 的 `t(flow.goal_hint)`（占位符唯一真源，本层不碰）。
  */
 (function () {
   "use strict";
@@ -38,12 +43,59 @@
 
   var MARK = "data-home-label";
 
+  /* 目标框里哪一段是**我们自动填的示例**：存原文，用户一改就作废。
+   * 有了它，「换专家时该不该动输入框」才判得准 —— 之前只判「框里是否为空」，
+   * 结果选完 快答 预填了一句示例，再点 工程师 就什么都不变（用户 2026-11-03 实拍）。 */
+  var AUTOKEY = "data-ccx-auto";
+
   function tr(key) {
     return typeof window.t === "function" ? window.t(key) : key;
   }
 
   function ico(id) {
     return '<svg class="ico" aria-hidden="true"><use href="#' + id + '"></use></svg>';
+  }
+
+  function autoText(goal) {
+    return goal.getAttribute(AUTOKEY) || "";
+  }
+
+  /* 选人后更新目标框：只碰「空的」或「上一位自动填的」，
+   * 用户自己写的一个字都不动（哪怕只改了一个字，标记也已经作废）。
+   * **占位符不在这里写**：pickType 派发的 change 已经让 app.js 写过
+   * `t(flow.goal_hint)`（app.js 的 onTypeChange），那才是占位符的唯一真源 ——
+   * 本层再写一遍，等于用第二套逻辑盖掉真源（16:47 复查逮出来的自摆乌龙）。 */
+  function fillGoal(id) {
+    var goal = document.getElementById("f-goal");
+    if (!goal) return;
+    var cur = String(goal.value || "").trim();
+    if (cur && cur !== autoText(goal)) return;
+    var conf = HOME[id];
+    if (conf) {
+      var sample = tr(conf.sample);
+      if (cur === sample) return;                 /* 已经就是这一位的话：不重写、不打扰光标 */
+      goal.value = sample;
+      goal.setAttribute(AUTOKEY, sample);
+    } else if (cur) {
+      /* 没有金句示例的专家：把上一位留下的示例清掉。
+       * 清空是安全的 —— 走到这里说明这段文字本来就是自动填的，不是用户写的；
+       * 空出来的那行会显示 app.js 刚写好的 goal_hint 占位符，照样知道该交代什么。 */
+      goal.value = "";
+      goal.removeAttribute(AUTOKEY);
+    }
+    try {
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+    } catch (e) { /* 老内核没有构造器，值已写入即可 */ }
+    goal.focus();
+    try { goal.setSelectionRange(0, 0); } catch (e) { /* 非文本控件忽略 */ }
+  }
+
+  function watchGoal(goal) {
+    if (!goal || goal.__ccxAutoBound) return;
+    goal.__ccxAutoBound = true;
+    goal.addEventListener("input", function () {
+      if (String(goal.value || "").trim() !== autoText(goal)) goal.removeAttribute(AUTOKEY);
+    });
   }
 
   /* 从 onclick="pickQuickType('xxx')" 反解 flow id —— 不依赖 app.js 的内部变量。 */
@@ -77,17 +129,8 @@
     if (typeof orig !== "function" || orig.__homeChips) return;
     var wrapped = function (id) {
       var ret = orig.apply(this, arguments);
-      var conf = HOME[id];
-      var goal = document.getElementById("f-goal");
-      // 只在目标框为空时预填：用户已经写了一句话，就别拿示例覆盖他
-      if (conf && goal && !String(goal.value || "").trim()) {
-        goal.value = tr(conf.sample);
-        try {
-          goal.dispatchEvent(new Event("input", { bubbles: true }));
-        } catch (e) { /* 老内核没有构造器，值已写入即可 */ }
-        goal.focus();
-        try { goal.setSelectionRange(0, 0); } catch (e) { /* 非文本控件忽略 */ }
-      }
+      watchGoal(document.getElementById("f-goal"));
+      fillGoal(id);
       return ret;
     };
     wrapped.__homeChips = true;
@@ -109,6 +152,7 @@
     wrapPick();
     decorate();
     watch();
+    watchGoal(document.getElementById("f-goal"));
   }
 
   if (document.readyState === "loading") {

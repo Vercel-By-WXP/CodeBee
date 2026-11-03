@@ -67,7 +67,11 @@ class TestHeroCoverButton(unittest.TestCase):
                       ".eh-coverbox 里没接 coverBtn：顶部又没有生成入口了")
         # 真图与占位仍在同一容器内，出图后宽度不跳
         self.assertIn('class="eh-cover-img"', body, "封面真图渲染被删了")
-        self.assertIn('<div class="eh-cover">', body, "封面占位渲染被删了")
+        # 2026-11-03 占位重做：竖排书名换成横排书封（coverPhHtml），铺在真图底下
+        self.assertIn("coverPhHtml(", body, "占位封面要经 coverPhHtml 输出（横排书名+底部标签）")
+        self.assertIn('class="eh-cover-hit"', body,
+                      "封面要包进 .eh-cover-hit 可点开大图（用户「点击也不能放大展开」）")
+        self.assertIn("openCoverView(", body, "封面点击必须接 openCoverView 灯箱")
 
     def test_no_button_without_task_id(self):
         body = _hero_paint_body(_read("app.js"))
@@ -117,16 +121,30 @@ class TestHeroCoverButton(unittest.TestCase):
         css = _read("style.css")
         box = _css_rule(css, ".eh-coverbox")
         self.assertIsNotNone(box, "缺少 .eh-coverbox 规则：按钮会脱离封面列排到别处")
-        self.assertRegex(box, r"width:\s*62px",
-                         ".eh-coverbox 宽度必须与封面图一致（62px），否则按钮比封面宽/窄，首屏一眼歪")
+        self.assertRegex(box, r"width:\s*84px",
+                         ".eh-coverbox 宽度必须与 .eh-cover-hit 一致（2026-11-03 起 84px）")
+        hit = _css_rule(css, ".eh-cover-hit")
+        self.assertIsNotNone(hit, "缺少 .eh-cover-hit 规则：可点封面没有可点范围")
+        self.assertRegex(hit, r"cursor:\s*zoom-in", "封面可点开大图，指针要给 zoom-in 提示")
         self.assertIsNotNone(_css_rule(css, ".eh-cover-gen"),
                              "缺少 .eh-cover-gen 按钮样式：会退化成浏览器默认按钮")
         self.assertIsNotNone(_css_rule(css, ".eh-cover-gen.has-img"),
                              "缺少 .eh-cover-gen.has-img：有封面时按钮会和「生成封面」抢注意力")
+        # 灯箱（点封面放大）必须有层与关闭钮样式
+        self.assertIsNotNone(_css_rule(css, ".cv-layer"), "缺少封面灯箱遮罩样式")
+        self.assertIsNotNone(_css_rule(css, ".cv-x"), "缺少灯箱关闭按钮样式")
+        # -webkit-line-clamp 在新 Chrome 已弃用失效（计算值落 flow-root），
+        # 书名截断必须走 max-height 整数行
+        title = _css_rule(css, ".eh-cover-title")
+        self.assertIsNotNone(title, "缺少 .eh-cover-title 书名样式")
+        self.assertNotIn("-webkit-line-clamp", title, "书名截断不许再用已失效的 -webkit-line-clamp")
+        self.assertRegex(title, r"max-height:\s*4\.35em", "书名 max-height 要卡 3 行（1.45 × 3）")
+        self.assertRegex(title, r"white-space:\s*normal",
+                         "外层是 button，必须显式掰回 normal，否则书名被压成一行")
 
         mobile = _read("mobile-workbench.css")
         self.assertRegex(mobile, r"#exp-hero \.eh-cover-gen span\s*\{\s*display:\s*none",
-                         "移动端 48px 封面位放不下「生成封面」四个字，必须隐藏文案只留图标")
+                         "移动端 50px 封面位放不下「生成封面」四个字，必须隐藏文案只留图标")
         self.assertRegex(mobile, r"#exp-hero \.eh-cover-gen \.ico\s*\{[^}]*display:\s*inline-block",
                          "移动端隐藏文案后必须把 .ico 显出来，否则按钮是空的（隐形按钮）")
 

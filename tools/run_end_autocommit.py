@@ -116,13 +116,32 @@ def _load_lock(wd):
 
 
 def _acquire_lock(wd):
-    """锁文件放 .git/ 里（永不入库）。活着直接跳过；超时残留接管。"""
+    """锁文件放 .git/ 里（永不入库）。活着直接跳过；超时残留接管。
+
+    锁里存创建它的 PID：若该进程已退出（如 worker 被强杀、系统重启后忘了删
+    锁），视为残留立即接管，不必干等 LOCK_STALE_S 分钟——避免「锁未超时，
+    跳过」在下一个任务触发时被反复拒之门外（历史实案：E:\\CodeBee\\workspace
+    连续跳过多次）。
+    """
     lock = _load_lock(wd)
     try:
         if lock.exists():
             age = time.time() - lock.stat().st_mtime
             if age < LOCK_STALE_S:
-                return False
+                # 锁未超时：若持有者进程还活着，真在复查，跳过；进程已死则接管。
+                try:
+                    pid = int(lock.read_text(encoding="utf-8").strip() or "0")
+                except (OSError, ValueError):
+                    pid = 0
+                if pid > 0:
+                    try:
+                        os.kill(pid, 0)
+                    except PermissionError:
+                        pid = pid  # 进程存在但无权探信号，视为活着
+                    except OSError:
+                        pid = 0  # 持有者已死，残留锁可接管
+                if pid > 0:
+                    return False
         lock.write_text(str(os.getpid()), encoding="utf-8")
         return True
     except Exception:

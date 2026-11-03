@@ -462,6 +462,15 @@ def _poll(force=False):
         # 微信直连：先让 sidecar 把增量拉成导出 txt，再走统一的文件夹扫描。
         # 拉取失败不吞掉文件夹扫描——已落盘的内容照常摘要。
         try:
+            groups = _norm_groups(cfg.get("groups"))
+        except (TypeError, ValueError):
+            groups = []
+        if not groups:
+            # 直连开启但还没选群 =「配置未完成」，不是运行时错误：只提示一次、
+            # 不进轮询也不刷屏重试（曾有 err.log 每 10 分钟重复 15 次的历史）。
+            out["skipped"] = "no_groups"
+            return out
+        try:
             reader_n = _run_reader(cfg)
             if reader_n:
                 log.info("wxdigest: 微信直连拉到 %d 条新消息", reader_n)

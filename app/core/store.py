@@ -191,6 +191,18 @@ def create_task(payload):
             raise ValueError("未知专家模板：%s" % expert_id)
         if expert.get("flow_id") != flow.get("id"):
             raise ValueError("专家模板 %s 绑定的流程与任务类型不一致" % expert_id)
+    # 专家团（2026-11-03）：团队只在创建时校验一次并钉快照；主责＝第一位成员，
+    # 其流程必须与任务类型一致——否则会出现「说是团任务、其实跑的是别的流程」。
+    team = None
+    team_id = str(payload.get("team_id") or "").strip()
+    if team_id:
+        from . import expert_teams as teams_mod
+        team = teams_mod.get_team(team_id)
+        if team is None:
+            raise ValueError("未知专家团：%s" % team_id)
+        if teams_mod.primary_flow(team) != flow.get("id"):
+            raise ValueError("专家团「%s」的主责专家不属于任务类型 %s"
+                             % (team.get("name") or team_id, flow.get("id")))
     title = _text(payload.get("title"), "title")
     goal = _text(payload.get("goal"), "goal")
     workdir = _text(payload.get("workdir"), "workdir")
@@ -246,6 +258,10 @@ def create_task(payload):
         from . import experts as experts_mod
         task["expert_id"] = expert["id"]
         task["expert_snapshot"] = experts_mod.snapshot(expert)
+    if team:
+        from . import expert_teams as teams_mod
+        task["team_id"] = team["id"]
+        task["team_snapshot"] = teams_mod.snapshot(team)
     plan_mode = payload.get("plan_mode", False)
     if not isinstance(plan_mode, bool):
         raise ValueError("plan_mode 必须是布尔值")

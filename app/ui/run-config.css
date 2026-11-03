@@ -1,0 +1,190 @@
+/* run-config.css（2026-11-03）—— 输入行「运行设置」状态胶囊 + 分段选择浮层
+ *
+ * 背景：编排模式 / 思考程度 / 专家模板 原先塞在「＋ 添加」弹层最底部。弹层高 470px，
+ * 这一段落在 459px 处，必须往下滚才看得见；而且 .cas-row / .cas-label / .cmp-add-settings
+ * 三个类从来没写过样式，一直是浏览器默认布局（标签 14px/400 正文色、三行零间距），
+ * 两个胶囊只有 67px 宽、只露出「手动」「深度」，专家模板却是 180px、12px 的原生 select，
+ * 三种控件三种视觉，所以它看起来既不像可选项、也不像一组设置。
+ *
+ * 现在：输入行上一颗胶囊直接写当前值（自动 · 标准），点开是 4 枚短名分段胶囊 +
+ * 一行整句说明。三个 select 仍是唯一真源，只是被 .rc-src 藏起来当数据源。
+ * 依赖的 token 全部是既有 --panel / --panel2 / --border / --accent，不引入新主题变量。
+ */
+
+.rc-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- 状态胶囊：与「＋ 添加」圆钮、模型 pill 同一套语言（panel2 底 + 999 圆角）---- */
+/* 选择器带 .rc-wrap 前缀不是为了作用域，而是为了特异性：desktop-workbench.css
+ * 有一条 `button:not(.round) { border-radius: var(--workbench-radius-control) }`
+ * （在 @media min-width:901px 里，特异性 0,1,1），单类 .rc-pill 压不过它，
+ * 实测胶囊被压成 8px 直角、和旁边的 999px 圆钮对不上。加一层类改成 0,2,0 才赢。 */
+.rc-wrap .rc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.rc-pill:hover { color: var(--text); border-color: var(--border-strong); }
+.rc-pill[aria-expanded="true"] {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel2));
+}
+.rc-pill-text {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rc-pill .chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  opacity: .6;
+  transform: rotate(90deg);          /* chevron-r 朝下＝「可展开」 */
+  transition: transform .16s, opacity .16s;
+}
+.rc-pill[aria-expanded="true"] .chev { opacity: .95; transform: rotate(-90deg); }
+
+/* ---- 浮层 ---- */
+.rc-pop {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: calc(100% + 10px);
+  width: 300px;
+  max-width: min(300px, calc(100vw - 24px));
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 12px 36px rgba(24, 32, 42, .17);
+}
+.rc-pop.hidden { display: none; }
+
+.rc-head {
+  margin: 0 0 11px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.rc-group + .rc-group {
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.rc-label {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
+/* ---- 分段胶囊：4 枚短名一行排开，点一次就选中（不用开下拉、不用读整句）---- */
+.rc-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+/* 同上：分段胶囊也是 button，单类会被 button:not(.round) 压成 8px 直角 */
+.rc-wrap .rc-chip {
+  min-height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color .14s, background .14s, border-color .14s;
+}
+.rc-chip:hover { color: var(--text); border-color: var(--border-strong); }
+.rc-chip.on {
+  color: color-mix(in srgb, var(--accent) 74%, #0c2f33);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent) 13%, var(--panel));
+  font-weight: 650;
+}
+.rc-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
+}
+
+/* 选中项的整句解释（「自动（推荐）：按任务类型与风险动态决定步骤」→ 后半句） */
+.rc-desc {
+  margin: 7px 0 0;
+  min-height: 15px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.rc-desc:empty { display: none; }
+
+/* 原生 select 退居数据源：仍被 app.js 读写，但不再参与视觉与焦点 */
+.rc-src { display: none; }
+
+/* ---- 专家模板：选项是动态灌入的，保留下拉，但收进同一套胶囊语言 ---- */
+.rc-expert { position: relative; display: block; }
+.rc-expert .expert-pick {
+  width: 100%;
+  max-width: none;
+  min-height: 30px;
+  padding: 5px 28px 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: border-color .14s;
+}
+.rc-expert .expert-pick:hover { border-color: var(--border-strong); }
+.rc-expert .chev {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  opacity: .6;
+  transform: translateY(-50%) rotate(90deg);
+  pointer-events: none;
+}
+
+/* 窄屏：浮层从「贴胶囊向上弹」改成贴底整宽，避免被输入坞裁切 */
+@media (max-width: 720px) {
+  .rc-pop {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 76px;
+    width: auto;
+    max-width: none;
+  }
+  .rc-chips { gap: 5px; }
+  .rc-chip { min-height: 32px; font-size: 13px; }
+}

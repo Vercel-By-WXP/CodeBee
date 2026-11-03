@@ -515,7 +515,7 @@ html[data-skin][data-theme] #sidebar .side-foot {
   body.settings-mode #page-settings select,
   body.settings-mode #page-settings textarea {
     min-height: 44px;
-    font-size: 16px;
+    font-size: 17.5px;
   }
   body.settings-mode #page-settings :is(button, a.button) { min-height: 44px; }
   body:has(#board) #board {
@@ -540,7 +540,7 @@ html[data-skin][data-theme] #sidebar .side-foot {
   #sub-usage #usage-recent .usage-table,
   #sub-usage #usage-dims .usage-table,
   #sub-usage #analytics-cli .usage-table { min-width: 620px; }
-  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px; }
+  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 17.5px; }
   :where(button, .button, .icon-btn, .seg-btn) { min-height: 44px; }
 }
 

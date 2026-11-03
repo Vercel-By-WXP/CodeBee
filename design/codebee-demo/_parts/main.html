@@ -1,0 +1,173 @@
+
+      <!-- ========== 工作台 ========== -->
+      <section class="view view-home active" data-view="home">
+        <div class="scene" aria-hidden="true">
+          <div class="ring r1"></div>
+          <div class="ring r2"></div>
+          <div class="ring r3"></div>
+          <div class="ring r4"></div>
+          <div class="ring r5"></div>
+          <div class="hexfield" id="hexfield"></div>
+        </div>
+        <div class="home">
+          <div class="home-inner">
+            <h1 class="hero-title">把今天要完成的事，交给 <em>CodeBee</em>。</h1>
+            <p class="hero-sub">写作、发布、数据、自动化 —— 一句话说清目标，它自己拆步骤、跑工具、做验收。</p>
+
+            <div class="modes" id="modes">
+              <button class="mode on" type="button" data-fill="把「长夜将明」第 12 章写完，跑一遍评审再给我。">
+                <svg class="ico"><use href="#i-doc"/></svg>写作连载
+              </button>
+              <button class="mode" type="button" data-fill="把这一章的封面和简介同步到番茄和七猫，两边格式不一样。">
+                <svg class="ico"><use href="#i-upload"/></svg>发布投放
+              </button>
+              <button class="mode" type="button" data-fill="大屏上的数据今天没动，先查接口再告诉我结论。">
+                <svg class="ico"><use href="#i-chart"/></svg>数据洞察
+              </button>
+              <button class="mode" type="button" data-fill="每周一 9 点跑一次端口巡检，有变化才提醒我。">
+                <svg class="ico"><use href="#i-clock"/></svg>定时自动化
+              </button>
+              <button class="mode" type="button" data-fill="给大屏加一块今日 KPI，字色对比度要过 3:1。">
+                <svg class="ico"><use href="#i-monitor"/></svg>大屏看板
+              </button>
+              <button class="mode" type="button" data-fill="把详情页的输入框压扁问题修掉，加一条回归测试。">
+                <svg class="ico"><use href="#i-cpu"/></svg>代码改造
+              </button>
+            </div>
+
+            <div class="composer">
+              <div class="mascot" aria-hidden="true">
+                <svg viewBox="0 0 48 48" fill="none">
+                  <ellipse cx="24" cy="27" rx="9.5" ry="12" fill="#f2c14e"/>
+                  <path d="M18.5 18.5c-4.6-3.2-10-2.4-10.8 1.8-.8 4 4.2 6.8 9.2 5.2" stroke="#c9dbe3" stroke-width="2.5" fill="#eaf5fa"/>
+                  <path d="M29.5 18.5c4.6-3.2 10-2.4 10.8 1.8.8 4-4.2 6.8-9.2 5.2" stroke="#c9dbe3" stroke-width="2.5" fill="#eaf5fa"/>
+                  <path d="M15 25.5h18M16 31h16M17.5 36.5h13" stroke="#3a3126" stroke-width="2.2" stroke-linecap="round" opacity=".75"/>
+                  <path d="M24 15V11M20.5 9.6l.8.8M27.5 9.6l-.8.8" stroke="#3a3126" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="20.4" cy="21.6" r="1.5" fill="#2f2a22"/>
+                  <circle cx="27.6" cy="21.6" r="1.5" fill="#2f2a22"/>
+                </svg>
+              </div>
+              <textarea id="home-input" rows="2" placeholder="说说要做什么。比如：把「长夜将明」第 12 章写完，跑一遍评审再给我。"></textarea>
+              <div class="composer-bar">
+                <button class="icon-btn" type="button" data-toast="添加文件、目录或截图"><svg class="ico"><use href="#i-plus"/></svg></button>
+                <button class="chip" type="button" data-toast="技能：写作 / 发布 / 数据 / 自动化">
+                  <svg class="ico"><use href="#i-spark"/></svg>技能
+                </button>
+                <button class="chip model" type="button" data-toast="模型：DeepSeek-V4.1-Flash（可在设置里换）">
+                  <svg class="ico"><use href="#i-hex"/></svg>DeepSeek-V4.1-Flash
+                  <svg class="ico" style="width:12px;height:12px;opacity:.6"><use href="#i-chev-d"/></svg>
+                </button>
+                <button class="icon-btn" type="button" data-toast="按住说话（演示版未接麦克风）"><svg class="ico"><use href="#i-mic"/></svg></button>
+                <button class="send" type="button" id="home-send" aria-label="发送">
+                  <svg class="ico"><use href="#i-up"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="hints">
+              <button class="hint" type="button" data-toast="工作空间：02 写书台">
+                <svg class="ico"><use href="#i-folder"/></svg>选择工作空间
+              </button>
+              <button class="hint" type="button" data-toast="当前为完全访问，可在设置里收紧">
+                <svg class="ico"><use href="#i-info"/></svg>允许完全访问
+              </button>
+            </div>
+            <p class="home-note">内容由 AI 生成，关键结论请核对来源与产物文件。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 任务详情 ========== -->
+      <section class="view view-task" data-view="task">
+        <header class="task-head">
+          <span class="live-dot" id="task-live"></span>
+          <span class="ttl" id="task-title">大屏数据周报</span>
+          <span class="meta" id="task-meta">运行中 · 第 4/6 步 · 1m 29s</span>
+          <span class="sp"></span>
+          <button class="ghost-btn" type="button" data-toast="已复制任务链接"><svg class="ico"><use href="#i-copy"/></svg>复制</button>
+          <button class="ghost-btn" type="button" data-toast="产物：4 个文件已就绪"><svg class="ico"><use href="#i-share"/></svg>产物</button>
+          <button class="ghost-btn" type="button" data-toast="演示版：停止不会真的中断任务"><svg class="ico"><use href="#i-stop"/></svg>停止</button>
+        </header>
+
+        <div class="chat-scroll" id="chat-scroll">
+          <div class="chat-inner" id="chat-stream">
+            <div class="msg-user">
+              <div class="bubble">大屏那页数据一直不动，是不是接口挂了？顺手把 KPI 的字色对比度也调一下。</div>
+            </div>
+
+            <div class="msg-ai">
+              <div class="ai-avatar"><svg class="ico"><use href="#i-bee"/></svg></div>
+              <div class="ai-body">
+                <div class="ai-name">CodeBee <span class="tag">已完成 2 个检查 · 1m 29s</span></div>
+                <div class="ai-text">
+                  <p>两件事分开说，先说结论：<strong>数据没丢，是页面从没拿到过 payload</strong>。KPI 停在 0 是首屏默认值被当成了真实数据。</p>
+                  <ol>
+                    <li>接口是活的：<code>/api/board</code> 冷启 0.29s、热 3ms，返回运行中 1 个任务、今日完成 3 失败 2。</li>
+                    <li>断线或首帧未落定时 <code>render()</code> 不跑，HTML 里的 0 就留在屏上了 —— 读起来像「系统里没数据」。</li>
+                    <li>对比度那条是<strong>假红</strong>：量到的是颜色过渡首帧，关掉 transition 后 20 格全部 ≥ 3:1。</li>
+                  </ol>
+                  <p>我按「先止住误读，再谈美化」的顺序处理：断线时 KPI 显示「—」、面板写「正在重试」，皮肤只改强调色，不再动底色。</p>
+                </div>
+
+                <div class="approve" id="approve">
+                  <div class="ap-title"><svg class="ico"><use href="#i-warn"/></svg>要现在重跑一次首屏自检吗？</div>
+                  <p>会重启本地预览实例一次，不影响你在跑的 8765 生产服务。</p>
+                  <div class="ap-actions">
+                    <button class="btn danger" type="button" id="approve-yes">允许并重跑</button>
+                    <button class="btn" type="button" id="approve-no">先不</button>
+                  </div>
+                </div>
+
+                <div class="tools-row">
+                  <button class="tool" type="button" data-toast="产物：board-fix.md、对比度报告、2 张实拍">
+                    <svg class="ico"><use href="#i-doc"/></svg>查看全部产物 <span class="num">(4)</span>
+                  </button>
+                  <span class="tool-sep"></span>
+                  <button class="tool" type="button" data-toast="9 个来源：app/ui/board.js、core/board.py…">
+                    <svg class="ico"><use href="#i-link"/></svg><span class="num">9</span> 个来源
+                  </button>
+                  <span class="tool-sep"></span>
+                  <span class="tool"><svg class="ico"><use href="#i-spark"/></svg>共耗 <span class="num">0.95</span></span>
+                  <span class="tool-sep"></span>
+                  <span class="tool"><svg class="ico"><use href="#i-hex"/></svg>DeepSeek-V4.1-Flash</span>
+                  <span class="tool" style="margin-left:auto">昨天 17:02</span>
+                </div>
+
+                <div class="artifacts">
+                  <button class="art" type="button" data-toast="打开产物：board-fix.md">
+                    <span class="a-ico"><svg class="ico"><use href="#i-doc"/></svg></span>
+                    <span><span class="a-nm">board-fix.md</span><span class="a-meta">改动说明 · 2.1 KB</span></span>
+                  </button>
+                  <button class="art" type="button" data-toast="打开产物：board-verify-1440.png">
+                    <span class="a-ico"><svg class="ico"><use href="#i-monitor"/></svg></span>
+                    <span><span class="a-nm">board-verify-1440.png</span><span class="a-meta">实拍验收 · 188 KB</span></span>
+                  </button>
+                  <button class="art" type="button" data-toast="打开产物：contrast-report.csv">
+                    <span class="a-ico"><svg class="ico"><use href="#i-chart"/></svg></span>
+                    <span><span class="a-nm">contrast-report.csv</span><span class="a-meta">20 格对比度 · 4 KB</span></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dock">
+          <div class="composer">
+            <textarea id="task-input" rows="1" placeholder="继续说…（Enter 发送，Shift+Enter 换行；可直接粘截图）"></textarea>
+            <div class="composer-bar">
+              <button class="icon-btn" type="button" data-toast="添加文件、目录或截图"><svg class="ico"><use href="#i-plus"/></svg></button>
+              <button class="chip" type="button" data-toast="补充要求会随下一步一起下达">
+                <svg class="ico"><use href="#i-spark"/></svg>补充要求
+              </button>
+              <button class="chip model" type="button" data-toast="模型：DeepSeek-V4.1-Flash">
+                <svg class="ico"><use href="#i-hex"/></svg>DeepSeek-V4.1-Flash
+                <svg class="ico" style="width:12px;height:12px;opacity:.6"><use href="#i-chev-d"/></svg>
+              </button>
+              <button class="send" type="button" id="task-send" aria-label="发送"><svg class="ico"><use href="#i-up"/></svg></button>
+            </div>
+          </div>
+          <p class="dock-hint">它会自己判断该不该继续拆步骤；危险动作会先问你。</p>
+        </div>
+      </section>
+    

@@ -1,0 +1,196 @@
+/* session-usage.css（2026-11-03）—— 对话条上方「本会话用量」一行 + 明细浮层
+ *
+ * 参考桌面端观感：输入框上方一行小字
+ *   「共 521.3K Token · 49.88 · DeepSeek-V4.1-Flash × 3 ⧉」
+ * 点这一行弹出「本会话用量明细」：标题 + 总计 + 一张按模型列的表
+ *   （模型 / 调用 / Token / 费用）。箭头指向的就是这一行。
+ *
+ * 落点：DOM 由 session-usage.js 注入，本文件只管观感。
+ *   - .ssx-wrap : #rd-chat 里 .rd-chat-bar 的**前一个兄弟**（贴在输入卡上方）
+ *   - .ssx-line : 那行汇总（button，可点开明细）
+ *   - .ssx-copy : 行尾复制按钮（只复制这一行文字）
+ *   - .ssx-pop  : 向上展开的明细浮层
+ *
+ * 三条硬约束：
+ *   1. 颜色一律走 token（--panel / --border / --muted / --text / --panel2），
+ *      不写死色值（DESIGN.md §2）；
+ *   2. .rd-chat 是定高 flex 列，滚动区吃 flex:1 1 0 —— 本行必须 flex:0 0 auto，
+ *      否则会被压成 0 高（composer 血账同款）；
+ *   3. 没有数据时整条 display:none（DESIGN.md §0「有事给事，没事不打扰」），
+ *      显示 0 会让「本会话还没调用」读成「花了 0 元」。
+ */
+
+/* ---------------- 1. 汇总行 ---------------- */
+/* 外框吃满对话列，左右内距由 JS 按 .rd-chat-bar 的实测左沿补齐（见 alignBar）：
+ * 工作台布局下输入卡是 `margin: 8px 26px`，base 布局是 `calc(100%-48px) 居中`，
+ * 写死任何一套都会在另一套里错位。 */
+#rd-chat > .ssx-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 0 4px;
+  padding-inline: 0;
+}
+#rd-chat > .ssx-wrap.is-empty { display: none; }
+
+/* 锚点＝文字起点（同时是浮层的定位父级）。-8px 让 hover 药丸向装订线里探一点，
+ * 文字本身仍与输入卡左沿对齐。 */
+.ssx-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: -8px;
+}
+
+.ssx-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: color .14s, background .14s;
+}
+.ssx-line:hover { color: var(--text); background: color-mix(in srgb, var(--panel2) 66%, transparent); }
+.ssx-line:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
+}
+.ssx-line[aria-expanded="true"] { color: var(--text); background: color-mix(in srgb, var(--panel2) 66%, transparent); }
+.ssx-seg { overflow: hidden; text-overflow: ellipsis; }
+.ssx-seg + .ssx-seg::before { content: "·"; margin: 0 6px; color: var(--muted); opacity: .7; }
+.ssx-seg b { font-weight: 600; color: var(--text); }
+
+.ssx-copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .14s, color .14s, background .14s;
+}
+.ssx-copy .ico { width: 13px; height: 13px; }
+#rd-chat > .ssx-wrap:hover .ssx-copy,
+.ssx-copy:focus-visible { opacity: 1; }
+.ssx-copy:hover { color: var(--text); background: color-mix(in srgb, var(--panel2) 80%, transparent); }
+
+/* ---------------- 2. 明细浮层 ---------------- */
+.ssx-pop {
+  position: absolute;
+  left: 8px;                  /* 与文字起点（= 输入卡左沿）对齐，不吃 -8px 的探出量 */
+  bottom: calc(100% + 6px);
+  z-index: 60;
+  width: min(392px, calc(100vw - 24px));
+  padding: 13px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+  /* 模型很多时整块内滚（本轮实测一般 1–3 行）；不裁数据，只封顶高度 */
+  max-height: min(62vh, 440px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ssx-pop.hidden { display: none; }
+
+.ssx-pop-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.ssx-pop-title {
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ssx-pop-total {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ssx-pop-sub {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.ssx-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.ssx-table th {
+  padding: 0 0 6px;
+  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: left;
+  border: 0;
+}
+.ssx-table th.num, .ssx-table td.num { text-align: right; }
+.ssx-table th:first-child, .ssx-table td:first-child { width: 46%; }
+.ssx-table td {
+  padding: 7px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  vertical-align: top;
+}
+.ssx-table td.mdl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ssx-table tbody tr:first-child td { border-top: 1px solid var(--border); }
+
+.ssx-note {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.ssx-note.hidden { display: none; }
+
+/* 窄屏（手机壳）：浮层贴左会顶出视口右沿，改成整行宽度并收窄内距 */
+@media (max-width: 500px) {
+  .ssx-pop { width: calc(100vw - 24px); padding: 12px; }
+  .ssx-table { font-size: 12px; }
+  .ssx-anchor { margin-left: -6px; }
+  .ssx-copy { opacity: 1; }   /* 触屏没有 hover，复制按钮常显 */
+}

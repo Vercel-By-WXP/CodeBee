@@ -94,7 +94,7 @@ a.button.danger:hover {
 }
 
 button.small,
-a.button.small { min-height: 30px; padding: 5px 11px; font-size: 12px; }
+a.button.small { min-height: 30px; padding: 5px 11px; font-size: 13px; }
 
 button.icon-btn,
 button.round,

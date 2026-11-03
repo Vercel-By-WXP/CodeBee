@@ -39,6 +39,46 @@
 <!-- 温度层（2026-11-02）：暖光/暖卡/蜜色胶囊，只调形态与派生色，不定义 token 真源；
      删掉这一行即回滚整层观感（详见 warmth.css 头部注释）。 -->
 <link rel="stylesheet" href="warmth.css">
+<!-- demo-skin.css（2026-11-02）：wb-codebee/蜜巢 皮肤的场景化画布覆盖层（aqua 三层渐变 + 柔光）。
+     只作用 data-skin=wb-codebee，删掉这一行即回滚该皮肤的场景底。 -->
+<link rel="stylesheet" href="demo-skin.css">
+<!-- demo-parity.css（2026-11-02，「完全按照 demo 来」）：骨架/内容列/任务条/输入坞/设置浮层
+     全部对齐 design/codebee-demo。只改排布不改功能，删掉这一行即整层回滚。
+     圆环装饰由 demo-parity.js 注入。 -->
+<link rel="stylesheet" href="demo-parity.css">
+<!-- run-config.css（2026-11-03）：输入行「运行设置」状态胶囊 + 分段选择浮层。
+     编排模式 / 思考程度 / 专家模板 从「＋ 添加」弹层底部挪到这里，删掉即回滚到弹层内。 -->
+<link rel="stylesheet" href="run-config.css">
+<!-- expert-cards.css（2026-11-03）：专家头像（app/ui/avatars/*.webp）+ 市场专家页
+     三列名录行。只覆盖 .exp-av 与 #sub-market 里专家页的卡片形态，删掉即回滚成首字方块卡。 -->
+<link rel="stylesheet" href="expert-cards.css">
+<!-- composer-add-menu.css（2026-11-03）：输入行「＋」菜单改成「一级分类 + 右侧二级浮层」，
+     行为在 composer-add-menu.js；删掉这两行即回滚成旧的单卡弹层。 -->
+<link rel="stylesheet" href="composer-add-menu.css?v=20261103">
+<!-- composer-context.css（2026-11-03）：输入卡上方的「分组页签 + 专家胶囊」行与
+     卡底「文件夹 ▾ / 分支 ▾」上下文条（用户两张桌面端观感截图）。
+     行为在 composer-context.js；删掉这两行即回滚成顶部整条路径 + 底部类型下拉。 -->
+<link rel="stylesheet" href="composer-context.css">
+<!-- workspace-picker.css（2026-11-03）：输入卡底部「工作空间」选择面板改成
+     参考图样式——搜索框 + 工作空间列表（当前项打勾）+ 新建工作空间 / 打开本地
+     文件夹 / 不使用工作空间；命名弹框同层。行为在 workspace-picker.js，
+     删掉这一行 + 对应 script 即回滚成旧的「最近文件夹」下拉。 -->
+<link rel="stylesheet" href="workspace-picker.css?v=20261103">
+<!-- market-v4.css（2026-11-03）：插件市场三页照参考图改版——精选场景卡 + 等高卡片
+     （头像/图标 + 单行简介 + 标签胶囊）+ 单行小字指标，安装入口收敛到右上角 ＋。
+     纯覆盖层，删掉这一行即回滚成 v3 版式。 -->
+<link rel="stylesheet" href="market-v4.css">
+<!-- session-usage.css（2026-11-03）：对话条上方那行「共 X Token · ¥Y · 模型 × N」
+     与点开的「本会话用量明细」浮层（按模型列调用/Token/费用）。
+     行为在 session-usage.js；删掉这两行即整块消失，对话不受影响。 -->
+<link rel="stylesheet" href="session-usage.css?v=20261103">
+<!-- chat-quickprompts.css（2026-11-03）：对话条「快捷指令」圆钮 + 向上弹出的
+     快捷指令菜单（点条目直接发送 / 「编辑 →」填入输入框）。
+     行为在 chat-quickprompts.js；删掉这两行即整块消失，对话不受影响。 -->
+<link rel="stylesheet" href="chat-quickprompts.css?v=20261103">
+<!-- ui-scale.css（2026-11-03）：设置 → 外观 → 「界面字号」整体缩放（90/110/125 三档，
+     CSS zoom 挂 body）。默认 100 不写属性＝零影响；删掉这一行即回滚。 -->
+<link rel="stylesheet" href="ui-scale.css?v=20261103">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
@@ -51,6 +91,9 @@
     document.documentElement.dataset.layout = "workbench";
     document.documentElement.dataset.lang = localStorage.getItem("orch.lang") === "en" ? "en" : "zh";
     document.documentElement.lang = document.documentElement.dataset.lang === "en" ? "en" : "zh-CN";
+    /* 界面字号：非 100 档才写 data-uiscale（100 不写属性＝零影响），与 ui-scale.css 白名单一致 */
+    var _uis = localStorage.getItem("orch.uiscale");
+    if (_uis === "90" || _uis === "110" || _uis === "125") document.documentElement.dataset.uiscale = _uis;
   } catch (e) {
     document.documentElement.dataset.skin = "wb-codebee";
     document.documentElement.dataset.layout = "workbench";
@@ -77,6 +120,10 @@
   <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M9 20v2"/><path d="M15 20v2"/><path d="M2 9h2"/><path d="M2 15h2"/><path d="M20 9h2"/><path d="M20 15h2"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <!-- 「＋」二级菜单专用（2026-11-03）：@ 引用会话 / 耳机 专家 / 四角星 技能 -->
+  <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></symbol>
+  <symbol id="i-headset" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="7" rx="2"/><rect x="17" y="13" width="4" height="7" rx="2"/><path d="M19 20v.5a2.5 2.5 0 0 1-2.5 2.5H13"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
   <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
@@ -211,7 +258,7 @@
       </div>
       <button id="btn-new-task" class="new-task">
         <svg class="ico" aria-hidden="true"><use href="#i-chat"></use></svg>
-        <span class="nt-label">新聊天</span><span class="kbd" aria-hidden="true">N</span>
+        <span class="nt-label" data-i18n="新聊天">新聊天</span><span class="kbd" aria-hidden="true">N</span>
       </button>
       <!-- 快捷导航：只放最常用的全局页（data-page 是页面 id 真源）。
            点它们只换主栏内容，左栏任务树原地不动（app.js switchTab 的 main 形态）；
@@ -358,7 +405,7 @@
       <!-- 概览 / 运行记录 / 自动化 / 通道体检已升为左栏快捷导航（见 .side-quick），此处不再重复挂条目 -->
             <div data-i18n="设置" class="set-group">设置</div>
       <button class="set-item" data-sub="__home" data-search="通用 设置首页 常用 general home settings" title="常用设置的总入口，六张卡片直达" data-i18n-title="常用设置的总入口，六张卡片直达"><svg class="ico" aria-hidden="true"><use href="#i-home"></use></svg><span data-i18n="通用">通用</span></button>
-      <button class="set-item" data-sub="appearance" data-search="外观 主题 皮肤 配色 语言 明暗 字体 桌面蜜蜂 语音 口述 词表 麦克风 appearance theme skin color language dark light font voice dictation lexicon mic" title="换主题、明暗、语言，点一下立刻生效" data-i18n-title="换主题、明暗、语言，点一下立刻生效"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="外观">外观</span></button>
+      <button class="set-item" data-sub="appearance" data-search="外观 主题 皮肤 配色 语言 明暗 字体 字号 桌面蜜蜂 语音 口述 词表 麦克风 appearance theme skin color language dark light font voice dictation lexicon mic" title="换主题、明暗、语言，点一下立刻生效" data-i18n-title="换主题、明暗、语言，点一下立刻生效"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span data-i18n="外观">外观</span></button>
       <button class="set-item" data-sub="tasks" data-search="任务 新建 提示词 运行 编排 工作流 task prompt run workflow" title="新建任务时默认用哪个流程、发到哪个目录、要不要评审" data-i18n-title="新建任务时默认用哪个流程、发到哪个目录、要不要评审"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span data-i18n="任务">任务</span></button>
       <button class="set-item" data-sub="usage" data-search="用量统计 token 成本 台账 调用 usage costs ledger" title="每天用掉多少 token、折多少钱，按模型分开算" data-i18n-title="每天用掉多少 token、折多少钱，按模型分开算"><svg class="ico" aria-hidden="true"><use href="#i-chart"></use></svg><span data-i18n="用量统计">用量统计</span></button>
       <div data-i18n="功能" class="set-group">功能</div>
@@ -476,6 +523,9 @@
 
       <!-- 任务输入卡：真表单 composer 由 showHome 原样搬入（工作台入口）。
            新聊天入口走任务表单页本身（居中问候+类型页签+composer 的简洁形态） -->
+      <!-- 专家团提示条（2026-11-03）：选定团后在这里常显「按 X 团执行 · 主责 Y」，
+           点 × 取消。任务提交时只有 flow 与团主责一致才带 team_id，不会错挂。 -->
+      <div id="mk-team-bar" class="mk-team-bar hidden"></div>
       <div class="rd-input-card">
         <div id="rd-input-slot"></div>
       </div>
@@ -582,11 +632,13 @@
 
     <!-- ================= 设置页（导航在左栏，内容为居中窄栏） ================= -->
     <section id="page-settings" class="page">
-      <!-- 面板右上角的关闭：目标形态里没有顶栏，返回入口就靠这一颗（窄屏仍走左栏返回）。
-           与 #btn-set-back 同一个动作，不新增语义。 -->
+      <!-- 面板右上角的返回入口：目标形态里没有顶栏（窄屏仍走左栏返回）。
+           2026-11-03 用户「右上角X可以不要，换种方式」——小 ✕ 不好点也不直观，
+           换成带文字的「完成」胶囊：退出设置视图，语义同左栏返回箭头。 -->
       <button id="st-close" class="st-close" type="button" onclick="exitSettings()"
-              title="关闭设置" aria-label="关闭设置" data-i18n-title="关闭设置" data-i18n-aria="关闭设置">
-        <svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>
+              title="完成并返回" aria-label="完成并返回" data-i18n-title="完成并返回" data-i18n-aria="完成并返回">
+        <svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg>
+        <span data-i18n="完成">完成</span>
       </button>
       <!-- 设置首页（2026-10-28）：进来的第一屏不再是一堆技术表单，而是六件「你可能想改的事」。
            每张卡只有一句白话 + 一行当前状态；点进去才是具体设置。默认落地页由 enterSettings 定。 -->
@@ -767,60 +819,75 @@
                 <div class="cmp-add-wrap">
                   <button type="button" class="ghost small cmp-add-btn" id="btn-attach" title="添加文件、浏览器、目标与工具" data-i18n-title="添加文件、浏览器、目标与工具" aria-haspopup="menu" aria-expanded="false" aria-controls="cmp-add-menu"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="添加">添加</span></button>
                   <div id="cmp-add-menu" class="cmp-add-menu hidden" role="menu" aria-label="添加" data-i18n-aria="添加">
-                    <div class="cmp-capability-searchbar"><input id="cmp-capability-search" type="search" placeholder="搜索插件、技能、智能体、文件和会话" data-i18n-ph="搜索插件、技能、智能体、文件和会话" aria-label="搜索插件、技能、智能体、文件和会话" data-i18n-aria="搜索插件、技能、智能体、文件和会话"><div class="cmp-capability-filters" role="group" aria-label="分类" data-i18n-aria="分类"><button type="button" data-capability-filter="common" data-i18n="常用">常用</button><button type="button" data-capability-filter="all" data-i18n="全部">全部</button><button type="button" data-capability-filter="file" data-i18n="文件">文件</button><button type="button" data-capability-filter="chat" data-i18n="会话">会话</button><button type="button" data-capability-filter="plugin" data-i18n="插件">插件</button><button type="button" data-capability-filter="skill" data-i18n="技能">技能</button><button type="button" data-capability-filter="agent" data-i18n="智能体">智能体</button></div></div>
-                    <div class="cmp-add-kicker" data-i18n="添加到任务">添加到任务</div>
-                    <button type="button" class="cmp-add-item" data-add-action="file" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-paperclip"></use></svg><span><b data-i18n="文件和文件夹">文件和文件夹</b><small data-i18n="上传文件，或选择一个文件夹">上传文件，或选择一个文件夹</small></span></button>
-                    <button type="button" class="cmp-add-item" data-add-action="workflow" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="工作流">工作流</b><small data-i18n="选择任务流程">选择任务流程</small></span></button>
-                    <button type="button" class="cmp-add-item" data-add-action="browser" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-browser"></use></svg><span><b data-i18n="浏览器工作区">浏览器工作区</b><small data-i18n="在内置浏览器中打开 Google">在内置浏览器中打开 Google</small></span></button>
-                    <button type="button" class="cmp-add-item" data-add-action="goal" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-baton"></use></svg><span><b data-i18n="目标">目标</b><small data-i18n="设置需要多轮推进的长目标">设置需要多轮推进的长目标</small></span></button>
-                    <button type="button" class="cmp-add-item" data-add-action="plan" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg><span><b data-i18n="计划模式">计划模式</b><small id="cmp-plan-hint" data-i18n="开启计划模式">开启计划模式</small></span><span class="cmp-add-check" id="cmp-plan-check" aria-hidden="true"></span></button>
-                    <button type="button" class="cmp-add-item" data-add-action="draw" role="menuitem"><svg class="ico" aria-hidden="true"><use href="#i-palette"></use></svg><span><b data-i18n="绘图">绘图</b><small data-i18n="绘制草图并作为附件添加">绘制草图并作为附件添加</small></span></button>
-                    <!-- 主输入行原先并排挤着「类型 / 专家模板 / 编排模式 / 思考程度 / 添加 / 发送」六个控件，
-                         普通人根本不知道该动哪个。后三项下沉到这里：原件与 id 全保留（取值、联动、
-                         refreshEstimate 一律照旧），默认值本来就能直接跑。 -->
-                    <div class="cmp-add-divider"></div>
-                    <div class="cmp-add-kicker" data-i18n="运行设置">运行设置</div>
-                    <div class="cmp-add-settings">
-                      <div class="cas-row">
-                        <span class="cas-label" data-i18n="编排模式">编排模式</span>
-                        <span class="cmp-sel" data-i18n-title="编排模式" title="编排模式">
-                          <select id="f-mode" class="cmp-sel-native" aria-label="编排模式" data-i18n-aria="编排模式">
-                            <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
-                            <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
-                            <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
-                            <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
-                          </select>
-                          <span class="cmp-sel-face" id="f-mode-face" data-i18n="自动">自动</span>
-                          <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-                        </span>
-                      </div>
-                      <div class="cas-row">
-                        <span class="cas-label" data-i18n="思考程度">思考程度</span>
-                        <span class="cmp-sel" data-i18n-title="思考程度" title="思考程度">
-                          <select id="f-thinking" class="cmp-sel-native" aria-label="思考程度" data-i18n-aria="思考程度">
-                            <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
-                            <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
-                            <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
-                            <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
-                          </select>
-                          <span class="cmp-sel-face" id="f-thinking-face" data-i18n="标准">标准</span>
-                          <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
-                        </span>
-                      </div>
-                      <div class="cas-row">
-                        <span class="cas-label" data-i18n="专家模板">专家模板</span>
+                    <div id="cmp-add-list" class="cmp-add-list" role="presentation"></div>
+                    <div id="cmp-add-flyout" class="cmp-add-flyout hidden" role="group" aria-label="更多选项" data-i18n-aria="更多选项">
+                      <button type="button" class="cmp-fly-back" data-cmp-back="1" aria-label="返回" data-i18n-aria="返回"><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg><span data-i18n="返回">返回</span></button>
+                      <div class="cmp-fly-head"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg><input id="cmp-capability-search" type="search" placeholder="搜索专家" data-i18n-ph="搜索专家" aria-label="搜索专家" data-i18n-aria="搜索专家"></div>
+                      <div id="cmp-fly-list" class="cmp-fly-list"></div>
+                      <div id="cmp-fly-foot" class="cmp-fly-foot hidden"></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 运行设置：原先压在「＋ 添加」弹层最底部（弹层高 470px，它落在 459px 处，
+                     要往下滚才看得见），三项又全是原生下拉，选项还是「自动（推荐）：按任务类型
+                     与风险动态决定步骤」这种整句。改成输入行一颗状态胶囊：胶囊上直接写当前值
+                     （自动 · 标准），点开就是分段胶囊，一眼能选、一点即中。
+                     三个 select 仍是唯一真源（id / 选项 / data-i18n 一字未改），胶囊只写它们的
+                     value 再派发 change，因此取值、onTypeChange、refreshEstimate、模板回填
+                     全部照旧。样式与交互见 run-config.css / run-config.js。 -->
+                <div class="rc-wrap">
+                  <button type="button" class="rc-pill" id="rc-pill" aria-haspopup="dialog" aria-expanded="false" aria-controls="rc-pop" title="运行设置" data-i18n-title="运行设置">
+                    <span class="rc-pill-text" id="rc-pill-text">自动 · 标准</span>
+                    <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                  </button>
+                  <div id="rc-pop" class="rc-pop hidden" role="dialog" aria-label="运行设置" data-i18n-aria="运行设置">
+                    <div class="rc-head" data-i18n="运行设置">运行设置</div>
+
+                    <div class="rc-group">
+                      <div class="rc-label" id="rc-mode-label" data-i18n="编排模式">编排模式</div>
+                      <div class="rc-chips" id="rc-chips-mode" role="radiogroup" aria-labelledby="rc-mode-label"></div>
+                      <p class="rc-desc" id="rc-mode-desc"></p>
+                      <span class="cmp-sel rc-src">
+                        <select id="f-mode" class="cmp-sel-native" aria-label="编排模式" data-i18n-aria="编排模式">
+                          <option data-i18n="自动（推荐）：按任务类型与风险动态决定步骤" value="auto">自动（推荐）：按任务类型与风险动态决定步骤</option>
+                          <option data-i18n="快速：少步骤优先，先做确定性验收" value="fast">快速：少步骤优先，先做确定性验收</option>
+                          <option data-i18n="专家：完整规划、多评审、失败修复与换将" value="expert">专家：完整规划、多评审、失败修复与换将</option>
+                          <option data-i18n="手动：自行指定实现者与评审组" value="manual">手动：自行指定实现者与评审组</option>
+                        </select>
+                        <span class="cmp-sel-face" id="f-mode-face" data-i18n="自动">自动</span>
+                      </span>
+                    </div>
+
+                    <div class="rc-group">
+                      <div class="rc-label" id="rc-thinking-label" data-i18n="思考程度">思考程度</div>
+                      <div class="rc-chips" id="rc-chips-thinking" role="radiogroup" aria-labelledby="rc-thinking-label"></div>
+                      <p class="rc-desc" id="rc-thinking-desc"></p>
+                      <span class="cmp-sel rc-src">
+                        <select id="f-thinking" class="cmp-sel-native" aria-label="思考程度" data-i18n-aria="思考程度">
+                          <option data-i18n="标准：平衡质量与速度" value="standard" selected>标准：平衡质量与速度</option>
+                          <option data-i18n="自动：随任务难度调整" value="auto">自动：随任务难度调整</option>
+                          <option data-i18n="快速：少推理、优先响应" value="low">快速：少推理、优先响应</option>
+                          <option data-i18n="深度：更多推理与检查" value="high">深度：更多推理与检查</option>
+                        </select>
+                        <span class="cmp-sel-face" id="f-thinking-face" data-i18n="标准">标准</span>
+                      </span>
+                    </div>
+
+                    <div class="rc-group">
+                      <div class="rc-label" id="rc-expert-label" data-i18n="专家模板">专家模板</div>
+                      <span class="rc-expert">
                         <select id="f-expert" class="expert-pick" aria-label="专家模板" data-i18n-aria="专家模板" title="可选：套用专家工作方法与交付约束" data-i18n-title="可选：套用专家工作方法与交付约束">
                           <option value="">通用执行</option>
                         </select>
-                      </div>
+                        <svg class="ico chev" aria-hidden="true"><use href="#i-chevron-r"></use></svg>
+                      </span>
                     </div>
-                    <div class="cmp-add-divider"></div>
-                    <div id="cmp-capability-items"></div>
                   </div>
                 </div>
               </div>
               <!-- 右组（参考主流输入框）：只留「对话模型偏好（仅直接执行时出现）+ 发送」。
-                   编排模式 / 思考程度 / 专家模板已下沉到左下「＋ 添加」的运行设置，主输入行不再挤六个控件。 -->
+                   编排模式 / 思考程度 / 专家模板收在左下「运行设置」胶囊里（run-config.js），
+                   主输入行不再挤六个控件，也不用进「＋ 添加」弹层翻找。 -->
               <div class="cmp-send">
                 <!-- 厂商/模型 pill（仅「直接执行」类型显示）：点开厂商→模型两级
                      钻取菜单，选定写回隐藏 select 真源 -->
@@ -877,7 +944,7 @@
               <div class="field"><label data-i18n="上下文">上下文</label><textarea id="f-context" rows="2" placeholder="背景信息、约束、相关文件（可空）" data-i18n-ph="背景信息、约束、相关文件（可空）"></textarea></div>
               <div class="grid-2">
                 <div class="field"><label data-i18n="验收标准（每行一条）">验收标准（每行一条）</label><textarea id="f-acceptance" rows="3" placeholder="例如：测试全部通过&#10;例如：产出文件存在" data-i18n-ph="例如：测试全部通过&#10;例如：产出文件存在"></textarea></div>
-                <div class="field"><label class="checkline"><input id="f-approval-required" type="checkbox"> 完成前需要人工审批</label><p class="hint">启用后，Git 合并和发布会等待审批记录。</p></div>
+                <div class="field"><label class="checkline"><input id="f-approval-required" type="checkbox"> <span data-i18n="完成前需要人工审批">完成前需要人工审批</span></label><p class="hint" data-i18n="启用后，Git 合并和发布会等待审批记录。">启用后，Git 合并和发布会等待审批记录。</p></div>
               </div>
 
               <div class="grid-2">
@@ -990,7 +1057,10 @@
             <button data-i18n="分享页" id="btn-share" class="ghost hidden" data-i18n-title="生成自包含分享页（单文件 HTML），可直接发给他人查看任务成果" title="生成自包含分享页（单文件 HTML），可直接发给他人查看任务成果">分享页</button>
             <button data-i18n="删除记录" id="btn-delete" class="danger hidden" data-i18n-title="删除任务及其全部运行记录（含日志与报告），不可恢复；工作目录里的文件不会删" title="删除任务及其全部运行记录（含日志与报告），不可恢复；工作目录里的文件不会删">删除记录</button>
             <button data-i18n="✉ 继续对话" id="btn-talk" class="ghost hidden" data-i18n-title="人工检查有问题？告诉主智能体，由它判断怎么引导执行" title="人工检查有问题？告诉主智能体，由它判断怎么引导执行">✉ 继续对话</button>
-            <button id="rd-more-toggle" class="rd-more-toggle" type="button" aria-label="更多任务信息" data-i18n-aria="更多任务信息" aria-expanded="false" aria-controls="rd-meta-popover" title="更多任务信息" data-i18n-title="更多任务信息">•••</button>
+            <!-- 任务信息（运行/步骤/成本/tokens + 概览）：2026-11-03 用户「任务信息太长了，
+                 放到右上角点了按钮弹出框看」——从右栏面板里搬出来，改成这枚仪表盘图标
+                 开合的浮层，面板因此不再被一大串统计撑长。 -->
+            <button id="rd-meta-toggle" class="rd-meta-toggle ghost" type="button" aria-label="任务信息" aria-expanded="false" aria-controls="rd-meta-popover" title="任务信息：运行 / 步骤 / 成本 / tokens 与概览" data-i18n-title="任务信息：运行 / 步骤 / 成本 / tokens 与概览" data-i18n-aria="任务信息"><svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg></button>
             <button id="rd-context-toggle" class="rd-context-toggle ghost" type="button" aria-label="任务动态" aria-expanded="false" aria-controls="rd-context" title="任务动态" data-i18n-title="任务动态" data-i18n-aria="任务动态"><svg class="ico" aria-hidden="true"><use href="#i-tasks"></use></svg></button>
           </div>
           <!-- 人工干预（非直连任务）：运行中=递话入箱，下一步开始前送达主智能体；
@@ -1005,8 +1075,49 @@
             </div>
             <input id="rd-talk-file" type="file" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.txt,.md,.markdown,.csv,.json,.log,.py,.js,.ts,.html,.css,.xml,.yml,.yaml,.toml,.pdf,.docx,.xlsx,.pptx" class="hidden">
           </div>
-          <div id="rd-meta-popover" class="rd-meta-popover hidden" role="dialog" aria-label="任务信息" data-i18n-aria="任务信息">
-            <div class="rd-meta-popover-head"><span data-i18n="任务信息">任务信息</span><button id="rd-more-close" type="button" class="ghost" aria-label="关闭" data-i18n-aria="关闭">×</button></div>
+        </div>
+        <div id="rd-context" class="rd-context hidden" aria-label="任务动态" data-i18n-aria="任务动态"></div>
+        <!-- 页签行已整行取消（用户「不要这一行，全部放到右边，用几个点点点代表按钮」）：
+             三个主分区 + 五个低频分区全部收进右上角「⋯」菜单。
+             DOM 上仍是 #rd-tabs 的后代 —— applyRdTabs 的 `#rd-tabs .rd-tab` 查询、
+             点击委托、aria 与页签键盘左右切换全部照旧，不需要改任何逻辑。 -->
+        <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
+          <div class="rd-tabs-more-wrap" id="rd-tabs-more-wrap">
+            <!-- 三点按钮保留在 DOM 里但 CSS 隐藏（.rd-more-btn{display:none}），
+                 面板改常驻（is-pinned）。保留按钮是为了「删掉 is-pinned + 恢复
+                 hidden 类」就能一键退回弹出式，不用改 JS。 -->
+            <button type="button" id="rd-tabs-more-btn" class="rd-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="rd-tabs-more" aria-label="切换分区" data-i18n-aria="切换分区" onclick="toggleRdTabsMore()">
+              <svg class="ico dots" aria-hidden="true" viewBox="0 0 24 24" stroke-width="3.1"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+            </button>
+            <div id="rd-tabs-more" class="rd-tabs-more is-pinned" role="none">
+              <button id="rd-tab-chat" class="rd-tab" role="tab" aria-controls="rd-pane-chat" aria-selected="false" tabindex="-1" data-tab="chat" data-i18n="对话"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-chat"></use></svg>对话<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-steps" class="rd-tab" role="tab" aria-controls="rd-pane-steps" aria-selected="false" tabindex="-1" data-tab="steps" data-i18n="步骤"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-tasks"></use></svg>步骤<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-result" class="rd-tab" role="tab" aria-controls="rd-pane-result" aria-selected="false" tabindex="-1" data-tab="result" data-i18n="成果"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-file-text"></use></svg>成果<span class="rd-badge hidden"></span></button>
+              <div class="rd-more-sep" role="none"></div>
+              <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-preview" class="rd-tab" role="tab" aria-controls="rd-pane-preview" aria-selected="false" tabindex="-1" data-tab="preview" data-i18n="预览"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-clapper"></use></svg>预览<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-git" class="rd-tab" role="tab" aria-controls="rd-pane-git" aria-selected="false" tabindex="-1" data-tab="git" data-i18n="Git"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>Git<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-bible" class="rd-tab" role="tab" aria-controls="rd-pane-bible" aria-selected="false" tabindex="-1" data-tab="bible" data-i18n="设定集"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-book"></use></svg>设定集<span class="rd-badge hidden"></span></button>
+              <button id="rd-tab-bookmeta" class="rd-tab" role="tab" aria-controls="rd-pane-bookmeta" aria-selected="false" tabindex="-1" data-tab="bookmeta" data-i18n="作品信息"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-idcard"></use></svg>作品信息<span class="rd-badge hidden"></span></button>
+              <!-- 「操作」按钮区：demo-parity.js 把任务条上的按钮搬进这块（cb-actions-shelf），
+                   常驻，不进任何浮层——用户「常用的还是放到一起」。
+                   任务信息（统计/时限/概览）2026-11-03 已搬去右上角仪表盘按钮的浮层，
+                   面板里不再有那一大串键值行。 -->
+              <div class="rd-more-sep" role="none"></div>
+              <div id="rd-actions-shelf" class="cb-actions-shelf" role="none"></div>
+            </div>
+          </div>
+        </div>
+        <!-- 任务信息浮层（2026-11-03 用户「放到右上角点了按钮弹出框看」）：
+             挂在 #rd-rail 下而不是 #rd-tabs-more 里——后者是 188 宽的常驻面板，
+             带 overflow-y:auto，浮层放进去会被裁掉。定位与「任务动态」同一个落点
+             （task bar 下方右上角），两者互斥开启。默认 .hidden，由 #rd-meta-toggle 开合。 -->
+        <div id="rd-meta-popover" class="rd-meta-popover hidden" role="dialog" aria-label="任务信息" data-i18n-aria="任务信息">
+          <div class="rd-meta-popover-head">
+            <svg class="ico" aria-hidden="true"><use href="#i-gauge"></use></svg>
+            <span data-i18n="任务信息">任务信息</span>
+          </div>
+          <div id="rd-meta-body" class="rd-meta-body">
             <div id="rd-meta" class="stats rd-meta-strip"></div>
             <div id="rd-timeout-row" class="rd-timeout-row hidden">
               <label for="rd-timeout" data-i18n="任务总时限">任务总时限</label>
@@ -1014,26 +1125,13 @@
             </div>
             <div id="rd-overview" class="rd-overview hidden" aria-live="polite"></div>
           </div>
-        </div>
-        <div id="rd-context" class="rd-context hidden" aria-label="任务动态" data-i18n-aria="任务动态"></div>
-        <div id="rd-tabs" class="rd-tabs" role="tablist" data-i18n-aria="详情分区">
-          <button id="rd-tab-chat" class="rd-tab" role="tab" aria-controls="rd-pane-chat" aria-selected="false" tabindex="-1" data-tab="chat" data-i18n="对话"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-chat"></use></svg>对话<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-steps" class="rd-tab" role="tab" aria-controls="rd-pane-steps" aria-selected="false" tabindex="-1" data-tab="steps" data-i18n="步骤"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-tasks"></use></svg>步骤<span class="rd-badge hidden"></span></button>
-          <button id="rd-tab-result" class="rd-tab" role="tab" aria-controls="rd-pane-result" aria-selected="false" tabindex="-1" data-tab="result" data-i18n="成果"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-file-text"></use></svg>成果<span class="rd-badge hidden"></span></button>
-          <!-- 低频分区收进「更多」：蜂巢/预览/Git/圣经/作品信息。按钮原件仍在 #rd-tabs 内，
-               所以 applyRdTabs 的显隐与徽标查询、点击委托、键盘切换全部照旧。 -->
-          <div class="rd-tabs-more-wrap" id="rd-tabs-more-wrap">
-            <button type="button" id="rd-tabs-more-btn" class="rd-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="rd-tabs-more" onclick="toggleRdTabsMore()">
-              <span id="rd-tabs-more-label" data-i18n="更多">更多</span><svg class="ico chev" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
-            </button>
-            <div id="rd-tabs-more" class="rd-tabs-more hidden" role="none">
-              <button id="rd-tab-hive" class="rd-tab" role="tab" aria-controls="rd-pane-hive" aria-selected="false" tabindex="-1" data-tab="hive" data-i18n="蜂巢"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-bee"></use></svg>蜂巢<span class="rd-badge hidden"></span></button>
-              <button id="rd-tab-preview" class="rd-tab" role="tab" aria-controls="rd-pane-preview" aria-selected="false" tabindex="-1" data-tab="preview" data-i18n="预览"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-clapper"></use></svg>预览<span class="rd-badge hidden"></span></button>
-              <button id="rd-tab-git" class="rd-tab" role="tab" aria-controls="rd-pane-git" aria-selected="false" tabindex="-1" data-tab="git" data-i18n="Git"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-git-branch"></use></svg>Git<span class="rd-badge hidden"></span></button>
-              <button id="rd-tab-bible" class="rd-tab" role="tab" aria-controls="rd-pane-bible" aria-selected="false" tabindex="-1" data-tab="bible" data-i18n="设定集"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-book"></use></svg>设定集<span class="rd-badge hidden"></span></button>
-              <button id="rd-tab-bookmeta" class="rd-tab" role="tab" aria-controls="rd-pane-bookmeta" aria-selected="false" tabindex="-1" data-tab="bookmeta" data-i18n="作品信息"><svg class="ico tab-ico" aria-hidden="true"><use href="#i-idcard"></use></svg>作品信息<span class="rd-badge hidden"></span></button>
-            </div>
-          </div>
+          <!-- 瘦身开关（2026-11-03 用户「请一起优化」）：DAG / 运行时能力证据 / 任务契约
+               是三块诊断级内容（本任务实测合计 ~1400px），默认收起，需要时再摊开。
+               展开态由 #rd-meta-popover.is-full 控制，收浮层时自动复位。 -->
+          <button type="button" id="rd-meta-more" class="rd-meta-more" aria-expanded="false" aria-controls="rd-overview">
+            <span data-i18n="运行详情（DAG / 能力证据 / 契约）">运行详情（DAG / 能力证据 / 契约）</span>
+            <svg class="ico" aria-hidden="true"><use href="#i-chevrons-d"></use></svg>
+          </button>
         </div>
         <!-- 直连任务「对话为主」导航：常规页签条收起（chat-mode），这里给按需打开
              其它分区的小按钮 + 非对话分区时的「返回对话」入口 -->
@@ -1190,26 +1288,29 @@
             </div>
           </div>
           <div id="rd-pane-steps" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-steps" data-pane="steps">
-            <section id="rd-checkpoints" class="rd-checkpoints hidden" aria-live="polite">
-              <div class="rd-checkpoints-head">
-                <strong data-i18n="文件检查点">文件检查点</strong>
-                <button id="rd-checkpoints-load" type="button" class="ghost small" onclick="loadRunCheckpoints()" data-i18n="查看检查点">查看检查点</button>
-                <button id="rd-checkpoints-restore" type="button" class="danger small hidden" onclick="restoreRunCheckpoints()" data-i18n="恢复文件">恢复文件</button>
-              </div>
-              <div id="rd-checkpoints-body" class="hint"></div>
-            </section>
-            <section id="rd-project-memory" class="rd-project-memory hidden" aria-live="polite">
-              <div class="rd-checkpoints-head">
-                <strong data-i18n="项目记忆治理">项目记忆治理</strong>
-                <button id="rd-project-memory-refresh" type="button" class="ghost small" onclick="loadProjectMemory()" data-i18n="刷新记忆">刷新记忆</button>
-                <button id="rd-project-memory-preview" type="button" class="ghost small" onclick="previewProjectMemory()" data-i18n="查看注入预览">查看注入预览</button>
-              </div>
-              <div id="rd-project-memory-body" class="hint"></div>
-            </section>
-            <div id="rd-plan" class="hidden"></div>
-            <div id="rd-routing" class="rd-routing hidden"></div>
-            <div id="rd-chapters" class="rd-chapters hidden"></div>
             <div id="rd-steps" class="steps"></div>
+            <div id="rd-chapters" class="rd-chapters hidden"></div>
+            <details id="rd-diag" class="rd-diag">
+              <summary><span class="rd-diag-title" data-i18n="运行诊断与调度">运行诊断与调度</span><span class="rd-diag-hint" data-i18n="检查点 · 记忆 · 选路，按需展开">检查点 · 记忆 · 选路，按需展开</span></summary>
+              <section id="rd-checkpoints" class="rd-checkpoints hidden" aria-live="polite">
+                <div class="rd-checkpoints-head">
+                  <strong data-i18n="文件检查点">文件检查点</strong>
+                  <button id="rd-checkpoints-load" type="button" class="ghost small" onclick="loadRunCheckpoints()" data-i18n="查看检查点">查看检查点</button>
+                  <button id="rd-checkpoints-restore" type="button" class="danger small hidden" onclick="restoreRunCheckpoints()" data-i18n="恢复文件">恢复文件</button>
+                </div>
+                <div id="rd-checkpoints-body" class="hint"></div>
+              </section>
+              <section id="rd-project-memory" class="rd-project-memory hidden" aria-live="polite">
+                <div class="rd-checkpoints-head">
+                  <strong data-i18n="项目记忆治理">项目记忆治理</strong>
+                  <button id="rd-project-memory-refresh" type="button" class="ghost small" onclick="loadProjectMemory()" data-i18n="刷新记忆">刷新记忆</button>
+                  <button id="rd-project-memory-preview" type="button" class="ghost small" onclick="previewProjectMemory()" data-i18n="查看注入预览">查看注入预览</button>
+                </div>
+                <div id="rd-project-memory-body" class="hint"></div>
+              </section>
+              <div id="rd-routing" class="rd-routing hidden"></div>
+              <div id="rd-plan" class="hidden"></div>
+            </details>
           </div>
           <div id="rd-pane-result" class="rd-pane" role="tabpanel" aria-labelledby="rd-tab-result" data-pane="result">
             <div id="rd-outcome" class="rd-outcome hidden"></div>
@@ -1304,6 +1405,7 @@
         </div>
         <p data-i18n="定时扫描禅道多个产品的激活 Bug：先按模块路由/AI 排查定责（前端/后端/双端/非我方），我方端自动创建代码修复任务（实现→验证→评审→修复），修完自动合并并 resolve 或转派对应负责人；测试指错人也按排查结论改派。" class="hint">定时扫描禅道多个产品的激活 Bug：先按模块路由/AI 排查定责（前端/后端/双端/非我方），我方端自动创建代码修复任务（实现→验证→评审→修复），修完自动合并并 resolve 或转派对应负责人；测试指错人也按排查结论改派。</p>
         <div id="zentao-status" class="hint zt-status"></div>
+        <div id="zt-knowledge" class="zt-kb hidden"></div>
         <h3 data-i18n="禅道连接" class="sec-title">禅道连接</h3>
         <div class="zt-grid">
           <label data-i18n="禅道地址">禅道地址</label><input id="zt-base-url" type="text" placeholder="https://zentao.example.com（子目录部署带子目录）" data-i18n-ph="https://zentao.example.com（子目录部署带子目录）">
@@ -1348,6 +1450,9 @@
             </div>
             <button id="btn-usage-export" class="ghost small" data-i18n-title="导出当前范围的台账明细（CSV，Excel 可开）" title="导出当前范围的台账明细（CSV，Excel 可开）">
               <svg class="ico" aria-hidden="true"><use href="#i-arrow-up"></use></svg><span data-i18n="导出">导出</span>
+            </button>
+            <button id="btn-usage-clear" class="ghost small" data-i18n-title="清空用量台账并归档到数据目录：统计全部归零，从现在重新累计" title="清空用量台账并归档到数据目录：统计全部归零，从现在重新累计">
+              <svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg><span data-i18n="清空">清空</span>
             </button>
             <button id="btn-usage-refresh" class="icon-btn" title="重新拉取" aria-label="重新拉取" data-i18n-aria="重新拉取" data-i18n-title="重新拉取">
               <svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg>
@@ -1743,8 +1848,8 @@
             与</span><b data-i18n="运行中自动学到的教训">运行中自动学到的教训</b><span data-i18n="（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。">（每次任务结束由编排者复盘本次评审暴露的问题，去重沉淀，下次同类任务自动带上）——越跑越好，无需人工维护。</span></p>
           <h3 class="sec-title"><span data-i18n="Agent Skills（开源标准）">Agent Skills（开源标准）</span></h3>
           <p class="hint" data-i18n="导入社区开源的 Agent Skills 技能包（SKILL.md 标准，如 anthropics/skills）：填文件夹或 .zip 的本地路径，一次可含多个技能。导入时剥离脚本/钩子等可执行件并做静态安检，导入后默认停用——审阅确认后再启用，启用即自动注入同类任务的提示词。">导入社区开源的 Agent Skills 技能包（SKILL.md 标准，如 anthropics/skills）：填文件夹或 .zip 的本地路径，一次可含多个技能。导入时剥离脚本/钩子等可执行件并做静态安检，导入后默认停用——审阅确认后再启用，启用即自动注入同类任务的提示词。</p>
-          <div style="display:flex;gap:8px;align-items:center;margin:4px 0 10px">
-            <input id="agentskill-path" type="text" style="flex:1;min-width:240px" placeholder="例如 E:\downloads\skills-main 或 E:\downloads\skills-main.zip" data-i18n-ph="例如 E:\downloads\skills-main 或 E:\downloads\skills-main.zip">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 10px">
+            <input id="agentskill-path" type="text" style="flex:1;min-width:0" placeholder="例如 E:\downloads\skills-main 或 E:\downloads\skills-main.zip" data-i18n-ph="例如 E:\downloads\skills-main 或 E:\downloads\skills-main.zip">
             <button class="ghost small" onclick="agentSkillImport()" data-i18n="导入 Agent Skills">导入 Agent Skills</button>
           </div>
           <div id="agent-skills" class="cards" style="margin-bottom:14px"></div>
@@ -1800,20 +1905,44 @@
         </div>
         <span id="mk-count" class="pm-count mk-count-v3"></span>
 
-        <!-- 专家页签：22 位流程专家的目录（+ 添加 = 添加专家弹层，与左栏同一套名单） -->
+        <!-- 专家页签：22 位流程专家的目录（+ 添加 = 添加专家弹层，与左栏同一套名单）
+             v4.1（2026-11-03）：加「专家 / 专家团」子页签 + 排序（综合/名称）。 -->
         <div id="mk-pane-expert" class="mk-pane hidden">
-          <div class="mk-featrow">
-            <h3 class="mk-h" id="mk-feat-title" data-i18n="精选专家">精选专家</h3>
-            <span class="grow"></span>
-            <button class="ghost small" id="mk-shuffle"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="换一批">换一批</span></button>
+          <div class="mk-subtabs" id="mk-exp-tabs" role="tablist" aria-label="专家视图" data-i18n-aria="专家视图">
+            <button class="mk-subtab active" data-x="expert" role="tab" aria-selected="true" data-i18n="专家">专家</button>
+            <button class="mk-subtab" data-x="team" role="tab" aria-selected="false" data-i18n="专家团">专家团</button>
           </div>
-          <div id="mk-feat" class="mk-grid-v3"></div>
-          <div class="mk-featrow" style="margin-top:20px">
-            <h3 class="mk-h" data-i18n="全部专家">全部专家</h3>
-            <div class="mk-chips" id="mk-chips-expert"></div>
+          <div id="mk-exp-view-expert">
+            <div class="mk-featrow">
+              <h3 class="mk-h" id="mk-feat-title" data-i18n="精选专家">精选专家</h3>
+              <span class="grow"></span>
+              <button class="ghost small" id="mk-shuffle"><svg class="ico" aria-hidden="true"><use href="#i-refresh"></use></svg><span data-i18n="换一批">换一批</span></button>
+            </div>
+            <div id="mk-feat" class="mk-promo"></div>
+            <div class="mk-featrow" style="margin-top:20px">
+              <h3 class="mk-h" data-i18n="全部专家">全部专家</h3>
+              <div class="mk-chips" id="mk-chips-expert"></div>
+              <span class="grow"></span>
+              <div id="mk-sort-expert" class="seg mk-sort" role="group" aria-label="排序" data-i18n-aria="排序">
+                <button class="seg-btn active" data-s="default" data-i18n="综合">综合</button>
+                <button class="seg-btn" data-s="name" data-i18n="名称">名称</button>
+              </div>
+            </div>
+            <div id="mk-grid-expert" class="exp-list"></div>
+            <div class="mk-empty hidden" id="mk-empty-expert"></div>
           </div>
-          <div id="mk-grid-expert" class="mk-grid-v3"></div>
-          <div class="mk-empty hidden" id="mk-empty-expert"></div>
+          <!-- 专家团：内置六团（与精选场景卡同源）+ 用户把「我的专家」存成的团。
+               点「用这个团开任务」= 回工作台按主责专家开单，提交时带 team_id。 -->
+          <div id="mk-exp-view-team" class="hidden">
+            <div class="mk-featrow">
+              <h3 class="mk-h" data-i18n="专家团">专家团</h3>
+              <span class="grow"></span>
+              <button class="ghost small" id="mk-team-save"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg><span data-i18n="把我的专家存成团">把我的专家存成团</span></button>
+            </div>
+            <p class="hint" data-i18n="一个团＝一位主责 + 若干协作：主责决定任务流程并主导产出，协作按各自职责在关键节点复核。选定团后回到工作台输入目标即可，任务里会钉住这份分工。">一个团＝一位主责 + 若干协作：主责决定任务流程并主导产出，协作按各自职责在关键节点复核。选定团后回到工作台输入目标即可，任务里会钉住这份分工。</p>
+            <div id="mk-teams" class="mk-teams"></div>
+            <div class="mk-empty hidden" id="mk-empty-team"></div>
+          </div>
         </div>
 
         <!-- 技能页签：原市场主体。本地视图＝精选 + chips + 网格；外部目录整块保留 -->
@@ -1826,6 +1955,10 @@
             <h3 class="mk-h" data-i18n="推荐">推荐</h3>
             <div class="mk-chips" id="mk-chips"></div>
             <span class="grow"></span>
+            <div id="mk-sort-skill" class="seg mk-sort" role="group" aria-label="排序" data-i18n-aria="排序">
+              <button class="seg-btn active" data-s="default" data-i18n="综合">综合</button>
+              <button class="seg-btn" data-s="chars" data-i18n="体量">体量</button>
+            </div>
             <div id="mk-view" class="seg mk-view-v3" role="group" aria-label="市场视图" data-i18n-aria="市场视图">
               <button data-i18n="经验包" class="seg-btn active" data-v="local">经验包</button>
               <button data-i18n="外部目录" class="seg-btn" data-v="remote">外部目录</button>
@@ -2291,6 +2424,17 @@
           <h3 class="sec-title" data-i18n="全部主题">全部主题</h3>
           <div id="skin-grid" class="skin-grid wb-theme-grid"></div>
           <p class="hint"><span data-i18n="每套主题都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢主题。选中的主题立即生效并记在这台设备上（手机与电脑各自独立）。">每套主题都是一份完整配色，并且各带「日间 / 夜间」两版，明暗切换不会丢主题。选中的主题立即生效并记在这台设备上（手机与电脑各自独立）。</span></p>
+          <!-- 界面字号放在第 1 段（全部主题之后、语言之前）：简单模式从第 2 个 h3 起整段折叠
+               （app.js foldAdvancedFields 只认 h3.sec-title），字号是无障碍级设置，两种模式下
+               都必须直接可见——所以标题用 div.sec-title（样式同源，不进折叠分段）。 -->
+          <div class="sec-title" data-i18n="界面字号">界面字号</div>
+          <div id="ui-scale" class="seg" role="group" aria-label="界面字号" data-i18n-aria="界面字号">
+            <button class="seg-btn" data-uiscale="90" data-i18n="小">小</button>
+            <button class="seg-btn" data-uiscale="100" data-i18n="标准">标准</button>
+            <button class="seg-btn" data-uiscale="110" data-i18n="大">大</button>
+            <button class="seg-btn" data-uiscale="125" data-i18n="特大">特大</button>
+          </div>
+          <p class="hint" data-i18n="整体放大或缩小界面文字与控件，只影响这台设备上的 CodeBee。代码内容的字号在下方「代码」分区单独设置。">整体放大或缩小界面文字与控件，只影响这台设备上的 CodeBee。代码内容的字号在下方「代码」分区单独设置。</p>
           <h3 class="sec-title" data-i18n="语言 / Language">语言 / Language</h3>
           <div id="lang-mode" class="seg" role="group" aria-label="Language">
             <!-- 语言名一律用本语言书写，不翻译 -->
@@ -2834,5 +2978,20 @@
 <script defer src="chat-intent.js"></script>
 <script defer src="project-overview.js"></script>
 <script defer src="mobile-workbench.js"></script>
+<script defer src="demo-parity.js"></script>
+<script defer src="run-config.js"></script>
+<script defer src="composer-add-menu.js?v=20261103"></script>
+<!-- 输入卡专家胶囊行 + 底部上下文条（必须在 app.js / home-chips.js 之后：
+     要复用 window.pickQuickType 的包装链与 expertAvHtml） -->
+<script defer src="composer-context.js"></script>
+<!-- 工作空间选择面板（接管 window.toggleWdMenu）：必须在 app.js 之后加载，
+     否则同名覆盖被 app.js 的赋值顶掉 -->
+<script defer src="workspace-picker.js?v=20261103"></script>
+<!-- 对话条上方「本会话用量」一行 + 明细浮层（复用 app.js 的 api/fmtTok/toast，
+     必须放在 app.js 之后） -->
+<script defer src="session-usage.js?v=20261103"></script>
+<!-- 对话条「快捷指令」按钮 + 浮层（发送走 window.chatSend 真源，
+     必须放在 app.js 之后） -->
+<script defer src="chat-quickprompts.js?v=20261103"></script>
 </body>
 </html>

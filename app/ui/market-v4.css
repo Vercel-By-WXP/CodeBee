@@ -1,0 +1,539 @@
+/* ==========================================================================
+   插件市场 v4（2026-11-03，用户给三张参考图「我们的也做成这种样式吧，直接抄」）
+   --------------------------------------------------------------------------
+   抄的是**版式与信息密度**，不是配色（配色仍走 --wb-* token，八套皮肤自动跟随）：
+     ① 精选区＝一排彩色渐变卡：分类名 + 3 条「专家 ›」链接 + 右侧人像；
+     ② 全部专家/技能/连接器＝等高卡片：左头像/图标 + 名称 + 单行简介，
+        专家卡多一行标签胶囊，技能卡脚注是单行小字指标；
+     ③ 分类 chips 改成「未选＝纯文字、选中＝浅底胶囊」，不再整排药丸；
+     ④ 安装入口收敛成右上角一个 ＋（未装）/ 绿勾（已装），卡底不再摆大按钮；
+     ⑤ hover 只变描边，不位移不投影（DESIGN.md §4 硬规矩）。
+   本文件是覆盖层（index.html 末位引入），删掉那一行 <link> 即回滚整套观感。
+   ========================================================================== */
+
+/* ── 1. 顶栏：页签纯文字＋图标，选中＝正文色加粗（参考图里没有色块底） ───── */
+#sub-market .mtab {
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wb-muted, #837a6d);
+}
+#sub-market .mtab.active {
+  background: transparent;
+  color: var(--wb-text, #2b2622);
+  font-weight: 600;
+}
+#sub-market .mtab.active .ico { opacity: 1; }
+#sub-market .mtab:hover { background: var(--wb-panel2, #f3ede4); }
+#sub-market .mtab-sep { display: none; }
+#sub-market .mk-gsearch { width: 208px; height: 32px; border-radius: 9px; }
+#sub-market #mk-add,
+#sub-market #mk-installed { height: 32px; border-radius: 8px; }
+
+/* 顶部「共 N 个」只在技能页签有意义（那是技能数）；专家/连接器页签挂着
+ * 一个别人的计数＝误导，直接收掉。 */
+#sub-market #mk-count { display: none; }
+#sub-market:has(#mk-pane-skill:not(.hidden)) #mk-count { display: block; }
+
+/* ── 2. 分类 chips：未选＝纯文字，选中＝浅底胶囊 ───────────────────────── */
+#sub-market .mk-chips { gap: 2px; }
+#sub-market .mk-chip {
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--wb-muted, #837a6d);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+#sub-market .mk-chip:hover { background: var(--wb-panel2, #f3ede4); color: var(--wb-text, #2b2622); }
+#sub-market .mk-chip.on {
+  background: var(--wb-panel2, #f3ede4);
+  color: var(--wb-text, #2b2622);
+  font-weight: 600;
+}
+
+/* ── 3. 精选区：彩色渐变卡（专家页） ──────────────────────────────── */
+#sub-market .mk-promo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+#sub-market .mk-promo-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 116px;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--wb-panel2, #f3ede4);
+  transition: filter .15s ease;
+}
+/* 六种色相全部由 token 派生（不写死色值），明暗随主题走 */
+/* 只用两支品牌色（陶土 accent + 蜂蜜 accent2）与中性纸色做六种配比——
+ * 参考图那种六色相来自它自己的品牌色板，我们照抄会出现「不属于本产品」的颜色；
+ * 状态色（ok/warn）也不拿来铺卡底（DESIGN.md §2）。 */
+#sub-market .mk-promo-card[data-tone="1"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent) 19%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent) 4%, var(--wb-panel)) 100%); }
+#sub-market .mk-promo-card[data-tone="2"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent2) 26%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent2) 6%, var(--wb-panel)) 100%); }
+#sub-market .mk-promo-card[data-tone="3"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent) 8%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent2) 22%, var(--wb-panel)) 100%); }
+#sub-market .mk-promo-card[data-tone="4"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-panel2) 92%, var(--wb-muted)) 0%, var(--wb-panel) 100%); }
+#sub-market .mk-promo-card[data-tone="5"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent2) 16%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent) 12%, var(--wb-panel)) 100%); }
+#sub-market .mk-promo-card[data-tone="6"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent) 12%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent2) 14%, var(--wb-panel)) 100%); }
+#sub-market .mk-promo-card:hover { filter: saturate(1.06) brightness(.995); }
+
+#sub-market .mk-promo-main { position: relative; z-index: 1; flex: 1 1 auto; min-width: 0; padding-right: 4px; }
+#sub-market .mk-promo-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--wb-text, #2b2622);
+  letter-spacing: .01em;
+  margin-bottom: 7px;
+}
+#sub-market .mk-pflow {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+  max-width: 100%;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.6px;
+  color: var(--wb-muted, #837a6d);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 5px;
+}
+#sub-market .mk-pflow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sub-market .mk-pflow .ico { width: 12px; height: 12px; flex: 0 0 auto; opacity: .5; }
+#sub-market .mk-pflow:hover { color: var(--wb-text, #2b2622); }
+#sub-market .mk-pflow:hover .ico { opacity: .9; }
+
+/* 右侧人像：贴卡右缘的半身位，用柔和圆底托住（不用照片抠图也不会脏） */
+#sub-market .mk-promo-art {
+  position: relative;
+  z-index: 0;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  margin: -2px -6px 0 0;
+  align-self: flex-end;
+}
+#sub-market .mk-promo-art .exp-av {
+  width: 72px;
+  height: 72px;
+  --av: 72px;
+  font-size: 24px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--wb-panel) 55%, transparent);
+}
+#sub-market .mk-promo-art::after {
+  content: "";
+  position: absolute;
+  inset: -10px -10px -10px -10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 60% 60%, color-mix(in srgb, var(--wb-panel) 42%, transparent), transparent 68%);
+  z-index: -1;
+}
+
+/* ── 4. 卡片通用：等高、单行简介、单行脚注 ───────────────────────────── */
+#sub-market .mk-grid-v3,
+#sub-market #mk-grid,
+#sub-market #mk-grid-expert.exp-list {
+  grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
+  gap: 12px;
+}
+#sub-market .mk-tile {
+  padding: 13px 14px 11px;
+  border-radius: 12px;
+  border: 1px solid var(--wb-border, #eae3d8);
+  background: var(--wb-panel, #fff);
+  min-height: 0;
+  gap: 0;
+  box-shadow: none;
+}
+#sub-market .mk-tile:hover {
+  border-color: var(--wb-border-strong, #d8cbb9);
+  box-shadow: none;
+  transform: none;
+}
+#sub-market .mk-tile-top { gap: 11px; }
+#sub-market .mk-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  font-size: 15px;
+}
+#sub-market .mk-tile h4 {
+  margin: 0 20px 2px 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+#sub-market .mk-tile p {
+  font-size: 12.6px;
+  line-height: 1.5;
+  min-height: 0;
+  -webkit-line-clamp: 1;
+}
+/* 脚注：参考图是一行小字（⚡ 34.34w  ⇩ 54.64w），这里保持单行＋省略 */
+#sub-market .mk-tile-foot {
+  margin-top: auto;
+  padding-top: 10px;
+  min-height: 0;
+  max-height: none;
+  font-size: 11.8px;
+  flex-wrap: nowrap;
+  gap: 0 12px;
+  overflow: hidden;
+}
+#sub-market .mk-tile-foot .mk-kv { flex: 0 1 auto; overflow: hidden; }
+#sub-market .mk-kv .ico { width: 12px; height: 12px; opacity: .6; }
+#sub-market .mk-tile-foot .mk-sec { margin-left: auto; }
+
+/* 右上角安装位：参考图里 ＋ 是常显的浅灰小钮，装上变绿勾 */
+#sub-market .mk-add-dot {
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  opacity: .6;
+}
+#sub-market .mk-tile:hover .mk-add-dot { opacity: 1; }
+#sub-market .mk-installed-tag { top: 10px; right: 10px; }
+
+/* 卡底操作行：只剩「已装」状态的卸/开关，做成小字按钮，不抢 ＋ 位 */
+#sub-market .mk-tile-ops {
+  margin-top: 8px;
+  gap: 4px;
+  min-height: 22px;
+  align-items: center;
+}
+#sub-market .mk-tile-ops .ghost.small,
+#sub-market .mk-tile-ops .primary.small {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  box-shadow: none;
+}
+#sub-market .mk-tile-ops > .switch { margin-left: auto; }
+
+/* ── 5. 专家卡：头像＋名字＋单行简介＋标签胶囊（参考图卡内结构） ────────── */
+#sub-market #mk-grid-expert.exp-list {
+  grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
+  column-gap: 12px;
+  row-gap: 12px;
+}
+#sub-market #mk-grid-expert .mk-tile.exp-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 13px 14px 12px;
+  min-height: 0;
+  border: 1px solid var(--wb-border, #eae3d8);
+  border-radius: 12px;
+  background: var(--wb-panel, #fff);
+  box-shadow: none;
+  transform: none;
+  cursor: pointer;
+}
+#sub-market #mk-grid-expert .mk-tile.exp-row:hover {
+  background: var(--wb-panel, #fff);
+  border-color: var(--wb-border-strong, #d8cbb9);
+  border-radius: 12px;
+  box-shadow: none;
+}
+#sub-market #mk-grid-expert .mk-tile.exp-row:last-child { border-bottom-color: var(--wb-border, #eae3d8); }
+#sub-market .exp-row-top { display: flex; align-items: flex-start; gap: 11px; }
+#sub-market .exp-row .exp-av {
+  width: 40px;
+  height: 40px;
+  --av: 40px;
+  font-size: 16px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--wb-border, #eae3d8);
+}
+#sub-market .exp-row h4 {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.38;
+}
+#sub-market .exp-row p {
+  margin: 3px 0 0;
+  font-size: 12.6px;
+  line-height: 1.5;
+  min-height: 0;
+  -webkit-line-clamp: 1;
+}
+#sub-market .exp-row-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+#sub-market .exp-row-tags > span {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--wb-panel2, #f3ede4);
+  color: var(--wb-muted, #837a6d);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#sub-market #mk-grid-expert .exp-row .exp-row-add {
+  top: 10px;
+  right: 10px;
+  transform: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  opacity: 0;
+}
+#sub-market #mk-grid-expert .exp-row:hover .exp-row-add { opacity: 1; }
+#sub-market #mk-grid-expert .exp-row .exp-row-add.on { opacity: 1; }
+
+/* ── 6. 分区行：标题与 chips 同一行 ─────────────────────────────── */
+#sub-market .mk-featrow { margin: 12px 0 9px; }
+#sub-market .mk-h { font-size: 14.5px; font-weight: 600; }
+/* .grow 全项目没有对应规则（.mk-featrow 是 flex-wrap:wrap，撑不开）——不补这条，
+ * 右侧控件（换一批 / 排序 / 存成团）会紧贴标题，参考图里它们是贴右缘的。 */
+#sub-market .mk-featrow > .grow { flex: 1 1 auto; }
+/* 专家团子视图下页脚说的是「专家是一条可复用的步骤链…共 22 位专家」，与团无关，
+ * 整条收掉（团页自己的说明就在上方 p.hint 里）。 */
+#sub-market:has(#mk-exp-view-team:not(.hidden)) .mk-foot { display: none; }
+
+/* ── 7. 响应式 ─────────────────────────────────────────────── */
+/* 顶栏在窄容器里会挤成两行（市场页是 1120 设置浮层，1024 窗口下内容只剩 ~610）：
+ * 先收按钮文字，再收页签文字（图标 + aria-label 仍可读），保证永远一行。 */
+@media (max-width: 1180px) {
+  #sub-market .mk-head { gap: 6px; }
+  #sub-market .mk-gsearch { width: 168px; }
+  #sub-market #mk-installed span:not(.mono) { display: none; }
+}
+@media (max-width: 1060px) {
+  #sub-market .mtab span { display: none; }
+  #sub-market .mtab { padding: 0 8px; }
+  #sub-market .mk-gsearch { width: 150px; }
+}
+@media (max-width: 1120px) {
+  #sub-market .mk-promo { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); }
+}
+@media (max-width: 780px) {
+  #sub-market .mk-promo { grid-template-columns: minmax(0, 1fr); }
+  #sub-market .mk-promo-art { width: 64px; height: 64px; }
+  #sub-market .mk-promo-art .exp-av { width: 64px; height: 64px; --av: 64px; }
+}
+
+/* ── 8. 暗色：渐变卡在夜间要更淡，否则一片脏色 ─────────────────────── */
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone] {
+  background-blend-mode: normal;
+  filter: none;
+}
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="1"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent) 20%, var(--wb-panel)) 0%, var(--wb-panel) 100%); }
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="2"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent2) 26%, var(--wb-panel)) 0%, var(--wb-panel) 100%); }
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="3"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent2) 24%, var(--wb-panel)) 0%, var(--wb-panel) 100%); }
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="4"] { background: linear-gradient(135deg, var(--wb-panel2) 0%, var(--wb-panel) 100%); }
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="5"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent2) 18%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent) 14%, var(--wb-panel)) 100%); }
+html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="6"] { background: linear-gradient(135deg, color-mix(in srgb, var(--wb-accent) 14%, var(--wb-panel)) 0%, color-mix(in srgb, var(--wb-accent2) 18%, var(--wb-panel)) 100%); }
+
+/* ── 9. 子页签与排序（专家页「专家 / 专家团」、全部列表的「综合 / 名称·体量」） ──
+ * 不用默认 .seg 的外观：style.css 里 .seg-btn.active 是 accent 实心＋投影，摆在
+ * 这页一排纯文字的语境里太抢，也和 §2 的 chips 打架。这里沿用「未选＝纯文字、
+ * 选中＝浅底胶囊」，三级层级才分得清：顶栏页签＝加粗纯文字 → 子页签＝浅底胶囊
+ * → chips / 排序＝同款小号胶囊。 */
+#sub-market .mk-subtabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0 14px;
+}
+#sub-market .mk-subtab {
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--wb-muted, #837a6d);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+#sub-market .mk-subtab:hover { background: var(--wb-panel2, #f3ede4); color: var(--wb-text, #2b2622); }
+#sub-market .mk-subtab.active {
+  background: var(--wb-panel2, #f3ede4);
+  color: var(--wb-text, #2b2622);
+  font-weight: 600;
+}
+#sub-market .mk-subtab:focus-visible { outline: 2px solid var(--wb-accent, #b4653a); outline-offset: 1px; }
+
+/* 排序／视图分段：去外框、去 accent 实底，与 chips 同观感 */
+#sub-market :is(.mk-sort, .mk-view-v3) {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  gap: 0;
+  border-radius: 0;
+}
+#sub-market :is(.mk-sort, .mk-view-v3) .seg-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--wb-muted, #837a6d);
+}
+#sub-market :is(.mk-sort, .mk-view-v3) .seg-btn:hover { background: var(--wb-panel2, #f3ede4); color: var(--wb-text, #2b2622); }
+#sub-market :is(.mk-sort, .mk-view-v3) .seg-btn.active {
+  background: var(--wb-panel2, #f3ede4);
+  color: var(--wb-text, #2b2622);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+/* ── 10. 专家团：主责头像叠排 + 名字 + 人数/内置标记 + 分工 + 操作 ────────── */
+#sub-market .mk-teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+#sub-market .mk-team {
+  --mk-team-bg: var(--wb-panel, #fffdf9);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--wb-border, #e2d8c9);
+  border-radius: 13px;
+  background: var(--mk-team-bg);
+  transition: border-color .16s ease, background-color .16s ease;
+}
+#sub-market .mk-team:hover { border-color: var(--wb-border-strong, #cbbca6); }
+#sub-market .mk-team.on {
+  --mk-team-bg: color-mix(in srgb, var(--wb-accent, #b4653a) 6%, var(--wb-panel, #fffdf9));
+  border-color: color-mix(in srgb, var(--wb-accent, #b4653a) 52%, var(--wb-border, #e2d8c9));
+}
+#sub-market .mk-team-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#sub-market .mk-team-avs { display: inline-flex; align-items: center; flex: none; }
+#sub-market .mk-tav { display: inline-flex; border-radius: 50%; }
+#sub-market .mk-tav + .mk-tav { margin-left: -7px; }
+/* 叠排要有一圈「卡底色」把头像切开，否则几个彩色圆糊成一团；底色跟着 .on 走 */
+#sub-market .mk-tav .exp-av {
+  --av: 24px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--mk-team-bg);
+}
+#sub-market .mk-team-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wb-text, #2b2622);
+}
+#sub-market .mk-team-meta {
+  flex: none;
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--wb-muted, #837a6d);
+  white-space: nowrap;
+}
+#sub-market .mk-team-tag {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--wb-border, #e2d8c9);
+  border-radius: 5px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--wb-muted, #837a6d);
+  white-space: nowrap;
+}
+#sub-market .mk-team > p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--wb-muted, #837a6d);
+}
+/* 分工一行一位（「主责 · 名字」）换行排：团最多 6 位，用胶囊会炸成一片 */
+#sub-market .mk-team-roles { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+#sub-market .mk-team-roles span { font-size: 12.5px; color: var(--wb-muted, #837a6d); white-space: nowrap; }
+#sub-market .mk-team-roles span:first-child { font-weight: 500; color: var(--wb-text, #2b2622); }
+#sub-market .mk-team-ops { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+#sub-market .mk-team-ops .primary.small,
+#sub-market .mk-team-ops .ghost.small { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 13px; }
+#sub-market .mk-team-ops .ghost.small { margin-left: auto; color: var(--wb-muted, #837a6d); }
+
+/* ── 11. 首页团提示条：选团后常显，× 取消 ───────────────────────────────
+ * 挂在输入卡上方，宽度随 .rd-home 内容列（不算浮层高度，不必钉死）。
+ * 类型与团主责不一致时转「警示」而不是默默丢掉 team_id——那才会真骗人。 */
+#page-home .mk-team-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--wb-border, #e2d8c9);
+  border-radius: 11px;
+  background: var(--wb-panel2, #f3ede4);
+  font-size: 13px;
+  color: var(--wb-muted, #837a6d);
+}
+/* 「本次不会按团执行」：各皮肤 accent2 色相不一（有的偏冷灰），靠染底色区分不出来，
+ * 改用虚线边＋说明文字加粗——虚线本身就读作「当前不生效」，也不挑皮肤。 */
+#page-home .mk-team-bar.warn {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--wb-muted, #837a6d) 62%, var(--wb-border, #e2d8c9));
+  background: var(--wb-panel2, #f3ede4);
+}
+#page-home .mk-team-bar-txt { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+#page-home .mk-team-bar-txt b { flex: none; font-size: 13.5px; font-weight: 600; color: var(--wb-text, #2b2622); }
+#page-home .mk-team-bar-txt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-home .mk-team-bar-note { flex: none; margin-left: auto; white-space: nowrap; }
+#page-home .mk-team-bar.warn .mk-team-bar-note { font-weight: 600; color: var(--wb-text, #2b2622); }
+#page-home .mk-team-bar-x { flex: none; width: 24px; height: 24px; border-radius: 7px; color: var(--wb-muted, #837a6d); }
+#page-home .mk-team-bar-x:hover { background: var(--wb-border, #e2d8c9); color: var(--wb-text, #2b2622); }
+#page-home .mk-team-bar-x .ico { width: 14px; height: 14px; }
+
+/* ── 12. 响应式（团卡与提示条） ────────────────────────────────── */
+/* 团卡用 auto-fill 自适应：1024 窗口下内容列 ~610 能排两列（288×2+12=588），
+ * 到 780 以下自然折成一列。两列时卡内要挤下「3 个头像 + 7 字团名 + 人数 + 内置」，
+ * 所以整行收一档字号与间距——不收就会出现「短视频与短…」这种截断。 */
+@media (max-width: 1120px) {
+  #sub-market .mk-team-top { gap: 6px; }
+  #sub-market .mk-tav .exp-av { --av: 22px; }
+  #sub-market .mk-tav + .mk-tav { margin-left: -6px; }
+  #sub-market .mk-team-name { font-size: 14px; }
+  #sub-market .mk-team-meta { font-size: 12px; }
+  #sub-market .mk-team-tag { padding: 0 5px; font-size: 11px; }
+}
+@media (max-width: 820px) {
+  #sub-market .mk-teams { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 780px) {
+  #sub-market .mk-team-roles { gap: 2px 8px; }
+  #page-home .mk-team-bar { flex-wrap: wrap; }
+  #page-home .mk-team-bar-note { margin-left: 0; white-space: normal; }
+}

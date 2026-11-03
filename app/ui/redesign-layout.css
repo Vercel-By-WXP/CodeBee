@@ -125,7 +125,7 @@ html[data-layout="workbench"] .status-card-head {
 }
 
 html[data-layout="workbench"] .status-card-title {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--text);
   display: flex;
@@ -134,7 +134,7 @@ html[data-layout="workbench"] .status-card-title {
 }
 
 html[data-layout="workbench"] .status-card-count {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   background: var(--panel2);
   padding: 2px 8px;
@@ -167,7 +167,7 @@ html[data-layout="workbench"] .running-item:last-child {
 }
 
 html[data-layout="workbench"] .running-item-title {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--text);
   margin-bottom: 6px;
   white-space: nowrap;
@@ -179,7 +179,7 @@ html[data-layout="workbench"] .running-item-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -220,20 +220,20 @@ html[data-layout="workbench"] .pending-item:last-child {
 }
 
 html[data-layout="workbench"] .pending-item-title {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--text);
   margin-bottom: 4px;
 }
 
 html[data-layout="workbench"] .pending-item-desc {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.4;
 }
 
 html[data-layout="workbench"] .pending-action {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent);
   cursor: pointer;
 }
@@ -253,12 +253,12 @@ html[data-layout="workbench"] .usage-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
 html[data-layout="workbench"] .usage-row b {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--text);
 }
@@ -376,7 +376,7 @@ html[data-layout="workbench"] #mobile-tabbar {
   }
 
   html[data-layout="workbench"] .tab-item span {
-    font-size: 11px;
+    font-size: 12.5px;
   }
 
   /* 移动端主栏底部留白，避免被标签栏遮挡 */
@@ -407,7 +407,7 @@ html[data-layout="workbench"] #sub-overview .ov-title {
 }
 
 html[data-layout="workbench"] #sub-overview .ov-sub {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -428,13 +428,13 @@ html[data-layout="workbench"] .kpi-card {
 }
 
 html[data-layout="workbench"] .kpi-value {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--text);
 }
 
 html[data-layout="workbench"] .kpi-label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin-top: 4px;
 }
@@ -487,7 +487,7 @@ html[data-layout="workbench"] .task-info {
 }
 
 html[data-layout="workbench"] .task-title {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -495,13 +495,13 @@ html[data-layout="workbench"] .task-title {
 }
 
 html[data-layout="workbench"] .task-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin-top: 2px;
 }
 
 html[data-layout="workbench"] .task-progress {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--accent);
   margin-left: 12px;
@@ -560,7 +560,7 @@ html[data-layout="workbench"] .side-quick .qitem {
   gap: 10px;
   padding: 8px 10px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--text);
   cursor: pointer;
   background: none;
@@ -599,7 +599,7 @@ html[data-layout="workbench"] .rd-home-head {
 }
 
 html[data-layout="workbench"] .rd-home-date {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--muted);
   margin-bottom: 8px;
   display: flex;
@@ -625,7 +625,7 @@ html[data-layout="workbench"] .rd-home-title {
 }
 
 html[data-layout="workbench"] .rd-home-sub {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--muted);
   margin: 0;
   line-height: 1.5;
@@ -648,7 +648,7 @@ html[data-layout="workbench"] .rd-input-head {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 
 html[data-layout="workbench"] .rd-input-head .ico {
@@ -663,7 +663,7 @@ html[data-layout="workbench"] .rd-input-project {
 html[data-layout="workbench"] .rd-input-branch {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 html[data-layout="workbench"] .rd-input-switch {
@@ -672,7 +672,7 @@ html[data-layout="workbench"] .rd-input-switch {
   border: none;
   color: var(--accent);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14.5px;
   padding: 4px 8px;
   border-radius: 6px;
 }
@@ -686,7 +686,7 @@ html[data-layout="workbench"] .rd-input-area {
   border: none;
   background: none;
   resize: none;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
   font-family: inherit;
   line-height: 1.6;
@@ -723,7 +723,7 @@ html[data-layout="workbench"] .rd-btn {
   border: 1px solid var(--border);
   background: var(--panel2);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14.5px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -789,7 +789,7 @@ html[data-layout="workbench"] .rd-quick-start {
 }
 
 html[data-layout="workbench"] .rd-qs-label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   display: block;
   margin-bottom: 10px;
@@ -807,7 +807,7 @@ html[data-layout="workbench"] .rd-qs-btn {
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  font-size: 13px;
+  font-size: 14.5px;
   cursor: pointer;
   transition: all 0.15s ease;
   /* 按钮文案来自真实任务标题，长度不可控：单行省略，不撑破排布 */
@@ -886,13 +886,13 @@ html[data-layout="workbench"] .rd-tool-text {
 }
 
 html[data-layout="workbench"] .rd-tool-text b {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 html[data-layout="workbench"] .rd-tool-text i {
   font-style: normal;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -904,7 +904,7 @@ html[data-layout="workbench"] .rd-tool-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -944,7 +944,7 @@ html[data-layout="workbench"] .rd-tool:hover .rd-tool-go {
 /* 输入卡头：完整路径（demo 同款 名称+路径+分支 并列） */
 html[data-layout="workbench"] .rd-input-path {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -966,7 +966,7 @@ html[data-layout="workbench"] .rd-mode-seg button {
   border-radius: 7px;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -988,7 +988,7 @@ html[data-layout="workbench"] .rd-model-pick {
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   background: var(--panel);
   cursor: pointer;
@@ -1053,7 +1053,7 @@ html[data-layout="workbench"] .ri-avatar {
   background: color-mix(in srgb, var(--accent) 16%, var(--panel));
   color: var(--accent);
   font-style: normal;
-  font-size: 10px;
+  font-size: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1070,7 +1070,7 @@ html[data-layout="workbench"] .status-rail-link {
   border: none;
   border-top: 1px solid var(--border);
   background: none;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--accent);
   cursor: pointer;
 }
@@ -1099,7 +1099,7 @@ html[data-layout="workbench"] .status-card-actions > button {
 /* 危险钮旁常驻后果旁注：细则贴着动作本身，不等确认框才出现 */
 html[data-layout="workbench"] .status-card-note {
   margin: 7px 0 0;
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted);
 }
@@ -1128,7 +1128,7 @@ html[data-layout="workbench"] .pending-go {
   padding: 0;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent);
   cursor: pointer;
 }
@@ -1154,7 +1154,7 @@ html[data-layout="workbench"] .pending-ignore {
   padding: 0;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   cursor: pointer;
 }
@@ -1238,7 +1238,7 @@ html[data-layout="workbench"] #side-usage {
 /* 用量卡头月份位 */
 html[data-layout="workbench"] .status-card-month {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--muted);
 }
 
@@ -1251,7 +1251,7 @@ html[data-layout="workbench"] .usage-big {
 }
 
 html[data-layout="workbench"] .usage-big span {
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--muted);
   font-weight: 400;
   margin-left: 2px;
@@ -1268,7 +1268,7 @@ html[data-layout="workbench"] .usage-spark {
 html[data-layout="workbench"] .usage-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1286,7 +1286,7 @@ html[data-layout="workbench"] .rd-section-head {
 }
 
 html[data-layout="workbench"] .rd-section-head h2 {
-  font-size: 16px;
+  font-size: 17.5px;
   font-weight: 600;
   color: var(--text);
   margin: 0;
@@ -1298,7 +1298,7 @@ html[data-layout="workbench"] .rd-link-btn {
   padding: 2px 0;
   color: var(--accent);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   display: inline-flex;
@@ -1420,7 +1420,7 @@ html[data-layout="workbench"] .rd-task-info {
 }
 
 html[data-layout="workbench"] .rd-task-title {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.45;
   letter-spacing: -0.005em;
@@ -1435,7 +1435,7 @@ html[data-layout="workbench"] .rd-meta3 {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1.4;
   color: var(--muted);
   white-space: nowrap;
@@ -1472,7 +1472,7 @@ html[data-layout="workbench"] .rd-task-chip {
   justify-content: center;
   padding: 4px 8px;
   border-radius: 99px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.01em;
@@ -1499,7 +1499,7 @@ html[data-layout="workbench"] .rd-task-pct {
   flex: none;
   width: 34px;
   text-align: right;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -1559,7 +1559,7 @@ html[data-skin="contrast"][data-layout="workbench"] .rd-task-chip {
   border: none;
   border-bottom: 1px dashed var(--border);
   border-radius: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   white-space: normal;
 }
@@ -1642,7 +1642,7 @@ html[data-skin="warm"] #status-pending-list .pending-group-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--muted);
   margin: 12px 0 4px;
 }
@@ -1659,7 +1659,7 @@ html[data-skin="warm"] #status-pending-list details.pending-group summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--muted);
   margin: 12px 0 4px;
   cursor: pointer;
@@ -1671,7 +1671,7 @@ html[data-skin="warm"] #status-pending-list details.pending-group summary::-webk
 }
 
 html[data-skin="warm"] #status-pending-list .pending-more {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--muted);
   padding: 4px 2px 2px;
 }

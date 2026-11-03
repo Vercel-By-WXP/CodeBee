@@ -1,26 +1,26 @@
 /* Shared scene switcher: desktop and mobile use the same tasks and actions. */
-.brand-mode { flex: none; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.brand-mode { flex: none; color: var(--muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
 #btn-brand { gap: 5px; }
 #brand-menu { position: fixed; z-index: 180; width: min(260px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; padding: 6px; }
 #brand-menu .brand-menu-item {
   width: 100%; min-height: 64px; padding: 12px; border: 0; border-radius: 8px;
   background: transparent; color: var(--text); text-align: left; font-family: inherit; cursor: pointer;
 }
-#brand-menu .brand-menu-item b { font-size: 14px; font-weight: 600; }
-#brand-menu .brand-menu-item small { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+#brand-menu .brand-menu-item b { font-size: 15px; font-weight: 600; }
+#brand-menu .brand-menu-item small { margin-top: 4px; font-size: 13px; line-height: 1.4; color: var(--muted); }
 #brand-menu .brand-menu-item > .ico { visibility: hidden; flex: none; color: var(--text); }
 #brand-menu .brand-menu-item.selected > .ico { visibility: visible; }
 #brand-menu .brand-menu-item:hover { background: var(--panel2); }
 #brand-menu .brand-menu-item.selected { background: color-mix(in srgb, var(--panel2) 65%, transparent); }
-#sub-tasks .workspace-hint { color: var(--muted); font-size: 13px; text-align: center; }
+#sub-tasks .workspace-hint { color: var(--muted); font-size: 14.5px; text-align: center; }
 #sub-tasks .hero-row { margin-bottom: 8px; }
 #sub-tasks .cmp-quick { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 16px 0 10px; }
-#sub-tasks .cmp-chip { min-height: 32px; padding: 6px 12px; font-size: 12px; border-color: var(--border); background: transparent; box-shadow: none; }
+#sub-tasks .cmp-chip { min-height: 32px; padding: 6px 12px; font-size: 13px; border-color: var(--border); background: transparent; box-shadow: none; }
 #sub-tasks .cmp-chip:hover { color: var(--text); background: var(--panel2); border-color: var(--border); }
 /* 选中态跟 accent 走完整一档（文字+底+描边同源），只剩描边来自 desktop-workbench 的同值规则 */
 #sub-tasks .cmp-chip.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 @media (max-width: 900px) {
-  #sub-tasks .workspace-hint { text-align: left; font-size: 13px; margin-bottom: 16px; }
+  #sub-tasks .workspace-hint { text-align: left; font-size: 14.5px; margin-bottom: 16px; }
   #sub-tasks .cmp-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #sub-tasks .cmp-chip { min-height: 44px; padding: 8px; font-size: 13px; }
+  #sub-tasks .cmp-chip { min-height: 44px; padding: 8px; font-size: 14.5px; }
 }

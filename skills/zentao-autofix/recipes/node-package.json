@@ -1,0 +1,7 @@
+{
+  "id": "node-package",
+  "lang": "node",
+  "detect": { "files": ["package.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json"], "globs": ["**/*.ts", "**/*.tsx"] },
+  "commands": { "lint": "", "typecheck": "npx tsc --noEmit", "test": "npm test --silent" },
+  "notes": "默认不跑 lint（各团队 ESLint 配置差异大），可在 [stack] lint 显式覆盖。"
+}

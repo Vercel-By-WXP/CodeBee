@@ -26,7 +26,9 @@
 
 1. ``--profile`` 显式指定 —— **严格**：名字写错直接报错并列出可选，不猜；
 2. 环境变量 ``CODEBEE_PROFILE`` —— **宽松**：可能是残留变量，写错就警告后继续；
-3. ``--profile`` 都没给且 stdin 是终端时 —— 交互式菜单（12 秒无输入自动选上次）；
+3. ``--profile`` 都没给且 stdin 是终端、且**可选项多于一个** —— 交互式菜单
+   （12 秒无输入自动选上次；2026-11-03 起菜单只含内置全量版一个选项时
+   直接进，不再弹）；
 4. 上次选择（``data/profile_state.json``）；
 5. ``default``。
 
@@ -75,8 +77,11 @@ _ALL_ON = {
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
-# 内置形态。能内置的只有「内核自己的界面」和「随内核发布的发行版」；
-# 第三方/自建形态一律走 data/profiles/*.json，避免每次都要改这个文件。
+# 内置形态：只保留「全部流程」一个（2026-11-03 用户「只保留全部吧」）。
+# novel / hive / dossier 的定义**没有删**——收进 _LEGACY_BUILTIN，仍可通过
+# ``--profile novel`` 显式启动或环境变量选择（老数据目录里记着 novel 的
+# state 也能解析），只是不再出现在启动菜单与欢迎页里。哪天要恢复多形态，
+# 把对应条目搬回 _BUILTIN 即可，流程/人设定义一行不用改。
 _BUILTIN = {
     DEFAULT: {
         "id": DEFAULT,
@@ -91,6 +96,12 @@ _BUILTIN = {
         "ui": "",
         "features": dict(_ALL_ON),
     },
+}
+
+# 历史发行版定义（2026-11-03 收起）：菜单不再列出，但 spec() 仍认——
+# 显式 --profile / CODEBEE_PROFILE / 老 state 里的记录都还能解析，
+# 已存在的任务与数据不受影响。
+_LEGACY_BUILTIN = {
     # CodeBee 版：全部流程都在，但按「专职 Agent」组织成四种工作台。
     # 它演示的是内核的通用形态——新增垂直版只需再写一份定义。
     # ``drafts`` 是它为开发者自己留的：草稿专家也放出来，方便边做边看；
@@ -296,7 +307,9 @@ def _merge_extends(raw, depth=0):
     base_id = str(raw.get("extends") or "").strip().lower()
     if not base_id:
         return raw
-    base = _BUILTIN.get(base_id) or _load_one(base_id)
+    # extends 也能指向 legacy 形态（自建「我的小说线 extends novel」不该
+    # 因为菜单收敛而断掉继承）
+    base = _BUILTIN.get(base_id) or _LEGACY_BUILTIN.get(base_id) or _load_one(base_id)
     if not base:
         print("[profile] 未知的 extends=%r，按独立形态处理" % base_id, file=sys.stderr)
         return raw
@@ -357,9 +370,32 @@ def registry():
         return table
 
 
+def _full_registry():
+    """registry() + 历史发行版（2026-11-03 收起，不在菜单但 spec() 仍认）。
+
+    用在「按名解析」的路径（--profile / 环境变量 / 老 state 的 last）：
+    老用户数据目录里记着 novel 的也能解析出正确形态，已存在的任务
+    不会因为菜单收敛而突然打不开。**不**用于 list_specs / 欢迎页清单。
+    """
+    table = dict(registry())
+    for pid, raw in _LEGACY_BUILTIN.items():
+        if pid in table:
+            continue
+        spec = _norm_spec(_merge_extends(dict(raw)), origin="内置-历史")
+        if spec:
+            table[spec["id"]] = spec
+    return table
+
+
 def names():
-    """已注册的形态名（按 order、name 排序）。"""
-    return tuple(s["id"] for s in list_specs())
+    """已注册的形态名（按 order、name 排序）。
+
+    含 legacy 形态：这是「--profile 能写什么」的口径（报错提示、校验），
+    不是菜单口径——菜单/欢迎页用 list_specs()，只列 registry() 里的。
+    """
+    return tuple(s["id"] for s in sorted(
+        _full_registry().values(),
+        key=lambda s: (s.get("order") or 0, s["id"])))
 
 
 def list_specs():
@@ -368,9 +404,13 @@ def list_specs():
 
 
 def spec(name):
-    """按名取形态定义；不存在返回 None。"""
+    """按名取形态定义；不存在返回 None。
+
+    走 _full_registry：历史发行版（novel/hive/dossier）不在菜单里，
+    但显式点名仍能解析——老 state 与显式 --profile 不因此失效。
+    """
     key = str(name or "").strip().lower()
-    return registry().get(key)
+    return _full_registry().get(key)
 
 
 def default_spec():
@@ -386,7 +426,7 @@ def active():
         if _active is not None:
             return _active
         name = (os.environ.get(ENV_VAR) or "").strip().lower()
-        _active = name if name in registry() else DEFAULT
+        _active = name if name in _full_registry() else DEFAULT
         return _active
 
 
@@ -395,11 +435,12 @@ def set_active(name):
 
     未知名称回落 default 而不是抛错：这条函数被 web 层和测试复用，
     它不该有「让进程崩掉」的副作用。命令行要严格报错请走 ``select()``。
+    legacy 形态（novel/hive/dossier）在这里合法：显式点名就该生效。
     """
     global _active
     key = str(name or "").strip().lower()
     with _LOCK:
-        _active = key if key in registry() else DEFAULT
+        _active = key if key in _full_registry() else DEFAULT
         return _active
 
 
@@ -675,31 +716,37 @@ def _select(explicit="", *, allow_prompt=None, timeout_s=12, quiet=False):
 
     fallback = last_choice() or DEFAULT
 
-    # 3. 交互式菜单
+    # 3. 交互式菜单（2026-11-03 收敛：菜单只剩一个选项时不再弹——弹出来
+    #    也是「按 1 或回车」的空仪式，12 秒反而是启动摩擦）。
+    #    多于一个选项（用户在 data/profiles/ 自建了形态）时照旧弹。
     if allow_prompt is None:
         allow_prompt = (not os.environ.get(NO_PROMPT_VAR)
                         and getattr(sys.stdin, "isatty", lambda: False)())
     if allow_prompt:
         rows = list_specs()
-        try:
-            print(_render_menu(rows, fallback), flush=True)
-        except (OSError, ValueError):
-            pass
-        answer = _ask("", timeout_s)
-        if answer is None:
-            # 超时不是选择：只决定「这次进程先用谁」，不写 state。
-            # 写下去会让浏览器端的选择页永远不出现（服务被管理器拉起、
-            # stdin 恰好是个不会输东西的管道时，每次都被当成「用户选了默认」）。
-            print("[profile] 无输入，本次先用 %s" % fallback, flush=True)
-            set_active(fallback)
-            return fallback, "prompt-timeout"
-        picked = _match_input(answer, rows)
-        if not picked:
-            print("[profile] 没看懂 %r，使用 %s" % (answer, fallback), flush=True)
-            picked = fallback
-        set_active(picked)
-        remember(picked)
-        return picked, "prompt"
+        if len(rows) > 1:
+            try:
+                print(_render_menu(rows, fallback), flush=True)
+            except (OSError, ValueError):
+                pass
+            answer = _ask("", timeout_s)
+            if answer is None:
+                # 超时不是选择：只决定「这次进程先用谁」，不写 state。
+                # 写下去会让浏览器端的选择页永远不出现（服务被管理器拉起、
+                # stdin 恰好是个不会输东西的管道时，每次都被当成「用户选了默认」）。
+                print("[profile] 无输入，本次先用 %s" % fallback, flush=True)
+                set_active(fallback)
+                return fallback, "prompt-timeout"
+            picked = _match_input(answer, rows)
+            if not picked:
+                print("[profile] 没看懂 %r，使用 %s" % (answer, fallback), flush=True)
+                picked = fallback
+            set_active(picked)
+            remember(picked)
+            return picked, "prompt"
+        print("[profile] 只有一个版本，直接进 %s" % rows[0]["id"], flush=True)
+        set_active(rows[0]["id"])
+        return rows[0]["id"], "default"
 
     # 4. 上次选择（含用户上次主动选的 default）
     #    「选过 default」与「从没选过」必须能区分：否则在欢迎页选了全量版，
@@ -724,8 +771,9 @@ def scaffold(pid, name="", flows=None, tagline="", extends=DEFAULT, ui=""):
     key = str(pid or "").strip().lower()
     if not _ID_RE.match(key):
         raise ProfileError("形态 id %r 不合法（小写字母/数字/下划线/中划线）" % pid)
-    if key in registry():
-        raise ProfileError("形态 %r 已存在（%s）" % (key, registry()[key]["name"]))
+    full = _full_registry()
+    if key in full:
+        raise ProfileError("形态 %r 已存在（%s）" % (key, full[key]["name"]))
 
     base = spec(extends) or default_spec()
     picked = list(flows or base.get("flows") or [])

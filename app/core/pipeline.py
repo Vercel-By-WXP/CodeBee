@@ -8426,9 +8426,17 @@ def _execute_run_impl_inner(run_id):
     _expert_block = experts.context_block(task.get("expert_snapshot"))
     if _expert_block and _expert_block not in task.get("context", ""):
         task["context"] = (_expert_block + "\n\n" + task.get("context", "")).strip()
+    # 专家团（2026-11-03）：团队分工块，放在专家模板之后（主责方法 → 协作复核）。
+    # 快照在任务创建时钉住，这里只读不查团，改团不影响旧任务。
+    from . import expert_teams as expert_teams_mod
+    _team_block = expert_teams_mod.context_block(task.get("team_snapshot"))
+    if _team_block and _team_block not in task.get("context", ""):
+        task["context"] = (_team_block + "\n\n" + task.get("context", "")).strip()
     store.update_run(run_id, intent_contract=task.get("intent_contract") or {})
     if task.get("expert_snapshot"):
         store.update_run(run_id, expert_snapshot=task.get("expert_snapshot"))
+    if task.get("team_snapshot"):
+        store.update_run(run_id, team_snapshot=task.get("team_snapshot"))
     task["_compiled_spec"] = task_spec
     # 运行内统一使用编译后的难度；store 中历史任务常带 difficulty=auto，
     # 不能让这个兼容值覆盖 easy/default/hard 的模型调度决策。

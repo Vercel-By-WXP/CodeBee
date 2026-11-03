@@ -60,7 +60,7 @@
     min-height: 22px; padding: 2px 8px; border-radius: 999px;
     background: color-mix(in srgb, var(--mob-ink) 6%, var(--mob-card));
     color: var(--mob-dim);
-    font-size: 11px; line-height: 1.2; white-space: nowrap;
+    font-size: 12.5px; line-height: 1.2; white-space: nowrap;
   }
   .mob-conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--mob-dim); }
   .mob-conn.ok { color: var(--mob-green); background: color-mix(in srgb, var(--mob-green) 12%, transparent); }
@@ -114,7 +114,7 @@
 
   /* ---------- 任务页问候 ---------- */
   .mob-hello { padding: 10px 0 4px; }
-  .mob-date { color: var(--mob-dim); font-size: 12px; font-weight: 500; }
+  .mob-date { color: var(--mob-dim); font-size: 13px; font-weight: 500; }
   .mob-hello h1 {
     margin: 6px 0 8px; font-size: calc(24px * var(--mob-font-scale, 1)); line-height: 1.28; font-weight: 700;
     letter-spacing: -0.5px; color: var(--mob-ink);
@@ -153,10 +153,10 @@
   }
   .mob-account-copy { flex: 1; min-width: 0; display: grid; gap: 2px; }
   .mob-account-copy b { font-size: calc(16px * var(--mob-font-scale, 1)); font-weight: 600; }
-  .mob-account-copy small { color: var(--mob-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mob-account-copy small { color: var(--mob-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mob-conn-value.ok { color: var(--mob-green); font-weight: 400; }
   .mob-conn-value.bad { color: var(--mob-red); font-weight: 400; }
-  .mob-note { margin: 2px 4px 0; color: var(--mob-dim); font-size: 12px; line-height: 1.6; }
+  .mob-note { margin: 2px 4px 0; color: var(--mob-dim); font-size: 13px; line-height: 1.6; }
 
   /* 分段控件：灰轨白丸 */
   .mob-seg {
@@ -197,23 +197,55 @@
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 20px; height: 20px; padding: 0 7px; border-radius: 999px;
     background: color-mix(in srgb, var(--mob-ink) 7%, var(--mob-card));
-    color: var(--mob-dim); font-size: 11.5px; font-weight: 600;
+    color: var(--mob-dim); font-size: 12.5px; font-weight: 600;
   }
   .mob-count:empty { display: none; }
   .mob-cards { display: grid; gap: 10px; }
+
+  /* 无列定义的 grid 隐式列是 auto，长内容会把列撑到 max-content 顶破视口
+     （2026-11-03 用户截图「超宽了」+ LONG 注入审计实锤 .mob-task-row right=509）
+     ——单列全部钉成 minmax(0,1fr)。 */
+  .mob-cards, .mob-list { grid-template-columns: minmax(0, 1fr); }
+  /* 同一个坑的变体：flex 子项自己是 grid（.mob-task-copy 等），grid item
+     min-width:auto 不收缩，LONG 注入审计实锤 #mob-me-host right=616 */
+  .mob-task-copy, .mob-account-copy, .mob-auto-copy, .mob-st-copy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 长标题不撑破卡片（2026-11-03 用户截图「超宽了」）：任务标题两行折行，
+     运行中卡标题单行省略；容器侧 min-width:0 防 grid item 被内容顶宽。
+     **不能用 -webkit-line-clamp**（新 Chrome/Edge 弃用 -webkit-box，计算值落
+     flow-root，clamp 失效 → 硬切丢字无省略，style.css:10490 同账）——
+     一律 max-height 卡整数行 + white-space:normal（button 的 nowrap 会继承）。 */
+  .mob-cards > *, .mob-task-card, .mob-card-main, .mob-card-top { min-width: 0; max-width: 100%; }
+  .mob-card-main b {
+    display: block; max-height: 2.8em; overflow: hidden;
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .mob-card-main p {
+    display: block; max-height: 3em; overflow: hidden;
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .mob-task-card .mob-card-top b, .mob-task-card .mob-card-top {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mob-task-card .mob-task-meta, .mob-task-card .mob-track {
+    min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mob-time { flex: none; }
 
   .mob-card-item {
     border: 0; border-radius: 16px;
     background: var(--mob-card); padding: 14px 16px;
   }
   .mob-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .mob-time { color: var(--mob-dim); font-size: 11px; }
+  .mob-time { color: var(--mob-dim); font-size: 12.5px; }
   .mob-card-main {
     display: block; width: 100%; margin: 6px 0 0; padding: 0;
     border: 0; background: transparent; color: var(--mob-ink); text-align: left;
   }
   .mob-card-main b { display: block; font-size: calc(15px * var(--mob-font-scale, 1)); line-height: 1.4; font-weight: 600; }
-  .mob-card-main p { margin: 4px 0 0; color: var(--mob-dim); font-size: 12.5px; line-height: 1.5; }
+  .mob-card-main p { margin: 4px 0 0; color: var(--mob-dim); font-size: 14px; line-height: 1.5; }
   .mob-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .mob-card-actions button, .mob-detail-actions .mob-act {
     min-height: 40px; padding: 8px 16px; border-radius: 999px; font-size: calc(13px * var(--mob-font-scale, 1)); font-weight: 600;
@@ -229,7 +261,7 @@
   }
   .mob-task-card:active { background: color-mix(in srgb, var(--mob-ink) 4%, var(--mob-card)); }
   .mob-task-card .mob-card-top b { font-size: calc(14.5px * var(--mob-font-scale, 1)); line-height: 1.4; font-weight: 600; }
-  .mob-task-meta { display: block; margin-top: 4px; color: var(--mob-dim); font-size: 12px; }
+  .mob-task-meta { display: block; margin-top: 4px; color: var(--mob-dim); font-size: 13px; }
   .mob-track {
     display: block; height: 4px; margin-top: 10px; border-radius: 999px;
     background: color-mix(in srgb, var(--mob-ink) 8%, var(--mob-card)); overflow: hidden;
@@ -239,7 +271,7 @@
   .mob-badge {
     flex: none; display: inline-flex; align-items: center;
     min-height: 22px; padding: 2px 8px; border-radius: 999px;
-    font-size: 11px; font-weight: 600; white-space: nowrap;
+    font-size: 12.5px; font-weight: 600; white-space: nowrap;
   }
   .mob-badge.run { color: var(--mob-blue); background: color-mix(in srgb, var(--mob-blue) 11%, transparent); }
   .mob-badge.wait { color: var(--wb-warn, var(--warn)); background: color-mix(in srgb, var(--wb-warn, var(--warn)) 13%, transparent); }
@@ -280,7 +312,7 @@
     min-width: 0; font-size: calc(14.5px * var(--mob-font-scale, 1)); line-height: 1.35; font-weight: 500;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .mob-task-copy small { color: var(--mob-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mob-task-copy small { color: var(--mob-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .mob-empty {
     margin: 0; padding: 24px 14px; border: 0; border-radius: 16px;
@@ -292,10 +324,10 @@
   .mob-auto-row { padding: 14px 16px; min-height: 64px; }
   .mob-auto-copy { flex: 1; min-width: 0; display: grid; gap: 3px; }
   .mob-auto-copy b { font-size: calc(15px * var(--mob-font-scale, 1)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mob-auto-copy small { color: var(--mob-dim); font-size: 12px; }
+  .mob-auto-copy small { color: var(--mob-dim); font-size: 13px; }
   .mob-state-pill {
     flex: none; display: inline-flex; align-items: center;
-    min-height: 24px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    min-height: 24px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
   }
   .mob-state-pill.on { color: var(--mob-green); background: color-mix(in srgb, var(--mob-green) 12%, transparent); }
   .mob-state-pill.off { color: var(--mob-dim); background: color-mix(in srgb, var(--mob-ink) 6%, var(--mob-card)); }
@@ -315,7 +347,7 @@
     display: grid; justify-items: center; gap: 6px;
     min-height: 72px; padding: 8px 2px;
     border: 0; border-radius: 12px; background: transparent; color: var(--mob-ink);
-    font-size: 11.5px; font-weight: 500;
+    font-size: 12.5px; font-weight: 500;
   }
   .mob-find-item:active { background: color-mix(in srgb, var(--mob-ink) 4%, transparent); }
   .mob-find-ico {
@@ -345,9 +377,11 @@
   }
   .mob-exp-name { min-width: 0; font-size: calc(14px * var(--mob-font-scale, 1)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mob-exp-desc {
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-    min-width: 0; overflow: hidden;
-    color: var(--mob-dim); font-size: 11.5px; line-height: 1.45;
+    /* max-height 卡两行（1.45 × 2）：-webkit-line-clamp 已失效（见上方注释），
+       white-space:normal 抵消 button 的 nowrap 继承（否则单行硬切丢字） */
+    display: block; max-height: 2.9em; overflow: hidden;
+    min-width: 0; white-space: normal; overflow-wrap: anywhere;
+    color: var(--mob-dim); font-size: 12.5px; line-height: 1.45;
   }
 
   /* ---------- composer 胶囊（仅任务页） ---------- */
@@ -376,7 +410,7 @@
     min-height: 34px; padding: 5px 14px;
     border: 0; border-radius: 999px;
     background: var(--mob-ink, var(--text)); color: var(--mob-card, var(--panel));
-    font-size: 12.5px; font-weight: 600;
+    font-size: 14px; font-weight: 600;
     box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
   }
   #mob-return.hidden { display: none !important; }
@@ -421,7 +455,7 @@
     border: 0; background: transparent; color: var(--mob-dim);
     font-size: calc(13px * var(--mob-font-scale, 1)); font-weight: 500; text-align: left;
   }
-  .mob-drawer-list { display: grid; }
+  .mob-drawer-list { display: grid; grid-template-columns: minmax(0, 1fr); }
   .mob-drawer-item {
     display: flex; align-items: center; gap: 8px;
     width: 100%; min-height: 44px; padding: 6px 8px;
@@ -436,7 +470,7 @@
   .mob-drawer-item i.ok { background: var(--mob-green); }
   .mob-drawer-item i.bad { background: var(--mob-red); }
   .mob-drawer-item i.wait { background: var(--wb-warn, var(--warn)); }
-  .mob-drawer-empty { padding: 4px 8px 10px; color: var(--mob-dim); font-size: 12.5px; }
+  .mob-drawer-empty { padding: 4px 8px 10px; color: var(--mob-dim); font-size: 14px; }
 
   /* ---------- 字体大小子页 ---------- */
   .mob-font-preview { padding: 18px 16px; display: grid; gap: 16px; }
@@ -466,7 +500,7 @@
   #mob-font-range::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 1px 6px rgba(0, 0, 0, .22); }
   .mob-slider-scale {
     display: flex; align-items: center; justify-content: space-between;
-    margin-top: 4px; color: var(--mob-dim); font-size: 12px;
+    margin-top: 4px; color: var(--mob-dim); font-size: 13px;
   }
 
   /* ---------- 存储空间子页 ---------- */
@@ -480,7 +514,7 @@
   .mob-st-copy { display: grid; gap: 3px; min-width: 0; }
   .mob-st-copy b { font-size: calc(15px * var(--mob-font-scale, 1)); font-weight: 600; }
   .mob-st-copy data { font-size: calc(15px * var(--mob-font-scale, 1)); font-weight: 600; color: var(--mob-ink); font-variant-numeric: tabular-nums; }
-  .mob-st-desc { margin: 8px 0 0; color: var(--mob-dim); font-size: 12.5px; line-height: 1.6; }
+  .mob-st-desc { margin: 8px 0 0; color: var(--mob-dim); font-size: 14px; line-height: 1.6; }
   .mob-pill-btn {
     flex: none; min-height: 34px; padding: 5px 16px;
     border: 0; border-radius: 999px;
@@ -505,7 +539,7 @@
     position: relative; flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 2px;
     min-width: 0; padding: 4px 0; border: 0; background: transparent;
-    color: var(--mob-dim, var(--muted)); font-size: 10px; font-weight: 500; cursor: pointer;
+    color: var(--mob-dim, var(--muted)); font-size: 12px; font-weight: 500; cursor: pointer;
   }
   html[data-layout] #mobile-tabbar .tab-item .ico { width: 22px; height: 22px; }
   html[data-layout] #mobile-tabbar .tab-item.active { color: var(--mob-ink, var(--text)); font-weight: 600; }
@@ -513,7 +547,7 @@
     position: absolute; top: 2px; left: calc(50% + 5px);
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
-    background: var(--mob-red, var(--bad)); color: #fff; font-size: 10px; font-style: normal; font-weight: 700;
+    background: var(--mob-red, var(--bad)); color: #fff; font-size: 12px; font-style: normal; font-weight: 700;
   }
   html[data-layout] #mobile-tabbar .mob-tab-badge.hidden { display: none !important; }
 
@@ -523,6 +557,11 @@
   body.mob-detail-active .mob-composer { display: none !important; }
   body.mob-detail-active .topbar { display: none !important; }
   body.mob-detail-active #run-detail { padding-top: env(safe-area-inset-top); }
+  /* 内容列让位 --rd-panel-w(204px) 是给右上常驻分区面板的；面板在手机上
+     已随 #rd-tabs 整体隐藏，让位不变零就把产出卡挤成 ~186px——「执行结果/
+     完成」竖排折行（2026-11-03 手机全量审计实案）。特异性必须压过
+     demo-parity 的 `html[data-layout="workbench"] #run-detail{--rd-panel-w:204px}`。 */
+  html[data-layout] body.mob-detail-active #run-detail { --rd-panel-w: 0px; }
 
   .mob-detail-seg, .mob-detail-actions { display: none; }
   body.mob-detail-active .mob-detail-seg {
@@ -553,10 +592,33 @@
     border: 0; border-radius: 16px; background: var(--mob-card);
   }
   .mob-rp-head { display: flex; align-items: center; gap: 10px; }
-  .mob-rp-head b { font-size: 18px; line-height: 1.2; }
-  .mob-rp-head span { color: var(--mob-dim); font-size: 12px; }
+  .mob-rp-head b { font-size: 20px; line-height: 1.2; }
+  .mob-rp-head span { color: var(--mob-dim); font-size: 13px; }
   .mob-rp-head .mob-badge { margin-left: auto; }
-  .mob-rp-head + .mob-track { margin: 8px 0 12px; }
+  .mob-rp-head + .mob-track { margin: 8px 0 0; }
+  /* 步骤时间线折叠（2026-11-03 用户红框「把页面挡完了」）：摘要行 + 进度条常驻，
+     时间线收进 <details>，展开时限高内滚。summary 全宽可点、右端「展开/收起」。 */
+  .mob-rp-fold { margin-top: 2px; }
+  .mob-rp-fold > summary {
+    display: flex; align-items: center; gap: 6px;
+    min-height: 40px; margin: 0 -14px; padding: 0 14px;
+    list-style: none; cursor: pointer;
+    color: var(--mob-dim); font-size: calc(13px * var(--mob-font-scale, 1)); font-weight: 600;
+  }
+  .mob-rp-fold > summary::-webkit-details-marker { display: none; }
+  .mob-rp-fold > summary:active { background: color-mix(in srgb, var(--mob-ink) 4%, transparent); }
+  .mob-rp-fold > summary .ico { width: 14px; height: 14px; flex: none; transition: transform .15s ease; }
+  .mob-rp-fold[open] > summary .ico { transform: rotate(90deg); }
+  .mob-rp-fold > summary i {
+    font-style: normal; min-width: 18px; height: 18px; padding: 0 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: color-mix(in srgb, var(--mob-ink) 7%, var(--mob-card));
+    font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .mob-rp-fold > summary em {
+    margin-left: auto; font-style: normal; font-weight: 500; color: var(--mob-blue);
+  }
+  .mob-rp-fold .mob-timeline { margin-top: 10px; }
   .mob-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .mob-step { display: flex; gap: 10px; }
   .mob-node {
@@ -572,12 +634,12 @@
   .mob-step.wait .mob-node { background: transparent; border: 1.5px solid color-mix(in srgb, var(--mob-ink) 25%, transparent); }
   .mob-step-copy { display: block; min-width: 0; }
   .mob-step-copy b { display: block; font-size: calc(13px * var(--mob-font-scale, 1)); line-height: 1.4; font-weight: 600; }
-  .mob-step-copy small { display: block; margin-top: 1px; color: var(--mob-dim); font-size: 11px; }
+  .mob-step-copy small { display: block; margin-top: 1px; color: var(--mob-dim); font-size: 12.5px; }
   .mob-step-copy p {
     margin: 3px 0 0; max-height: 3em; overflow: hidden;
-    color: var(--mob-dim); font-size: 12px; line-height: 1.5;
+    color: var(--mob-dim); font-size: 13px; line-height: 1.5;
   }
-  .mob-rp-more { margin: 8px 0 0; color: var(--mob-dim); font-size: 11.5px; }
+  .mob-rp-more { margin: 8px 0 0; color: var(--mob-dim); font-size: 12.5px; }
   #run-detail #rd-chat-run-status { display: none !important; }
   /* 进展段已经是步骤时间线，成果卡里的「查看执行步骤」在手机上是死路（页签已收） */
   body.mob-detail-active #rd-outcome .outcome-actions { display: none !important; }
@@ -602,11 +664,24 @@
     box-shadow: 0 1px 6px rgba(0, 0, 0, .05);
   }
   body.mob-detail-active #run-detail #btn-back .ico { width: 20px; height: 20px; }
-  body.mob-detail-active #run-detail #rd-chat-bar {
-    border: 0; border-radius: 999px;
+  /* 详情输入坞：元素只有 .rd-chat-bar 这个类（没有 #rd-chat-bar 这个 id），旧写法
+     #rd-chat-bar 整组规则从未命中，坞一直按桌面大卡渲染占掉底部半屏——
+     2026-11-03 用户「挡完了」实案。坞在手机上是多行卡（输入行 + 上下文胶囊行 +
+     工具行），用 18px 圆角白卡而不是 999 胶囊；高度钳位防队列/提示把它顶成半屏。 */
+  html[data-layout] body.mob-detail-active #run-detail .rd-chat-bar {
+    width: auto; max-width: none;   /* 压掉 ≤900 的 width:100%，margin 8px 才收得住（否则右沿溢出 8px） */
+    max-height: min(46dvh, 380px);
+    overflow-y: auto;
+    margin: 0 8px max(6px, env(safe-area-inset-bottom));
+    border: 0; border-radius: 18px;
     background: var(--mob-card);
     box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
   }
+  /* 键盘弹起（body.mob-chat-focused 由 mobile-workbench.js 在对话输入框
+     focus/blur 时打/摘；不用 :has(:focus)——Chromium 对它的失效重算有坑）：
+     收起进展时间线，屏幕让给对话流——不收的话 844 屏在键盘下对话流只剩
+     ~32px（2026-11-03 实测），「输入框把对话挡完了」的体感就是它。失焦自动回来。 */
+  body.mob-detail-active.mob-chat-focused .mob-run-progress { display: none !important; }
   body.mob-detail-active #run-detail .rd-chat-flow .chat-bubble.me {
     border: 0; border-radius: 18px; background: color-mix(in srgb, var(--mob-ink) 6%, var(--mob-card));
   }
@@ -617,7 +692,55 @@
   body.mob-composing-active #ctrl-pill,
   body.mob-composing-active .topbar .page-title { display: none !important; }
 
-  /* 「返回工作区」是面包屑，不是一张白色按钮卡片；点击热区仍保持 44px。 */
+  /* 「更多设置（电脑端）」入口先屏蔽（2026-11-03 用户拍板：手机端不用放这么多东西，
+     且桌面设置首页在手机视口是破碎形态）——要恢复删掉这条即可。 */
+  #mob-me-desktop { display: none !important; }
+
+  /* ---------- 发现页三级页（市场/经验库/知识库/记忆中心，goDesktop 进
+     settings-mode）手机化。真凶：demo-parity.css:811 桌面设置浮层规则
+     （display:flex + overflow:hidden + padding:20px!important，特异性 (1,2,3)、
+     加载更晚）在 ≤900 也在生效 → main 不可滚，长页底部内容永远到不了、
+     还被 tabbar 盖一截（2026-11-03 审计 under-tabbar 全家实案）。
+     这里抬到 (1,2,4) 压它：恢复块级滚动 + 底部让出 tabbar。 ---------- */
+  /* :first-of-type 才真比 demo-parity 高一级（> 不计特异性，同 (1,2,3) 会输） */
+  html[data-layout] body.settings-mode #mainwrap > main:first-of-type {
+    display: block; overflow-y: auto; min-height: 0;
+    padding-bottom: calc(var(--mob-tabbar-h, 58px) + 16px) !important;
+  }
+  /* 真滚轮是 .subpage 自己（h 710 vs 内容 772 实测），底缘被 tabbar 盖 39px——
+     它也要让出 tabbar 高度，滚到底最后一段才完整可见 */
+  html[data-layout] body.settings-mode #page-settings > .subpage {
+    padding-bottom: calc(var(--mob-tabbar-h, 58px) + 16px) !important;
+  }
+  #page-settings .panel.wide, #page-settings .mem-card, #page-settings .panel {
+    max-width: 100%; min-width: 0;
+  }
+  #page-settings .panel.wide input[type="text"], #page-settings .panel.wide input:not([type]),
+  #page-settings .panel.wide select, #page-settings .panel.wide textarea {
+    min-width: 0; max-width: 100%;
+  }
+  /* 三级页按钮统一兜底（2026-11-03 用户截图「咋样式还不一样」+「类似问题很多」）：
+     手机视口下 settings-v3 的 ≥901 按钮规则不生效，无 ghost/primary 类的裸 button
+     （mem-btn 等）回落浏览器默认灰底方角，与旁边 ghost 白底圆角不一致。
+     一条兜底统一描边胶囊；primary 实底、danger/is-danger 红描边、hhelp 问号小钮除外。 */
+  html[data-layout] body.settings-mode #page-settings button:not(.primary):not(.danger):not(.is-danger):not(.hhelp) {
+    min-height: 32px; padding: 5px 12px;
+    border: 1px solid var(--wb-border, var(--border)) !important;
+    border-radius: 8px !important;
+    background: var(--wb-panel, var(--panel)) !important; background-image: none !important;
+    color: var(--wb-text, var(--text)) !important;
+    font-size: 13px; box-shadow: none;
+  }
+  html[data-layout] body.settings-mode #page-settings button.danger,
+  html[data-layout] body.settings-mode #page-settings button.is-danger {
+    min-height: 32px; padding: 5px 12px;
+    border: 1px solid color-mix(in srgb, var(--wb-bad, var(--bad)) 40%, transparent) !important;
+    border-radius: 8px !important;
+    background: var(--wb-panel, var(--panel)) !important; background-image: none !important;
+    color: var(--wb-bad, var(--bad)) !important; font-size: 13px; box-shadow: none;
+  }
+
+  /* 「更多设置（电脑端）」是面包屑，不是一张白色按钮卡片；点击热区仍保持 44px。 */
   #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back {
     min-height: 44px; margin: 0 0 6px; padding: 6px 0; gap: 4px;
     border: 0; border-radius: 0; background: transparent;
@@ -625,6 +748,23 @@
   }
   #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back .ico { width: 16px; height: 16px; }
   #sub-tasks.mobile-has-workspaces.mobile-composing .mobile-workspaces-back:active { color: var(--mob-ink); }
+
+  /* ---------- composing 输入页手机化（2026-11-03 全量审计） ----------
+   * ① main 的左右 padding 在该态被桌面规则清成 0，hero/页签全部贴屏边——
+   *    给 #sub-tasks 自己补侧边距；底部留出固定 tabbar 高度，最后一行不再被盖。
+   * ② .panel.wide.composer 白底通铺 + 内层 .cmp-box 又是白卡 = 两层框；
+   *    手机上外层拍平成画布，只留 .cmp-box 一张白卡（对齐手机壳视觉语言）。 */
+  #sub-tasks { padding: 0 14px calc(var(--mob-tabbar-h, 58px) + 16px); }
+  #sub-tasks .panel.wide.composer { background: transparent; border: 0; box-shadow: none; }
+  /* 首屏别浪费：116px 空输入区收成一档（触屏仍够写两三行） */
+  #sub-tasks #f-goal { min-height: 96px; }
+
+  /* 详情返回圆钮：demo-parity 的 (2,2,1) font-size:12.5px 压过 ≤900 的
+     font-size:0（连 mobile-workbench 的老规则一起输），40px 圆钮里露出半个
+     「返」字（2026-11-03 实拍）——这里抬到 (2,2,2) 才压得住。 */
+  html[data-layout] body.mob-detail-active #run-detail #btn-back {
+    font-size: 0; overflow: hidden;
+  }
 }
 
 @media (max-width: 430px) {
@@ -632,6 +772,6 @@
   .mob-sub { padding-left: 14px; padding-right: 14px; }
   .mob-sub-head { margin-left: -14px; margin-right: -14px; padding-left: 12px; padding-right: 12px; }
   .mob-top { padding-left: 12px; padding-right: 12px; }
-  .mob-hello h1 { font-size: 22px; }
-  .mob-hello p { font-size: 12.5px; }
+  .mob-hello h1 { font-size: 24px; }
+  .mob-hello p { font-size: 14px; }
 }

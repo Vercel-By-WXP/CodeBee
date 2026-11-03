@@ -577,6 +577,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 from core import agents as agents_mod
                 return self._json(200, {"flows": agents_mod.decorate(
                     profile.filter_flows(flows.list_flows()))})
+            if path == "/api/expert-teams":
+                # 专家团（2026-11-03）：内置六团 + 用户在 data/expert-teams.json 里存的团。
+                # 只读列表；成员名字按 flow 现算，前端不用再查一遍 /api/flows。
+                from core import expert_teams
+                return self._json(200, {"teams": expert_teams.list_teams()})
             if path == "/api/agents":
                 # 形态内的专家清单：每个 Agent 的 focus / 页面原型 / 关键指标。
                 from core import agents as agents_mod
@@ -1000,6 +1005,20 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 except ValueError:
                     days = 30
                 return self._json(200, usage.summary(days=days))
+            if path == "/api/usage/session":
+                # 本会话用量明细（对话条上方那条汇总 + 弹出表格）：按模型聚合
+                # 一个运行（或同一任务的会话链）的调用数 / Token / 费用。
+                # 数据源与 /api/usage 同一份台账，不读 run.json 的副本。
+                from core import usage
+                sq = parse_qs(urlparse(self.path).query)
+                run_id = (sq.get("run") or [""])[0][:64]
+                task_id = (sq.get("task") or [""])[0][:64]
+                try:
+                    sdays = max(0, min(3650, int((sq.get("days") or ["0"])[0])))
+                except ValueError:
+                    sdays = 0
+                return self._json(200, usage.session_usage(
+                    run_id=run_id, task_id=task_id, days=sdays))
             if path == "/api/usage/estimate":
                 from core import usage
                 q = parse_qs(urlparse(self.path).query)
@@ -1275,7 +1294,9 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     return self._json(404, {"error": "not found"})
                 from core import covergen
                 return self._json(200, {"ok": True,
-                                        "prompt": covergen._cover_prompt(task)})
+                                        "prompt": covergen._cover_prompt(task),
+                                        # 上一次用户输入的作者署名，前端输入框做默认值
+                                        "author": covergen.last_author()})
             m = re.match(r"^/api/tasks/([^/]+)/writing$", path)
             if m:
                 # 已写字数：作者端最在意的一行。target 是承诺，words 是事实。
@@ -1640,6 +1661,11 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._json(200, data)
         if path == "/api/control":
             return self._api_control()
+        if path == "/api/usage/clear":
+            # 清空用量台账（使用统计页的「清空」按钮）：文件改名归档不直删，
+            # 统计从下一次调用重新累计；routing-quality/estimate-audit 不动。
+            from core import usage
+            return self._json(200, {"ok": True, "archived": usage.clear_ledger()})
         if path == "/api/sharing/import":
             body = self._body() or {}
             try:
@@ -2410,6 +2436,9 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             return self._api_dir_save()
         if path == "/api/pick_folder":
             return self._api_pick_folder()
+        if path == "/api/workdir/create":
+            # 「＋ 新建工作空间」：在默认工作区根下建同名文件夹（仅限本机，单段名）
+            return self._api_workdir_create()
         m = re.match(r"^/api/operations/([^/]+)/reconcile$", path)
         if m:
             from core import operations
@@ -2585,7 +2614,10 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         m = re.match(r"^/api/tasks/([^/]+)/cover$", path)
         if m:
             from core import covergen
-            ok, err = covergen.start(m.group(1))
+            # 作者署名随确认弹窗一起提交（2026-11-03 用户：封面要加上作者）；
+            # 留空则沿用无署名提示词。start 落盘上次输入，下次弹窗回显。
+            author = str((self._body() or {}).get("author") or "").strip()
+            ok, err = covergen.start(m.group(1), author=author)
             return self._json(400, {"error": err}) if not ok else self._json(200, {"ok": True})
         if path == "/api/browser/workspace":
             origin = self.headers.get("Origin") or ""
@@ -3085,6 +3117,21 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             from core import bind_ledger
             res = bind_ledger.restore((self._body() or {}).get("path") or "")
             return self._json(200 if res.get("ok") else 400, res)
+        if path == "/api/expert-teams/delete":
+            # 本服务没有 DELETE 动词（全站写操作一律 POST），删除也走 POST。
+            from core import expert_teams
+            try:
+                expert_teams.delete_team((self._body() or {}).get("id") or "")
+            except (ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True})
+        if path == "/api/expert-teams":
+            from core import expert_teams
+            try:
+                team = expert_teams.save_team(self._body() or {})
+            except (ValueError, OSError) as exc:
+                return self._json(400, {"error": str(exc)})
+            return self._json(200, {"ok": True, "team": team})
         if path == "/api/flows":
             flow, err = flows.upsert_flow(self._body())
             if err:
@@ -4985,6 +5032,15 @@ def main():
     parser.add_argument("--mcp-remove", default="",
                         help="预览或移除已配置 MCP 名称；配合 --commit-mcp 写入设置")
     args = parser.parse_args()
+
+    # 服务模式也统一 UTF-8 输出：Windows 下 stdout/stderr 默认继承控制台 GBK
+    # 代码页，重定向到日志文件会乱码（service-8765.log 实测为 GBK，无法 grep）。
+    # 在命令行分支之前统一 reconfigure，服务模式与 CLI 模式的日志都 UTF-8。
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     # ---- 形态：列表 / 新建 两个只读命令先处理，它们不该弹出选择菜单 ----
     if args.list_profiles:

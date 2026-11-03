@@ -61,6 +61,14 @@
     if (!bar) {
       bar = document.createElement("div");
       bar.id = "borrow-attention";
+    }
+    // 挂点跟着输入卡走（2026-11-03 用户：「这个要不放到对话框下面去？」）——
+    // 原先 insertBefore(firstChild) 压在问候语上方，像全站告警横幅；
+    // 现在落在 composer 下方：先说事，再顺手处理待办。输入卡不在时回退到顶部。
+    const anchor = host.querySelector(".rd-input-card");
+    if (anchor && anchor.parentElement === host) {
+      if (anchor.nextElementSibling !== bar) anchor.insertAdjacentElement("afterend", bar);
+    } else if (host.firstElementChild !== bar) {
       host.insertBefore(bar, host.firstChild);
     }
     const actBtn = (it) => {

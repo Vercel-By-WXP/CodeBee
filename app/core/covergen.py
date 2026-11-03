@@ -71,11 +71,14 @@ def _chapter_facts(workdir, limit=3):
         return ""
 
 
-def _cover_prompt(task):
-    """从任务与建书资料拼图像提示词：场景氛围向，不要文字（平台会自行压字）。
+def _cover_prompt(task, author=""):
+    """从任务与建书资料拼图像提示词：场景氛围向（平台会自行压字）。
 
     素材优先级：章节事实抽取（真实剧情的人物/场景/意象）> 题材+简介。
     poster-v2 借鉴：视觉元素来自 novel facts 才有「这是这本书的封面」的辨识度。
+
+    作者署名（2026-11-03 用户：封面要加上作者）：给了 author 就允许画面里
+    唯一的一处文字——下方居中的署名；没给维持「画面中不要出现任何文字」。
 
     生图任务（type=image）走另一条：task["image_prompt"] 是用户自己写的画面描述，
     原样使用，不拼封面模板、不掺书名题材——否则画出来的不是他要的那张。"""
@@ -88,15 +91,52 @@ def _cover_prompt(task):
     title = bm.get("书名") or task.get("title") or ""
     genre = bm.get("类型") or bm.get("分类") or ""
     brief = (bm.get("一句话简介") or bm.get("简介") or task.get("goal") or "")
+    author = str(author or "").strip()
+    no_text = "画面中不要出现任何文字"
+    if author:
+        no_text = "画面中除作者署名外不要出现任何文字"
+    base = ("竖版小说封面插画，%s。题材：%s %s。故事梗概：%s。"
+            % (no_text, genre, title, str(brief)[:300]))
     facts = _chapter_facts(task.get("workdir") or "")
-    base = ("竖版小说封面插画，画面中不要出现任何文字。题材：%s %s。故事梗概：%s。"
-            % (genre, title, str(brief)[:300]))
     if facts:
         base += ("\n\n以下是最新的剧情片段（从中提取主要人物形象、标志性场景与核心意象"
                  "作为画面主体——让封面一眼可辨「这是这本书」）：\n%s" % facts)
     base += ("\n商业网文封面质感：主体人物或核心场景突出，色彩浓郁有冲击力，"
              "构图上方留白便于后期压标题。")
+    if author:
+        base += ("\n封面下方居中署名作者「%s」，署名清晰可读、字号克制，"
+                 "除此之外不得出现其他任何文字。" % author)
     return base
+
+
+# 上一次用户输入的作者署名（全局一份：署名是「这位作者」的属性，不是任务的）。
+# 落 DATA_DIR 下的小 JSON，atomic 写（tmp + replace），读不到按空串回落。
+def _author_path():
+    from . import paths
+    return paths.DATA_DIR / "cover_author.json"
+
+
+def last_author():
+    try:
+        with open(_author_path(), encoding="utf-8") as f:
+            return str((json.load(f) or {}).get("author") or "")
+    except Exception:
+        return ""
+
+
+def _remember_author(author):
+    author = str(author or "").strip()[:60]
+    if not author:
+        return
+    try:
+        p = _author_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"author": author}, ensure_ascii=False),
+                       encoding="utf-8")
+        tmp.replace(p)
+    except Exception:
+        log.debug("记住封面作者署名失败", exc_info=True)
 
 
 def _pick_key(prov):
@@ -278,9 +318,10 @@ def _call_images(base, key, model, prompt, size, allow_private):
     return None, err or ("HTTP %s" % status)
 
 
-def make_cover(run_id, task):
+def make_cover(run_id, task, author=""):
     """同步生成封面到运行目录。成功/失败返回 entry dict（写任务 cover_gen 用）。"""
     from . import builtin_agent, paths
+    author = str(author or "").strip()
     try:
         cands = _candidates()
         if not cands:
@@ -288,7 +329,7 @@ def make_cover(run_id, task):
                 "没有可用的 openai 协议图像接口（扫了全部供应商的 openai 面，"
                 "含适配测试实测出的）。可到模型管理页对网关跑一次适配测试补出 "
                 "openai 面，或设环境变量 CODEBEE_IMAGE_MODEL 指定图像模型后重试")
-        prompt = _cover_prompt(task)
+        prompt = _cover_prompt(task, author)
         last_err = ""
         for cand in cands:
             for base in cand["bases"]:
@@ -318,6 +359,7 @@ def make_cover(run_id, task):
                             continue
                         return {"status": "done", "file": "cover.png", "run_id": str(run_id),
                                 "provider": cand["label"], "model": model, "size": size,
+                                "author": author,
                                 "at": time.strftime("%Y-%m-%d %H:%M:%S")}
         raise RuntimeError(last_err or "图像接口无可用模型")
     except Exception as e:
@@ -325,12 +367,12 @@ def make_cover(run_id, task):
                 "at": time.strftime("%Y-%m-%d %H:%M:%S")}
 
 
-def generate_async(run_id, task_id, task):
+def generate_async(run_id, task_id, task, author=""):
     """后台线程入口：生成封面并把终态写回任务 cover_gen（仿建书 generate_async）。"""
     from . import store
     if not store.get_task(task_id):
         return
-    entry = make_cover(run_id, task)
+    entry = make_cover(run_id, task, author)
     cur = store.get_task(task_id)
     if not cur:
         return
@@ -340,8 +382,9 @@ def generate_async(run_id, task_id, task):
     store.set_cover_gen(task_id, entry)
 
 
-def start(task_id, run_id=None):
-    """起后台封面生成线程。run_id 缺省用该任务最近一次 run。返回 (ok, err)。running 幂等拒绝。"""
+def start(task_id, run_id=None, author=""):
+    """起后台封面生成线程。run_id 缺省用该任务最近一次 run。返回 (ok, err)。running 幂等拒绝。
+    author 是用户在确认弹窗里输入的署名：落盘为「上次输入」，下次弹窗默认回显。"""
     from . import store
     task = store.get_task(task_id)
     if not task:
@@ -349,6 +392,7 @@ def start(task_id, run_id=None):
     cur = task.get("cover_gen") or {}
     if cur.get("status") == "running":
         return True, ""
+    _remember_author(author)
     rid = run_id
     if not rid:
         runs = store.task_runs(task_id)
@@ -360,5 +404,6 @@ def start(task_id, run_id=None):
         return False, "任务不存在"
     task = dict(task, cover_gen={"status": "running"})
     threading.Thread(target=generate_async, daemon=True,
-                     name="cover-gen-%s" % task_id, args=(rid, task_id, task)).start()
+                     name="cover-gen-%s" % task_id,
+                     args=(rid, task_id, task, str(author or "").strip())).start()
     return True, ""

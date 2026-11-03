@@ -1,0 +1,23 @@
+[
+  {
+    "id": "2048",
+    "title": "订单保存时报 NoneType has no attribute get",
+    "status": "active",
+    "severity": "1",
+    "pri": "1",
+    "module": "订单",
+    "product": "1",
+    "type": "代码错误",
+    "openedBy": "张测试",
+    "steps": "复现步骤：\n1. 新建订单，不填收货地址\n2. 点保存\n\n实际：接口 500\n预期：保存成功\n\n报错：\nTraceback (most recent call last):\n  File \"app/service.py\", line 42, in save_order\n    return address.get(\"city\")\nAttributeError: 'NoneType' object has no attribute 'get'\n"
+  },
+  {
+    "id": "2051",
+    "title": "列表页导出按钮点了没反应",
+    "status": "active",
+    "severity": "3",
+    "pri": "2",
+    "module": "列表",
+    "steps": "数据量为 0 时点导出，页面无任何反馈，控制台报 Cannot read property 'length' of undefined"
+  }
+]

@@ -26,6 +26,16 @@ for (const name of [...top, "index.html"]) {
   }
 }
 
+// 专家人像：app/ui/avatars/<flow_id>.webp。路径是运行时按 flow id 拼的
+// （'avatars/' + id + '.webp'），静态扫描抓不到——不整目录带上，手机端
+// 22 位专家会全员回退成首字方块。
+const avatarDir = join(ui, "avatars");
+if (existsSync(avatarDir)) {
+  for (const f of readdirSync(avatarDir)) {
+    if (/\.webp$/i.test(f)) refs.add("avatars/" + f);
+  }
+}
+
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 

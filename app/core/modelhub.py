@@ -1185,7 +1185,16 @@ def provider_view():
                 row["builtin_status_message"] = "内置免费服务端点必须是本机回环地址"
             elif p.get("builtin_status") != "disabled" and not _read_our_free_model_key():
                 row["builtin_status"] = "not_started"
-                row["builtin_status_message"] = "免费模型服务未启动或 Key 不可读；请先运行 standalone 服务"
+                # 把 standalone 生命周期的具体原因（未找到 Node.js / 未找到源码 /
+                # 端口被占等）透传给前端，别只留一句笼统的「未启动」。
+                _bp = row.get("builtin_process") or {}
+                _bp_msg = str(_bp.get("message") or "").strip()
+                _bp_err = str(_bp.get("error") or "").strip()
+                _detail = _bp_msg or _bp_err
+                if _detail:
+                    row["builtin_status_message"] = _detail
+                else:
+                    row["builtin_status_message"] = "免费模型服务未启动或 Key 不可读；请先运行 standalone 服务"
         ks = []
         for k in _provider_keys(p):
             ks.append({"id": k["id"], "key": _mask(k["key"]),

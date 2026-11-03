@@ -1,0 +1,12 @@
+{
+  "id": "python-pytest",
+  "lang": "python",
+  "detect": { "files": ["pyproject.toml", "pytest.ini", "tox.ini", "setup.py", "requirements.txt"], "globs": ["**/*.py"] },
+  "commands": {
+    "lint": "python -m ruff check .",
+    "typecheck": "",
+    "test": "python -m pytest -q",
+    "test_scoped": "python -m pytest -q -k \"{keywords}\""
+  },
+  "notes": "ruff/pytest 缺失时 zfix 会把该步标记为 SKIP 而不是 FAIL。"
+}

@@ -154,6 +154,16 @@ def clean_cli_text(text):
     """
     if not text:
         return ""
+    # 快速短路：绝大多数 run 文本是干净的（无 ANSI/覆写/控制符/乱码/图元噪声），
+    # 直接返回原样，省掉整串正则扫描——冷启动读几百个 run 时重复清洗开销不小。
+    # 覆盖全部清洗特征：\x1b 转义、\r 覆写、\ufffd 乱码、控制字符、裸 ANSI 残尾、
+    # 图元串、以及超 3 个的连续换行折叠（\n{4,}）。
+    if ("\x1b" not in text and "\r" not in text and "\ufffd" not in text
+            and not _CTRL_RE.search(text)
+            and not _ANSI_HEAD_RE.search(text)
+            and not _NOISE_RUN_RE.search(text)
+            and "\n\n\n\n" not in text):
+        return text
     out = strip_ansi(text).replace("\r\n", "\n")
     if "\r" in out:
         lines = []

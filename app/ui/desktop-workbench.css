@@ -45,9 +45,9 @@
   }
   #sidebar { padding-top: 14px; }
   .brand-row { min-height: 40px; }
-  .brand-name { font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+  .brand-name { font-size: 17.5px; font-weight: 650; letter-spacing: -.02em; }
   .side-main > .new-task { margin-top: 8px; margin-bottom: 16px; min-height: 36px; }
-  .side-label { font-size: 12px; letter-spacing: 0; text-transform: none; }
+  .side-label { font-size: 13px; letter-spacing: 0; text-transform: none; }
   .sdir summary, .stask { min-height: 34px; border-radius: 7px; }
   .stask.active { color: var(--text); background: var(--panel2); }
   .sdir summary:hover, .stask:hover { background: var(--panel2); }
@@ -60,7 +60,7 @@
     border-bottom-color: var(--border);
     backdrop-filter: none;
   }
-  .topbar .page-title { font-size: 14px; font-weight: 600; letter-spacing: 0; }
+  .topbar .page-title { font-size: 15px; font-weight: 600; letter-spacing: 0; }
   .top-actions { gap: 4px; }
   .top-actions .pill { box-shadow: none; }
   .top-actions .pill:hover { color: var(--text); background: var(--panel2); }
@@ -155,10 +155,10 @@
     max-height: 62%;
     overflow-y: auto;
   }
-  .chat-bubble.agent { font-size: 14px; line-height: 1.8; }
+  .chat-bubble.agent { font-size: 15px; line-height: 1.8; }
   .chat-bubble.me { border: 0; border-radius: 16px; padding: 12px 16px; }
   .chat-avatar { width: 26px; height: 26px; background: transparent; border: 0; color: var(--muted); }
-  .chat-meta { font-size: 11px; }
+  .chat-meta { font-size: 12.5px; }
   #run-detail.chat-mode .rd-chat-bar {
     width: calc(100% - 48px);
     max-width: calc(var(--workbench-reading-width) - 48px);
@@ -169,7 +169,7 @@
     background: var(--panel);
     box-shadow: var(--shadow);
   }
-  .rd-chat-bar textarea { min-height: 62px; font-size: 14px; }
+  .rd-chat-bar textarea { min-height: 62px; font-size: 15px; }
   .rd-chat-tools { gap: 6px; }
   .rd-chat-tools .cmp-sel { background: transparent; border-color: transparent; }
   .rd-chat-tools .cmp-sel:hover { background: var(--panel2); }
@@ -221,7 +221,7 @@
     padding-top: 40px;
   }
 
-  .settings-nav-head > strong { font-size: 16px; font-weight: 600; letter-spacing: 0; }
+  .settings-nav-head > strong { font-size: 17.5px; font-weight: 600; letter-spacing: 0; }
   .settings-search-wrap {
     min-height: 34px;
     border: 1px solid transparent;
@@ -232,7 +232,7 @@
   .side-settings .set-group {
     padding: 11px 10px 3px;
     color: #777a80;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
   }
   .side-settings .set-item {
@@ -241,7 +241,7 @@
     gap: 8px;
     border-radius: 6px;
     color: #555960;
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 400;
   }
   .side-settings .set-item .ico { width: 14px; height: 14px; color: #70747b; }
@@ -254,7 +254,7 @@
   .side-settings .set-item.active .ico { color: #202124; }
 
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head h2 {
-    font-size: 25px;
+    font-size: 28px;
     font-weight: 600;
     letter-spacing: -.025em;
   }
@@ -275,7 +275,7 @@
     border-radius: 7px;
     background: #fff;
     color: #292b30;
-    font-size: 13px;
+    font-size: 14.5px;
   }
   body.settings-mode #page-settings input:focus,
   body.settings-mode #page-settings select:focus,
@@ -291,7 +291,7 @@
     border-radius: 7px;
     background: #2383e2;
     color: #fff;
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 500;
     box-shadow: none;
   }
@@ -302,7 +302,7 @@
     border-radius: 7px;
     background: #fff;
     color: #36383d;
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 450;
     box-shadow: none;
   }
@@ -345,15 +345,15 @@
     color: #1269bd;
   }
   body.settings-mode #sub-models .cat-chip.active b { color: #1269bd; }
-  body.settings-mode #sub-models .pi-name { font-size: 14px; font-weight: 550; }
-  body.settings-mode #sub-models .prov-detail .pd-name { font-size: 16px; font-weight: 600; }
+  body.settings-mode #sub-models .pi-name { font-size: 15px; font-weight: 550; }
+  body.settings-mode #sub-models .prov-detail .pd-name { font-size: 17.5px; font-weight: 600; }
   body.settings-mode #sub-models .pd-title .tag { background: #f1f2f3; }
   body.settings-mode #sub-models .pd-ops { gap: 6px; }
   body.settings-mode #sub-models .pd-ops button.small {
     min-height: 30px;
     padding: 4px 9px;
     border-radius: 7px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
   }
   body.settings-mode #sub-models .pd-ops button.primary.small { background: #2383e2; border-color: #2383e2; }
@@ -441,13 +441,8 @@
 /* Task details on compact screens: keep the popover readable while removing
  * duplicate labels and excess card padding that cover the conversation. */
 @media (max-width: 980px) {
-  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
-    width: min(430px, calc(100vw - 42px));
-    padding: 10px 12px 11px;
-    border-radius: 12px;
-    overflow-x: hidden;
-  }
-
+  /* 任务信息浮层已从 detail-head 搬到 #rd-rail 下（2026-11-03 右上角浮层形态），
+     这里只留内容侧的收紧规则；宽度由 demo-parity.css 的浮层定位统一给。 */
   #run-detail .rd-meta-popover,
   #run-detail .rd-meta-popover * { min-width: 0; box-sizing: border-box; }
 
@@ -459,7 +454,7 @@
   #run-detail .rd-meta-popover .rd-meta-strip .stat {
     max-width: 100%;
     overflow-wrap: anywhere;
-    font-size: 10.5px;
+    font-size: 12px;
   }
 
   #run-detail .rd-meta-popover .rd-timeout-row {
@@ -485,16 +480,16 @@
     overflow-wrap: anywhere;
   }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-state { min-width: 60px; }
-  #run-detail .rd-meta-popover #rd-overview .rd-overview-state .state-value { font-size: 15px; }
+  #run-detail .rd-meta-popover #rd-overview .rd-overview-state .state-value { font-size: 16px; }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-progress { height: 4px; }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-facts {
     gap: 3px 9px;
     overflow-wrap: anywhere;
-    font-size: 10.5px;
+    font-size: 12px;
   }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-actions button {
     padding: 3px 7px;
-    font-size: 10.5px;
+    font-size: 12px;
   }
 }
 
@@ -587,7 +582,7 @@
 
   .brand-name {
     color: var(--text);
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 650;
     letter-spacing: -.02em;
   }
@@ -618,7 +613,7 @@
     border-bottom: 1px solid var(--cb-card-border);
   }
 
-  .side-label { font-size: 12px; font-weight: 600; }
+  .side-label { font-size: 13px; font-weight: 600; }
   .sdir summary, .stask { min-height: 34px; border-radius: 7px; }
   .sdir summary:hover, .stask:hover { background: var(--cb-hover); }
   .stask.active {
@@ -646,7 +641,7 @@
   .topbar .pill { color: var(--cb-rail-text); box-shadow: none; }
   .topbar .icon-btn:hover,
   .topbar .pill:hover { color: var(--text); background: var(--cb-hover); }
-  .topbar .page-title { color: var(--text); font-size: 14px; font-weight: 650; }
+  .topbar .page-title { color: var(--text); font-size: 15px; font-weight: 650; }
   .top-actions { gap: 3px; }
 
   main { background: var(--cb-canvas); }
@@ -680,7 +675,7 @@
 
   #run-detail.chat-mode .rd-chat-flow::-webkit-scrollbar { display: none; }
 
-  .chat-bubble.agent { font-size: 14px; line-height: 1.75; }
+  .chat-bubble.agent { font-size: 15px; line-height: 1.75; }
   .chat-bubble.me { background: var(--panel2); border-color: var(--border); }
   .chat-avatar { background: color-mix(in srgb, var(--cb-active) 38%, var(--panel)); border-color: var(--border); color: var(--cb-accent); }
 
@@ -708,7 +703,7 @@
   }
 
   #rd-rail > .detail-head::before { display: none; }
-  #rd-rail > .detail-head > #rd-title { font-size: 15px; font-weight: 650; }
+  #rd-rail > .detail-head > #rd-title { font-size: 16px; font-weight: 650; }
   #rd-rail > .detail-head > .rd-actions { padding-top: 12px; }
   #rd-rail > #rd-tabs,
   #rd-rail > #rd-chat-nav { border-top-color: var(--border); }
@@ -846,7 +841,7 @@
 
   .settings-nav-head > strong {
     color: var(--text);
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 650;
     letter-spacing: -.02em;
   }
@@ -881,7 +876,7 @@
   .side-settings .set-group {
     padding: 12px 10px 4px;
     color: #85858a;
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 500;
     letter-spacing: 0;
   }
@@ -894,7 +889,7 @@
     gap: 9px;
     border-radius: 7px;
     color: #62656a;
-    font-size: 14px;
+    font-size: 15px;
   }
 
   .side-settings .set-item .ico { width: 15px; height: 15px; }
@@ -965,7 +960,7 @@
   }
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .panel-head h2 {
     color: #242528;
-    font-size: 27px;
+    font-size: 28px;
     font-weight: 550;
     line-height: 1.3;
     letter-spacing: -.02em;
@@ -975,13 +970,13 @@
   }
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) > .panel > .hint {
     color: #777a80;
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.65;
   }
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) .field > label,
   body.settings-mode #page-settings > .subpage:not(#sub-tasks):not(#sub-models) .settings-subhead {
     color: #303238;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 500;
     line-height: 1.5;
   }
@@ -1004,7 +999,7 @@
     border-radius: 8px;
     background: #fff;
     color: #292a2d;
-    font-size: 14px;
+    font-size: 15px;
   }
   body.settings-mode #page-settings button.primary,
   body.settings-mode #page-settings a.button.primary {
@@ -1047,13 +1042,13 @@
     background: #f2f2f3;
     box-shadow: none;
   }
-  body.settings-mode #sub-models .prov-detail .pd-name { font-size: 16px; font-weight: 650; }
+  body.settings-mode #sub-models .prov-detail .pd-name { font-size: 17.5px; font-weight: 650; }
   body.settings-mode #sub-models .pd-ops-gap { display: none; }
   body.settings-mode #sub-models .pd-ops { column-gap: 6px; row-gap: 5px; }
   body.settings-mode #sub-models .pd-ops button.small {
     min-height: 30px;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 20px;
   }
   /* The provider page uses the same restrained controls as the reference:
@@ -1221,7 +1216,7 @@
   :is(#sub-tasks, #rd-input-slot) .cmp-box textarea {
     min-height: 76px;
     padding: 12px 9px 8px;
-    font-size: 14px;
+    font-size: 15px;
   }
 
   :is(#sub-tasks, #rd-input-slot) .cmp-bar {
@@ -1321,26 +1316,26 @@
 @media (min-width: 901px) {
   body {
     font-family: var(--font-ui);
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.55;
     font-optical-sizing: auto;
   }
-  .brand-name { font-family: var(--font-ui); font-size: 15px; }
-  .side-label { font-size: 12px; line-height: 1.4; }
-  .sdir summary, .stask { font-size: 13.5px; line-height: 1.45; }
-  .topbar .page-title { font-size: 14px; line-height: 1.4; }
-  .panel-head h2, .detail-head h2 { font-size: 16px; line-height: 1.4; }
+  .brand-name { font-family: var(--font-ui); font-size: 16px; }
+  .side-label { font-size: 13px; line-height: 1.4; }
+  .sdir summary, .stask { font-size: 15px; line-height: 1.45; }
+  .topbar .page-title { font-size: 15px; line-height: 1.4; }
+  .panel-head h2, .detail-head h2 { font-size: 17.5px; line-height: 1.4; }
   :is(#sub-tasks, #rd-input-slot) .hero {
     font-family: var(--font-display);
     font-size: clamp(26px, 2.1vw, 32px);
     line-height: 1.3;
     letter-spacing: -.02em;
   }
-  :is(#sub-tasks, #rd-input-slot) .hero-sub { font-size: 14px; line-height: 1.6; }
-  :is(#sub-tasks, #rd-input-slot) .cmp-box textarea, .rd-chat-bar textarea { font-size: 14px; line-height: 1.6; }
-  .chat-bubble.agent { font-size: 14px; line-height: 1.75; }
-  .chat-meta { font-size: 11.5px; line-height: 1.4; }
-  .side-usage, .hint, .msg { font-size: 12.5px; line-height: 1.55; }
+  :is(#sub-tasks, #rd-input-slot) .hero-sub { font-size: 15px; line-height: 1.6; }
+  :is(#sub-tasks, #rd-input-slot) .cmp-box textarea, .rd-chat-bar textarea { font-size: 15px; line-height: 1.6; }
+  .chat-bubble.agent { font-size: 15px; line-height: 1.75; }
+  .chat-meta { font-size: 12.5px; line-height: 1.4; }
+  .side-usage, .hint, .msg { font-size: 14px; line-height: 1.55; }
 }
 
 /* Codex proportion pass: tune the desktop shell and working surfaces as one
@@ -1441,7 +1436,7 @@
   .rail-btn { width: 34px; height: 34px; border-radius: 9px; }
   #sidebar { padding: 0 10px; }
   .brand-row { min-height: 54px; margin-inline: -10px; padding-inline: 12px; }
-  .brand-name { font-size: 15px; }
+  .brand-name { font-size: 16px; }
   .side-main > .new-task {
     min-height: 34px;
     margin: 8px 0 10px;
@@ -1492,7 +1487,7 @@
     border-radius: var(--workbench-radius-card);
   }
   #rd-rail > .detail-head { gap: 7px; padding-bottom: 10px; }
-  #rd-rail > .detail-head > #rd-title { font-size: 14px; }
+  #rd-rail > .detail-head > #rd-title { font-size: 15px; }
   #rd-rail > .detail-head > .rd-actions { gap: 4px; padding-top: 7px; }
   #rd-rail > .detail-head > .rd-actions button { min-height: 29px; border-radius: var(--workbench-radius-control); }
   #rd-rail > #rd-tabs,
@@ -1552,7 +1547,7 @@
     padding: 7px 10px;
     border-radius: 8px;
     color: var(--text);
-    font-size: 13px;
+    font-size: 14.5px;
     line-height: 1.35;
   }
 
@@ -1569,7 +1564,7 @@
   }
 
   .topbar .icon-btn { width: 30px; height: 30px; border-radius: 8px; }
-  .topbar .page-title { font-size: 14px; font-weight: 650; }
+  .topbar .page-title { font-size: 15px; font-weight: 650; }
   .top-actions { gap: 2px; }
   .top-actions .pill { width: 32px; height: 32px; padding: 0; justify-content: center; border: 0; border-radius: 9px; }
   .top-actions .conn { margin-left: 6px; padding: 5px 10px; border-radius: 999px; }
@@ -1606,7 +1601,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     color: var(--accent);
-    font-size: 11px;
+    font-size: 12.5px;
     letter-spacing: .01em;
   }
 
@@ -1618,7 +1613,7 @@
   #run-detail.chat-mode .rd-chat-run-elapsed {
     padding-left: 5px;
     color: var(--muted);
-    font-size: 10.5px;
+    font-size: 12px;
     white-space: nowrap;
   }
 
@@ -1691,8 +1686,8 @@
     margin-inline: -8px;
     padding-inline: 10px;
   }
-  .brand-name { font-size: 14px; }
-  .brand-mode { font-size: 11px; }
+  .brand-name { font-size: 15px; }
+  .brand-mode { font-size: 12.5px; }
   .brand-tool { width: 28px; height: 28px; }
   .side-main > .new-task {
     min-height: 32px;
@@ -1702,7 +1697,7 @@
     border-radius: 7px;
     background: transparent;
     box-shadow: none;
-    font-size: 13px;
+    font-size: 14.5px;
   }
   .side-main > .new-task:hover { background: var(--cb-hover); box-shadow: none; }
   .side-quick { gap: 1px; }
@@ -1710,7 +1705,7 @@
     min-height: 30px;
     padding: 5px 8px;
     border-radius: 7px;
-    font-size: 12px;
+    font-size: 13px;
   }
   .side-quick .qitem .ico { width: 14px; height: 14px; }
   .side-section { margin-top: 10px; }
@@ -1721,7 +1716,7 @@
   }
   .side-label-row .side-label {
     padding-left: 8px;
-    font-size: 11px;
+    font-size: 12.5px;
     font-weight: 600;
   }
   .side-label-row .foot-btn { width: 22px; height: 22px; }
@@ -1731,12 +1726,12 @@
     min-height: 29px;
     padding: 4px 8px;
     border-radius: 6px;
-    font-size: 12.5px;
+    font-size: 14px;
   }
   .sdir summary { gap: 5px; font-weight: 600; }
   .sdir > .dirbody { margin: 0 0 4px 12px; padding-left: 5px; }
   .stask { gap: 7px; }
-  .stask .tm { font-size: 10.5px; }
+  .stask .tm { font-size: 12px; }
   .stask-more { width: 22px; height: 22px; }
   .sdir summary .cnt { line-height: 14px; padding-inline: 5px; }
   .stask.active {
@@ -1829,7 +1824,7 @@
   #change-summary.hidden { display: none; }
   .change-summary-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); }
   .change-summary-head > .ico { width: 15px; height: 15px; flex: none; }
-  .change-summary-project { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .change-summary-project { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
   #change-summary-more { margin-left: auto; width: 24px; height: 24px; padding: 0; color: var(--muted); border: 0; background: transparent; }
   #change-summary-more:hover { color: var(--text); background: var(--panel2); }
   .change-summary-open {
@@ -1839,9 +1834,9 @@
     color: var(--text); cursor: pointer; font: inherit; text-align: left;
   }
   .change-summary-open:hover .change-summary-action { color: var(--accent); }
-  .change-summary-action { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .change-summary-action { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14.5px; }
   .change-summary-action .ico { width: 15px; height: 15px; }
-  .change-summary-stat { display: inline-flex; gap: 7px; font: 12px var(--mono); }
+  .change-summary-stat { display: inline-flex; gap: 7px; font: 13px var(--mono); }
   .change-summary-stat b:first-child { color: var(--ok); }
   .change-summary-stat b:last-child { color: var(--bad); }
   body.inspector-open #change-summary { display: none; }
@@ -1893,7 +1888,7 @@
     margin-inline: -8px;
     padding-inline: 10px;
   }
-  .brand-row .brand-name { font-size: 14px; font-weight: 600; }
+  .brand-row .brand-name { font-size: 15px; font-weight: 600; }
   .side-main > .new-task {
     min-height: 32px;
     margin: 6px 0 10px;
@@ -1902,7 +1897,7 @@
     border-radius: 7px;
     background: transparent;
     box-shadow: none;
-    font-size: 13px;
+    font-size: 14.5px;
   }
   .side-main > .new-task:hover { background: var(--cb-hover); }
   .side-section { margin-top: 8px; }
@@ -1910,7 +1905,7 @@
   .side-label-row .side-label {
     padding-left: 8px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     letter-spacing: 0;
   }
@@ -1921,7 +1916,7 @@
     min-height: 29px;
     padding: 4px 8px;
     border-radius: 6px;
-    font-size: 12.5px;
+    font-size: 14px;
     line-height: 1.4;
   }
   .sdir summary { gap: 5px; color: var(--text); font-weight: 500; }
@@ -1940,7 +1935,7 @@
   }
   .stask { gap: 7px; }
   .stask .t { min-width: 0; }
-  .stask .tm { font-size: 10.5px; white-space: nowrap; }
+  .stask .tm { font-size: 12px; white-space: nowrap; }
   .stask-more { width: 22px; height: 22px; }
   .stask:hover .stask-more,
   .stask:focus-within .stask-more { opacity: 1; }

@@ -1,0 +1,67 @@
+/* chat-quickprompts.css（2026-11-03）—— 对话条「快捷指令」按钮 + 快捷指令浮层
+ *
+ * 参考桌面端观感截图：输入行右端一颗圆形小按钮，点开向上弹出的快捷指令菜单，
+ * 每条指令＝短标签 + 说明 + 底部「点击后发送 / 编辑 →」。
+ *
+ * 规矩（DESIGN.md）：
+ *   - 只消费 token（--panel / --panel2 / --border / --border-strong / --text /
+ *     --muted / --accent），不写死十六进制色，深浅主题自动跟随；
+ *   - 浮层 absolute 挂在 .qp-wrap 上（跟输入条一起动），不用 position:fixed
+ *     （#run-detail 带 backdrop-filter，fixed 包含块会被改写）；
+ *   - 删掉 index.html 的一行 link 即回滚本层样式。
+ */
+
+.qp-wrap { position: relative; display: inline-flex; flex: none; }
+
+/* 圆形小按钮：与 #rd-chat-attach 同规格（30px 圆、16px 图标） */
+.rd-chat-tools #rd-chat-qp {
+  width: 30px; height: 30px; min-height: 0; border-radius: 50%; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.rd-chat-tools #rd-chat-qp .ico { width: 16px; height: 16px; }
+.rd-chat-tools #rd-chat-qp[aria-expanded="true"] {
+  background: var(--panel2); color: var(--accent); border-color: var(--border-strong);
+}
+
+/* 浮层：挂 document.body（.rd-chat-bar 的 overflow:auto + sticky +
+ * backdrop-filter 会裁掉挂在它里面的浮层），按按钮实测坐标向上弹。
+ * 不用 position:fixed——#run-detail 带 backdrop-filter，fixed 的包含块
+ * 会被改写。z-index 与 .type-menu 的 90 一档。 */
+.qp-pop {
+  position: absolute; z-index: 90;
+  width: min(340px, calc(100vw - 32px));
+  padding: 6px; overflow-y: auto; box-sizing: border-box;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.qp-item { position: relative; }
+.qp-item + .qp-item { margin-top: 2px; }
+
+/* 条目主体＝整块可点（点击后发送） */
+.qp-send {
+  display: block; width: 100%; box-sizing: border-box; text-align: left;
+  border: 0; background: none; cursor: pointer; font: inherit; color: var(--text);
+  padding: 9px 10px 8px; border-radius: 9px;
+}
+.qp-send:hover, .qp-send:focus-visible { background: var(--panel2); outline: none; }
+
+.qp-title { display: block; font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+.qp-desc {
+  display: block; margin-top: 3px; font-size: 12px; color: var(--muted);
+  line-height: 1.5; max-height: 2.9em; overflow: hidden;   /* 两行截断：不依赖 line-clamp */
+}
+.qp-foot { display: block; margin-top: 6px; }
+
+.qp-hint { display: inline-block; font-size: 11.5px; color: var(--muted); }
+
+/* 编辑 →：钉在条目右下角；stopPropagation 已在 JS 里处理 */
+.qp-edit {
+  position: absolute; right: 8px; bottom: 8px;
+  border: 0; background: none; font: inherit; font-size: 12px; font-weight: 550;
+  color: var(--accent); cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.qp-edit:hover, .qp-edit:focus-visible { background: var(--panel2); outline: none; }
+
+/* ≤720：输入条工具行会换行，浮层宽度跟着视口走即可，无需另写断点规则 */

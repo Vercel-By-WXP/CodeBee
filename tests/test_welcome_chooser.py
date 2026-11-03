@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -57,7 +58,17 @@ class NeedsChooserTest(ChooserTestBase):
         self.assertFalse(profile.needs_chooser())
 
     def test_prompt_timeout_still_needs_chooser(self):
-        """超时是「没人回答」，不是「选了默认」——不能写进 state。"""
+        """超时是「没人回答」，不是「选了默认」——不能写进 state。
+
+        2026-11-03 菜单收敛后默认只有一个形态，不再走交互菜单，所以这条
+        用一个临时自建形态把清单撑回两个，专门保住「超时不落 state」的语义。
+        """
+        d = paths.DATA_DIR / "profiles"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "custom.json").write_text(
+            json.dumps({"name": "自定义版", "flows": ["novel"]}, ensure_ascii=False),
+            encoding="utf-8")
+        profile.reset()
         orig = profile._ask
         profile._ask = lambda text, timeout_s: None
         try:
@@ -69,6 +80,14 @@ class NeedsChooserTest(ChooserTestBase):
         self.assertFalse(profile.state_file().exists(),
                          "超时不该写 profile_state.json")
         self.assertTrue(profile.needs_chooser())
+
+    def test_single_profile_skips_menu_entirely(self):
+        """2026-11-03 收敛：菜单只剩一个选项时不弹、不问、不等 12 秒。"""
+        applied, why = profile.select("", allow_prompt=True, quiet=True)
+        self.assertEqual(applied, profile.DEFAULT)
+        self.assertEqual(why, "default")
+        self.assertFalse(profile.state_file().exists(),
+                         "没选过任何东西就不写 state")
 
     def test_last_choice_skips_chooser(self):
         profile.remember("novel")
@@ -115,13 +134,22 @@ class SwitchToTest(ChooserTestBase):
 
 class DescribeAllTest(ChooserTestBase):
     def test_rows_carry_last_and_names(self):
+        # 2026-11-03 菜单收敛：欢迎页清单（describe_all）只列 registry 里的
+        # 形态，legacy（novel 等）不再出现——但 last 记录仍能解析。
         profile.switch_to("novel")
         data = profile.describe_all()
         self.assertEqual(data["last"], "novel")
+        self.assertEqual(data["active"], "novel",
+                         "当前生效形态照实报，即使它是 legacy")
         rows = {r["id"]: r for r in data["profiles"]}
-        self.assertTrue(rows["novel"]["active"])
-        self.assertEqual(len(rows["novel"]["flow_names"]), 4)
-        self.assertIn("小说", rows["novel"]["flow_names"])
+        self.assertEqual(list(rows), ["default"],
+                         "菜单收敛后欢迎页只应有全量版一张卡")
+
+    def test_legacy_flow_names_still_resolvable(self):
+        """legacy 形态本身的定义还能查（spec），不再靠欢迎页清单。"""
+        spec = profile.spec("novel")
+        self.assertEqual(len(spec["flows"]), 4)
+        self.assertIn("novel", spec["flows"])
 
     def test_unrestricted_profile_lists_every_flow(self):
         """flows=None（不收敛）也要给出具体工种名，卡片才有 chips 可显示。"""

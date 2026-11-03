@@ -1,0 +1,86 @@
+/* ==========================================================================
+   71. demo-skin.css（2026-11-02，「完全按照 demo 样式来」）
+   --------------------------------------------------------------------------
+   wb-codebee/蜜巢 皮肤的「场景化画布」覆盖层：把 demo 的浮动浅色·蜜巢
+   观感整体收口到产品主区——多层 aqua 渐变底 + 两团柔光 + 淡描边，让画布
+   有「纸上有光」的通透感，而不是一张平涂底色。
+   - 只作用 html[data-skin="wb-codebee"]，其余皮肤零影响（可删行回滚）。
+   - 全部从既有 token 派生（--wb-* / --wb-accent 等），不定义色值真源，
+     换主题 / 明暗自动跟随。
+   - 加载位置：index.html 最后一份 <link>（warmth.css 之后）。
+   - 硬约束（DESIGN.md §4）：hover 不位移不放大；描边保持 1px；投影两级。
+   ========================================================================== */
+
+/* 主区画布：照抄 demo `.scene::before` 的两层——
+   ① 51% 36% 一团大白柔光（rgba(255,255,255,.93)→.62@40%→0@70%）；
+   ② 152deg 三段加深青蓝（canvas-1 → canvas-2 → canvas-3）。
+   61.3c 里同款 main 背景用 `:has(> #page-home:not(.hidden))` 把特异性抬到 0,3,1，
+   普通 `main`（0,2,1）压不过它；这里照抄同特异性 + 靠后加载取胜。 */
+html[data-layout][data-skin="wb-codebee"] main:has(> #page-home:not(.hidden)),
+html[data-layout][data-skin="wb-codebee"] main {
+  /* 实拍校正（2026-11-02）：之前用「bg 混 --wb-uc-out 86%/72% + 两团 accent 柔光」
+     派生，实测比 demo 明显更蓝更闷（1440 下右半屏像蒙了一层蓝灰），因为 demo 的
+     canvas-2/3 是**偏蓝**的 #e5f3fb/#d2eaf7，而 uc-out 是青绿，混出来偏灰。这里
+     直接照抄 demo 的五个色标（canvas-1/2/3 + scene::after 两团淡蓝），保证像素级一致。 */
+  background:
+    radial-gradient(880px 600px at 51% 36%, rgba(255, 255, 255, .93) 0%, rgba(255, 255, 255, .62) 40%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(520px 340px at 6% 90%, rgba(158, 214, 238, .38), transparent 72%),
+    radial-gradient(560px 380px at 94% 10%, rgba(172, 220, 240, .32), transparent 72%),
+    linear-gradient(152deg, #f7fbfd 0%, #e5f3fb 46%, #d2eaf7 100%) !important;
+  background-attachment: fixed;
+}
+
+/* 夜间：同一套结构，柔光降到 4.5%，青蓝按夜间 token 加深（不是一片死黑） */
+html[data-theme="dark"][data-skin="wb-codebee"] main:has(> #page-home:not(.hidden)),
+html[data-theme="dark"][data-skin="wb-codebee"] main {
+  background:
+    radial-gradient(820px 560px at 51% 36%, rgba(255, 255, 255, .045) 0%, rgba(255, 255, 255, 0) 72%),
+    radial-gradient(520px 340px at 6% 90%, color-mix(in srgb, var(--wb-uc-out) 16%, transparent), transparent 72%),
+    radial-gradient(560px 380px at 94% 10%, color-mix(in srgb, var(--wb-uc-ca) 14%, transparent), transparent 72%),
+    linear-gradient(152deg,
+      var(--wb-bg) 0%,
+      color-mix(in srgb, var(--wb-bg) 88%, var(--wb-uc-out)) 46%,
+      color-mix(in srgb, var(--wb-bg) 76%, var(--wb-uc-out)) 100%) !important;
+  background-attachment: fixed;
+}
+
+/* 让主页内容（含 hero 输入卡）在场景底上浮起来——卡片默认透明，由内层自带底色。
+ * 注意：这里是 `background` 简写（同特异性 1,1,1 + 比 warmth.css 晚加载），会连带重置
+ * warmth.css 70.1 的首页暖光 background-image/-repeat —— 有意为之，蜜巢的光全在上面
+ * main 的三层渐变里。warmth 已在选择器里先排除 codebee，此处是双保险。 */
+html[data-skin="wb-codebee"] #page-home,
+html[data-skin="wb-codebee"] #page-home .rd-home-head,
+html[data-skin="wb-codebee"] #page-home #rd-input-slot { background: transparent; }
+
+/* 输入卡：demo 的 18px 大圆角 + 双层投影（浮起来像放在桌上的纸） */
+html[data-skin="wb-codebee"] #page-home .rd-input-card {
+  border-radius: 18px;
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--wb-accent) 13%, transparent),
+    0 2px 5px color-mix(in srgb, var(--wb-accent) 6%, transparent);
+}
+html[data-skin="wb-codebee"] #page-home .rd-input-card:focus-within {
+  border-color: color-mix(in srgb, var(--wb-accent) 42%, var(--wb-border));
+  box-shadow: 0 18px 46px color-mix(in srgb, var(--wb-accent) 18%, transparent),
+    0 2px 6px color-mix(in srgb, var(--wb-accent) 8%, transparent);
+}
+
+/* 任务详情区：同样通透画布，别让内容区盖成纯白 */
+html[data-skin="wb-codebee"] #run-detail,
+html[data-skin="wb-codebee"] #run-detail .rd-main,
+html[data-skin="wb-codebee"] #run-detail .rd-chat { background: transparent; }
+
+/* 主页内容对齐 demo：窄幅居中（788px）、padding 节奏、标题/副标题字阶 */
+html[data-skin="wb-codebee"] .rd-home {
+  max-width: 788px;
+  padding: 30px 26px 34px;
+}
+html[data-skin="wb-codebee"] .rd-home-title {
+  font-size: 28px;
+  line-height: 1.4;
+  letter-spacing: .01em;
+}
+html[data-skin="wb-codebee"] .rd-home-sub {
+  font-size: 14.5px;
+  line-height: 1.7;
+  max-width: 580px;
+}

@@ -5,22 +5,24 @@
   .topbar, html[data-skin="ocean"][data-theme="light"] .topbar {
     min-height: 48px; padding: 4px 10px; gap: 6px;
   }
-  .topbar .brand-name { font-size: 16px; }
-  .topbar .page-title { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .brand-name { font-size: 17.5px; }
+  .topbar .page-title { font-size: 14.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar .top-actions { gap: 4px; }
   .mobile-workspace > summary { padding: 10px 62px 10px 12px; min-height: 58px; }
   .mobile-workspace-copy > span, .mobile-workspace-copy > small { display: none; }
-  .mobile-workspace-copy b { white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; }
+  .mobile-workspace-copy b { white-space: normal; overflow-wrap: anywhere; font-size: 15px; line-height: 1.4; }
   .mobile-workspace-new { top: 7px; right: 10px; width: 44px; height: 44px; }
   .mobile-task { min-height: 58px; padding: 10px 2px; align-items: center; }
-  .mobile-task-copy b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 14px; line-height: 1.5; }
-  .mobile-task .chip { flex: none; font-size: 11px; padding: 3px 7px; }
+  /* -webkit-line-clamp 已失效（新 Chrome 弃用 -webkit-box，style.css:10490 同账）→
+     max-height 卡两行（1.5 × 2） */
+  .mobile-task-copy b { white-space: normal; display: block; max-height: 3em; overflow: hidden; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
+  .mobile-task .chip { flex: none; font-size: 12.5px; padding: 3px 7px; }
   .mobile-expert-controls { display: grid; gap: 8px; margin: 0 0 14px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel2); }
-  .mobile-expert-controls label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-  .mobile-expert-controls select, .mobile-expert-controls button { min-height: 44px; font-size: 16px; }
+  .mobile-expert-controls label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .mobile-expert-controls select, .mobile-expert-controls button { min-height: 44px; font-size: 17.5px; }
   .mobile-expert-controls small { min-height: 18px; color: var(--muted); }
-  .mobile-run-decision { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-  .mobile-run-decision button { min-height: 36px; padding: 4px 8px; font-size: 12px; }
+  .mobile-run-decision { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .mobile-run-decision button { min-height: 36px; padding: 4px 8px; font-size: 13px; }
 
   main.chat-fill { padding: 4px 8px 0; }
   main.chat-fill #run-detail.chat-mode {
@@ -33,12 +35,14 @@
   #rd-rail > .detail-head > #btn-back { width: 44px; min-height: 44px; padding: 0; overflow: hidden; font-size: 0; }
   #rd-rail > .detail-head > #btn-back .ico { width: 20px; height: 20px; }
   #rd-rail > .detail-head > #rd-title {
-    min-width: 0; width: 100%; font-size: 14px; font-weight: 600; line-height: 1.4;
+    min-width: 0; width: 100%; font-size: 15px; font-weight: 600; line-height: 1.4;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; order: 0;
   }
-  #rd-rail > .detail-head > #rd-status { order: 0; align-self: center; font-size: 11px; padding: 3px 6px; }
+  #rd-rail > .detail-head > #rd-status { order: 0; align-self: center; font-size: 12.5px; padding: 3px 6px; }
   #rd-rail > .detail-head > .rd-actions { display: flex; order: 0; width: 88px; padding: 0; border: 0; }
-  #rd-rail > .detail-head > .rd-actions #rd-more-toggle { position: static; width: 44px; min-height: 44px; font-size: 16px; }
+  #rd-rail > .detail-head > .rd-actions #rd-more-toggle { position: static; width: 44px; min-height: 44px; font-size: 17.5px; }
+  #rd-rail > .detail-head > .rd-actions #rd-meta-toggle { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; padding: 0; }
+  #rd-meta-toggle .ico { display: block; width: 18px; height: 18px; margin: 0; }
   #rd-rail > .detail-head > .rd-actions #rd-context-toggle { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; padding: 0; }
   #rd-context-toggle .ico { display: block; width: 18px; height: 18px; margin: 0; }
   #run-detail.chat-mode #rd-rail > #rd-context { display: none; }
@@ -49,38 +53,52 @@
     box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 15%, transparent);
   }
   #rd-rail > .detail-head > #rd-talk { grid-column: 1 / -1; }
-  #run-detail #rd-rail > .detail-head > .rd-meta-popover {
-    position: fixed; top: auto; bottom: max(12px, env(safe-area-inset-bottom)); right: 12px; left: 12px;
-    width: auto; max-height: min(70dvh, 520px); z-index: 80; padding: 14px; background: var(--panel);
+  /* 任务信息浮层：沿用桌面那套绝对定位（top:56 / right:12 相对 #rd-rail），
+     只收窄边距。**不能写 position:fixed**：#rd-railcol 带 backdrop-filter，
+     fixed 的包含块会被它改写，浮层会飞到视口上方（2026-11-03 实测 y=-368）。 */
+  /* 浮层让开分段条（进度 / 产出 / 信息，底边 ~103）：不然一打开就把「信息」按钮
+     盖住，只能点外面才关得掉；留出 108 之后它还是个可再点的开关。 */
+  #run-detail #rd-rail > #rd-meta-popover {
+    top: 108px;
+    right: 8px;
+    width: min(340px, calc(100vw - 24px));
+    max-height: min(64dvh, 480px);
+    padding: 12px;
+  }
+  /* 「运行详情」瘦身开关在手机上要够得着：44 高触控目标 */
+  #run-detail #rd-rail > #rd-meta-popover #rd-meta-more {
+    min-height: 44px;
+    font-size: 13px;
+    padding: 8px 10px;
   }
   .mobile-task-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-  .mobile-task-actions button { min-height: 44px; padding: 8px; font-size: 13px; white-space: normal; }
+  .mobile-task-actions button { min-height: 44px; padding: 8px; font-size: 14.5px; white-space: normal; }
   #rd-rail > #rd-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; padding: 0; gap: 4px; }
-  #rd-rail > #rd-tabs .rd-tab { flex: none; min-height: 44px; padding: 8px 10px; font-size: 13px; }
+  #rd-rail > #rd-tabs .rd-tab { flex: none; min-height: 44px; padding: 8px 10px; font-size: 14.5px; }
   #rd-rail > #rd-chat-nav { margin: 0; padding: 0; border: 0; }
   #rd-chat-nav .cn-pills, #rd-chat-nav .cn-back { display: none; }
-  #rd-chat-nav .mobile-section-select { display: block; width: 100%; min-height: 44px; font-size: 16px; padding: 8px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+  #rd-chat-nav .mobile-section-select { display: block; width: 100%; min-height: 44px; font-size: 17.5px; padding: 8px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
   #run-detail.chat-mode > .rd-main { flex: 1; min-height: 0; overflow: hidden; }
   #run-detail.chat-mode .rd-pane[data-pane="chat"] { flex: 1; min-height: 0; height: 100%; padding: 0; }
   #run-detail .rd-chat { min-height: 0; }
   #run-detail.chat-mode .rd-chat-flow { min-height: 0; padding: 14px 6px; gap: 18px; overscroll-behavior: contain; scroll-padding-bottom: 16px; }
   #run-detail .rd-chat-run-status { width: 100%; flex: none; min-height: 44px; padding: 0 4px; gap: 4px; border: 0; border-radius: 0; }
   .rd-chat-run-status > .ico, .rd-chat-run-status .rd-chat-run-label, .rd-chat-run-status [data-chat-run-expand] { display: none; }
-  .rd-chat-run-status .rd-chat-run-goal { font-size: 12px; }
-  .rd-chat-run-status button { min-width: 44px; height: 44px; font-size: 13px; }
+  .rd-chat-run-status .rd-chat-run-goal { font-size: 13px; }
+  .rd-chat-run-status button { min-width: 44px; height: 44px; font-size: 14.5px; }
   #run-detail .rd-chat-bar, #run-detail.chat-mode .rd-chat-bar {
     position: static; flex: none; width: 100%; max-width: 100%; margin: 0 0 max(6px, env(safe-area-inset-bottom));
     padding: 8px; border-radius: 14px; background: var(--panel); backdrop-filter: none;
   }
-  #run-detail .rd-chat-bar textarea { min-height: 42px; height: 42px; max-height: min(120px, 22dvh); padding: 6px; font-size: 16px; line-height: 1.5; }
+  #run-detail .rd-chat-bar textarea { min-height: 42px; height: 42px; max-height: min(120px, 22dvh); padding: 6px; font-size: 17.5px; line-height: 1.5; }
   #run-detail .rd-chat-tools { gap: 4px; flex-wrap: wrap; }
-  #run-detail .rd-chat-tools > button { min-width: 44px; height: 44px; min-height: 44px; padding: 6px; font-size: 13px; }
+  #run-detail .rd-chat-tools > button { min-width: 44px; height: 44px; min-height: 44px; padding: 6px; font-size: 14.5px; }
   #run-detail .rd-chat-tools .chat-send-actions { margin-left: auto; }
-  #run-detail .rd-chat-tools .chat-send-default { min-height: 44px; font-size: 13px; padding: 8px 12px; }
+  #run-detail .rd-chat-tools .chat-send-default { min-height: 44px; font-size: 14.5px; padding: 8px 12px; }
   #run-detail .rd-chat-tools .chat-send-options { width: 44px; min-height: 44px; }
   .mobile-chat-options { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 4px; max-height: 25dvh; overflow-y: auto; }
-  .mobile-chat-options .cmp-sel { min-height: 44px; font-size: 13px; }
-  .mobile-chat-options select { font-size: 16px; }
+  .mobile-chat-options .cmp-sel { min-height: 44px; font-size: 14.5px; }
+  .mobile-chat-options select { font-size: 17.5px; }
   .mobile-chat-options #rd-model-menu { position: fixed; inset: auto 12px 160px; width: auto; max-height: 35dvh; overflow-y: auto; z-index: 90; }
   #run-detail .chat-delivery-hint, #run-detail .rd-chat-continue-note { display: none; }
   #run-detail .chat-queue { max-height: 88px; margin: 0; }
@@ -103,9 +121,14 @@
 @media (max-width: 900px) {
   #exp-hero { margin-bottom: 10px; }
   #exp-hero .exp-hero-band { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
-  #exp-hero .eh-cover, #exp-hero .eh-cover-img { width: 48px; height: 66px; }
+  /* 封面尺寸挂在 .eh-cover-hit 上（2026-11-03 重做后）；书名横排，窄屏再收一档 */
+  #exp-hero .eh-cover-hit { width: 50px; height: 68px; }
+  #exp-hero .eh-cover { padding: 9px 6px 20px; }
+  #exp-hero .eh-cover-title { font-size: 10.5px; line-height: 1.35; max-height: 2.7em; }
+  #exp-hero .eh-cover-tag { font-size: 8px; letter-spacing: .06em; bottom: 6px; }
+  #exp-hero .eh-cover-zoom { display: none; }
   /* 封面位下挂按钮后总宽跟着封面走，窄屏只留图标，否则 390px 又溢出 */
-  #exp-hero .eh-coverbox { width: 48px; gap: 4px; }
+  #exp-hero .eh-coverbox { width: 50px; gap: 4px; }
   /* 只留图标时别让它继承 44px 触摸高度：48×44 的空图标块比封面还抢眼 */
   #exp-hero .eh-cover-gen { padding: 0; height: 30px; min-height: 30px; border-radius: 6px; }
   #exp-hero .eh-cover-gen span { display: none; }

@@ -980,109 +980,109 @@ html[data-layout] body.settings-mode #page-settings .wb-theme-card .wb-thumb-mor
    冷底，与本主题气质冲突，故自带独立夜间块（同 wbbuddy 策略）。
    ========================================================================== */
 
-/* ---------- 61.7a 通用 token（日间：奶油纸） ---------- */
+/* ---------- 61.7a 通用 token（日间：浮动浅色·蜜巢 aqua） ---------- */
 html[data-skin="wb-codebee"] {
-  --wb-shadow: 0 10px 26px rgba(126, 92, 52, .11);
-  --wb-bg: #f8f5f0;
-  --wb-sidebar: #fcfaf6;
+  --wb-shadow: 0 18px 48px rgba(56, 104, 124, .16);
+  --wb-bg: #f7fbfd;
+  --wb-sidebar: #fbfdfe;
   --wb-panel: #ffffff;
-  --wb-panel2: #f3ede4;
-  --wb-border: #eae3d8;
-  --wb-border-strong: #d8cbb9;
-  --wb-text: #2b2622;
-  --wb-muted: #837a6d;
-  --wb-accent: #b0502c;
-  --wb-accent2: #d69a44;
-  --wb-ok: #4f8a56;
-  --wb-warn: #9a7714;
-  --wb-bad: #b02a37;
-  --wb-log-bg: #fcfaf6;
-  --wb-log-text: #3a3129;
-  --wb-chip-queued-bg: #f1e9dd;
-  --wb-bg-art: #f8f5f0;
-  --wb-uc-in: #b0502c;
-  --wb-uc-ca: #d69a44;
-  --wb-uc-out: #4a7fa8;
+  --wb-panel2: #f7fafc;
+  --wb-border: #e8eef3;
+  --wb-border-strong: #dbe7ee;
+  --wb-text: #1e3038;
+  --wb-muted: #647780;
+  --wb-accent: #177983;
+  --wb-accent2: #163a44;
+  --wb-ok: #139678;
+  --wb-warn: #a8761a;
+  --wb-bad: #cf3f58;
+  --wb-log-bg: #f7fafc;
+  --wb-log-text: #33515c;
+  --wb-chip-queued-bg: #edf4f8;
+  --wb-bg-art: #f7fbfd;
+  --wb-uc-in: #177983;
+  --wb-uc-ca: #4fb3bd;
+  --wb-uc-out: #6f9fd0;
 }
-/* ---------- 61.7b 通用 token（夜间：暖夜咖啡） ---------- */
+/* ---------- 61.7b 通用 token（夜间：深青夜底） ---------- */
 html[data-theme="dark"][data-skin="wb-codebee"] {
-  --wb-shadow: 0 16px 40px rgba(0, 0, 0, .46);
-  --wb-bg: #17130f;
-  --wb-sidebar: #131009;
-  --wb-panel: #201a15;
-  --wb-panel2: #292019;
-  --wb-border: #342a21;
-  --wb-border-strong: #473a2d;
-  --wb-text: #f1e7d9;
-  --wb-muted: #a5937f;
-  --wb-accent: #e09155;
-  --wb-accent2: #edbb6a;
-  --wb-ok: #74b57c;
-  --wb-warn: #e2b24a;
-  --wb-bad: #ef7c74;
-  --wb-log-bg: #120f0c;
-  --wb-log-text: #cbbcab;
-  --wb-chip-queued-bg: #292019;
-  --wb-bg-art: #17130f;
-  --wb-uc-in: #e09155;
-  --wb-uc-ca: #edbb6a;
-  --wb-uc-out: #7fb0d4;
+  --wb-shadow: 0 22px 60px rgba(0, 0, 0, .34);
+  --wb-bg: #101a1f;
+  --wb-sidebar: #131d23;
+  --wb-panel: #18252c;
+  --wb-panel2: #1d2d35;
+  --wb-border: #243640;
+  --wb-border-strong: #36505c;
+  --wb-text: #e3edf2;
+  --wb-muted: #86a0ab;
+  --wb-accent: #4fb3bd;
+  --wb-accent2: #9ad8de;
+  --wb-ok: #35c99b;
+  --wb-warn: #f0b429;
+  --wb-bad: #f2637a;
+  --wb-log-bg: #0d1418;
+  --wb-log-text: #c6d8e0;
+  --wb-chip-queued-bg: #1d2d35;
+  --wb-bg-art: #101a1f;
+  --wb-uc-in: #4fb3bd;
+  --wb-uc-ca: #9ad8de;
+  --wb-uc-out: #7fa9d6;
 }
 
 /* ---------- 61.7c 聊天工作台 token（列表 / 选中 / 气泡） ---------- */
 html[data-skin="wb-codebee"] body {
-  --wx-bg: #f8f5f0; --wxa-bg: #f8f5f0;
+  --wx-bg: #f7fbfd; --wxa-bg: #f7fbfd;
   --wx-panel: #ffffff; --wxa-panel: #ffffff;
-  --wx-list-bg: #fcfaf6; --wx-list: 268px; --wxa-list: 268px;
-  --wx-rail-bg: #f6f0e7; --wx-rail: 60px; --wxa-rail-bg: #f6f0e7; --wxa-rail: 60px;
-  --wx-line: #eae3d8; --wxa-line: #eae3d8;
-  --wx-hover: #f5efe6; --wxa-hover: #f5efe6;
-  --wxa-sel: #f8dfca; --wx-sel: #f8dfca;
-  --wx-green: #b0502c; --wxa-green: #b0502c;
-  --wx-me: #fbe7d6; --wxa-bubble-me: #fbe7d6;
-  --wx-me-text: #6b3018;
-  --wx-txt: #2c231a; --wxa-text: #2c231a;
-  --wx-dim: #8b7a64; --wxa-dim: #8b7a64;
-  --wx-sub: #7a6a56;
-  --wxa-time: #b8a894;
-  --wxa-search: #f3ece2;
-  --cum-canvas: #f6f1e9; --cum-rail: #f9f5ef;
-  --cum-accent: #b0502c; --cum-accent-deep: #8f3f20;
-  --cum-badge: #d69a44; --cum-bubble: #ffffff; --cum-bubble-line: #eee6da;
+  --wx-list-bg: #fbfdfe; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #f0f8fc; --wx-rail: 60px; --wxa-rail-bg: #f0f8fc; --wxa-rail: 60px;
+  --wx-line: #e8eef3; --wxa-line: #e8eef3;
+  --wx-hover: #f0f6fa; --wxa-hover: #f0f6fa;
+  --wxa-sel: #e3f2f9; --wx-sel: #e3f2f9;
+  --wx-green: #177983; --wxa-green: #177983;
+  --wx-me: #e3f2f9; --wxa-bubble-me: #e3f2f9;
+  --wx-me-text: #163a44;
+  --wx-txt: #1e3038; --wxa-text: #1e3038;
+  --wx-dim: #647780; --wxa-dim: #647780;
+  --wx-sub: #55717d;
+  --wxa-time: #9db2bd;
+  --wxa-search: #eef6fb;
+  --cum-canvas: #f0f8fc; --cum-rail: #fbfdfe;
+  --cum-accent: #177983; --cum-accent-deep: #123f4a;
+  --cum-badge: #4fb3bd; --cum-bubble: #ffffff; --cum-bubble-line: #e8eef3;
 }
 html[data-theme="dark"][data-skin="wb-codebee"] body {
-  --wx-bg: #17130f; --wxa-bg: #17130f;
-  --wx-panel: #201a15; --wxa-panel: #201a15;
-  --wx-list-bg: #131009; --wx-list: 268px; --wxa-list: 268px;
-  --wx-rail-bg: #100d0a; --wx-rail: 60px; --wxa-rail-bg: #100d0a; --wxa-rail: 60px;
-  --wx-line: #342a21; --wxa-line: #342a21;
-  --wx-hover: #241d17; --wxa-hover: #241d17;
-  --wxa-sel: #4a2f20; --wx-sel: #4a2f20;
-  --wx-green: #e09155; --wxa-green: #e09155;
-  --wx-me: #33231a; --wxa-bubble-me: #33231a;
-  --wx-me-text: #f6e2cf;
-  --wx-txt: #f1e7d9; --wxa-text: #f1e7d9;
-  --wx-dim: #a5937f; --wxa-dim: #a5937f;
-  --wx-sub: #8f7f6c;
-  --wxa-time: #7d6e5d;
-  --wxa-search: #241d17;
-  --cum-canvas: #120f0c; --cum-rail: #100d0a;
-  --cum-accent: #e09155; --cum-accent-deep: #d0874a;
-  --cum-badge: #edbb6a; --cum-bubble: #201a15; --cum-bubble-line: #2e251d;
+  --wx-bg: #101a1f; --wxa-bg: #101a1f;
+  --wx-panel: #18252c; --wxa-panel: #18252c;
+  --wx-list-bg: #131d23; --wx-list: 268px; --wxa-list: 268px;
+  --wx-rail-bg: #0f1a1f; --wx-rail: 60px; --wxa-rail-bg: #0f1a1f; --wxa-rail: 60px;
+  --wx-line: #243640; --wxa-line: #243640;
+  --wx-hover: #1d2d35; --wxa-hover: #1d2d35;
+  --wxa-sel: #24424c; --wx-sel: #24424c;
+  --wx-green: #4fb3bd; --wxa-green: #4fb3bd;
+  --wx-me: #24424c; --wxa-bubble-me: #24424c;
+  --wx-me-text: #d9eef3;
+  --wx-txt: #e3edf2; --wxa-text: #e3edf2;
+  --wx-dim: #86a0ab; --wxa-dim: #86a0ab;
+  --wx-sub: #72909b;
+  --wxa-time: #60808b;
+  --wxa-search: #1d2d35;
+  --cum-canvas: #0d1418; --cum-rail: #101a1f;
+  --cum-accent: #4fb3bd; --cum-accent-deep: #9ad8de;
+  --cum-badge: #9ad8de; --cum-bubble: #18252c; --cum-bubble-line: #243640;
 }
 
 /* ---------- 61.7d 设置面板跟随主题（夜间块必须排在 61.4 公共夜间之后取胜） ---------- */
 html[data-skin="wb-codebee"] body.settings-mode {
-  --st-canvas: #f8f5f0; --st-card: #ffffff; --st-nav: #fcfaf6;
-  --st-line: #eae3d8; --st-border: #eae3d8; --st-text: #2b2622; --st-sub: #837a6d;
-  --st-strong: #57321c; --st-mint: #f8dfca; --st-mint-2: #f8dfca; --st-mint-ink: #6b3018;
-  --st-ctl: #ffffff; --st-ctl-line: #ece4d8; --st-primary: #b0502c;
-  --st-hover: rgba(176, 80, 44, .06);
+  --st-canvas: #f7fbfd; --st-card: #ffffff; --st-nav: #fbfdfe;
+  --st-line: #e8eef3; --st-border: #e8eef3; --st-text: #1e3038; --st-sub: #647780;
+  --st-strong: #123f4a; --st-mint: #e3f2f9; --st-mint-2: #e3f2f9; --st-mint-ink: #163a44;
+  --st-ctl: #ffffff; --st-ctl-line: #eef4f8; --st-primary: #177983;
+  --st-hover: rgba(23, 121, 131, .06);
 }
 html[data-theme="dark"][data-skin="wb-codebee"] body.settings-mode {
-  --st-canvas: #17130f; --st-card: #201a15; --st-nav: #131009;
-  --st-line: #342a21; --st-border: #342a21; --st-text: #f1e7d9; --st-sub: #a5937f;
-  --st-strong: #fbf1e2; --st-mint: #4a2f20; --st-mint-2: #4a2f20; --st-mint-ink: #f3d6bd;
-  --st-ctl: #241d17; --st-ctl-line: #3a2f25; --st-primary: #e09155;
+  --st-canvas: #101a1f; --st-card: #18252c; --st-nav: #131d23;
+  --st-line: #243640; --st-border: #243640; --st-text: #e3edf2; --st-sub: #86a0ab;
+  --st-strong: #eef7fb; --st-mint: #24424c; --st-mint-2: #24424c; --st-mint-ink: #d9eef3;
+  --st-ctl: #1d2d35; --st-ctl-line: #2c414c; --st-primary: #4fb3bd;
   --st-hover: rgba(255, 255, 255, .06);
 }

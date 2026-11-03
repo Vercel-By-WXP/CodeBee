@@ -1,0 +1,7 @@
+{
+  "id": "generic",
+  "lang": "generic",
+  "detect": { "files": [], "globs": [] },
+  "commands": { "lint": "", "typecheck": "", "test": "" },
+  "notes": "兜底配方：必须手动在 [stack] 里写 test 命令，否则 zfix verify 无命令可跑。"
+}

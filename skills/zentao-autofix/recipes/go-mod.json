@@ -1,0 +1,7 @@
+{
+  "id": "go-mod",
+  "lang": "go",
+  "detect": { "files": ["go.mod"], "globs": ["**/*.go"] },
+  "commands": { "lint": "go vet ./...", "typecheck": "", "test": "go test ./..." },
+  "notes": ""
+}

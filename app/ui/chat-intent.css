@@ -14,7 +14,7 @@
   border-radius: 12px;
   padding: 10px 14px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  font-size: 13px;
+  font-size: 14.5px;
   line-height: 1.6;
   color: var(--wb-text, var(--text, #1f2329));
 }
@@ -23,7 +23,7 @@
 }
 
 .ci-head {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   margin-bottom: 6px;
   color: var(--wb-text2, var(--muted, #6b6f76));
@@ -45,7 +45,7 @@
 }
 
 .ci-quote {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--wb-text2, var(--muted, #6b6f76));
   border-left: 2px solid var(--wb-border, var(--border, #ececf0));
   padding-left: 8px;
@@ -59,7 +59,7 @@
 .ci-dim { color: var(--wb-text2, var(--muted, #6b6f76)); }
 
 .ci-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--wb-text2, var(--muted, #6b6f76));
   margin-top: 4px;
 }
@@ -72,7 +72,7 @@
 .ci-btn {
   border-radius: 8px;
   padding: 5px 14px;
-  font-size: 12.5px;
+  font-size: 14px;
   cursor: pointer;
 }
 .ci-btn:disabled {

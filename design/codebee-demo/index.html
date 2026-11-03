@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-CN" data-palette="aqua">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBee · 全站界面重构 Demo</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 1.8"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6.5" rx="7" ry="3"/><path d="M5 6.5v11c0 1.7 3.1 3 7 3s7-1.3 7-3v-11"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9.5" cy="8.5" r="3.2"/><path d="M3.8 19.5c0-3.1 2.6-5.2 5.7-5.2s5.7 2.1 5.7 5.2"/><path d="M16.5 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M18 14.7c1.6.6 2.7 2 2.7 4.1"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M5 7h6M15 7h4M5 17h3M12 17h7"/><circle cx="13" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.4 10.9c.4.3.6.7.6 1.2V16h5.6v-.9c0-.5.2-.9.6-1.2A6 6 0 0 0 12 3Z"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.4"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 8 4.6-8 4.6-8-4.6L12 3Z"/><path d="m4 12.4 8 4.6 8-4.6"/><path d="m4 16.8 8 4.6 8-4.6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16"/><path d="M8 16.5v-4M12.5 16.5V8M17 16.5v-6"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 19 6v6c0 4.2-2.9 7.4-7 8.8C7.9 19.4 5 16.2 5 12V6l7-2.8Z"/><path d="m9 12 2.2 2.2L15.4 10"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 20c0-3.5 3-5.8 7-5.8s7 2.3 7 5.8"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6L4.8 10.7 10.3 9 12 3.5Z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.3 12 19.3a4.8 4.8 0 0 1-6.8-6.8l8.3-8.3a3.2 3.2 0 0 1 4.5 4.5l-8.2 8.2a1.6 1.6 0 0 1-2.3-2.3l7.6-7.6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9.3" y="3" width="5.4" height="10.4" rx="2.7"/><path d="M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7V21M9 21h6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7L11.5 7"/><path d="M14 10a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7L12.5 17"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9 7V4.8h6V7M6.5 7l.8 12.2h9.4L17.5 7"/><path d="M10.5 10.5v5.5M13.5 10.5v5.5"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M15.5 4.5 19.5 8.5 9 19H5v-4L15.5 4.5Z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2.5h8A1.5 1.5 0 0 1 20.5 10v7.5A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5v-10Z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.4"/><path d="M10.8 18.2h2.4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 11v5.2M12 7.9v.2"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="12" rx="2.4"/><path d="M3.5 10h17"/><circle cx="16.5" cy="14.2" r="1.1"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.4 0 2-1 2-1.9 0-1.5-1.1-1.8-1.1-3 0-1 .8-1.8 1.9-1.8h1.3a4.4 4.4 0 0 0 4.4-4.4c0-3.2-3.8-5.9-8.5-5.9Z"/><circle cx="8" cy="9" r="1.1"/><circle cx="12" cy="7.2" r="1.1"/><circle cx="16" cy="9.4" r="1.1"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"/><path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M8 14h8"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10.5" rx="3"/><path d="M12 8V5.2M12 4.8v.2"/><circle cx="9.5" cy="12.8" r="1"/><circle cx="14.5" cy="12.8" r="1"/><path d="M3.5 12v3M20.5 12v3"/></symbol>
+  <symbol id="i-hex" viewBox="0 0 24 24"><path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4 4v-4.2A2.5 2.5 0 0 1 4 13.5v-7Z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20.5h6M12 16.5v4"/></symbol>
+  <symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><path d="M16.5 13v7M13 16.5h7"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4.5V9h-4.5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5M8 8.5l4-4 4 4"/><path d="M4.5 15v3.5A2 2 0 0 0 6.5 20.5h11a2 2 0 0 0 2-2V15"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5v11M8 11.5l4 4 4-4"/><path d="M4.5 15v3.5A2 2 0 0 0 6.5 20.5h11a2 2 0 0 0 2-2V15"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3.5h7.5L19 9v11.5H6V3.5Z"/><path d="M13.5 3.5V9H19"/></symbol>
+  <symbol id="i-arrow-r" viewBox="0 0 24 24"><path d="M5 12h13M13 7l5 5-5 5"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5V9h4.5"/><path d="M12 8v4.2l2.8 1.7"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.2"/><path d="M4 10h16M9 3.5v4M15 3.5v4"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="17.5" cy="6" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="18" r="2.5"/><path d="m8.8 10.7 6.4-3.4M8.8 13.3l6.4 3.4"/></symbol>
+  <symbol id="i-kite" viewBox="0 0 24 24"><path d="M12 1.8 18.6 12 12 22.2 5.4 12 12 1.8Z"/></symbol>
+  <!-- 品牌图标：沿用产品内既有 #i-bee（app/ui/index.html），不自造 -->
+  <symbol id="i-bee" viewBox="0 0 24 24"><ellipse cx="12" cy="14" rx="5.2" ry="6.2"/><path d="M8 12h8M8.3 14.8h7.4M9.4 17.4h5.2"/><path d="M9.6 8.4C8 6.2 5.4 6.6 5.7 8.6c.2 1.4 2.1 1.9 3.7 1.1M14.4 8.4c1.6-2.2 4.2-1.8 3.9.2-.2 1.4-2.1 1.9-3.7 1.1"/><path d="M13.4 5.6l2.1-2.1M15.9 6.9l2.5-1.2"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4.2 21 19.5H3L12 4.2Z"/><path d="M12 9.6v4.6M12 16.9v.2"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8.5Z"/><path d="M9.5 20.5v-6h5v6"/></symbol>
+  <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M17.5 5.5H7l5 6.5-5 6.5h10.5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 5.5A2 2 0 0 1 7 3.5h12v14H7a2 2 0 0 0-2 2v-14Z"/><path d="M5 19.5a2 2 0 0 0 2 2h12"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4M6 4.5h11l-2.2 4 2.2 4H6"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M14.5 4.5c3 0 5 2 5 5 0 4.5-6.5 9.5-6.5 9.5L9 15s5-10.5 5.5-10.5Z"/><path d="M9 15H5.5l1.8-3.2M14.5 19v-3.2"/><circle cx="15" cy="9" r="1.4"/></symbol>
+</svg>
+
+<div class="win">
+  <header class="titlebar">
+    <div class="tb-brand">
+      <img class="mark" src="logo.png" alt="CodeBee">
+      <b>CodeBee</b>
+    </div>
+    <nav class="tb-menu">
+      <button type="button" data-noop>文件</button>
+      <button type="button" data-noop>编辑</button>
+      <button type="button" data-noop>窗口</button>
+      <button type="button" data-noop>帮助</button>
+      <button type="button" data-noop>关于</button>
+    </nav>
+    <div class="tb-right">
+      <span class="tb-tag">全站界面样张</span>
+      <button class="wbtn" type="button" data-noop aria-label="最小化"><svg class="ico"><use href="#i-min"/></svg></button>
+      <button class="wbtn" type="button" data-noop aria-label="最大化"><svg class="ico"><use href="#i-max"/></svg></button>
+      <button class="wbtn close" type="button" data-noop aria-label="关闭"><svg class="ico"><use href="#i-x"/></svg></button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="side">
+      <button class="nav-row new" type="button" id="btn-new-chat">
+        <svg class="ico"><use href="#i-plus"/></svg><span>新聊天</span>
+      </button>
+      <button class="nav-row" type="button" data-page="home">
+        <svg class="ico"><use href="#i-home"/></svg><span>工作台</span>
+      </button>
+      <button class="nav-row" type="button" data-page="runs">
+        <svg class="ico"><use href="#i-history"/></svg><span class="grow">运行记录</span><span class="pill-n">3</span>
+      </button>
+      <button class="nav-row" type="button" data-page="automation">
+        <svg class="ico"><use href="#i-calendar"/></svg><span>自动化</span>
+      </button>
+      <button class="nav-row" type="button" data-page="experts">
+        <svg class="ico"><use href="#i-users"/></svg><span>专家</span>
+      </button>
+      <button class="nav-row" type="button" id="btn-more" aria-expanded="false">
+        <svg class="ico"><use href="#i-grid"/></svg><span class="grow">更多</span>
+        <svg class="ico chev" style="width:12px;height:12px;opacity:.55"><use href="#i-chev-r"/></svg>
+      </button>
+      <div class="side-sub hidden" id="side-more">
+        <button class="task-row" type="button" data-page="overview"><span class="nm">概览</span></button>
+        <button class="task-row" type="button" data-page="kanban"><span class="nm">看板</span></button>
+        <button class="task-row" type="button" data-page="browser"><span class="nm">浏览器</span></button>
+        <button class="task-row" type="button" data-page="availability"><span class="nm">通道体检</span></button>
+        <button class="task-row" type="button" data-page="board"><span class="nm">大屏看板</span></button>
+        <button class="task-row" type="button" data-page="atlas"><span class="nm">记忆星图</span></button>
+        <button class="task-row" type="button" data-page="index"><span class="nm">全部页面</span></button>
+      </div>
+
+      <div class="sec-label">
+        <span>项目</span>
+        <button type="button" data-toast="展开全部项目"><svg class="ico"><use href="#i-chev-d"/></svg></button>
+        <button type="button" data-toast="显示已归档"><svg class="ico"><use href="#i-history"/></svg></button>
+      </div>
+      <button class="task-row proj-row" type="button" data-toast="项目：《头七结账人》">
+        <svg class="ico" style="width:13px;height:13px"><use href="#i-folder"/></svg><span class="nm">《头七结账人》</span><span class="when">22</span>
+      </button>
+      <button class="task-row" type="button" data-task="《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7" data-meta="运行中 · 第 21/21 步 · 47 分钟">
+        <span class="dot"></span><span class="nm">《头七结账人》21-24章…</span><span class="when">47分</span>
+      </button>
+      <button class="task-row" type="button" data-task="《头七结账人》第 24 章 收尾" data-meta="失败 · 6 小时前 · 可重试">
+        <span class="dot warn"></span><span class="nm">《头七结账人》第 24 章…</span><span class="when">4天</span>
+      </button>
+      <button class="task-row" type="button" data-task="《头七结账人》第 23 章 重写" data-meta="已完成 · 10-26">
+        <span class="dot" style="background:#9fb4bd"></span><span class="nm">《头七结账人》第 23 章…</span><span class="when">10-26</span>
+      </button>
+      <button class="task-row" type="button" data-task="《头七结账人》第 22 章 重写" data-meta="已完成 · 10-24">
+        <span class="dot" style="background:#9fb4bd"></span><span class="nm">《头七结账人》第 22 章…</span><span class="when">10-24</span>
+      </button>
+      <button class="task-row" type="button" data-task="《头七结账人》第 21 章 重写" data-meta="已完成 · 10-20">
+        <span class="dot" style="background:#9fb4bd"></span><span class="nm">《头七结账人》第 21 章…</span><span class="when">10-20</span>
+      </button>
+
+      <div class="side-spacer"></div>
+
+      <div class="side-foot">
+        <button class="foot-model" type="button" data-open-settings="models">
+          <span class="pdot"></span><span class="nm">Our Free Model</span>
+        </button>
+        <button class="side-user" type="button" id="user-btn" aria-label="账户">
+          <span class="avatar">CB</span>
+        </button>
+        <button class="foot-ico" type="button" id="open-settings-btn" aria-label="设置">
+          <svg class="ico"><use href="#i-sliders"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+
+      <!-- ========== 工作台 ========== -->
+      <section class="view view-home active" data-view="home">
+        <div class="scene" aria-hidden="true">
+          <div class="ring r1"></div>
+          <div class="ring r2"></div>
+          <div class="ring r3"></div>
+          <div class="ring r4"></div>
+          <div class="ring r5"></div>
+          <div class="hexfield" id="hexfield"></div>
+        </div>
+        <div class="home">
+          <div class="home-inner">
+            <div class="need-card">
+              <div class="need-head">
+                <b>需要你处理</b><span class="need-n">20</span>
+                <span class="sp"></span>
+                <button class="icon-btn" type="button" data-toast="已折叠（演示）" aria-label="折叠">
+                  <svg class="ico"><use href="#i-x"/></svg>
+                </button>
+              </div>
+              <div class="need-list">
+                <button class="need-row" type="button" data-toast="发布告警：看板数据缺失">
+                  <span class="tag warn">发布告警</span>
+                  <span class="need-txt">发布成功率跌破 95%（33 次尝试 24 次失败）— 最近失败：第 11 章收尾</span>
+                  <span class="need-time">11-02 16:22</span>
+                </button>
+                <button class="need-row" type="button" data-task="《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7" data-meta="失败 · 第 11/11 步 · 15:34">
+                  <span class="tag bad">运行失败</span>
+                  <span class="need-txt">《头七结账人》21-24章修订复评 · 续7 服务重启中断，可重试</span>
+                  <span class="need-time">11-02 15:34</span>
+                  <span class="btn-sm">重试</span>
+                </button>
+                <button class="need-row" type="button" data-task="《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7" data-meta="失败 · 第 11/11 步 · 15:17">
+                  <span class="tag bad">运行失败</span>
+                  <span class="need-txt">《头七结账人》21-24章修订复评 · 续7 服务重启中断，可重试</span>
+                  <span class="need-time">11-02 15:17</span>
+                  <span class="btn-sm">重试</span>
+                </button>
+                <button class="need-row" type="button" data-task="《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7" data-meta="失败 · 第 11/11 步 · 14:39">
+                  <span class="tag bad">运行失败</span>
+                  <span class="need-txt">《头七结账人》21-24章修订复评 · 续7 服务重启中断，可重试</span>
+                  <span class="need-time">11-02 14:39</span>
+                  <span class="btn-sm">重试</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="home-greet">下午好 · 11 月 2 日 · 星期一</div>
+            <h1 class="hero-title">把今天要完成的事，交给 <em>CodeBee</em>。</h1>
+            <p class="hero-sub">拆解、路由、执行、评审 —— 一条任务，多个智能体协作完成。</p>
+
+            <div class="composer">
+              <div class="mascot" aria-hidden="true">
+                <img src="bee.svg" alt="">
+              </div>
+              <div class="composer-where">
+                <svg class="ico"><use href="#i-folder"/></svg>
+                <span class="path">C://Users//HP//AppData//Roaming//workspace</span>
+                <span class="sp"></span>
+                <span class="branch">master</span>
+                <svg class="ico chev"><use href="#i-chev-d"/></svg>
+              </div>
+              <textarea id="home-input" rows="2" placeholder="题材/受众/卖点 + 总字数（例：2 万字都市女频，可签约平台）"></textarea>
+              <div class="composer-bar">
+                <button class="chip expert" type="button" data-toast="专家：连载家（默认写作台）">
+                  <span class="mini-ava">连</span>连载家
+                </button>
+                <button class="icon-btn" type="button" data-toast="添加文件、目录或截图"><svg class="ico"><use href="#i-plus"/></svg></button>
+                <span class="bar-sp"></span>
+                <button class="chip model" type="button" data-toast="模型：Our Free Model（内置免费，开箱即用）">
+                  <svg class="ico"><use href="#i-hex"/></svg>Our Free Model
+                </button>
+                <button class="send" type="button" id="home-send" aria-label="发送">
+                  <svg class="ico"><use href="#i-up"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="home-recent">
+              <div class="recent-head"><span>最近动态</span><button class="link" type="button" data-page="runs">全部 <svg class="ico"><use href="#i-arrow-r"/></svg></button></div>
+              <button class="recent-row" type="button" data-task="《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7" data-meta="运行中 · 第 21/21 步 · 47 分钟">
+                <span class="dot"></span><span class="nm">《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7</span>
+                <span class="tag warn">运行中 · 第 21/21 步</span><span class="tm">47 分</span>
+              </button>
+              <button class="recent-row" type="button" data-task="《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7" data-meta="失败 · 第 11/11 步 · 1 小时前">
+                <span class="dot" style="background:#b9776f"></span><span class="nm">《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7</span>
+                <span class="tag bad">失败 · 第 11/11 步</span><span class="tm">1 小时</span>
+              </button>
+              <button class="recent-row" type="button" data-task="每日仓库巡检" data-meta="已完成 · 今天 09:00">
+                <span class="dot" style="background:#4f8a72"></span><span class="nm">每日仓库巡检</span>
+                <span class="tag ok">已完成</span><span class="tm">7 小时</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 任务详情 ========== -->
+      <section class="view view-task" data-view="task">
+        <header class="task-head">
+          <span class="live-dot" id="task-live"></span>
+          <span class="ttl" id="task-title">《头七结账人》21-24章修订复评（第二轮:整章重写至规格）续7</span>
+          <span class="meta" id="task-meta">运行中 · 第 21/21 步 · 47 分钟</span>
+          <span class="sp"></span>
+          <button class="ghost-btn" type="button" data-toast="已复制运行链接"><svg class="ico"><use href="#i-copy"/></svg>复制</button>
+          <button class="ghost-btn" type="button" data-toast="产物：21 章正文、评审明细、封面"><svg class="ico"><use href="#i-share"/></svg>产物</button>
+          <button class="ghost-btn" type="button" data-toast="演示版：停止不会真的中断任务"><svg class="ico"><use href="#i-stop"/></svg>停止</button>
+        </header>
+
+        <div class="rd-tabs" role="tablist">
+          <button class="rd-tab on" type="button" data-tab="chat">对话</button>
+          <button class="rd-tab" type="button" data-tab="steps">步骤 <span class="tab-badge">21</span></button>
+          <button class="rd-tab" type="button" data-tab="result">成果 <span class="tab-badge">3</span></button>
+          <span class="sp"></span>
+          <button class="rd-tab more" type="button" data-toast="更多分区：蜂巢 / 预览 / Git / 设定集 / 作品信息">更多 <svg class="ico"><use href="#i-chev-d"/></svg></button>
+        </div>
+
+        <div class="chat-scroll" id="chat-scroll">
+          <div class="chat-inner" id="chat-stream">
+            <div class="msg-user">
+              <div class="bubble">21-24 章按第二轮规格重写：章末必须有钩子，字数控制在 2500±3%，别动已有的伏笔线。</div>
+            </div>
+
+            <div class="msg-ai">
+              <div class="ai-avatar"><img src="bee.svg" alt=""></div>
+              <div class="ai-body">
+                <div class="ai-name">CodeBee <span class="tag">第 21/21 步 · 47 分钟</span></div>
+                <div class="ai-text">
+                  <p>21 章已经过评审，22-24 还差收尾。先说这一轮的三处改动：</p>
+                  <ol>
+                    <li>章末钩子：21 章原结尾是「他关上门」，改成「门缝里塞进来第二张清单」，把下一章的引子提前。</li>
+                    <li>字数：21 章 2,486 字，落在 2500±3% 内；22 章 2,612 字，超了 4.5%，正在压。</li>
+                    <li>伏笔：第 9 章的账本编号在 21 章复现了一次，没改设定，只补了一句呼应。</li>
+                  </ol>
+                  <p>评审 4 个维度里，「节奏」和「人物动机」通过，「对话占比」偏低（31%），「章末钩子」刚补上。</p>
+                </div>
+
+                <div class="approve" id="approve">
+                  <div class="ap-title"><svg class="ico"><use href="#i-warn"/></svg>22 章要按新钩子整章重写吗？</div>
+                  <p>重写会动 2 处伏笔呼应，预计多花 6 分钟；不重写则保留现稿，只压字数。</p>
+                  <div class="ap-actions">
+                    <button class="btn danger" type="button" id="approve-yes">重写 22 章</button>
+                    <button class="btn" type="button" id="approve-no">只压字数</button>
+                  </div>
+                </div>
+
+                <div class="tools-row">
+                  <button class="tool" type="button" data-toast="产物：21 章正文、评审明细、封面"><svg class="ico"><use href="#i-doc"/></svg>查看全部产物 <span class="num">(3)</span></button>
+                  <span class="tool-sep"></span>
+                  <button class="tool" type="button" data-toast="来源：设定集、第 9 章账本、评审规则"><svg class="ico"><use href="#i-link"/></svg><span class="num">3</span> 个来源</button>
+                  <span class="tool-sep"></span>
+                  <span class="tool"><svg class="ico"><use href="#i-spark"/></svg>共耗 <span class="num">1.24</span></span>
+                  <span class="tool-sep"></span>
+                  <span class="tool"><svg class="ico"><use href="#i-hex"/></svg>Our Free Model</span>
+                  <span class="tool" style="margin-left:auto">今天 15:34</span>
+                </div>
+
+                <div class="artifacts">
+                  <button class="art" type="button" data-toast="打开产物：第21章.md">
+                    <span class="a-ico"><svg class="ico"><use href="#i-doc"/></svg></span>
+                    <span><span class="a-nm">第21章.md</span><span class="a-meta">2,486 字 · 已过评审</span></span>
+                  </button>
+                  <button class="art" type="button" data-toast="打开产物：评审明细.csv">
+                    <span class="a-ico"><svg class="ico"><use href="#i-chart"/></svg></span>
+                    <span><span class="a-nm">评审明细.csv</span><span class="a-meta">4 维度 · 21 章</span></span>
+                  </button>
+                  <button class="art" type="button" data-toast="打开产物：封面.png">
+                    <span class="a-ico"><svg class="ico"><use href="#i-monitor"/></svg></span>
+                    <span><span class="a-nm">封面.png</span><span class="a-meta">900×1200 · 已生成</span></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rd-pane-steps hidden" id="rd-steps">
+          <div class="steps-inner">
+            <div class="step-row done"><span class="step-n">1</span><div><h4>读设定集与 21-24 章旧稿</h4><p>人物关系、伏笔清单、第二轮规格</p></div><span class="lrow-meta">38s</span></div>
+            <div class="step-row done"><span class="step-n">2</span><div><h4>拆章：每章一个钩子</h4><p>21 章「第二张清单」· 22 章「账本编号」</p></div><span class="lrow-meta">1m 12s</span></div>
+            <div class="step-row done"><span class="step-n">3</span><div><h4>逐章重写 21</h4><p>2,486 字 · 对话占比 31%</p></div><span class="lrow-meta">6m 04s</span></div>
+            <div class="step-row done"><span class="step-n">4</span><div><h4>评审 21 章</h4><p>节奏 ✓ 人物动机 ✓ 对话占比 ✗ 章末钩子 ✓</p></div><span class="lrow-meta">1m 40s</span></div>
+            <div class="step-row run"><span class="step-n">5</span><div><h4>重写 22 章</h4><p>正在压字数：2,612 → 2,500</p></div><span class="lrow-meta">进行中</span></div>
+            <p class="steps-note">完整步骤 21 条，这里只展开到当前步。</p>
+          </div>
+        </div>
+
+        <div class="rd-pane-result hidden" id="rd-result">
+          <div class="steps-inner">
+            <div class="panel" style="margin:0 0 12px"><div class="panel-h"><h3>本轮成果</h3><span class="sp"></span><span class="hint">3 个文件</span></div>
+              <div class="model-row"><span class="model-ico"><svg class="ico"><use href="#i-doc"/></svg></span><span class="nm">第21章.md<span class="tag">2,486 字 · 已过评审</span></span><span class="sp"></span><button class="btn-sm" data-toast="演示版：预览先留空">预览</button></div>
+              <div class="model-row"><span class="model-ico"><svg class="ico"><use href="#i-chart"/></svg></span><span class="nm">评审明细.csv<span class="tag">4 维度 · 21 章</span></span><span class="sp"></span><button class="btn-sm" data-toast="演示版：预览先留空">预览</button></div>
+              <div class="model-row"><span class="model-ico"><svg class="ico"><use href="#i-monitor"/></svg></span><span class="nm">封面.png<span class="tag">900×1200</span></span><span class="sp"></span><button class="btn-sm" data-toast="演示版：预览先留空">预览</button></div>
+            </div>
+            <p class="steps-note">产物留在任务工作目录 artifacts/ 下，导出时随任务一起走。</p>
+          </div>
+        </div>
+
+        <div class="dock" id="rd-dock">
+          <div class="composer">
+            <textarea id="task-input" rows="1" placeholder="继续说…（Enter 发送，Shift+Enter 换行；可直接粘截图）"></textarea>
+            <div class="composer-bar">
+              <button class="icon-btn" type="button" data-toast="添加文件、目录或截图"><svg class="ico"><use href="#i-plus"/></svg></button>
+              <button class="chip" type="button" data-toast="补充要求会随下一步一起下达"><svg class="ico"><use href="#i-spark"/></svg>补充要求</button>
+              <span class="bar-sp"></span>
+              <button class="chip model" type="button" data-toast="模型：Our Free Model"><svg class="ico"><use href="#i-hex"/></svg>Our Free Model</button>
+              <button class="send" type="button" id="task-send" aria-label="发送"><svg class="ico"><use href="#i-up"/></svg></button>
+            </div>
+          </div>
+          <p class="dock-hint">它会自己判断该不该继续拆步骤；危险动作会先问你。</p>
+        </div>
+      </section>
+
+      <section class="view view-page" data-view="page">
+        <div class="page-wrap" id="page-root"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- 用户浮层 -->
+<div class="popover hidden" id="user-pop">
+  <div class="pop-head">
+    <span class="avatar">CB</span>
+    <span>
+      <div class="nm">本地用户</div>
+      <div class="sub">CodeBee 个人版 · 数据只在本机</div>
+    </span>
+  </div>
+  <div class="pop-plan">
+    <span>
+      <div class="label">本月用量</div>
+      <div class="val">24.8M tokens</div>
+    </span>
+    <button class="up" type="button" data-open-settings="usage">看明细</button>
+  </div>
+  <button class="pop-item" type="button" data-toast="邀请链接已复制（演示）"><svg class="ico"><use href="#i-users"/></svg><span class="grow">邀请同事</span><span class="sub">送额度</span></button>
+  <button class="pop-item" type="button" data-toast="成长计划：连续 7 天有任务"><svg class="ico"><use href="#i-spark"/></svg><span class="grow">成长计划</span></button>
+  <div class="pop-sep"></div>
+  <button class="pop-item" type="button" data-open-settings="general"><svg class="ico"><use href="#i-sliders"/></svg><span class="grow">设置</span><span class="sub">⌘,</span></button>
+  <button class="pop-item" type="button" data-open-settings="appearance"><svg class="ico"><use href="#i-palette"/></svg><span class="grow">外观</span><span class="sub">浮光</span></button>
+  <button class="pop-item" type="button" data-open-settings="memory"><svg class="ico"><use href="#i-bulb"/></svg><span class="grow">记忆与进化</span></button>
+  <button class="pop-item" type="button" data-toast="意见反馈：演示版先不接后端"><svg class="ico"><use href="#i-message"/></svg><span class="grow">意见反馈</span></button>
+  <button class="pop-item" type="button" data-toast="已是最新版本 v2.4.1"><svg class="ico"><use href="#i-refresh"/></svg><span class="grow">检查更新</span></button>
+  <div class="pop-sep"></div>
+  <button class="pop-item" type="button" data-toast="演示版：不会真的退出"><svg class="ico"><use href="#i-lock"/></svg><span class="grow">退出登录</span></button>
+</div>
+
+<!-- 设置面板 -->
+<div class="overlay hidden" id="settings">
+  <div class="settings" role="dialog" aria-modal="true" aria-label="设置">
+    <div class="set-body">
+      <div class="set-nav">
+        <div class="set-search-wrap">
+          <svg class="ico"><use href="#i-search"/></svg>
+          <input class="set-search" id="set-search" type="search" placeholder="搜索设置和功能…" autocomplete="off">
+          <kbd class="search-kbd">Esc</kbd>
+        </div>
+
+        <div class="set-group">设置</div>
+        <button class="set-item" data-pane="general" type="button"><svg class="ico"><use href="#i-home"/></svg><span class="grow">通用</span></button>
+        <button class="set-item" data-pane="appearance" type="button"><svg class="ico"><use href="#i-palette"/></svg><span class="grow">外观</span></button>
+        <button class="set-item" data-pane="tasks" type="button"><svg class="ico"><use href="#i-layers"/></svg><span class="grow">任务</span></button>
+        <button class="set-item" data-pane="usage" type="button"><svg class="ico"><use href="#i-chart"/></svg><span class="grow">用量统计</span></button>
+        <button class="set-item" data-pane="models" type="button"><svg class="ico"><use href="#i-hex"/></svg><span class="grow">模型接入</span></button>
+
+        <div class="set-group">功能</div>
+        <button class="set-item" data-pane="agents" type="button"><svg class="ico"><use href="#i-cpu"/></svg><span class="grow">本机智能体</span></button>
+        <button class="set-item" data-pane="review" type="button"><svg class="ico"><use href="#i-check"/></svg><span class="grow">人工评审</span></button>
+        <button class="set-item" data-pane="market" type="button"><svg class="ico"><use href="#i-apps"/></svg><span class="grow">插件市场</span></button>
+        <button class="set-item" data-pane="memory" type="button"><svg class="ico"><use href="#i-sigma"/></svg><span class="grow">记忆中心</span></button>
+        <button class="set-item" data-pane="knowledge" type="button"><svg class="ico"><use href="#i-doc"/></svg><span class="grow">知识库</span></button>
+        <button class="set-item" data-pane="skills" type="button"><svg class="ico"><use href="#i-book"/></svg><span class="grow">经验库</span></button>
+        <button class="set-item" data-pane="advanced" type="button"><svg class="ico"><use href="#i-sliders"/></svg><span class="grow">高级设置</span></button>
+
+        <div class="set-group">数据与安全</div>
+        <button class="set-item" data-pane="data" type="button"><svg class="ico"><use href="#i-db"/></svg><span class="grow">数据与备份</span></button>
+        <button class="set-item" data-pane="about" type="button"><svg class="ico"><use href="#i-info"/></svg><span class="grow">关于与更新</span></button>
+        <button class="set-item" data-pane="improve" type="button"><svg class="ico"><use href="#i-flag"/></svg><span class="grow">帮助改进</span></button>
+
+        <div class="set-group">帮助</div>
+        <button class="set-item" data-pane="guide" type="button"><svg class="ico"><use href="#i-rocket"/></svg><span class="grow">帮助中心</span></button>
+      </div>
+
+      <div class="set-pane" id="set-pane"><!-- JS 渲染 --></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

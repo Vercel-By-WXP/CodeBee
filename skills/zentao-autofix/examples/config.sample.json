@@ -1,0 +1,38 @@
+{
+  "_comment": "示例配置。复制到项目根的 .zfix/config.toml 后按注释改。所有键都有默认值，只写要覆盖的。",
+  "project": {
+    "name": "my-app",
+    "repo": ".",
+    "branch_prefix": "fix/"
+  },
+  "source": {
+    "kind": "zentao",
+    "version": "v1",
+    "url": "https://zentao.example.com",
+    "products": [1],
+    "default_product": "1",
+    "status": "active",
+    "limit": 20,
+    "account_env": "ZENTAO_ACCOUNT",
+    "password_env": "ZENTAO_PASSWORD",
+    "token_env": "ZENTAO_TOKEN",
+    "insecure": false
+  },
+  "stack": {
+    "lang": "python",
+    "recipe": "",
+    "test": "python -m pytest -q",
+    "lint": "python -m ruff check .",
+    "typecheck": "",
+    "verify_timeout": 900
+  },
+  "fix": {
+    "write_scope": ["src/", "app/"],
+    "forbidden": [".zfix/", "package-lock.json", "poetry.lock"],
+    "max_files": 12
+  },
+  "guard": {
+    "block": false,
+    "max_rules": 20
+  }
+}

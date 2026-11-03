@@ -145,8 +145,12 @@ class FrontendWiringTests(unittest.TestCase):
     def test_app_js_defines_and_wires_digest_helper(self):
         app = self._read("app", "ui", "app.js")
         self.assertIn("function verdictDigestText(", app)
-        # 两处详情步骤行 + 检查器（title/sum）+ 蜂巢两处 + 对话正文 + 复制
-        self.assertGreaterEqual(app.count("verdictDigestText("), 9)
+        # 检查器（title/sum）+ 蜂巢两处 + 对话正文 + 复制 + stepRowHtml 助手。
+        # 两处详情步骤行 2026-11-03 起合并成共享的 stepRowHtml()，助手内部
+        # 仍走 verdictDigestText——出现次数从 9 降到 8 是重构不是丢失。
+        self.assertGreaterEqual(app.count("verdictDigestText("), 8)
+        self.assertIn("function stepRowHtml(", app)
+        self.assertRegex(app, r"function stepRowHtml\([^)]*\)\s*\{[^}]*verdictDigestText\(", "步骤行助手内部必须仍走摘要助手")
 
     def test_backend_emitters_use_digest(self):
         pipe = self._read("app", "core", "pipeline.py")

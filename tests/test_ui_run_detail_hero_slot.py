@@ -12,7 +12,9 @@
 3. 安全：只有「作品信息」页签真能用（bmNeedsPanel）才搬，否则 hero 搬进
    永远不显示的页签 = 直接消失；
 4. 高度：chat 模式下顶部行是 180px 固定预留，搬走后必须整行删掉，
-   否则对话区凭空少 180px（实测 chat 起点比面板顶低 182px）。
+   否则对话区凭空少 180px（实测 chat 起点比面板顶低 182px）；
+5. 回退（2026-11-03）：搬不进页签时不再回详情页顶部独占一行（用户「这块
+   挡住页面了」），改挂右侧常驻分区面板底部——仅桌面工作台 + .is-pinned。
 """
 
 import os
@@ -77,11 +79,34 @@ class TestRunDetailHeroRelocation(unittest.TestCase):
                       "relocateRunHero 缺少 bmNeedsPanel 护栏：非连载任务的 hero 会被搬进永远不显示的页签而消失")
         self.assertIn("hero-moved", body,
                       "搬走后必须给 #run-detail 加 .hero-moved（chat 模式靠它删掉 180px 空行）")
-        self.assertIn('detail.classList.remove("hero-moved")', body,
-                      "回位时必须摘掉 .hero-moved，否则占位行消失、hero 与主区叠在一起")
+        self.assertIn('detail.classList.remove("hero-moved", "hero-rail")', body,
+                      "回位时必须摘掉 .hero-moved/.hero-rail，否则占位行消失、hero 与主区叠在一起")
         # 任务 key 从 hero 自身反解，不依赖调用时序
         self.assertIn("heroTaskOf", body,
                       "relocateRunHero 应通过 heroTaskOf(hero) 反解任务，别依赖 S.lastRunTask 的调用时序")
+
+    def test_fallback_hero_docks_into_pinned_rail_panel(self):
+        """2026-11-03 用户截图：「这块挡住页面了，要不放到右边菜单下面？」——
+        hero 搬不进「作品信息」页签时不能回退到详情页顶部独占一行，要挂进
+        右侧常驻分区面板（#rd-tabs-more）底部；且仅桌面工作台 + 面板常驻
+        形态（.is-pinned）才搬，移动端/弹层形态下面板是隐藏下拉，搬进去
+        等于 hero 消失。"""
+        body = _js_function(_read("app.js"), "relocateRunHero")
+        self.assertIn('$("rd-tabs-more")', body,
+                      "回退分支缺少右侧面板挂载点 #rd-tabs-more：hero 会继续压在详情页顶部")
+        self.assertIn('contains("is-pinned")', body,
+                      "搬进面板前必须确认常驻形态 .is-pinned：弹层形态下面板隐藏，hero 会直接消失")
+        self.assertIn('getAttribute("data-layout") === "workbench"', body,
+                      "搬进面板前必须确认桌面工作台布局：移动端面板是隐藏下拉，不能搬")
+        self.assertIn('classList.add("hero-moved", "hero-rail")', body,
+                      "挂进面板后要同时打 .hero-moved/.hero-rail：chat 模式删 180px 空行靠 .hero-moved")
+        css = _read("demo-parity.css")
+        rule = _css_rule(css, "html[data-layout=\"workbench\"] #rd-tabs-more > #exp-hero")
+        self.assertIsNotNone(
+            rule,
+            "缺少面板内 hero 的窄列样式：188px 面板里 hero 仍按顶部整行布局渲染会溢出")
+        self.assertIn("border-top", rule,
+                      "面板内 hero 需要一道上分隔线，跟任务信息折叠段分开")
 
     def test_repaint_paths_keep_hero_placed(self):
         src = _read("app.js")
@@ -91,6 +116,33 @@ class TestRunDetailHeroRelocation(unittest.TestCase):
         # 短路分支会随渲染签名增加条件而换行，断言只钉「归位调用 + 立即返回」这个行为
         self.assertRegex(src, r"relocateRunHero\(\);\s*return;",
                          "expertHeroPaint 的「同 key 短路」分支也要重新归位，否则重绘后 hero 停在旧容器")
+
+    def test_novel_type_task_counts_as_book_meta(self):
+        """2026-11-03 用户：「要不放到作品信息里面去吧」——「穿越」任务
+        type=novel、serial=false 时曾是白名单外的类型，作品信息页签不出现，
+        hero 只能回退。novel 型同样是「一本书」，封面/建书/发布都要有落点。"""
+        body = _js_function(_read("app.js"), "bmNeedsPanel")
+        self.assertIsNotNone(body, "bmNeedsPanel 函数没了：作品信息页签会永远不出现")
+        self.assertIn('t.type === "novel"', body,
+                      "bmNeedsPanel 白名单缺少 novel：novel 型任务的 hero 无处可去，只能回退到顶部/右侧面板")
+        self.assertIn("t.serial", body,
+                      "bmNeedsPanel 必须保留 serial 兜底：带 serial 数据的任务无论 type 都算一本书")
+
+    def test_status_pill_not_duplicated_in_panel_or_book_meta(self):
+        """状态胶囊（失败/已完成）与页头徽标重复（用户圈红「这个失败是干啥的，
+        是否可以不要」）——右侧面板与作品信息页签里都不显示；顶部回退位保持原样。"""
+        css = _read("demo-parity.css")
+        self.assertIn("html[data-layout=\"workbench\"] #rd-tabs-more > #exp-hero .eh-side",
+                      css, "右侧面板里的状态胶囊没有被隐掉")
+        self.assertIn("html[data-layout=\"workbench\"] .bm-hero-slot .eh-side", css,
+                      "作品信息页签里的状态胶囊没有被隐掉，与页头状态重复")
+        idx = css.find("html[data-layout=\"workbench\"] .bm-hero-slot .eh-side")
+        rule = css[idx:css.find("}", idx)]
+        self.assertIn("display: none", rule,
+                      ".eh-side 的隐藏规则必须真的 display:none")
+        # 顶部回退位（无 workbench 前缀）不得被误伤
+        self.assertNotIn(".exp-hero-band .eh-side { display: none", css.replace(" ", " "),
+                         "不许全局隐藏状态胶囊：顶部回退位（移动端）要保留")
 
     def test_chat_mode_drops_the_empty_hero_row(self):
         css = _read("desktop-workbench.css")

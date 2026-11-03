@@ -273,6 +273,34 @@ def export_csv(days=30, max_rows=10000):
     return b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
 
 
+def clear_ledger():
+    """清空用量台账（usage-*.jsonl）：文件改名归档而非直接删除，可反悔。
+
+    「使用统计」页的全部数字（累计 Token / 费用 / 调用 / 连续天数 / 热力图）
+    都源自这批按月文件；改名后 glob 立刻读不到，统计从下一次调用重新累计。
+    只动台账明细——routing-quality-*.jsonl（路由体检）与 estimate-audit-*.jsonl
+    （预算审计）属于别的页面，不在此清。返回归档的文件数。
+    """
+    moved = 0
+    try:
+        if not paths.USAGE_DIR.is_dir():
+            return 0
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for f in sorted(paths.USAGE_DIR.glob("usage-*.jsonl")):
+            try:
+                f.rename(f.with_name(f.name + ".cleared-" + stamp))
+                moved += 1
+            except OSError:
+                continue
+    except Exception:
+        return moved
+    if moved:
+        with LOCK:
+            _FILE_CACHE.clear()
+        bump_usage()
+    return moved
+
+
 def backfill_from_runs():
     """把历史 run.json 里已记录的 token 用量回填进台账（启动时调用，幂等）。
     埋点是后加的：此前的运行只在 run.json 的步骤里存了 tokens/cost_usd 总量，
@@ -888,6 +916,76 @@ def summary(days=30, recent_limit=30):
         "by_task_type": _dim_rows(records, "task_type"),
         "recent": recent,
     }
+
+
+def session_usage(run_id="", task_id="", days=0):
+    """本会话用量明细：一次运行（或同一任务下的会话链）按模型聚合。
+
+    数据源就是 ``_iter_records`` 读的那份台账——与「用量统计」页同源，
+    所以这里报的「共 X Token」跟统计页永远对得上，不引入第二份真相
+    （run.json 上也有一份 tokens/cost_usd，回填过的老运行会与台账不一致）。
+
+    run_id 优先：给了就只认这一个运行；只给 task_id 才按任务聚合（追话
+    会另开一轮运行，任务维度才是「整段会话」）。两者都没给返回 calls=0，
+    前端据此整条隐藏——不显示 0，避免「本会话一次没调用」的假结论。
+
+    days=0 表示全历史。台账按月分文件且按 (mtime,size) 缓存解析，反复调用
+    只 stat 不重解，因此默认全量即可，不必为了省开销裁窗口（裁了反而会让
+    跨月的长会话少算钱）。
+    """
+    out = {"run_id": str(run_id or "")[:64], "task_id": str(task_id or "")[:64],
+           "calls": 0, "ok": 0, "failed": 0,
+           "tokens": 0, "input": 0, "output": 0, "cached": 0, "reasoning": 0,
+           "cost": 0.0, "duration_s": 0.0, "models": [], "unpriced": 0,
+           "first_ts": "", "last_ts": "",
+           "generated_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    try:
+        rid = out["run_id"]
+        tid = out["task_id"]
+        if not rid and not tid:
+            return out
+        try:
+            span = max(0, int(days or 0))
+        except (TypeError, ValueError):
+            span = 0
+        with LOCK:
+            records = _iter_records(span)
+        if rid:
+            rows = [r for r in records if str(r.get("run_id") or "") == rid]
+        else:
+            rows = [r for r in records if str(r.get("task_id") or "") == tid]
+        if not rows:
+            return out
+        models = []
+        for row in _dim_rows(rows, "model", normalize=True):
+            models.append({"model": row.get("key") or "unknown",
+                           "calls": _parse_int(row.get("calls")),
+                           "tokens": _parse_int(row.get("tokens")),
+                           "input": _parse_int(row.get("input")),
+                           "output": _parse_int(row.get("output")),
+                           "cost": round(_parse_float(row.get("cost_usd")), 4)})
+        stamps = sorted(str(r.get("ts") or "") for r in rows if r.get("ts"))
+        out.update({
+            "calls": len(rows),
+            "ok": sum(1 for r in rows if r.get("ok")),
+            "tokens": sum(_num(r, "total") for r in rows),
+            "input": sum(_num(r, "input") for r in rows),
+            "output": sum(_num(r, "output") for r in rows),
+            "cached": sum(_num(r, "cached") for r in rows),
+            "reasoning": sum(_num(r, "reasoning") for r in rows),
+            "cost": round(sum(_parse_float(r.get("cost_usd")) for r in rows), 4),
+            "duration_s": round(sum(_parse_float(r.get("duration_s")) for r in rows), 1),
+            "models": models,
+            # 未标价模型数：有 token 但没折出钱。前端据此说明「不计费用」，
+            # 而不是把「没标价」显示成「花了 ¥0」（DESIGN.md §0 数字不撒谎）。
+            "unpriced": sum(1 for m in models if m["tokens"] > 0 and m["cost"] <= 0),
+            "first_ts": stamps[0] if stamps else "",
+            "last_ts": stamps[-1] if stamps else "",
+        })
+        out["failed"] = out["calls"] - out["ok"]
+        return out
+    except Exception:
+        return out
 
 
 THIN_SAMPLES = 10   # 低于此样本数即「薄样本」，口径见执行标准第 6 条

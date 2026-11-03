@@ -1,0 +1,7 @@
+{
+  "id": "java-maven",
+  "lang": "java",
+  "detect": { "files": ["pom.xml", "build.gradle", "build.gradle.kts"], "globs": ["**/*.java"] },
+  "commands": { "lint": "", "typecheck": "", "test": "mvn -q -DskipITs test" },
+  "notes": "Gradle 项目请把 [stack] test 覆盖成 ./gradlew test。"
+}

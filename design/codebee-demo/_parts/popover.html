@@ -1,0 +1,64 @@
+
+<div class="popover hidden" id="user-pop">
+  <div class="pop-head">
+    <span class="avatar">CB</span>
+    <span>
+      <div class="nm">本地用户</div>
+      <div class="sub">CodeBee 个人版 · 数据只在本机</div>
+    </span>
+  </div>
+  <div class="pop-plan">
+    <span>
+      <div class="label">本月用量</div>
+      <div class="val">24.8M tokens</div>
+    </span>
+    <button class="up" type="button" data-toast="演示版：额度中心先留空">看明细</button>
+  </div>
+  <button class="pop-item" type="button" data-toast="邀请链接已复制（演示）"><svg class="ico"><use href="#i-users"/></svg><span class="grow">邀请同事</span><span class="sub">送额度</span></button>
+  <button class="pop-item" type="button" data-toast="成长计划：连续 7 天有任务"><svg class="ico"><use href="#i-spark"/></svg><span class="grow">成长计划</span></button>
+  <div class="pop-sep"></div>
+  <button class="pop-item" type="button" data-open-settings="general"><svg class="ico"><use href="#i-sliders"/></svg><span class="grow">设置</span><span class="sub">⌘,</span></button>
+  <button class="pop-item" type="button" data-open-settings="appearance"><svg class="ico"><use href="#i-palette"/></svg><span class="grow">外观</span><span class="sub">浮光</span></button>
+  <button class="pop-item" type="button" data-open-settings="memory"><svg class="ico"><use href="#i-bulb"/></svg><span class="grow">记忆与进化</span></button>
+  <button class="pop-item" type="button" data-toast="意见反馈：演示版先不接后端"><svg class="ico"><use href="#i-message"/></svg><span class="grow">意见反馈</span></button>
+  <button class="pop-item" type="button" data-toast="已是最新版本 v2.4.1"><svg class="ico"><use href="#i-refresh"/></svg><span class="grow">检查更新</span></button>
+  <div class="pop-sep"></div>
+  <button class="pop-item" type="button" data-toast="演示版：不会真的退出"><svg class="ico"><use href="#i-lock"/></svg><span class="grow">退出登录</span></button>
+</div>
+
+<!-- 设置面板 -->
+<div class="overlay hidden" id="settings">
+  <div class="settings" role="dialog" aria-modal="true" aria-label="设置">
+    <div class="set-body">
+      <div class="set-nav">
+        <div class="set-search-wrap">
+          <svg class="ico"><use href="#i-search"/></svg>
+          <input class="set-search" id="set-search" type="search" placeholder="搜索设置项" autocomplete="off">
+        </div>
+
+        <div class="set-group">设置</div>
+        <button class="set-item" data-pane="general" type="button"><svg class="ico"><use href="#i-sliders"/></svg><span class="grow">通用</span></button>
+        <button class="set-item" data-pane="profile" type="button"><svg class="ico"><use href="#i-user"/></svg><span class="grow">个人主页</span></button>
+        <button class="set-item" data-pane="usage" type="button"><svg class="ico"><use href="#i-wallet"/></svg><span class="grow">用量与积分</span></button>
+        <button class="set-item" data-pane="appearance" type="button"><svg class="ico"><use href="#i-palette"/></svg><span class="grow">外观</span></button>
+        <button class="set-item" data-pane="shortcuts" type="button"><svg class="ico"><use href="#i-keyboard"/></svg><span class="grow">快捷键</span></button>
+
+        <div class="set-group">功能</div>
+        <button class="set-item" data-pane="personalize" type="button"><svg class="ico"><use href="#i-spark"/></svg><span class="grow">个性化</span></button>
+        <button class="set-item on" data-pane="memory" type="button"><svg class="ico"><use href="#i-bulb"/></svg><span class="grow">记忆与进化</span></button>
+        <button class="set-item" data-pane="agents" type="button"><svg class="ico"><use href="#i-bot"/></svg><span class="grow">智能体</span></button>
+        <button class="set-item" data-pane="models" type="button"><svg class="ico"><use href="#i-hex"/></svg><span class="grow">模型</span></button>
+        <button class="set-item" data-pane="assistant" type="button"><svg class="ico"><use href="#i-message"/></svg><span class="grow">助手</span></button>
+        <button class="set-item" data-pane="devices" type="button"><svg class="ico"><use href="#i-monitor"/></svg><span class="grow">设备连接</span></button>
+
+        <div class="set-group">数据与安全</div>
+        <button class="set-item" data-pane="data" type="button"><svg class="ico"><use href="#i-db"/></svg><span class="grow">数据管理</span></button>
+        <button class="set-item" data-pane="apps" type="button"><svg class="ico"><use href="#i-apps"/></svg><span class="grow">应用管理</span></button>
+        <button class="set-item" data-pane="security" type="button"><svg class="ico"><use href="#i-shield"/></svg><span class="grow">安全中心</span></button>
+      </div>
+
+      <div class="set-pane" id="set-pane"><!-- JS 渲染 --></div>
+    </div>
+  </div>
+</div>
+

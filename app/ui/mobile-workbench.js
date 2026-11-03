@@ -7,15 +7,30 @@
   const rail = document.getElementById("rd-rail");
   const input = document.getElementById("rd-chat-input");
   if (!detail || !tabs || !rail || !input) return;
+  /* 键盘弹起（≈对话输入框聚焦）：给 body 打类，CSS 收起进展时间线把屏幕让给对话。
+     不用 :has(:focus)——Chromium 对 :has(:focus) 的样式失效重算有坑（2026-11-03
+     实测规则在表里却不触发）。也不直接挂 textarea：chat 重绘会整块重建输入元素，
+     挂在节点上的监听会死——document 级委托 + 按 id 判定，节点换了也活着。 */
+  const paintChatFocus = (on) => document.body.classList.toggle("mob-chat-focused", !!on);
+  document.addEventListener("focusin", (e) => {
+    paintChatFocus(!!(e.target && e.target.id === "rd-chat-input"));
+  });
+  document.addEventListener("focusout", (e) => {
+    if (e.target && e.target.id === "rd-chat-input") paintChatFocus(false);
+  });
   const label = (zh, en) => document.documentElement.dataset.lang === "en" ? en : zh;
 
-  /* 详情只保留「进展 / 产出」两段；其余 8 个分区收进桌面端。 */
+  /* 详情只保留「进展 / 产出」两段；其余 8 个分区收进桌面端。
+     2026-11-03 「请一起优化」：加第三颗「信息」——它不切分区，只开任务信息浮层
+     （#rd-meta-popover）。手机上任务条的两个图标按钮被 mobile-shell.css 整块
+     display:none，这是手机端唯一的信息入口。 */
   const seg = document.createElement("div");
   seg.className = "mob-detail-seg";
   seg.setAttribute("role", "tablist");
   seg.setAttribute("aria-label", label("详情分区", "Detail sections"));
   seg.innerHTML = '<button type="button" role="tab" data-mob-pane="chat"></button>' +
-    '<button type="button" role="tab" data-mob-pane="output"></button>';
+    '<button type="button" role="tab" data-mob-pane="output"></button>' +
+    '<button type="button" role="tab" data-mob-pane="meta" aria-pressed="false"></button>';
   const context = document.getElementById("rd-context");
   const anchor = context || tabs;
   rail.insertBefore(seg, anchor);
@@ -40,6 +55,11 @@
     const chatOk = !!chat && !chat.classList.contains("hidden");
     const resultOk = !!result && !result.classList.contains("hidden");
     const active = (typeof S !== "undefined" && S.rdTab) || "";
+    // 文案先落：下面「自动改落对应段」会 return，别让按钮空着
+    const chatBtn = paneButton("chat"), outBtn = paneButton("output"), metaBtn = paneButton("meta");
+    chatBtn.textContent = label("进展", "Progress");
+    outBtn.textContent = label("产出", "Output");
+    metaBtn.textContent = label("信息", "Info");
     if (media.matches && typeof S !== "undefined" && !S.rdTabPin &&
         !detail.classList.contains("hidden")) {
       const want = active === "preview" ? (resultOk ? "result" : null)
@@ -47,20 +67,31 @@
       const target = want ? tabButton(want) : null;
       if (target && !target.classList.contains("hidden")) { target.click(); return; }
     }
-    const chatBtn = paneButton("chat"), outBtn = paneButton("output");
-    chatBtn.textContent = label("进展", "Progress");
-    outBtn.textContent = label("产出", "Output");
     chatBtn.disabled = !chatOk;
     outBtn.disabled = !resultOk;
     chatBtn.classList.toggle("on", active === "chat");
     outBtn.classList.toggle("on", active === "result");
     chatBtn.setAttribute("aria-selected", active === "chat" ? "true" : "false");
     outBtn.setAttribute("aria-selected", active === "result" ? "true" : "false");
+    // 「信息」是浮层开合，不参与分区选中；状态由 app.js 的 setRdMetaOpen 同步
+    const pop = document.getElementById("rd-meta-popover");
+    metaBtn.classList.toggle("on", !!pop && !pop.classList.contains("hidden"));
   };
 
   seg.addEventListener("click", (event) => {
     const button = event.target.closest("[data-mob-pane]");
     if (!button || button.disabled) return;
+    if (button.dataset.mobPane === "meta") {
+      // stopPropagation：app.js 在 document 上挂了「点空白处收起浮层」，
+      // 不拦住的话刚开就被同一次点击关掉（实测 hidden 立刻回 true）
+      event.stopPropagation();
+      const pop = document.getElementById("rd-meta-popover");
+      if (typeof setRdMetaOpen === "function") {
+        setRdMetaOpen(!pop || pop.classList.contains("hidden"));
+        window.setTimeout(paintSeg, 0);
+      }
+      return;
+    }
     const target = button.dataset.mobPane === "chat" ? tabButton("chat") : tabButton("result");
     if (target) target.click();
     window.setTimeout(paintSeg, 0);
@@ -109,16 +140,25 @@
         '<span class="mob-step-copy"><b>' + esc(title) + '</b><small>' + esc(label(zh, en)) + '</small>' +
         (note ? '<p>' + esc(note) + '</p>' : '') + '</span></li>';
     });
+    /* 67% 摘要行 + 进度条常驻，步骤时间线折进 <details>：终态默认收起、
+     * 运行/排队自动展开。进展块原先常驻 46vh，把对话流压成一条缝——
+     * 2026-11-03 用户红框截图「把页面挡完了」。 */
+    const unfolded = status === "running" || status === "queued";
     progress.innerHTML =
       '<div class="mob-rp-head"><b>' + pct + '%</b><span>' +
       esc(label("已完成 " + done + "/" + steps.length + " 步", done + "/" + steps.length + " steps")) +
       '</span><span class="mob-badge ' + badge[0] + '">' + esc(label(badge[1], badge[2])) + '</span></div>' +
       '<div class="mob-track" aria-hidden="true"><i style="width:' + pct + '%"></i></div>' +
+      '<details class="mob-rp-fold"' + (unfolded ? " open" : "") + '>' +
+      '<summary><svg class="ico" aria-hidden="true"><use href="#i-chevron-r"></use></svg>' +
+      '<span>' + esc(label("执行步骤", "Steps")) + '</span><i>' + steps.length + '</i>' +
+      '<em>' + esc(label(unfolded ? "收起" : "展开", unfolded ? "Collapse" : "Expand")) + '</em></summary>' +
       '<ol class="mob-timeline">' + rows.join("") + '</ol>' +
       (steps.length > 8
         ? '<p class="mob-rp-more">' + esc(label("另有 " + (steps.length - 8) + " 步，可在电脑端查看",
             (steps.length - 8) + " more steps on desktop")) + '</p>'
-        : "");
+        : "") +
+      '</details>';
   };
 
   const actionButton = (kind, text, cls) =>

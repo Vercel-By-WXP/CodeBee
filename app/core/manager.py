@@ -383,14 +383,51 @@ def _cli_version_output(cli, timeout=VER_PROBE_TIMEOUT):
     (timeout) 只杀直接子进程——Windows 下 CLI 经 npm cmd 垫片中转，垫片
     cmd 被杀后真正的 CLI 孙进程变孤儿存活（opencode 是客户端-服务端架构，
     僵实例还会劫持后续会话的项目根），管理页每轮探测再挂一个，2026-10-13
-    实案一个上午积了 18 个 `opencode --version` 僵尸。"""
+    实案一个上午积了 18 个 `opencode --version` 僵尸。
+
+    2026-11-03：cmd /c 找不到命令时把 GBK 报错（「不是内部或外部命令」）
+    吐到 stderr，其中部分字节对碰巧构成合法 UTF-8，解码后成 mojibake
+    （`²»ÊÇÄڲ炕…`）被当版本串展示。这类输出对版本探测毫无价值：
+    非零退出 + 不含 ASCII 数字，或带明显 mojibake 特征（Latin-1 高区位
+    连续串 / GB18030 PUA 区）时按无版本处理。"""
     probe = ["cmd", "/c", cli, "--version"] if os.name == "nt" \
         else [cli, "--version"]
     r = runner.run_process(argv=probe, timeout=timeout)
     out = (r.get("stdout") or "").strip()
     if not out:
         out = (r.get("stderr") or "").strip()
-    return out.splitlines()[0][:60] if out else None
+    if not out:
+        return None
+    first = out.splitlines()[0][:60]
+    code = r.get("returncode")
+    has_digit = any(ch.isdigit() for ch in first)
+    mojibake = _looks_mojibake(first)
+    if code not in (0, None) and not has_digit:
+        return None
+    if mojibake:
+        return None
+    return first
+
+
+def _looks_mojibake(text, *, run_len=2):
+    """识别「GBK 字节被误解成 UTF-8」的典型 mojibake 特征。
+
+    - Latin-1 高区位（U+0080–U+00FF）连续 ``run_len`` 个以上（`²»ÊÇ`）
+    - GB18030 四字节区映射的 PUA 字符（U+E000–U+F8FF）
+    版本串正常只含 ASCII 与少量本机文字，命中即基本确定是编码错乱。"""
+    if not text:
+        return False
+    if any("\ue000" <= ch <= "\uf8ff" for ch in text):
+        return True
+    run = 0
+    for ch in text:
+        if "\u0080" <= ch <= "\u00ff":
+            run += 1
+            if run >= run_len:
+                return True
+        else:
+            run = 0
+    return False
 
 
 def _probe_version(entry):

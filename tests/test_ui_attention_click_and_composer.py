@@ -67,6 +67,31 @@ class TestAttentionRowClick(unittest.TestCase):
         self.assertIn("cursor: default", rule, ".ba-static 行必须 cursor: default")
 
 
+class TestAttentionCardBelowComposer(unittest.TestCase):
+    """2026-11-03 用户：「这个要不放到对话框下面去？」
+    卡片原先插在页面最顶（问候语上方，demo .need-card 的位置），workbench 布局里
+    还写死 `order: -1` 强行抢排位。现在挂点锚到输入卡之后。"""
+
+    def test_mounts_right_after_input_card(self):
+        src = _read("borrow-ui.js")
+        self.assertIn('.rd-input-card', src,
+                      "注意力卡挂点必须锚到输入卡（.rd-input-card）：插回 firstChild 又压到问候语上方")
+        self.assertIn('anchor.insertAdjacentElement("afterend", bar)', src,
+                      "必须用 afterend 把卡片插到输入卡后面；缺这行挂点会退化回页面顶部")
+        self.assertIn('anchor.parentElement === host', src,
+                      "锚点必须在同一个宿主里才插，否则会跨容器塞进别处")
+
+    def test_no_order_neg1_in_workbench(self):
+        css = _read("demo-parity.css")
+        rule = _css_rule(css, 'html[data-layout="workbench"] #page-home #borrow-attention')
+        self.assertIsNotNone(rule, "缺少 workbench 下注意力卡的排位规则")
+        self.assertNotRegex(rule, r"order:\s*-\d",
+                            "workbench 里不许再用负 order 抢排位：它会把卡片顶回页顶，"
+                            "与「放到对话框下面」相反（DOM 顺序已是输入卡之后）")
+        self.assertRegex(rule, r"order:\s*0",
+                         "应显式写 order: 0，覆盖掉历史负值")
+
+
 class TestComposerNeverSqueezed(unittest.TestCase):
 
     def test_chat_bar_does_not_shrink(self):

@@ -19,6 +19,30 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import pick_dialog
 
+# Windows 保留设备名：mkdir 会以各种出乎意料的方式失败，先挡在入口
+_RESERVED_DIR_NAMES = {"CON", "PRN", "AUX", "NUL"} | {
+    "%s%d" % (p, i) for p in ("COM", "LPT") for i in range(1, 10)}
+
+
+def workdir_name_error(name):
+    """「新建工作空间」名称校验：返回错误文案，合法则返回空串。
+
+    抽成模块级纯函数是为了可单测——handler 里只有 IO，规则集中在这里：
+    只允许**单段目录名**（这个端点会真的写盘，不能变成任意建目录的口子）。
+    """
+    name = str(name or "").strip()
+    if not name:
+        return "名称不能为空"
+    if len(name) > 64:
+        return "名称最长 64 个字符"
+    if any(ch in '\\/:*?"<>|' for ch in name) or any(ord(ch) < 32 for ch in name):
+        return '名称不能包含 \\ / : * ? " < > | 等字符'
+    if name in (".", "..") or name.startswith("."):
+        return "名称不能以 . 开头"
+    if name.split(".")[0].upper() in _RESERVED_DIR_NAMES:
+        return "该名称是系统保留名，请换一个"
+    return ""
+
 
 def _main():
     import main
@@ -606,6 +630,44 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
         if err:
             return self._json(200, {"path": "", "fallback": fb, "error": err})
         return self._json(200, {"path": path or ""})
+
+    def _api_workdir_create(self):
+        """新建工作空间：在**默认工作区根**下创建同名文件夹（输入卡「工作空间」
+        选择器的「＋ 新建工作空间」用）。仅限本机，口径同 /api/browse /pick_folder。
+
+        取名只允许「单段目录名」：分隔符、上跳、Windows 保留字符与保留设备名一律
+        拒绝 —— 这个端点会真的写盘，不能让前端传任意路径把它变成任意建目录的口子。
+        根目录取 settings.default_workdir_effective（内置 workspace/ 或用户自定义），
+        与「不使用工作空间」落点一致，用户心智才对得上。
+
+        同名已存在时按「直接用它」返回（created=false），不报错：用户的目的就是
+        「在这个名下干活」，撞名报红只会逼他改名重来。"""
+        ip, fw = self._forwarded_ip()
+        if ip not in ("127.0.0.1", "::1") or fw:
+            return self._json(403, {"error": "目录选择仅限本机使用，请手动输入路径"})
+        body = self._body()
+        name = str(body.get("name") or "").strip()
+        err = workdir_name_error(name)
+        if err:
+            return self._json(400, {"error": err})
+        from core import settings as settings_mod
+        try:
+            root = Path(settings_mod.default_workdir()).expanduser()
+        except Exception:
+            return self._json(500, {"error": "无法确定默认工作区路径"})
+        target = root / name
+        created = False
+        try:
+            if target.exists() and not target.is_dir():
+                return self._json(409, {"error": "同名文件已存在，请换一个名称"})
+            if not target.exists():
+                target.mkdir(parents=True, exist_ok=True)
+                created = True
+        except PermissionError:
+            return self._json(403, {"error": "没有权限在默认工作区下创建目录"})
+        except OSError as e:
+            return self._json(500, {"error": "创建目录失败：%s" % e})
+        return self._json(200, {"path": str(target), "created": created})
 
     def _api_pick_file(self):
         """系统原生「选择文件」对话框（导入备份包用）。仅限本机，同 _api_pick_folder；

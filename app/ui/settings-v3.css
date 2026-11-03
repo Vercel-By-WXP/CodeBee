@@ -86,7 +86,13 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   /* 长表单页（任务/模型/运行/看板…）放宽，别把表格压成一条 */
   html[data-layout] body.settings-mode #page-settings > .subpage,
   html[data-layout] body.settings-mode #page-settings > .subpage > .panel.wide { width: 100%; }
-  html[data-layout] body.settings-mode #page-settings > .subpage { max-width: 940px; }
+  /* 限宽必须配水平居中（2026-11-02 用户「这些页面都没有加 margin」）：
+     原来只写 max-width，宽屏下整块贴左、右侧空一大片，读起来就是「左边贴着、
+     右边没边距」。auto 之后左右余量对称。 */
+  html[data-layout] body.settings-mode #page-settings > .subpage {
+    max-width: 940px;
+    margin-inline: auto;
+  }
   html[data-layout] body.settings-mode #page-settings > #sub-tasks,
   html[data-layout] body.settings-mode #page-settings > #sub-runs,
   html[data-layout] body.settings-mode #page-settings > #sub-models,
@@ -96,19 +102,23 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   html[data-layout] body.settings-mode #page-settings > #sub-kanban,
   html[data-layout] body.settings-mode #page-settings > #sub-automation,
   html[data-layout] body.settings-mode #page-settings > #sub-browser,
-  html[data-layout] body.settings-mode #page-settings > #sub-usage { max-width: 1240px; }
+  html[data-layout] body.settings-mode #page-settings > #sub-usage { max-width: 1240px; margin-inline: auto; }
 }
 
-/* 关闭按钮：目标形态的右上角 ✕（固定住，滚动时也够得着） */
+/* 「完成」胶囊（2026-11-03 用户「右上角X换种方式」）：固定右上角，滚动时也够得着。
+   带文字的实底胶囊比 30px 的小 ✕ 好点得多，退出设置的动作一目了然。 */
 .st-close {
   display: none;
   position: fixed; top: 14px; right: 16px; z-index: 70;
-  width: 30px; height: 30px; align-items: center; justify-content: center;
-  border: 0; border-radius: 8px; background: transparent; color: var(--st-sub) ;
-  cursor: pointer; transition: background-color .15s, color .15s;
+  align-items: center; gap: 6px; height: 30px; padding: 0 13px 0 10px;
+  border: 0; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font-size: 12.5px; font-weight: 650; font-family: inherit;
+  cursor: pointer; transition: filter .15s;
 }
-.st-close > .ico { width: 17px; height: 17px; }
-.st-close:hover { background: var(--st-hover); color: var(--st-text); }
+.st-close > .ico { width: 13px; height: 13px; }
+.st-close:hover { filter: brightness(1.08); }
+.st-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (min-width: 901px) { html[data-layout] body.settings-mode .st-close { display: inline-flex; } }
 
 /* ------------------------------------------------------------- 2. 左栏导航 */
@@ -123,7 +133,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     background: var(--st-mint) !important; color: #4c7178 !important;
   }
   html[data-theme="dark"][data-layout] body.settings-mode .settings-search-wrap { color: #9ec4c0; }
-  html[data-layout] body.settings-mode .settings-search-wrap input { font-size: 12.5px; color: var(--st-mint-ink); }
+  html[data-layout] body.settings-mode .settings-search-wrap input { font-size: 14px; color: var(--st-mint-ink); }
   html[data-layout] body.settings-mode .settings-search-wrap input::placeholder { color: #5d8489; }
   html[data-theme="dark"][data-layout] body.settings-mode .settings-search-wrap input::placeholder { color: #8fb3b0; }
   html[data-layout] body.settings-mode .settings-search-wrap kbd {
@@ -156,7 +166,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
 
   html[data-layout] body.settings-mode .side-settings .set-group {
     margin: 0 !important; padding: 16px 10px 6px !important;
-    font-size: 11.5px !important; font-weight: 500 !important; letter-spacing: .04em !important;
+    font-size: 12.5px !important; font-weight: 500 !important; letter-spacing: .04em !important;
     color: var(--st-sub) !important; background: none !important; border: 0 !important;
     text-transform: none !important;
   }
@@ -167,7 +177,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   html[data-layout] body.settings-mode #sidebar .side-settings .set-item {
     min-height: 34px !important; height: 34px !important;
     padding: 0 10px !important; border-radius: 8px !important;
-    font-size: 13px !important; font-weight: 400 !important;
+    font-size: 14.5px !important; font-weight: 400 !important;
     color: var(--st-text) !important; gap: 10px !important;
     background: none !important;
     transition: background-color .14s ease, color .14s ease;
@@ -191,12 +201,12 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     display: flex; align-items: center; gap: 10px; width: 100%;
     min-height: 34px; margin-top: 2px; padding: 7px 10px;
     border: 0; border-radius: 8px; background: none; color: var(--st-sub);
-    font-size: 13px; font-family: inherit; cursor: pointer; text-align: left;
+    font-size: 14.5px; font-family: inherit; cursor: pointer; text-align: left;
   }
   html[data-layout] body.settings-mode #sidebar .set-more:hover { background: var(--st-hover); color: var(--st-text); }
   html[data-layout] body.settings-mode #sidebar .set-more .ico { width: 15px; height: 15px; }
   html[data-layout] body.settings-mode #sidebar .set-more i {
-    margin-left: auto; font-style: normal; font-size: 11px; color: var(--st-sub);
+    margin-left: auto; font-style: normal; font-size: 12.5px; color: var(--st-sub);
     background: var(--st-hover); border-radius: 999px; padding: 1px 7px; min-width: 18px; text-align: center;
   }
   /* 底部「帮助」组：与上面用一条发丝线分开（目标形态的分区感） */
@@ -216,7 +226,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   }
   html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn {
     border: 0; background: none; color: var(--st-sub);
-    font-size: 12.5px; padding: 5px 12px; border-radius: 7px;
+    font-size: 14px; padding: 5px 12px; border-radius: 7px;
   }
   html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn.active {
     background: var(--st-mint-2); color: var(--st-mint-ink); font-weight: 600;
@@ -228,10 +238,10 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   }
   html[data-layout] body.settings-mode #page-settings .pg-lead .pg-lead-t,
   html[data-layout] body.settings-mode #page-settings .pg-lead h1 {
-    margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; color: var(--st-strong);
+    margin: 0; font-size: 16px; font-weight: 600; letter-spacing: .01em; color: var(--st-strong);
   }
   html[data-layout] body.settings-mode #page-settings .pg-lead p {
-    margin: 6px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--st-sub); max-width: 74ch;
+    margin: 6px 0 0; font-size: 14px; line-height: 1.7; color: var(--st-sub); max-width: 74ch;
   }
 
   /* 白卡：一叠分区，卡与卡之间留灰缝 */
@@ -246,30 +256,37 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     padding: 6px 20px 10px !important;
     margin: 0 0 6px !important;
   }
+  /* 详情页是整页工作台，不是叠放的小白卡（2026-11-02 用户「这些页面都没有加 margin」）：
+     上一条 `margin: 0 0 6px !important` 会把 `main .panel.wide` 的左右 auto 余量清掉，
+     宽屏下 1040px 的主区整块贴左，右侧空一大片、观感等于没留白。
+     这里单独把它放回水平居中（id 优先级 2 > 上一条的 1，且同带 !important）。 */
+  html[data-layout] body.settings-mode #page-settings #run-detail {
+    margin: 0 auto 10px !important;
+  }
   /* 卡片自己的头部：h2 当页内小标题，hint 当说明 */
   html[data-layout] body.settings-mode #page-settings .panel-head {
     padding: 14px 0 10px; margin: 0; border: 0;
   }
   html[data-layout] body.settings-mode #page-settings .panel-head h2 {
-    margin: 0; font-size: 14.5px; font-weight: 600; color: var(--st-strong); letter-spacing: .01em;
+    margin: 0; font-size: 16px; font-weight: 600; color: var(--st-strong); letter-spacing: .01em;
   }
   html[data-layout] body.settings-mode #page-settings .panel-head h2 + .pg-sub,
   html[data-layout] body.settings-mode #page-settings .pg-sub {
-    margin: 5px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--st-sub); font-weight: 400;
+    margin: 5px 0 0; font-size: 14px; line-height: 1.65; color: var(--st-sub); font-weight: 400;
   }
 
   /* 小节标题：目标形态里的「常规 / 权限 / 存储」那种小灰字 */
   html[data-layout] body.settings-mode #page-settings h3.sec-title,
   html[data-layout] body.settings-mode #page-settings .settings-subhead {
     margin: 22px 0 2px; padding: 0 0 6px; border: 0;
-    font-size: 12.5px; font-weight: 500; letter-spacing: .02em; color: var(--st-sub);
+    font-size: 14px; font-weight: 500; letter-spacing: .02em; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .panel > h3.sec-title:first-child,
   html[data-layout] body.settings-mode #page-settings .panel-head + h3.sec-title { margin-top: 12px; }
 
   /* 说明文字：目标形态的 12px 灰描述 */
   html[data-layout] body.settings-mode #page-settings .hint {
-    margin: 6px 0 10px; font-size: 12.5px; line-height: 1.7; color: var(--st-sub);
+    margin: 6px 0 10px; font-size: 14px; line-height: 1.7; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .hint b { color: var(--st-text); font-weight: 600; }
 
@@ -293,12 +310,12 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   }
   html[data-layout] body.settings-mode #page-settings .field.st-row:last-child { border-bottom: 0; }
   html[data-layout] body.settings-mode #page-settings .field.st-row > label {
-    grid-column: 1; margin: 0; font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+    grid-column: 1; margin: 0; font-size: 15px; font-weight: 500; color: var(--st-strong);
     display: block; line-height: 1.5;
   }
   html[data-layout] body.settings-mode #page-settings .field.st-row > label + .st-desc,
   html[data-layout] body.settings-mode #page-settings .field.st-row > .st-desc {
-    grid-column: 1; margin: 3px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--st-sub);
+    grid-column: 1; margin: 3px 0 0; font-size: 14px; line-height: 1.6; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .field.st-row > input:not([type="checkbox"]):not([type="radio"]),
   html[data-layout] body.settings-mode #page-settings .field.st-row > select,
@@ -327,7 +344,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   }
   html[data-layout] body.settings-mode #page-settings .field.st-row2:last-child { border-bottom: 0; }
   html[data-layout] body.settings-mode #page-settings .field.st-row2 > label:not(.toggle) {
-    grid-column: 1; margin: 0; font-size: 13.5px; font-weight: 500; color: var(--st-strong); line-height: 1.5;
+    grid-column: 1; margin: 0; font-size: 15px; font-weight: 500; color: var(--st-strong); line-height: 1.5;
   }
   html[data-layout] body.settings-mode #page-settings .field.st-row2 > .st-ctl {
     grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0;
@@ -341,7 +358,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   html[data-layout] body.settings-mode #page-settings .field:not(.st-row) { margin: 0; padding: 12px 0; border-bottom: 1px solid var(--st-line); }
   html[data-layout] body.settings-mode #page-settings .field:not(.st-row):last-child { border-bottom: 0; }
   html[data-layout] body.settings-mode #page-settings .field:not(.st-row) > label {
-    display: block; margin: 0 0 7px; font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+    display: block; margin: 0 0 7px; font-size: 15px; font-weight: 500; color: var(--st-strong);
   }
 
   /* 已经是行形态的三处（代码设置 / 记忆中心 / 表格行）：统一行距与发丝线 */
@@ -356,11 +373,11 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   html[data-layout] body.settings-mode #page-settings .cs-lab { flex: 1 1 auto; min-width: 0; }
   html[data-layout] body.settings-mode #page-settings .cs-lab > b,
   html[data-layout] body.settings-mode #page-settings .mem-row-txt strong {
-    display: block; font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+    display: block; font-size: 15px; font-weight: 500; color: var(--st-strong);
   }
   html[data-layout] body.settings-mode #page-settings .cs-lab > .hint,
   html[data-layout] body.settings-mode #page-settings .mem-row-txt span {
-    display: block; margin: 3px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--st-sub);
+    display: block; margin: 3px 0 0; font-size: 14px; line-height: 1.6; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .cs-row > select,
   html[data-layout] body.settings-mode #page-settings .cs-row > .cs-size { flex: 0 0 auto; width: 200px; }
@@ -371,7 +388,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   html[data-layout] body.settings-mode #page-settings label.toggle {
     display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between;
     gap: 24px; padding: 13px 0; margin: 0; border-bottom: 1px solid var(--st-line);
-    font-size: 13.5px; font-weight: 500; color: var(--st-strong);
+    font-size: 15px; font-weight: 500; color: var(--st-strong);
   }
   html[data-layout] body.settings-mode #page-settings label.toggle > span {
     flex: 1 1 auto; font-weight: 500; line-height: 1.5; text-align: left;
@@ -389,7 +406,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     border-radius: 8px !important;
     background: var(--st-ctl) !important;
     color: var(--st-text) !important;
-    font-size: 13px !important;
+    font-size: 14.5px !important;
     box-shadow: none !important;
   }
   html[data-layout] body.settings-mode #page-settings textarea { padding: 9px 11px; line-height: 1.65; resize: vertical; }
@@ -437,7 +454,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     min-height: 32px; padding: 5px 12px;
     border: 1px solid var(--st-ctl-line) !important; border-radius: 8px !important;
     background: var(--st-ctl) !important; color: var(--st-text) !important;
-    font-size: 12.5px; box-shadow: none;
+    font-size: 14px; box-shadow: none;
   }
   html[data-layout] body.settings-mode #page-settings button.ghost:hover,
   html[data-layout] body.settings-mode #page-settings .mem-btn:hover { background: #f6f8f8 !important; border-color: #cfd7d9 !important; }
@@ -446,7 +463,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     min-height: 32px; padding: 5px 14px;
     border: 0 !important; border-radius: 8px !important;
     background: var(--st-primary) !important; background-image: none !important;
-    color: #fff !important; font-size: 12.5px; font-weight: 500;
+    color: #fff !important; font-size: 14px; font-weight: 500;
   }
   html[data-theme="dark"][data-layout] body.settings-mode #page-settings button.primary,
   html[data-theme="dark"][data-layout] body.settings-mode #page-settings a.button.primary { color: #16262b !important; }
@@ -465,7 +482,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     background: #c0392b !important; background-image: none !important;
     color: #fff !important; border: 0 !important;
     min-height: 32px; padding: 5px 14px; border-radius: 8px !important;
-    font-size: 12.5px; font-weight: 600;
+    font-size: 14px; font-weight: 600;
   }
   html[data-layout] body.settings-mode #ask button#ask-yes.danger:hover,
   html[data-layout] body.ask-open #ask button#ask-yes.danger:hover {
@@ -480,7 +497,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   }
   html[data-layout] body.settings-mode #page-settings .seg .seg-btn {
     border: 0 !important; background: none !important; box-shadow: none !important;
-    padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--st-sub);
+    padding: 5px 12px; border-radius: 7px; font-size: 14px; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .seg .seg-btn.active {
     background: var(--st-mint-2) !important; color: var(--st-mint-ink) !important; font-weight: 600;
@@ -490,7 +507,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   html[data-layout] body.settings-mode #page-settings .tag,
   html[data-layout] body.settings-mode #page-settings .badge {
     background: var(--st-hover) !important; color: var(--st-sub) !important;
-    border: 0 !important; font-size: 11.5px; padding: 1px 8px; border-radius: 999px;
+    border: 0 !important; font-size: 12.5px; padding: 1px 8px; border-radius: 999px;
   }
 
   /* 「还有 N 项更细的设置」折叠：目标形态里的次级行 */
@@ -499,7 +516,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     background: transparent; padding: 0 14px;
   }
   html[data-layout] body.settings-mode #page-settings .adv-fold > summary {
-    padding: 11px 0; font-size: 12.5px; color: var(--st-sub); cursor: pointer; list-style: none;
+    padding: 11px 0; font-size: 14px; color: var(--st-sub); cursor: pointer; list-style: none;
   }
   html[data-layout] body.settings-mode #page-settings .adv-fold > summary::-webkit-details-marker { display: none; }
   html[data-layout] body.settings-mode #page-settings .adv-fold > .field { border-bottom: 1px solid var(--st-line); }
@@ -514,7 +531,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
 
   /* 记忆中心：两张卡紧挨着，去重底线 */
   html[data-layout] body.settings-mode #page-settings .mem-wrap > .mem-card + .mem-card { margin-top: 0 !important; }
-  html[data-layout] body.settings-mode #page-settings .mem-doc { font-size: 13px; line-height: 1.75; color: var(--st-text); }
+  html[data-layout] body.settings-mode #page-settings .mem-doc { font-size: 14.5px; line-height: 1.75; color: var(--st-text); }
 
   /* 设置首页六张卡：与面板同一套底色与描边 */
   html[data-layout] body.settings-mode #page-settings .sh-grid { margin-top: 4px; }
@@ -523,7 +540,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     box-shadow: none; padding: 16px 18px;
   }
   html[data-layout] body.settings-mode #page-settings .sh-card:hover { border-color: #d8e2e3; background: var(--st-card); }
-  html[data-layout] body.settings-mode #page-settings .sh-title { font-size: 15px; }
+  html[data-layout] body.settings-mode #page-settings .sh-title { font-size: 16px; }
 
   /* ── 高级设置页（2026-10-30 样式第二轮）────────────────────────────
      病灶（CDP 实测）：① .sh-head 的 margin:auto 在 stretch 列里把标题挤成
@@ -556,7 +573,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     margin: 14px 0 0;
     padding: 0;
     border: 0;
-    font-size: 11px !important;
+    font-size: 12.5px !important;
     font-weight: 650;
     letter-spacing: .04em;
     color: var(--st-sub) !important;
@@ -600,7 +617,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
     display: block !important;
     margin: 18px 2px 7px !important; padding: 0 !important;
     border: 0 !important;
-    font-size: 12.5px !important; font-weight: 500 !important;
+    font-size: 14px !important; font-weight: 500 !important;
     letter-spacing: .02em !important; text-transform: none !important;
     color: var(--st-sub) !important;
   }
@@ -657,7 +674,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
   }
   html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn {
     border: 0 !important; background: none !important;
-    font-size: 12.5px !important; padding: 5px 12px !important; border-radius: 7px !important;
+    font-size: 14px !important; padding: 5px 12px !important; border-radius: 7px !important;
     color: var(--st-sub) !important;
   }
   html[data-layout] body.settings-mode #page-settings .cs-anchor .seg-btn.active {
@@ -668,7 +685,7 @@ html[data-theme="dark"][data-layout] body.settings-mode {
 /* 机制与策略：冠军/挑战者对照表（贴合设置面板 v3 视觉语言） */
 html[data-layout] body.settings-mode #page-settings .st-cmp-wrap { margin: 4px 0 2px; overflow-x: auto; }
 html[data-layout] body.settings-mode #page-settings table.st-cmp {
-  width: 100%; border-collapse: collapse; font-size: 13px;
+  width: 100%; border-collapse: collapse; font-size: 14.5px;
 }
 html[data-layout] body.settings-mode #page-settings table.st-cmp th,
 html[data-layout] body.settings-mode #page-settings table.st-cmp td {
@@ -676,14 +693,14 @@ html[data-layout] body.settings-mode #page-settings table.st-cmp td {
   padding: 8px 12px; border-bottom: 1px solid var(--st-line);
 }
 html[data-layout] body.settings-mode #page-settings table.st-cmp thead th {
-  font-size: 12px; font-weight: 600; color: var(--st-sub);
+  font-size: 13px; font-weight: 600; color: var(--st-sub);
   background: var(--st-canvas); position: sticky; top: 0; z-index: 1;
 }
 html[data-layout] body.settings-mode #page-settings table.st-cmp td.st-k { min-width: 172px; }
-html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-name { font-size: 13.5px; font-weight: 500; color: var(--st-strong); }
-html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-range { display: block; margin-top: 2px; font-size: 11.5px; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-name { font-size: 15px; font-weight: 500; color: var(--st-strong); }
+html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-range { display: block; margin-top: 2px; font-size: 12.5px; }
 html[data-layout] body.settings-mode #page-settings table.st-cmp input.st-num {
-  width: 112px; padding: 6px 8px; font-size: 13px;
+  width: 112px; padding: 6px 8px; font-size: 14.5px;
   background: var(--st-ctl); color: var(--st-text);
   border: 1px solid var(--st-ctl-line); border-radius: 8px;
   font-variant-numeric: tabular-nums;
@@ -706,7 +723,7 @@ html[data-layout] body.settings-mode #page-settings table.st-cmp tr.st-diff td.s
 }
 html[data-layout] body.settings-mode #page-settings .st-dirty {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11.5px; font-weight: 600; color: #b8860b;
+  font-size: 12.5px; font-weight: 600; color: #b8860b;
   background: rgba(184, 134, 11, .14); border-radius: 999px; padding: 2px 9px;
 }
 html[data-layout] body.settings-mode #page-settings .st-dirty[hidden] { display: none; }
@@ -717,15 +734,15 @@ html[data-theme="dark"][data-layout] body.settings-mode #page-settings .st-dirty
  * --st-text（日 #26333a 系 / 夜 #e4e7e9 系，两版都有映射），并提最小字号；不动全局 token，
  * 其他设置页观感不受影响。 */
 html[data-layout] body.settings-mode #page-settings #sub-strategy h3.sec-title {
-  color: var(--st-text) !important; font-size: 13px !important; font-weight: 600 !important;
+  color: var(--st-text) !important; font-size: 14.5px !important; font-weight: 600 !important;
 }
 html[data-layout] body.settings-mode #page-settings #sub-strategy .pg-sub { color: var(--st-text) !important; }
 html[data-layout] body.settings-mode #page-settings #sub-strategy .st-desc { color: var(--st-text) !important; }
 html[data-layout] body.settings-mode #page-settings table.st-cmp thead th {
-  color: var(--st-text) !important; font-size: 12.5px !important;
+  color: var(--st-text) !important; font-size: 14px !important;
 }
 html[data-layout] body.settings-mode #page-settings table.st-cmp td.st-delta { color: var(--st-text) !important; }
-html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-range { font-size: 12px !important; }
+html[data-layout] body.settings-mode #page-settings table.st-cmp .st-k-range { font-size: 13px !important; }
 html[data-layout] body.settings-mode #page-settings #sub-strategy .hint { color: var(--st-text) !important; opacity: .78; }
 html[data-theme="dark"][data-layout] body.settings-mode #page-settings #sub-strategy .hint { opacity: .82; }
 /* 深色主按钮：亮青 #4fb3bd 底 + 白字对比仅 2.5，换深墨字（青底配深字 >7） */
@@ -739,32 +756,32 @@ html[data-theme="dark"][data-layout] body.settings-mode #page-settings #sub-stra
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-sec { margin: 0 0 14px; }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-sec:last-child { margin-bottom: 0; }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary h4 {
-  font-size: 14px; font-weight: 650; margin: 0 0 6px;
+  font-size: 15px; font-weight: 650; margin: 0 0 6px;
   color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary p {
-  font-size: 13.5px; line-height: 1.8; margin: 0 0 8px;
+  font-size: 15px; line-height: 1.8; margin: 0 0 8px;
   color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary ul {
   margin: 4px 0 8px; padding-left: 20px; list-style: disc;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li {
-  font-size: 13.5px; line-height: 1.8; margin: 0 0 4px;
+  font-size: 15px; line-height: 1.8; margin: 0 0 4px;
   color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li i {
-  font-style: normal; opacity: .62; font-size: 12.5px;
+  font-style: normal; opacity: .62; font-size: 14px;
 }
 /* 编辑态：条目事实行 + 沉淀时间 */
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-entry .mem-entry-meta {
-  font-size: 12px; opacity: .62; margin: -2px 0 6px;
+  font-size: 13px; opacity: .62; margin: -2px 0 6px;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-facts {
   display: grid; gap: 4px; margin: 6px 0;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-facts .mem-fact {
-  font-size: 13px; line-height: 1.7; color: var(--st-text) !important;
+  font-size: 14.5px; line-height: 1.7; color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-facts .mem-fact b { font-weight: 600; }
 
@@ -785,11 +802,11 @@ html[data-layout] body.settings-mode #page-settings .mem-card .mem-head {
   gap: 16px; margin: 0 0 4px;
 }
 html[data-layout] body.settings-mode #page-settings .mem-card .mem-head h2 {
-  margin: 0 0 2px; font-size: 16px; font-weight: 650; letter-spacing: .2px;
+  margin: 0 0 2px; font-size: 17.5px; font-weight: 650; letter-spacing: .2px;
   color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-card .mem-head p {
-  margin: 0; font-size: 12.5px; color: var(--st-sub, var(--st-text)) !important; opacity: .72;
+  margin: 0; font-size: 14px; color: var(--st-sub, var(--st-text)) !important; opacity: .72;
 }
 html[data-layout] body.settings-mode #page-settings .mem-card .mem-head .mem-actions {
   display: flex; gap: 8px; flex: none; margin-top: 2px;
@@ -802,7 +819,7 @@ html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary {
   max-width: 780px;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary h4 {
-  font-size: 13.5px; font-weight: 650; margin: 0 0 5px;
+  font-size: 15px; font-weight: 650; margin: 0 0 5px;
   color: var(--st-text) !important; letter-spacing: .3px;
   display: flex; align-items: center; gap: 8px;
 }
@@ -811,14 +828,14 @@ html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary h4::be
   background: var(--st-mint-ink, #16363d); flex: none; opacity: .9;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary p {
-  font-size: 13.5px; line-height: 1.85; margin: 0 0 9px;
+  font-size: 15px; line-height: 1.85; margin: 0 0 9px;
   color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary ul {
   margin: 2px 0 9px; padding-left: 5px; list-style: none;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li {
-  position: relative; padding-left: 16px; font-size: 13.5px; line-height: 1.8;
+  position: relative; padding-left: 16px; font-size: 15px; line-height: 1.8;
   margin: 0 0 5px; color: var(--st-text) !important;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li::before {
@@ -827,13 +844,13 @@ html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li::be
   background: var(--st-sub, #8b979e); opacity: .8;
 }
 html[data-layout] body.settings-mode #page-settings .mem-doc .mem-summary li i {
-  font-style: normal; opacity: .55; font-size: 12px; margin-left: 2px;
+  font-style: normal; opacity: .55; font-size: 13px; margin-left: 2px;
 }
 /* —— 脚注：弱化为真正的脚注 —— */
 html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
   margin: 14px 0 0; padding-top: 10px;
   border-top: 1px solid var(--st-line, rgba(127,127,127,.18));
-  font-size: 12px; line-height: 1.6; color: var(--st-sub, var(--st-text)) !important; opacity: .62;
+  font-size: 13px; line-height: 1.6; color: var(--st-sub, var(--st-text)) !important; opacity: .62;
 }
 
 /* --------------------------------------------- 7. 设置首页 / 高级设置页 / 知识库卡片
@@ -845,18 +862,18 @@ html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
   /* —— 页头 / 脚注：与 v3 表单页同一条左缘、同一套字阶 —— */
   html[data-layout] body.settings-mode #page-settings .sh-head { margin: 0 0 18px; }
   html[data-layout] body.settings-mode #page-settings .sh-title {
-    margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em;
+    margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.01em;
     color: var(--st-strong);
   }
   html[data-layout] body.settings-mode #page-settings .sh-sub {
-    margin: 5px 0 0; font-size: 13px; line-height: 1.6; color: var(--st-sub);
+    margin: 5px 0 0; font-size: 14.5px; line-height: 1.6; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .sh-foot {
     display: flex; align-items: center; gap: 6px;
-    margin-top: 18px; font-size: 12.5px; color: var(--st-sub);
+    margin-top: 18px; font-size: 14px; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings .sh-foot .rd-link-btn {
-    border: 0; background: none; padding: 0; font-size: 12.5px;
+    border: 0; background: none; padding: 0; font-size: 14px;
     color: var(--st-primary); cursor: pointer;
   }
   html[data-layout] body.settings-mode #page-settings .sh-foot .rd-link-btn:hover { text-decoration: underline; }
@@ -897,18 +914,18 @@ html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
     flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
   }
   html[data-layout] body.settings-mode #page-settings .sh-card .sh-body b {
-    font-size: 13.5px; font-weight: 650; color: var(--st-strong);
+    font-size: 15px; font-weight: 650; color: var(--st-strong);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   html[data-layout] body.settings-mode #page-settings .sh-card .sh-body small {
-    font-size: 12px; line-height: 1.5; color: var(--st-sub);
+    font-size: 13px; line-height: 1.5; color: var(--st-sub);
     white-space: normal; display: -webkit-box; -webkit-line-clamp: 2;
     -webkit-box-orient: vertical; overflow: hidden;
   }
   html[data-layout] body.settings-mode #page-settings .sh-card .sh-state {
     flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     padding: 3px 9px; border-radius: 999px;
-    font-size: 11.5px; font-weight: 550;
+    font-size: 12.5px; font-weight: 550;
     background: color-mix(in srgb, var(--st-primary) 7%, transparent);
     color: var(--st-primary);
   }
@@ -940,7 +957,7 @@ html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
   }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-ico .ico { width: 14px; height: 14px; }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-title {
-    flex: 1; min-width: 0; font-size: 13.5px; font-weight: 650; color: var(--st-strong);
+    flex: 1; min-width: 0; font-size: 15px; font-weight: 650; color: var(--st-strong);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-ops {
@@ -949,7 +966,7 @@ html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-btn {
     appearance: none; margin: 0; padding: 3px 11px; border-radius: 999px;
     border: 1px solid var(--st-ctl-line); background: var(--st-ctl);
-    font: inherit; font-size: 12px; font-weight: 500; color: var(--st-text);
+    font: inherit; font-size: 13px; font-weight: 500; color: var(--st-text);
     cursor: pointer; transition: border-color .15s ease, background-color .15s ease, color .15s ease;
   }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-btn:hover {
@@ -974,13 +991,13 @@ html[data-layout] body.settings-mode #page-settings .mem-card .mem-foot {
     display: flex; flex-wrap: wrap; gap: 5px;
   }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-body {
-    font-size: 12.5px; line-height: 1.65; color: var(--st-text);
+    font-size: 14px; line-height: 1.65; color: var(--st-text);
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-foot {
     margin-top: auto; padding-top: 8px;
     border-top: 1px dashed var(--st-line);
-    font-size: 12px; color: var(--st-sub);
+    font-size: 13px; color: var(--st-sub);
   }
   html[data-layout] body.settings-mode #page-settings #kb-cards .kb-foot a {
     color: var(--st-primary); text-decoration: none;
