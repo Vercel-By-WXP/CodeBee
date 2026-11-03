@@ -22,7 +22,16 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+    _xfail = pytest.mark.xfail
+except ImportError:
+    # 纯标准库发版闸门环境：本文件为 pytest 函数风格，unittest 不收集；
+    # xfail 语义降级为普通函数（闸门环境里根本不会执行到）。
+    def _xfail(*_a, **_k):
+        def _wrap(fn):
+            return fn
+        return _wrap
 
 UI = Path(__file__).resolve().parents[1] / "app" / "ui"
 
@@ -146,7 +155,7 @@ def test_cross_file_duplicate_defs_frozen():
         "或收敛既有重复）" % (len(dups), DUP_FREEZE))
 
 
-@pytest.mark.xfail(reason="P3 收敛目标：跨文件同名定义应归零（死皮肤两文件删除后"
+@_xfail(reason="P3 收敛目标：跨文件同名定义应归零（死皮肤两文件删除后"
                           "余 104，甄别结论=几乎全为分层皮肤架构的有意重定义："
                           "61.3c wb-themes 映射层 / board 大屏自辖域 / settings "
                           "覆盖链 / hive 基线+desktop 覆盖——继续归零收益低）",

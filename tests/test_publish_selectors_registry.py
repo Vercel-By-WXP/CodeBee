@@ -21,7 +21,10 @@ import ast
 import re
 from pathlib import Path
 
-import pytest
+try:
+    import pytest  # noqa: F401 — 守测环境在用；纯标准库发版闸门环境无 pytest，
+except ImportError:  # 本文件用例为 pytest 函数风格，unittest 收集数为 0，缺库不炸发现
+    pytest = None  # type: ignore[assignment]
 
 PUB = Path(__file__).resolve().parents[1] / "app" / "core" / "publish"
 SHARED = ("flow.py", "flow_helpers.py", "browser.py")

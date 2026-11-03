@@ -18,9 +18,15 @@ import json
 import re
 from pathlib import Path
 
-import pytest
+try:
+    import pytest  # noqa: F401 — 守测环境在用；纯标准库发版闸门环境无 pytest，
+except ImportError:  # 本文件用例为 pytest 函数风格，unittest 收集数为 0，缺库不炸发现
+    pytest = None  # type: ignore[assignment]
 
-from core.error_codes import ErrorCode, classify_error_text
+try:
+    from core.error_codes import ErrorCode, classify_error_text  # pytest 守测布局（app/ 在 path）
+except ImportError:
+    from app.core.error_codes import ErrorCode, classify_error_text  # unittest 闸门布局（仓库根在 path）
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "error_cases.json"
 
