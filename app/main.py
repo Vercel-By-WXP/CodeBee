@@ -1629,6 +1629,17 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 except ValueError:
                     days = 7.0
                 return self._json(200, strategy_lab.report(days=days))
+            if path == "/api/writer-slot":
+                # 写手槽位：版本化纪律 + 绑定提示 + 迭代台账 + 影子配置
+                from core import writer_slot
+                return self._json(200, {"slot": writer_slot.state(),
+                                        "shadow_report": writer_slot.shadow_report()})
+            if path == "/api/writer-dataset":
+                # 训练对归集：历史清单 + latest 指针
+                from core import writer_dataset
+                return self._json(200, {"manifests": writer_dataset.manifests(),
+                                        "latest": writer_dataset._read_json(
+                                            writer_dataset.OUT_DIR / "latest.json")})
             if path == "/api/market/remote":
                 q = parse_qs(urlparse(self.path).query)
                 return self._json(200, market_remote.view(
@@ -2404,6 +2415,73 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 res = strategy_lab.adopt()
                 return self._json(200 if res.get("ok") else 400, res)
             return self._json(400, {"error": "action 需要是 set/clear/adopt"})
+        if path == "/api/writer-slot":
+            # 写手槽位写操作：add_version / set_active / set_binding_hint /
+            # apply_binding / set_shadow。写手资产是配置类操作，与模型绑定同层。
+            from core import writer_slot
+            body = self._body() or {}
+            action = str(body.get("action") or "")
+            if action == "add_version":
+                ok, msg = writer_slot.add_version(
+                    body.get("prompt"), str(body.get("notes") or ""),
+                    body.get("binding_hint"))
+                return self._json(400, {"error": msg}) if not ok \
+                    else self._json(200, {"ok": True, "version": msg,
+                                          "slot": writer_slot.state()})
+            if action == "set_active":
+                ok, msg = writer_slot.set_active(str(body.get("version") or ""))
+                return self._json(400, {"error": msg}) if not ok \
+                    else self._json(200, {"ok": True, "slot": writer_slot.state()})
+            if action == "set_binding_hint":
+                ok, msg = writer_slot.set_binding_hint(
+                    str(body.get("version") or ""), body.get("binding_hint") or {})
+                return self._json(400, {"error": msg}) if not ok \
+                    else self._json(200, {"ok": True, "slot": writer_slot.state()})
+            if action == "apply_binding":
+                res = writer_slot.apply_binding(
+                    str(body.get("version") or "") or None)
+                return self._json(200 if res.get("ok") else 400, res)
+            if action == "set_shadow":
+                sh = writer_slot.set_shadow(**{k: body.get(k) for k in (
+                    "enabled", "provider_id", "model", "sample_rate",
+                    "judge_provider_id", "judge_model")})
+                return self._json(200, {"ok": True, "shadow": sh})
+            return self._json(400, {"error": "action 需要是 add_version/"
+                                    "set_active/set_binding_hint/apply_binding/set_shadow"})
+        if path == "/api/writer-dataset":
+            # 训练对归集：collect（跑归集） / export_sft（导 ChatML）。
+            # 纯文件读写零网络；大库归集可能十几秒，前端按慢操作处理。
+            from core import writer_dataset
+            body = self._body() or {}
+            action = str(body.get("action") or "")
+            if action == "collect":
+                task_ids = body.get("task_ids") or None
+                if task_ids is not None and not isinstance(task_ids, list):
+                    return self._json(400, {"error": "task_ids 需要是列表"})
+                try:
+                    res = writer_dataset.collect(
+                        task_ids=task_ids,
+                        runs_limit=int(body.get("runs_limit") or 200),
+                        include_rejected=bool(body.get("include_rejected")),
+                        min_mean=(float(body["min_mean"])
+                                  if body.get("min_mean") not in (None, "") else None),
+                        extra_dirs=body.get("extra_dirs") or None)
+                except (TypeError, ValueError) as exc:
+                    return self._json(400, {"error": str(exc)})
+                return self._json(200, res)
+            if action == "export_sft":
+                try:
+                    res = writer_dataset.export_sft(
+                        pairs_file=str(body.get("pairs_file") or "") or None,
+                        min_mean=(float(body["min_mean"])
+                                  if body.get("min_mean") not in (None, "") else None),
+                        max_pairs=(int(body["max_pairs"])
+                                   if body.get("max_pairs") else None),
+                        system_prompt=str(body.get("system_prompt") or "") or None)
+                except (TypeError, ValueError) as exc:
+                    return self._json(400, {"error": str(exc)})
+                return self._json(200 if res.get("ok") else 400, res)
+            return self._json(400, {"error": "action 需要是 collect/export_sft"})
         if path == "/api/eval-matrix/normalize":
             from core import eval_matrix
             try:

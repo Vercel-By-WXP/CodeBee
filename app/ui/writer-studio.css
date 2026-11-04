@@ -1,0 +1,33 @@
+/* ============================================================================
+ * 写手工坊（writer-studio.css）—— 只放布局与表格细节，色板一律消费
+ * wb-themes.css 的 token（DESIGN.md：禁写死十六进制色）。
+ * ============================================================================ */
+
+.ws-table th,
+.ws-table td {
+  padding: 4px 10px;
+  text-align: left;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.ws-table td.ws-ellipsis {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-table tbody tr:nth-child(even) {
+  background: var(--wb-panel2);
+}
+
+.ws-table td .ws-good { color: var(--wb-accent); font-weight: 600; }
+
+#ws-prompt-view,
+#ws-new-prompt {
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+#ws-panel .sec-title { margin-top: 14px; }

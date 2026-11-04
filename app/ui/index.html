@@ -34,6 +34,7 @@
 <link rel="stylesheet" href="mobile-shell.css">
 <link rel="stylesheet" href="wb-themes.css">
 <link rel="stylesheet" href="settings-v3.css">
+<link rel="stylesheet" href="writer-studio.css">
 <link rel="stylesheet" href="settings-wechat.css">
 <link rel="stylesheet" href="market-v2.css">
 <link rel="stylesheet" href="borrow-ui.css">
@@ -2243,6 +2244,75 @@
           <div id="st-report" class="hint"></div>
           <div id="st-adopt-history" class="list" style="margin-top:8px"></div>
         </div>
+
+        <!-- 写手工坊（写手槽位）：版本化纪律 + 迭代台账 + 挑战者影子 + 训练对归集。
+             交互逻辑在 writer-studio.js（app.js 之后加载的覆盖层），样式在 writer-studio.css -->
+        <div class="panel wide" id="ws-panel">
+          <div class="panel-head"><h2 data-i18n="写手工坊">写手工坊</h2><span class="spacer"></span><span class="hint" id="ws-state"></span></div>
+          <p class="hint" data-i18n="写手版本＝纪律提示词＋模型绑定提示，可版本化迭代；连载收尾自动记台账（按版本归因）。挑战者影子按采样率把同一份起草提示词旁路发给挑战者模型，和生产章稿对账，赢了再人工换将——默认关闭，不拍板不花钱。">写手版本＝纪律提示词＋模型绑定提示，可版本化迭代；连载收尾自动记台账（按版本归因）。挑战者影子按采样率把同一份起草提示词旁路发给挑战者模型，和生产章稿对账，赢了再人工换将——默认关闭，不拍板不花钱。</p>
+
+          <div class="sec-title" data-i18n="写手版本">写手版本</div>
+          <div class="field st-row2">
+            <label data-i18n="当前版本">当前版本</label>
+            <div class="st-ctl input-row" style="align-items:center;gap:10px;flex-wrap:wrap">
+              <select id="ws-version" onchange="wsRenderVersion()" style="width:200px"></select>
+              <button class="primary small" type="button" onclick="wsActivate()" data-i18n="启用此版本">启用此版本</button>
+              <button class="ghost small" type="button" onclick="wsDeactivate()" data-i18n="停用（不注入）">停用（不注入）</button>
+            </div>
+            <textarea id="ws-prompt-view" rows="5" readonly style="width:100%;margin-top:8px"></textarea>
+            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+              <input id="ws-hint-agent" type="text" style="width:170px" placeholder="绑定 CLI（如 claude-code）" data-i18n-ph="绑定 CLI（如 claude-code）">
+              <input id="ws-hint-provider" type="text" style="width:150px" placeholder="供应商 id（可空）" data-i18n-ph="供应商 id（可空）">
+              <input id="ws-hint-model" type="text" style="width:150px" placeholder="模型名（可空）" data-i18n-ph="模型名（可空）">
+              <button class="ghost small" type="button" onclick="wsSaveHint()" data-i18n="保存绑定提示">保存绑定提示</button>
+              <button class="ghost small" type="button" onclick="wsApplyBinding()" data-i18n="应用到模型绑定">应用到模型绑定</button>
+            </div>
+          </div>
+          <div class="field">
+            <label data-i18n="新增版本（迭代）">新增版本（迭代）</label>
+            <textarea id="ws-new-prompt" rows="4" style="width:100%" placeholder="新的写手纪律全文（保存后用「启用此版本」切换）" data-i18n-ph="新的写手纪律全文（保存后用「启用此版本」切换）"></textarea>
+            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+              <input id="ws-new-notes" type="text" style="width:300px" placeholder="版本说明（改了什么、为什么）" data-i18n-ph="版本说明（改了什么、为什么）">
+              <button class="primary small" type="button" onclick="wsAddVersion()" data-i18n="保存为新版本">保存为新版本</button>
+              <span id="ws-msg" class="hint"></span>
+            </div>
+          </div>
+
+          <div class="sec-title" data-i18n="迭代台账">迭代台账</div>
+          <div class="st-cmp-wrap">
+            <table class="st-cmp ws-table" id="ws-ledger">
+              <thead><tr>
+                <th data-i18n="时间">时间</th><th data-i18n="版本">版本</th><th data-i18n="书">书</th><th data-i18n="章">章</th><th data-i18n="过线">过线</th><th data-i18n="综合">综合</th><th data-i18n="结论">结论</th>
+              </tr></thead>
+              <tbody id="ws-ledger-body"></tbody>
+            </table>
+          </div>
+
+          <div class="sec-title" data-i18n="挑战者影子（同题旁路）">挑战者影子（同题旁路）</div>
+          <div class="input-row" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <label class="toggle"><input id="ws-sh-enabled" type="checkbox"> <span data-i18n="启用（按采样率旁路试写，不影响生产稿）">启用（按采样率旁路试写，不影响生产稿）</span></label>
+            <input id="ws-sh-provider" type="text" style="width:160px" placeholder="挑战者供应商 id" data-i18n-ph="挑战者供应商 id">
+            <input id="ws-sh-model" type="text" style="width:150px" placeholder="挑战者模型名" data-i18n-ph="挑战者模型名">
+            <label class="hint" data-i18n="采样率">采样率</label>
+            <input id="ws-sh-rate" type="number" min="0" max="1" step="0.05" style="width:70px">
+          </div>
+          <div class="input-row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+            <input id="ws-sh-judge-provider" type="text" style="width:160px" placeholder="裁判供应商 id（可空）" data-i18n-ph="裁判供应商 id（可空）">
+            <input id="ws-sh-judge-model" type="text" style="width:150px" placeholder="裁判模型名（可空）" data-i18n-ph="裁判模型名（可空）">
+            <button class="primary small" type="button" onclick="wsSaveShadow()" data-i18n="保存影子配置">保存影子配置</button>
+            <button class="ghost small" type="button" onclick="wsRefreshShadow()" data-i18n="刷新对账">刷新对账</button>
+          </div>
+          <div id="ws-shadow-report" class="hint" style="margin-top:8px"></div>
+
+          <div class="sec-title" data-i18n="训练数据集（写手权重迭代）">训练数据集（写手权重迭代）</div>
+          <div class="input-row" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <label class="toggle"><input id="ws-ds-rejected" type="checkbox"> <span data-i18n="连未过线章一起收（带评审意见）">连未过线章一起收（带评审意见）</span></label>
+            <button class="primary small" type="button" onclick="wsCollect()" data-i18n="归集训练对">归集训练对</button>
+            <button class="ghost small" type="button" onclick="wsExportSft()" data-i18n="导出 SFT（ChatML）">导出 SFT（ChatML）</button>
+            <span id="ws-ds-msg" class="hint"></span>
+          </div>
+          <div id="ws-ds-list" class="hint" style="margin-top:8px"></div>
+        </div>
       </div>
 
       <!-- 群摘要（正式设置子页：配置与摘要一体，替代原右下角悬浮蜜蜂坞） -->
@@ -2979,6 +3049,8 @@
 <script defer src="app.js"></script>
 <script defer src="home-chips.js"></script>
 <script defer src="memory-center.js"></script>
+<!-- 写手工坊（写手槽位 UI）：必须在 app.js 之后加载（包装 loadStrategyLab） -->
+<script defer src="writer-studio.js"></script>
 <script defer src="borrow-ui.js"></script>
 <script defer src="chat-stream.js"></script>
 <script defer src="chat-intent.js"></script>

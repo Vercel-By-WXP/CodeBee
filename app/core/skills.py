@@ -967,6 +967,13 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
         revision_block = quality_revise.block_for(task)
     except Exception:
         revision_block = ""
+    # 写手纪律（写手槽位）：当前启用写手版本的通识纪律。与题材约束同层
+    # （都是「开工前就定死的规矩」），排在约束之后；未启用版本 → 空串。
+    try:
+        from . import writer_slot
+        writer_block = writer_slot.block_for(task)
+    except Exception:
+        writer_block = ""
     parts, used, lesson_ids = [], [], []
 
     for p in all_packs():
@@ -1012,14 +1019,14 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
                        + "\n".join(lines))
 
     if not parts and not lesson_part and not feedback and not outcome_block \
-            and not constraint_block and not revision_block:
+            and not constraint_block and not revision_block and not writer_block:
         return "", []
 
     header = "## 经验库（写作/工程规范 + 过往经验记录；按证据强度参考）\n\n"
     # Reserve both the attributed lessons and complete rejection records before
     # allocating the generic pack budget. Feedback must not evict lessons.
     reserve = (len(header) + len(lesson_part) + len(feedback)
-               + len(outcome_block) + len(constraint_block)
+               + len(outcome_block) + len(constraint_block) + len(writer_block)
                + len(revision_block) + 120)
     budget = max(0, MAX_INJECT_CHARS - reserve)
     body = "\n\n".join(parts)
@@ -1031,9 +1038,11 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
     # 该怎么改」。顺序反过来会让拒稿意见脱离它对应的那次结果，被读成通用规则。
     # 驳回约束排在两者之间：它是由事实推出的可执行条目，既不是结果本身，
     # 也不是一次性的复盘意见（会反复用于同题材新书的开工）。
+    # 写手纪律排在题材约束之后：同为开工前的死规矩，题材约束更具体、优先。
     # 改稿单排在复盘之前：它是**这一稿此刻**的结论，比历史复盘更该先被看到。
     tail = "\n\n".join(x for x in (outcome_block, constraint_block,
-                                      revision_block, feedback) if x)
+                                      writer_block, revision_block,
+                                      feedback) if x)
     if tail:
         text = tail + "\n\n" + text[:max(0, MAX_INJECT_CHARS - len(tail) - 2)]
     if len(text) > MAX_INJECT_CHARS:

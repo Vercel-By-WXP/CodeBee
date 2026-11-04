@@ -3856,7 +3856,14 @@ def _serial_prepare(run, task, agents, ev, stats, mode, critics, impl, route,
                 outline["style_anchor"] = _prev_anchor
         except Exception:
             pass
-    store.update_run(run_id, outline=outline)
+    # 写手槽位：把本次 run 起草时启用的写手版本钉在 run 上（台账归因用——
+    # 中途换版本不能让台账把两版的成绩记混）。
+    try:
+        from . import writer_slot as _writer_slot
+        store.update_run(run_id, outline=outline,
+                         writer_version=_writer_slot.active_version())
+    except Exception:
+        store.update_run(run_id, outline=outline)
     _check_cancel(ev)
     end = start + n - 1   # 本批最后一章的全书章号（全局评审与合并成书覆盖 1..end）
 
@@ -4842,6 +4849,15 @@ def _serial_draft_chapter(st, i, ch, ch_file, cx, run_critique):
                 return
             remember_agent(actual_implementers, chapter_impl)
             refresh_actual_route(chapter_impl, implement_reason=chapter_reason)
+            # 写手挑战者影子（Raven 借鉴二期）：同题旁路——生产章稿照常走，
+            # 挑战者模型在后台线程拿同一份起草提示词试写，结果进影子台账；
+            # 按采样率触发，绝不阻塞、绝不改动生产稿，炸了只损失影子。
+            try:
+                from . import writer_slot as _writer_slot
+                _writer_slot.maybe_shadow(
+                    run_id, task, i, prompt, workdir, champion_text=txt)
+            except Exception:
+                pass
             if not res["ok"]:
                 # 成品是文件不是退出码：CLI 超时但章稿已完整落盘（终章长文实测
                 # 反复出现——文件写完、收尾声明没等到）就送评审门把关，别整章作废
@@ -6158,6 +6174,13 @@ def _serial_finalize(st):
                          scope_txt, total_words,
                          "%.1f" % overall if overall is not None else "未评估"),
                      ended_at=_now())
+    # 写手槽位迭代台账：run 收尾记一行（版本归因用 run.writer_version，
+    # 起草前已钉）。台账坏了只损失台账。
+    try:
+        from . import writer_slot as _writer_slot
+        _writer_slot.record_run(store.get_run(run_id), task, verdict)
+    except Exception:
+        pass
 
 
 # ---- Best-of-N 赛马起草（非连载单稿；借鉴 freebuff editor-multi-prompt + best-of-n-selector）----
