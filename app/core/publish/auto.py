@@ -528,7 +528,8 @@ def flow_calibrated(plat, action):
 
 def publish_pending_async(task_id, platform, auto_submit=True, only=None,
                           force=False, force_confirmed=False, force_reason="",
-                          as_draft=False, auto_prepare_book=False, scheduled=False,
+                          force_origin="", as_draft=False,
+                          auto_prepare_book=False, scheduled=False,
                           _reserved_batch_lock=None, _only_file=None):
     """把任务的待发章节按章号顺序发出（后台线程）。返回 (ok, err)。
 
@@ -665,7 +666,8 @@ def publish_pending_async(task_id, platform, auto_submit=True, only=None,
                 ok_next, why_next = publish_pending_async(
                     task_id, platform, auto_submit=auto_submit, only=only,
                     force=force, force_confirmed=force_confirmed,
-                    force_reason=force_reason, as_draft=as_draft,
+                    force_reason=force_reason, force_origin=force_origin,
+                    as_draft=as_draft,
                     auto_prepare_book=False,
                     _reserved_batch_lock=prep_lock, _only_file=_only_file)
                 if not ok_next:
@@ -917,7 +919,8 @@ def publish_pending_async(task_id, platform, auto_submit=True, only=None,
                     upload_kwargs["direct_today"] = True
                 upload_kwargs.update(manager.automatic_release_kwargs(
                     auto_submit, force=force, force_confirmed=force_confirmed,
-                    force_reason=force_reason, as_draft=as_draft))
+                    force_reason=force_reason, as_draft=as_draft,
+                    force_origin=force_origin))
                 chapter_path = str(Path(wd) / item["file"])
                 ok2, err2 = _start_upload_with_retry(
                     manager, task_id, platform, chapter_path, account, slot,

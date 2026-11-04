@@ -533,15 +533,18 @@ class PublishApprovalAutonomyTests(unittest.TestCase):
     def test_automatic_release_does_not_manufacture_force_confirmation(self):
         from core.publish import manager
 
+        # auto_submit 只表示「提交后自动点发布」，不得顺带造出强制放行，
+        # 更不能替用户声明「这次是我按的」（force_origin 必须为空）。
         self.assertEqual(manager.automatic_release_kwargs(
             auto_submit=True, as_draft=False), {
-                "force": False, "force_confirmed": False, "force_reason": ""})
+                "force": False, "force_confirmed": False, "force_reason": "",
+                "force_origin": ""})
         explicit = manager.automatic_release_kwargs(
             auto_submit=True, force=True, force_confirmed=True,
             force_reason="人工复核后放行", as_draft=False)
         self.assertEqual(explicit, {
             "force": True, "force_confirmed": True,
-            "force_reason": "人工复核后放行"})
+            "force_reason": "人工复核后放行", "force_origin": ""})
 
     def test_metadata_and_chapter_timeouts_are_persisted_for_auto_retry(self):
         from core.publish import auto

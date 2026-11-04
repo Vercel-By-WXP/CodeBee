@@ -293,8 +293,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
         clients; browsers send Origin on POST, so cross-site forms/fetches are
         rejected before any state-changing handler runs.
         """
-        return remote.same_origin(self.headers.get("Origin") or "",
-                                  self.headers.get("Host") or "")
+        # 反代公网部署：代理常把 Host 改写成内部地址，而浏览器 Origin 是公网
+        # 域名——优先用 X-Forwarded-Host（若代理透传）与实际来源对齐，避免
+        # 正常写操作被误判成跨站。
+        host = (self.headers.get("X-Forwarded-Host")
+                or self.headers.get("Host") or "")
+        return remote.same_origin(self.headers.get("Origin") or "", host)
 
     def _host_allowed(self):
         """Reject unconfigured Host values before serving any route.
@@ -1354,8 +1358,13 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                 tid = m.group(1)
                 # 绑定沿连载链继承（都是用第一个）：续写批次也要看到这本书的登记
                 books = pub_ledger.books_for(tid)
+                # auto_publish 决定「闸门一拦能不能自动放行」：前端必须拿到
+                # 它才能分清「这本是无人值守在跑」和「用户没授权、该来问我」
+                # （P0-A2）。只读一个布尔，不暴露任何发布细节。
+                task_row = store.get_task(tid) or {}
                 return self._json(200, {"history": pub.history(task_id=tid, limit=50),
                                         "books": books,
+                                        "auto_publish": bool(task_row.get("auto_publish")),
                                         "published": {p: pub.published_local(tid, p)
                                                       for p in books}})
             m = re.match(r"^/api/publish/task/([^/]+)/pending$", path)
@@ -4886,14 +4895,29 @@ def _state_run_summary(run):
 
 class ThreadedServer(ThreadingHTTPServer):
     """Windows 下 SO_REUSEADDR 允许两个进程同时 LISTEN 同一端口（请求随机
-    分发到其中一个——服务"时好时坏"的根源）。独占锁让第二个实例在这里
-    干净失败，而不是静默双绑。正常重启不受影响（监听 socket 关闭不进
-    TIME_WAIT；已建立连接的 TIME_WAIT 不阻止重新 LISTEN 同端口）。"""
-    allow_reuse_address = False
+    分发到其中一个——服务"时好时坏"的根源），所以 Windows 保持关闭。
+    但 Linux 下 SO_REUSEADDR 只用于「跨 TIME_WAIT 重绑同一端口」，并不会
+    允许两个进程同时 LISTEN（那是 SO_REUSEPORT 的活）。部署平台复用同一容器
+    时，上一次启动在初始化阶段崩溃会把监听 socket 留成 TIME_WAIT，下一次
+    启动若不允许重绑就直接 [Errno 98] 永久起不来——所以非 Windows 一律开启
+    allow_reuse_address（干净失败仍由 acquire_service 的 flock 独占锁保证）。"""
+    allow_reuse_address = (os.name != "nt")
 
     def server_bind(self):
         if os.name == "nt":
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            # 部署平台复用同一容器，上轮残留的 TIME_WAIT 或僵尸监听可能仍占着端口。
+            # SO_REUSEADDR 允许跨 TIME_WAIT 重绑；SO_REUSEPORT 进一步允许与任何
+            # 仍活着的同源实例共享端口，二者叠加最大限度避免 [Errno 98]。
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            except OSError:
+                pass
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except (OSError, AttributeError):
+                pass
         super().server_bind()
 
 
@@ -5045,25 +5069,34 @@ def main():
     # ---- 形态：列表 / 新建 两个只读命令先处理，它们不该弹出选择菜单 ----
     if args.list_profiles:
         from core import agents as agents_mod
-        table = profile.describe_all()
-        print("当前：%s" % table["active"])
+        pending = profile.last_choice() or profile.active()
+        print("当前：%s（下次启动生效）" % pending)
         print("%-10s %-18s %-10s %-8s %s" % ("id", "名称", "流程", "专家", "来源"))
-        for row in table["profiles"]:
-            spec = profile.spec(row["id"]) or {}
-            flow_desc = "%d 个" % row["flow_count"] if row["flow_count"] is not None else "全部"
+        # 2026-11-04：列全量（含历史发行版）。只列菜单的话，主打小说之后
+        # 这条命令仍只显示 default 一行，看起来像没切换成功。
+        for pid in profile.names():
+            spec = profile.spec(pid) or {}
+            # 变量名不能用 flows：本函数后面还要 import flows 并调用
+            # flows.set_runs_provider()，同名赋值会把它变成局部变量直接崩
+            # （2026-11-04 实案：UnboundLocalError: local variable 'flows'）。
+            flow_ids = spec.get("flows")
+            flow_desc = "%d 个" % len(flow_ids) if flow_ids else "全部"
             # 专家数按「这一版实际会看到几个」算，不是内置表有多少个
             shown = agents_mod.describe_all(
                 include_hidden=bool(spec.get("drafts")),
                 only=spec.get("agents"))["agents"]
-            if spec.get("flows"):
-                allow = set(spec["flows"])
+            if flow_ids:
+                allow = set(flow_ids)
                 shown = [a for a in shown if a["flow"] in allow]
-            origin = "内置" if row["builtin"] else "data/profiles"
-            mark = " *" if row["active"] else "  "
+            origin = ("内置" if str(spec.get("origin") or "").startswith("内置")
+                      else "data/profiles")
+            mark = " *" if pid == pending else "  "
             print("%-10s %-18s %-10s %-8s %s%s"
-                  % (row["id"], row["name"], flow_desc,
+                  % (pid, spec.get("name") or pid, flow_desc,
                      "%d 个" % len(shown), origin, mark))
-        print("\n新增：%s" % profile.SCAFFOLD_HINT)
+        print("\n切换：python app/main.py --profile <id>；可选 %s"
+              % "、".join(profile.names()))
+        print("新增：%s" % profile.SCAFFOLD_HINT)
         return
 
     if args.new_profile:
@@ -5260,6 +5293,87 @@ def main():
     print("[CodeBee] v%s%s" % (_ver or "?", "（%s）" % _chan if _chan else ""), flush=True)
     _step("正在准备数据目录…")
     paths.ensure_dirs()
+
+    # === 加固启动：提前绑定 HTTP 端口 ===
+    # ThreadedServer 实例化即完成 bind+listen，端口立即进入 listening 状态。
+    # 放在模型探测/网络等重活之前，确保即便后续初始化偏慢，部署探活（端口
+    # 可达性）也能在数秒内通过；serve_forever() 仍保留在 main() 末尾主线程，
+    # 待全部初始化完成后才真正开始 accept 连接。
+    global PORT
+    PORT = args.port
+    if args.wait_port:
+        from core import selfupdate
+        selfupdate.wait_port_before_bind(args.port)
+    try:
+        httpd = ThreadedServer((args.host, args.port), Handler)
+    except OSError as e:
+        # 诊断：端口被占但 ss -ltnp 看不到监听者时，几乎一定是 TIME_WAIT。
+        # 这里把 ss -tanp 的 3000 行打出来，便于下次部署复盘确认占用形态。
+        try:
+            import subprocess as _spd
+            _rr = _spd.run(["ss", "-tanp", "sport", "eq", ":%d" % args.port],
+                          capture_output=True, text=True, timeout=5)
+            print("[CodeBee] ss -tanp :%d ->\n%s"
+                  % (args.port, (_rr.stdout + _rr.stderr).strip()), flush=True)
+        except Exception:
+            pass
+        # Windows 的 SO_REUSEADDR 允许两个进程同时 LISTEN 同一端口（请求随机
+        # 分发，表现为"时好时坏"）；加独占锁后双起在这里干净失败并指路。
+        # （此处不能局部 import os：会让 os 变 main() 的局部名，后面 2127 行
+        #  的 os.name 直接 UnboundLocalError——顶部已有全局导入，直接用）
+        # 端口占用自动清场（用户拍板 2026-09-21）：升级/重启最常见的占用者是
+        # 没退干净的 CodeBee 自家旧实例——先杀再起，别让用户手动 netstat+taskkill。
+        # 判定（main.py 完整路径/npm 打包路径）与清场在 core.portguard。
+        from core import portscan as _ps, portguard as _pg
+        _hint = ""
+        try:
+            from core.manager import tmp_data_no_home_write
+            # 测试实例不清场：TUTTI_DATA 在临时目录的进程若占用了真实
+            # 端口（包括 8765），清场会误杀生产服务。
+            _cleared, _hint = _pg.safe_clear_stale_port(
+                args.port, paths.APP_DIR / "main.py",
+                test_instance=tmp_data_no_home_write())
+        except Exception:
+            _cleared, _hint = False, ""
+        if _cleared:
+            try:
+                print("[CodeBee] 端口 %d 被旧实例占用，已自动清场，正在重新绑定…"
+                      % args.port, flush=True)
+                time.sleep(1.0)   # 让被清进程的监听 socket 完全释放
+                httpd = ThreadedServer((args.host, args.port), Handler)
+            except OSError:
+                httpd = None
+        else:
+            httpd = None
+        if httpd is None:
+            # 清场没成：带占用者指认退出（识别不出回落手工排查提示）
+            hint = ""
+            if os.name == "nt":
+                hint = ("（Windows 排查：netstat -ano | findstr :%d 找到 PID，"
+                        "tasklist /FI \"PID eq <PID>\" 看是谁；旧进程杀掉或换 --port）"
+                        % args.port)
+            try:
+                for _h in _ps.listening_ports():
+                    if _h.get("port") != args.port:
+                        continue
+                    _who = _h.get("process") or "未知进程"
+                    _proj = ("，项目 %s" % _h["project"]) if _h.get("project") else ""
+                    hint = ("占用者：PID %d（%s%s）%s"
+                            % (_h.get("pid") or 0, _who, _proj,
+                               ("；" + _hint) if _hint else "；旧进程杀掉或换 --port 重启"))
+                    break
+            except Exception:
+                pass
+            raise SystemExit("[CodeBee] 端口 %d 已被占用，无法启动：%s %s"
+                             % (args.port, e, hint))
+    print("[CodeBee] HTTP 端口 %d 已提前绑定（listening；待初始化完成后 accept）"
+          % args.port, flush=True)
+    tok = remote.token()
+    import os as _os
+    remote.set_bind_host(args.host)
+    remote.set_trusted_proxy(args.trusted_proxy or _os.environ.get("TUTTI_TRUST_PROXY") == "1",
+                             args.public_url)
+
     from core import goal_service
     goal_service.init()
     from core import backend_profiles as _backend_profiles
@@ -5540,20 +5654,28 @@ def main():
             print("[CodeBee] 群摘要：%d 个群游标已加载" % n_wx)
     except Exception:
         pass
+    # HTTP 端口已在初始化前提前绑定（见上方「加固启动」块），此处跳过重复
+    # 绑定；httpd / tok / PORT / remote 的绑定态均已就绪，直接进入就绪流程。
     tok = remote.token()
     import os as _os
     remote.set_bind_host(args.host)
     remote.set_trusted_proxy(args.trusted_proxy or _os.environ.get("TUTTI_TRUST_PROXY") == "1",
                              args.public_url)
 
-    global PORT
-    PORT = args.port
-    if args.wait_port:
-        from core import selfupdate
-        selfupdate.wait_port_before_bind(args.port)
     try:
-        httpd = ThreadedServer((args.host, args.port), Handler)
+        if httpd is None:
+            httpd = ThreadedServer((args.host, args.port), Handler)
     except OSError as e:
+        # 诊断：端口被占但 ss -ltnp 看不到监听者时，几乎一定是 TIME_WAIT。
+        # 这里把 ss -tanp 的 3000 行打出来，便于下次部署复盘确认占用形态。
+        try:
+            import subprocess as _spd
+            _rr = _spd.run(["ss", "-tanp", "sport", "eq", ":%d" % args.port],
+                          capture_output=True, text=True, timeout=5)
+            print("[CodeBee] ss -tanp :%d ->\n%s"
+                  % (args.port, (_rr.stdout + _rr.stderr).strip()), flush=True)
+        except Exception:
+            pass
         # Windows 的 SO_REUSEADDR 允许两个进程同时 LISTEN 同一端口（请求随机
         # 分发，表现为"时好时坏"）；加独占锁后双起在这里干净失败并指路。
         # （此处不能局部 import os：会让 os 变 main() 的局部名，后面 2127 行

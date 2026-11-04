@@ -220,6 +220,7 @@ def _queue_create_book_auth_recovery(task_id, plat, account, kwargs):
         "force": bool(options.get("force")),
         "force_confirmed": bool(options.get("force_confirmed")),
         "force_reason": str(options.get("force_reason") or ""),
+        "force_origin": str(options.get("force_origin") or ""),
     }
     _mgr()._remember_pending_create(slot, pending)
 
@@ -564,6 +565,7 @@ def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
         "force": bool((options or {}).get("force")),
         "force_confirmed": bool((options or {}).get("force_confirmed")),
         "force_reason": str((options or {}).get("force_reason") or ""),
+        "force_origin": str((options or {}).get("force_origin") or ""),
         "as_draft": bool((options or {}).get("as_draft")),
         "scheduled": bool((options or {}).get("scheduled")),
         "direct_today": bool((options or {}).get("direct_today")),
@@ -613,6 +615,7 @@ def _queue_upload_recovery(task_id, plat, chapter_file, account, options,
                     force=pending["force"],
                     force_confirmed=pending["force_confirmed"],
                     force_reason=pending["force_reason"],
+                    force_origin=pending.get("force_origin") or "",
                     as_draft=pending["as_draft"],
                     scheduled=pending["scheduled"],
                     direct_today=pending["direct_today"],
@@ -719,6 +722,7 @@ def _resume_pending_create_recoveries():
                 "force": bool(pending.get("force")),
                 "force_confirmed": bool(pending.get("force_confirmed")),
                 "force_reason": str(pending.get("force_reason") or ""),
+                "force_origin": str(pending.get("force_origin") or ""),
             }
             pending_account = str(pending.get("account") or
                                   (account if sep else ""))
@@ -733,8 +737,9 @@ def _resume_pending_create_recoveries():
 
 
 def create_book_async(task_id, plat, auto_submit=True, force=False,
-                      force_confirmed=False, force_reason="", account="",
-                      _batch=False, _recovery=False, _recovery_epoch=None):
+                      force_confirmed=False, force_reason="", force_origin="",
+                      account="", _batch=False, _recovery=False,
+                      _recovery_epoch=None):
     """按任务 book_meta 的资料在平台建书。返回 (ok, err)。
 
     account 非空=用该账号的独立 profile/状态槽建书（多账号），建成的
@@ -782,7 +787,7 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
         return False, why
     release_flags = _mgr().automatic_release_kwargs(
         auto_submit, force=force, force_confirmed=force_confirmed,
-        force_reason=force_reason)
+        force_reason=force_reason, force_origin=force_origin)
     quality = _mgr()._quality_release_guard(task, plat, action="publish",
                                      **release_flags)
     if not quality.get("allowed"):
@@ -807,7 +812,8 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                 queued = _mgr()._queue_create_book_auth_recovery(
                     task_id, plat, acc,
                     {"force": force, "force_confirmed": force_confirmed,
-                     "force_reason": force_reason})
+                     "force_reason": force_reason,
+                     "force_origin": force_origin})
             except Exception as exc:
                 action_lock.release()
                 return False, "登录态恢复任务启动失败：%s" % str(exc)[:160]
@@ -1010,7 +1016,8 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                         task_id, plat, acc,
                         {"force": force,
                          "force_confirmed": force_confirmed,
-                         "force_reason": force_reason})
+                         "force_reason": force_reason,
+                         "force_origin": force_origin})
                 except Exception:
                     pass
         finally:
@@ -1030,7 +1037,8 @@ def create_book_async(task_id, plat, auto_submit=True, force=False,
                     task_id, plat, acc,
                     {"force": force,
                      "force_confirmed": force_confirmed,
-                     "force_reason": force_reason})
+                     "force_reason": force_reason,
+                     "force_origin": force_origin})
             except Exception:
                 pass
         return False, error

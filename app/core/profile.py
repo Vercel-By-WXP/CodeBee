@@ -162,6 +162,21 @@ _LEGACY_BUILTIN = {
             mcp=False,
         ),
     },
+    # 开发版（2026-11-04 主打小说后新增）：写小说为主，但要改 CodeBee 自己时
+    # 用得着 code 流程。**默认不出现**——小说版是唯一对外形态，这一版只在
+    # ``--profile novel-dev`` 时进入；features 全开，否则 code 任务建不出来。
+    "novel-dev": {
+        "id": "novel-dev",
+        "name": "CodeBee 小说+开发版",
+        "tagline": "写小说为主，要改 CodeBee 时用这一版",
+        "order": 30,
+        "flows": ("novel", "short_story", "serial_novel", "rank_scan", "code"),
+        "agents": ("novel", "short_story", "serial_novel", "rank_scan", "code"),
+        "drafts": False,
+        "default_flow": "novel",
+        "ui": "",
+        "features": dict(_ALL_ON),
+    },
 }
 
 
@@ -744,6 +759,15 @@ def _select(explicit="", *, allow_prompt=None, timeout_s=12, quiet=False):
             set_active(picked)
             remember(picked)
             return picked, "prompt"
+        # 只剩一个内置版本时不再弹菜单；**但上次选过的形态优先**——
+        # 菜单只列 registry（default），而小说版/开发版在 legacy 里（不进菜单）。
+        # 若不先看 state，主打小说这件事会被这里强行拽回全量版：
+        # 用户明明在欢迎页或上次选了 novel，一重启又是 21 个入口（2026-11-04 实案）。
+        # 没选过（last_choice 为空）时行为不变：直接进唯一项且不写 state。
+        if last_choice():
+            print("[profile] 沿用上次选择：%s" % fallback, flush=True)
+            set_active(fallback)
+            return fallback, "last"
         print("[profile] 只有一个版本，直接进 %s" % rows[0]["id"], flush=True)
         set_active(rows[0]["id"])
         return rows[0]["id"], "default"

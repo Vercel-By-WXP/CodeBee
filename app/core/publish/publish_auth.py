@@ -439,8 +439,36 @@ def _st(plat):
     return (_mgr()._state.get("platforms") or {}).get(plat) or {}
 
 
+def _auto_release_authorized(task):
+    """任务是否**显式**授权「无人值守自动放行」（P0-A2，默认关）。
+
+    前端曾经在闸门一拦就自动带 ``force`` 重试，理由写死成「用户已启用全
+    自动发布」——但那个开关从来不存在，用户既没看见拦截也没做决定。台账
+    2026-10 的 25 条 forced 里 14 条就是这么来的。现在这类放行必须有任务级
+    开关背书，否则一律交回界面问人。
+
+    只认 JSON 真值 ``True``：``bool("false")`` 为真，字符串一旦被当授权，
+    手滑发个 ``"false"`` 就把闸门打开了（与 quality_gate 的 force 同一条纪律）。
+    """
+    return (task or {}).get("auto_publish") is True
+
+
+def _appeal_evidence(task):
+    """跑一次「吸引力门」并返回证据；判据故障只降级，不抛、不拦。
+
+    返回 ``enabled=False`` 的四种情形（非连载 / 无 workdir / 无正文 / 认不出
+    题材）都意味着「这一维不适用」，一个字都不往 blockers 里加。
+    """
+    from ..quality import appeal
+    try:
+        return appeal.check_task(task)
+    except Exception as exc:  # noqa: BLE001 - 判据坏了不能把发布链带崩
+        return {"enabled": False, "reason": "error: %s" % exc}
+
+
 def _quality_release_guard(task, plat, action="publish", target_chapter=None,
-                           force=False, force_confirmed=False, force_reason=""):
+                           force=False, force_confirmed=False, force_reason="",
+                           force_origin=""):
     """Return a release decision backed by the latest completed review.
 
     Review tasks require a quality verdict. Serial tasks additionally require
@@ -495,20 +523,76 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
         current_fingerprint = pipeline._serial_review_fingerprint(
             task.get("workdir") or "", version_args["start_chapter"],
             version_args["end_chapter"])
+    # 吸引力门（P0-B）：用**当前正文**现算前三章的「获得」兑现情况，塞进同一个
+    # verdict 交给 evaluate_release —— 拦的是同一道闸，走的是同一条强制放行
+    # 通道，不另开旁路。草稿/继续写不吃这一维（草稿本就不拦）。
+    action_key = str(action or "publish").strip().lower()
+    appeal_evidence = ({"enabled": False, "reason": "not_gated"}
+                       if action_key in ("draft", "continue")
+                       else _appeal_evidence(task))
+    gate_verdict = dict(verdict) if isinstance(verdict, dict) else {}
+    gate_verdict["appeal"] = appeal_evidence
     decision = quality_gate.evaluate_release(
-        verdict or {}, action=action, target_chapter=target_chapter,
+        gate_verdict or {}, action=action, target_chapter=target_chapter,
         platform_version=_mgr().ledger.book_for(task.get("id"), plat) or {},
         force=force, force_confirmed=force_confirmed, force_reason=force_reason,
         serial=bool(task.get("serial")) or
         str(task.get("type") or "").lower() == "serial_novel",
         current_manuscript_fingerprint=current_fingerprint)
+    decision["appeal"] = appeal_evidence
+    if str(appeal_evidence.get("reason") or "").startswith("error"):
+        # 判据自己坏了不能把发布链带崩，也不能装没事：留一条提醒让作者知道
+        # 「这一维这次没查」。放行判定保持原样，不因判据故障拦住所有发布。
+        decision["warnings"] = list(decision.get("warnings") or []) + [
+            "吸引力门执行失败，本次未校验类型承诺兑现（%s）"
+            % str(appeal_evidence.get("reason"))[len("error: "):]]
     decision["version_snapshot"] = version_snapshot
     decision["platform_snapshot"] = _mgr().ledger.book_for(task.get("id"), plat) or {}
     if verdict:
         decision["reviewed_through"] = verdict.get("end_chapter") or 0
         decision["quality_status"] = verdict.get("quality_status") or "continue_only"
         decision["review_run_id"] = run.get("id")
+    # 无人值守放行必须有任务级授权兜着（P0-A2）。判据是「有没有人真的按过
+    # ——只有显式声明 manual 才算」，其余（auto / 未声明 / 未知）一律当作
+    # 无人值守：没有授权就把拦截原样交回界面，不能由调用方代填理由绕过。
+    if (decision.get("forced")
+            and str(force_origin or "").strip().lower() != "manual"
+            and not _auto_release_authorized(task)):
+        overridden = [str(x) for x in (decision.get("overridden") or []) if str(x).strip()]
+        decision.update({
+            "allowed": False,
+            "status": "blocked",
+            "forced": False,
+            "blockers": ["该任务未开启全自动发布，质量门禁拦截需人工确认"] + overridden,
+            "auto_force_denied": True,
+        })
     return decision
+
+
+def _wait_view(state):
+    """把「等人工」的几个数字摊给前端（P0-E）。
+
+    以前前端只有一个 status，看到 waiting_login 也只能说「等登录/验证…」——
+    没人知道它已经失败过几百次、从哪天开始。这几个字段就是让界面能写出
+    「已尝试 485 次，从 10-20 09:57 起」并把按钮变成「过一次验证码」。
+    没在等人时全部返回空/零，前端据此不显示任何提示条。
+    """
+    state = state or {}
+    attempts = _mgr().human_wait.attempts_of(state)
+    cause = str(state.get("human_wait_cause") or "")
+    # 升级前就在 waiting_login 的槽没有 advice/cause 字段：这里按 cause 兜底
+    # 现算一条，否则老槽升级后照样是「什么都没有」——正是 P0-E 要消灭的状态。
+    advice = str(state.get("human_wait_advice") or "")
+    if attempts and not advice:
+        advice = _mgr().human_wait.advice_for(cause) if cause else ""
+    return {
+        "needs_human": bool(state.get("needs_human")) and attempts > 0,
+        "wait_attempts": attempts,
+        "wait_since": str(state.get("human_wait_since") or ""),
+        "wait_cause": cause,
+        "wait_advice": advice,
+        "wait_summary": _mgr().human_wait.summary(state),
+    }
 
 
 def view():
@@ -522,6 +606,7 @@ def view():
                     "last_action": s.get("last_action") or "",
                     "profile": str(_mgr()._profile_dir(pid)),
                     "accounts": []}
+        out[pid].update(_wait_view(s))
     # 多账号：账号条目带各自状态槽（slot=fanqie@a2）；老前端忽略此字段不受影响
     for a in _mgr().load_accounts():
         pid = a.get("platform")
@@ -529,12 +614,14 @@ def view():
             continue
         slot = "%s@%s" % (pid, a.get("id"))
         st = _mgr()._st(slot)
-        out[pid]["accounts"].append({
+        entry = {
             "id": a.get("id"), "label": a.get("label") or "",
             "status": st.get("status") or "none",
             "at": st.get("at") or "", "error": st.get("error") or "",
             "last_action": st.get("last_action") or "",
-            "profile": str(_mgr()._profile_dir(slot))})
+            "profile": str(_mgr()._profile_dir(slot))}
+        entry.update(_wait_view(st))
+        out[pid]["accounts"].append(entry)
     return {"platforms": out, "browser_found": bool(find_browser())}
 
 
@@ -628,6 +715,15 @@ def _auth_watch_once():
         if not isinstance(state, dict) or _mgr().base_plat(slot) not in _mgr().PLATFORMS:
             continue
         status = state.get("status")
+        # 内部异常不是「等平台放行」，重试一万次也不会好——只有人能看日志。
+        # 这类槽留在 error 里，由人决定，看门狗一律不碰（P0-E）。
+        if str(state.get("human_wait_cause") or "") == _mgr().human_wait.CAUSE_INTERNAL:
+            continue
+        # 退避闸：同一次「等人」不该每 30 秒探一遍。验证码不会自己消失，
+        # 探得越勤越容易触发平台风控，而且每次探测都要写台账（曾把
+        # 535 条同因失败刷满台账）。这里只读一次字典，不取锁、不开浏览器。
+        if not _mgr().human_wait.should_probe(state):
+            continue
         # waiting_login is the normal passive recovery state.  An expired
         # session can also be left in error by an older worker; if the
         # provisioned auth-state file has since changed, retry that slot

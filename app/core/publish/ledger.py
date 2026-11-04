@@ -26,7 +26,11 @@ LOCK = threading.RLock()
 FIELDS = ("ts", "day", "platform", "action", "task_id", "chapter_no",
           "book_id", "title", "ok", "error", "shot", "operation_id",
           "operation_status", "remote_receipt", "quality_forced",
-          "quality_reason", "scheduled_date", "scheduled_time", "duration_s")
+          "quality_reason", "quality_blockers", "quality_forced_source",
+          "scheduled_date", "scheduled_time", "duration_s")
+
+MAX_BLOCKERS = 6
+MAX_BLOCKER_CHARS = 160
 
 
 def _duration_value(value):
@@ -43,10 +47,28 @@ def _month_file(day):
 def record(platform, action, task_id="", chapter_no=0, book_id="",
            title="", ok=True, error="", shot="", operation_id="",
            operation_status="", remote_receipt="", quality_forced=False,
-           quality_reason="", scheduled_date="", scheduled_time="",
-           account="", duration_s=0.0, log=None):
-    """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。"""
+           quality_reason="", quality_blockers=None, quality_forced_source="",
+           scheduled_date="", scheduled_time="", account="", duration_s=0.0,
+           log=None):
+    """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。
+
+    ``quality_blockers`` 只在**强制放行**时写：它记的是「当时闸门判了哪几条
+    不过、人按着理由推开了」。没有它就复盘不了「明知有风险还是投了」——
+    平台驳回来只能看到一句结论，看不到当初被按掉的判据（P0-A）。
+    没强制放行 / 没明细就**不写这个键**，老行与新行都保持干净，不塞空列表。
+
+    ``quality_forced_source`` 记这次放行是**谁**推开的：``manual``（人按着
+    理由推）/ ``auto``（程序代填，用户没看见拦截）。不分开记的话因果账会
+    撒谎——2026-10 那 25 条 forced 全部是前端自动重试代填的，把它们算成
+    「人明知有风险还是投了」，等于把 bug 记成人性。
+    """
     try:
+        blockers = []
+        if quality_forced:
+            for item in list(quality_blockers or [])[:MAX_BLOCKERS]:
+                text = str(item or "").strip()[:MAX_BLOCKER_CHARS]
+                if text:
+                    blockers.append(text)
         rec = {
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
             "day": time.strftime("%Y-%m-%d"),
@@ -75,6 +97,11 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             # 多账号：这单落在哪台账号（空=默认账号）
             "account": str(account or "")[:16],
         }
+        if blockers:
+            rec["quality_blockers"] = blockers
+        source = str(quality_forced_source or "").strip().lower()[:12]
+        if quality_forced and source:
+            rec["quality_forced_source"] = source
         if log:
             # 失败排查要能看到流程走到哪一步；步骤日志截断存底
             rec["log"] = [str(x)[:200] for x in list(log)[:40]]
@@ -247,6 +274,34 @@ def recent(task_id=None, platform=None, limit=50):
         out.append(r)
     out.reverse()
     return out[:limit]
+
+
+def last_forced(task_id, platform=None, days=3650):
+    """该任务最近一条「按着理由强行发出去」且成功的记录；没有返回 None。
+
+    这是 P0-A 的反查口：平台驳回回来后要能回答「当初闸门判了哪几条不过、
+    谁按了什么理由推开」。**只认成功发的**——失败的强制放行没上平台，
+    平台不可能因为它驳回，把它算进因果链就是栽赃。
+    按连载链合并（同一本书的批次共用一本账）；平台给定时只在该平台内找，
+    跨平台串味会让「番茄被拒」对到「七猫强发」上。
+    """
+    from .. import store
+    ids = {str(task_id)}
+    try:
+        ids |= {str(t) for t in store.serial_chain_ids(task_id)}
+    except Exception:
+        pass
+    best = None
+    for r in _iter_records(days):
+        if not r.get("ok") or not r.get("quality_forced"):
+            continue
+        if r.get("task_id") not in ids:
+            continue
+        if platform and r.get("platform") != platform:
+            continue
+        if best is None or str(r.get("ts") or "") >= str(best.get("ts") or ""):
+            best = r
+    return best
 
 
 # ---------------------------------------------------------------- 作品登记

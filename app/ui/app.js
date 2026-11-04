@@ -1757,20 +1757,52 @@ async function pbGateChoice(err, promptText, taskId) {
   return v === "review" ? "review" : (v === true ? "force" : null);
 }
 
+/* 闸门拦下之后的唯一出口（P0-A2，2026-11-04）。
+ *
+ * 以前这里是无条件带 force 重试、理由写死成「用户已启用全自动发布」——
+ * 可那个开关根本不存在：用户既没看见拦截，也没做决定。台账 2026-10 的
+ * 25 条强制放行里 14 条就是这么来的（`quality_forced_source=auto`）。
+ *
+ * 现在分两条路，都必须写 force_origin，事后复盘才分得清谁按的：
+ *   ① 该任务显式开启 auto_publish → 自动放行（origin=auto），照样落台账；
+ *   ② 没开启 → 把拦截原文交回用户，点「仍然发布」才放行（origin=manual）。
+ * 判据放在服务端（任务没授权时 auto 一律拒绝），前端只是不再代按。
+ */
+const PB_AUTO_FORCE_REASON = "用户已启用全自动发布；系统按平台校准流程自动提交";
+const PB_MANUAL_FORCE_REASON = "用户在质量门禁拦截提示中确认继续发布";
+
+/* 该任务是否显式授权无人值守放行。taskId 与当前详情页不一致时按「没开」处理：
+ * 宁可不放行，也不拿别本任务的授权去推这一本。 */
+function pbAutoPublishOn(taskId) {
+  const cur = (S.lastRunTask && S.lastRunTask.id) || "";
+  if (taskId && cur && String(taskId) !== String(cur)) return false;
+  return !!(S.pubTaskInfo && S.pubTaskInfo.auto_publish);
+}
+
 async function pbApiWithQualityOverride(path, body, prompt, taskId) {
+  const post = (extra) => api(path, { method: "POST",
+    body: JSON.stringify({ ...body,
+      auto_submit: body.auto_submit === false ? false : true, ...extra }) });
   try {
     return await api(path, { method: "POST", body: JSON.stringify(body) });
   } catch (e) {
     const gate = e && e.data && e.data.quality_gate;
     if (!gate) throw e;
-    // Automatic publishing is the product default.  A quality gate must be
-    // audited, but it must never turn a background publish into a manual
-    // prompt.  The server validates the same hard guards and records this
-    // deterministic reason in the publish ledger.
-    const reason = "用户已启用全自动发布；系统按平台校准流程自动提交";
-    return await api(path, { method: "POST", body: JSON.stringify({ ...body,
-      auto_submit: body.auto_submit === false ? false : true,
-      force: true, force_confirmed: true, force_reason: reason }) });
+    if (pbAutoPublishOn(taskId)) {
+      return await post({ force: true, force_confirmed: true,
+        force_origin: "auto", force_reason: PB_AUTO_FORCE_REASON });
+    }
+    const detail = String((gate && gate.message) || e.message || "")
+      .replace(/^质量门禁拦截：/, "").split("；").map((x) => x.trim())
+      .filter(Boolean).slice(0, 6);
+    const ok = await uiConfirm(
+      (prompt || t("质量门禁未通过")) +
+      (detail.length ? "：" + detail.join("；") : "") +
+      t("。仍然发布会把这次放行写进台账；建议先按上面的判据改稿。"),
+      { ok: t("仍然发布"), danger: true, title: t("质量门禁拦截") });
+    if (!ok) throw e;
+    return await post({ force: true, force_confirmed: true,
+      force_origin: "manual", force_reason: PB_MANUAL_FORCE_REASON });
   }
 }
 
@@ -8541,6 +8573,7 @@ function closeRun() {
   closeBrowserSplit();   // 并排工作台只属于详情视图：离开详情（设置/主页/列表）一并收起
   detailSideReset();
   $("run-detail").classList.add("hidden");
+  renderChangeSummary();   // 显隐只在 side 轮询里刷新：收起详情后轮询即停，不补这一次卡会僵在屏上（2026-11-04 运行记录实案）
   syncInspBtn();
   renderChatNav();   // 解除 main.chat-fill（对话为主的固定高度），恢复外层滚动
   if (document.body.classList.contains("settings-mode") || S.mainPage === "runs") {
@@ -9694,6 +9727,8 @@ const PB_ST = {
 function pbBlock(task, platform, selectionOnly = false) {
   const ps = (S.pubState && S.pubState.platforms && S.pubState.platforms[platform]) || {};
   const st = ps.status || "none";
+  // 无人值守授权（P0-A2）：决定闸门拦下时是自动放行还是先问人
+  const autoOn = !!(S.pubTaskInfo && S.pubTaskInfo.auto_publish);
   const books = (S.pubTaskInfo && S.pubTaskInfo.books) || {};
   const book = books[platform];
   // A create-book flow can finish without a remote id. Keep that binding
@@ -9708,7 +9743,22 @@ function pbBlock(task, platform, selectionOnly = false) {
     : null;
   const displayStatus = boundAccount
     ? ((boundAccountState && boundAccountState.status) || "none") : st;
-  const [label, cls] = PB_ST[displayStatus] || PB_ST.none;
+  // P0-E：等人工的信息跟「实际要发布的那个账号」走，不是平台默认槽——
+  // 绑定了 a2 就显示 a2 刷了多少次，否则会拿默认槽的数字骗人。
+  const waitInfo = boundAccountState || ps;
+  const [label0, cls] = PB_ST[displayStatus] || PB_ST.none;
+  // 「等登录/验证…」只说明系统在等，没说明**人在哪、做过什么**。10 天里
+  // 番茄 connect 刷了 485 次失败，界面一直是这六个字，没人知道要动手。
+  const waitCause = String(waitInfo.wait_cause || "");
+  // 徽标只标「系统在等」，不说明谁该动手；这里一并说出要人做什么。
+  // internal 不是登录问题（程序自己出错），所以既不能说「重新登录」，
+  // 也不能只留一个「出错」——那是归类，不是动作。
+  const label = (waitInfo.needs_human && displayStatus !== "connected")
+    ? (waitCause === "captcha" ? t("需要过验证码")
+      : (waitCause === "internal" ? t("需要处理") : t("需要重新登录"))) : label0;
+  const waitAction = waitInfo.needs_human
+    ? (waitCause === "captcha" ? t("过一次验证码")
+      : (waitCause === "internal" ? t("重试连接") : t("重新登录"))) : "";
   const hist = (S.pubTaskInfo && S.pubTaskInfo.history) || [];
   const pubCnt = (S.pubTaskInfo && S.pubTaskInfo.published) || {};
   // 已发口径：平台实况（点过校准）优先；否则本地台账去重章号数
@@ -9752,10 +9802,10 @@ function pbBlock(task, platform, selectionOnly = false) {
   if (displayStatus === "none" || displayStatus === "error" || displayStatus === "waiting_login") {
     if (boundAccount) {
       btns += '<button class="ghost" onclick="pbConnectAcc(\'' + platform + '\',\'' + jsq(boundAccount) + '\')">' +
-        (displayStatus === "error" ? t("重连") : t("登录")) + "</button>";
+        (waitAction || (displayStatus === "error" ? t("重连") : t("登录"))) + "</button>";
     } else {
       btns += '<button class="ghost" onclick="pbConnect(\'' + platform + '\')">' +
-        (displayStatus === "error" ? t("重连") : t("连接平台")) + "</button>";
+        (waitAction || (displayStatus === "error" ? t("重连") : t("连接平台"))) + "</button>";
     }
   } else if (displayStatus === "connected") {
     if (boundAccount) {
@@ -9845,6 +9895,16 @@ function pbBlock(task, platform, selectionOnly = false) {
         esc(au.quality_warnings.join("；")) + '">' +
         esc(t("自动发布质量警告：") + au.quality_warnings.join("；")) + "</div>";
     }
+    // 无人值守授权开关（P0-A2）：关着时闸门一拦就会先问你——「谁来放行」
+    // 这一下必须有人真的做过决定，不能由代码代按。开着时自动放行，但每次
+    // 放行连同被按掉的判据都会写进发布台账，照样可复盘。
+    btns += '<label class="pb-hint pb-auto-force' + (autoOn ? " on" : "") + '"' +
+      ' title="' + esc(autoOn
+        ? t("已开启：质量门禁拦截会被自动放行并写进台账，不再逐次询问")
+        : t("未开启：质量门禁拦截时会先问你，由你决定是否仍然发布")) + '">' +
+      '<input type="checkbox" ' + (autoOn ? "checked" : "") +
+      ' onchange="pbToggleAutoPublish(\'' + jsq(task.id) + '\',this.checked)">' +
+      t("无人值守放行质量门禁") + "</label>";
     if (run && Array.isArray(run.notes) && run.notes.length) {
       // 对账剔除/跳过/重试的过程记录（auto 层 notes），最近三条
       btns += '<div class="pb-hint">' +
@@ -10033,7 +10093,13 @@ function pbBlock(task, platform, selectionOnly = false) {
   return '<div class="bm-pub">' +
     '<span class="pb-badge ' + cls + '">' + esc(t(label)) + "</span>" +
     btns +
-    (st === "error" && ps.error ? '<div class="pb-err">' + esc(ps.error) + "</div>" : "") +
+    // 等人工时把「失败了几次、从哪天起、该谁动手」写在红块里：状态标签
+    // 只够提示，救不了「后台已经刷了 485 次而没人知道」。没在等人时退回
+    // 原来的 error 行，一个字节都不多显示。
+    (waitInfo.needs_human && waitInfo.wait_summary
+      ? '<div class="pb-err">' + esc(waitInfo.wait_summary) +
+        (waitInfo.wait_advice ? "<br>" + esc(waitInfo.wait_advice) : "") + "</div>"
+      : (st === "error" && ps.error ? '<div class="pb-err">' + esc(ps.error) + "</div>" : "")) +
     extra +
     '<div class="pb-chapters hidden" id="pb-ch-' + platform + '"></div>' +
     "</div>";
@@ -10239,6 +10305,23 @@ window.pbAddAccount = async function (platform) {
       body: JSON.stringify({ platform, id, label }) });
     toast(t("账号已登记，点它的「登录」扫码即可使用"));
   } catch (e) { toast(t("登记失败：") + e.message, true); }
+  S._pbSig = ""; pbKick();
+};
+
+/* 无人值守授权开关（P0-A2）：写任务级 auto_publish。
+ * 服务端 `update_task_params` 只许空闲态改；任务在跑时给出可读的失败提示，
+ * 不做「看起来存上了其实没存」的静默失败。 */
+window.pbToggleAutoPublish = async function (taskId, on) {
+  try {
+    await api("/api/tasks/" + encodeURIComponent(taskId) + "/params",
+      { method: "POST", body: JSON.stringify({ auto_publish: !!on }) });
+    if (S.pubTaskInfo) S.pubTaskInfo.auto_publish = !!on;
+    toast(on
+      ? t("已开启无人值守放行：闸门拦截会自动放行，并连判据一起写进台账")
+      : t("已关闭无人值守放行：下次闸门拦截会先问你"));
+  } catch (e) {
+    toast(t("保存失败：") + e.message, true);
+  }
   S._pbSig = ""; pbKick();
 };
 

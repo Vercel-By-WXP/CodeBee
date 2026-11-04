@@ -14,6 +14,7 @@ from typing import Optional, Tuple, cast
 from urllib.parse import urlsplit
 
 from .browser import Browser, BrowserError, Page
+from . import human_wait
 
 
 def _mgr():
@@ -567,11 +568,22 @@ def _unattended_attach_gate(slot):
 
 
 def _connect_unattended(plat, account, slot):
-    """Verify a saved session while holding the profile's action lock."""
+    """Verify a saved session while holding the profile's action lock.
+
+    失败分三种，落账与后续行为各不相同（P0-E，2026-11-04）：
+
+    - ``captcha`` / ``login``：平台要人。状态转 ``waiting_login``，按
+      ``human_wait`` 的退避阶梯拉长重试间隔，台账只在首次和每 20 次记一条
+      汇总——实测同因失败会连续刷十几天、485 行一字不差，把真故障埋掉。
+    - ``internal``：程序自己出错（历史上 9 行的 ``not enough values to
+      unpack`` 曾被写成「保存的平台登录态不可用」，把人骗去重新扫码）。
+      这类转 ``error`` + ``needs_human``，看门狗不再自动重试。
+    """
     acc = str(account or "").strip()
     ok_gate, error = _mgr()._unattended_attach_gate(slot)
     if not ok_gate:
         return False, error
+    internal = False
     try:
         _b, page = _mgr()._open_page(slot, preserve_tabs=True)
         # A login/challenge can span several retries. Observe its current page
@@ -600,18 +612,45 @@ def _connect_unattended(plat, account, slot):
         elif not ok and not auth_required and status != "waiting_login":
             ok, url = _mgr()._check_login(slot, page, navigate=True)
     except Exception as exc:
+        # 异常 == 程序内部出错，不是平台在等人。分类必须与「验证码/登录态」
+        # 分开，否则人会照着「登录态不可用」去重新扫码，而真正的 bug 一直
+        # 没人看（2026-10-21 九条 unpack 实案）。
+        internal = True
         ok, url = False, str(exc)
     if ok:
         _mgr()._clear_auth_page(slot)
+        # 成功必须显式清零等待计数：_set 是 update 语义，留着旧 attempts
+        # 会让下一次偶发失败直接从「已尝试 485 次」起跳。
         _mgr()._set(slot, status="connected",
-             last_login=time.strftime("%m-%d %H:%M"), error="")
+             last_login=time.strftime("%m-%d %H:%M"), error="",
+             **human_wait.note_success())
         _mgr().ledger.record(plat, "connect", ok=True, account=acc)
         return True, ""
-    waiting = _mgr()._authentication_required(plat, url)
-    error = ("平台等待登录或安全验证，验证完成后自动重试：%s" if waiting else
-             "保存的平台登录态不可用，自动发布未等待人工登录：%s") % str(url or "unknown")[:160]
-    _mgr()._set(slot, status="waiting_login" if waiting else "error", error=error)
-    _mgr().ledger.record(plat, "connect", ok=False, account=acc, error=error[:300])
+    if internal:
+        cause = human_wait.CAUSE_INTERNAL
+        error = "发布链内部异常，不是登录问题（不会自动重试）：%s" % str(url)[:160]
+    elif _mgr()._authentication_required(plat, url):
+        cause = human_wait.classify(url)
+        if cause == human_wait.CAUSE_INTERNAL:   # URL 里不该出现，兜一层
+            cause = human_wait.CAUSE_LOGIN
+        # 「验证完成后自动重试」这句是事实（人过完码，退避到点的探测会切回
+        # connected），保留它；缺的是**要人做什么**——补在后半句。
+        error = ("平台等待登录或安全验证，验证完成后自动重试"
+                 "（需人工过一次验证码）：%s" % str(url or "")[:150])
+    else:
+        cause = human_wait.CAUSE_LOGIN
+        error = ("保存的平台登录态不可用，自动发布未等待人工登录"
+                 "（需人工重新登录）：%s" % str(url or "unknown")[:150])
+    fields, log_now = human_wait.note_failure(
+        _mgr()._st(slot), error=error, cause=cause)
+    _mgr()._set(slot, status="error" if internal else "waiting_login",
+                error=error, **fields)
+    if log_now:
+        # 节流：首次 + 每 20 次一条。中间那些次只累加在 state 里，
+        # 由前端「已尝试 N 次」展示，不再一行一行地刷台账。
+        _mgr().ledger.record(
+            plat, "connect", ok=False, account=acc,
+            error=human_wait.ledger_error_text(fields, error)[:300])
     return False, error
 
 

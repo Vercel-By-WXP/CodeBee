@@ -7125,6 +7125,14 @@ body.welcome-open { overflow: hidden; }
 .pb-chapters { width: 100%; display: flex; flex-direction: column; gap: 4px;
   margin-top: 8px; max-height: 240px; overflow: auto; }
 .pb-hint { font-size: 12.5px; color: var(--muted); }
+/* 无人值守授权开关（P0-A2）：默认关；开着用强调色标一下，扫一眼就知道
+   这本现在是「拦截会先问我」还是「自动放行」。
+   width:100% 是为了独占一行——外层 .bm-pub 是 flex-wrap，inline 的
+   label 会和按钮挤在同一行，读起来像按钮而不是一条授权说明。 */
+.pb-auto-force { display: flex; align-items: center; gap: 6px;
+  width: 100%; cursor: pointer; user-select: none; }
+.pb-auto-force input { margin: 0; accent-color: var(--accent); }
+.pb-auto-force.on { color: var(--accent); }
 .pb-ch-item { text-align: left; justify-content: flex-start; font-size: 14px; }
 
 /* 发布行按钮规格对齐（2026-09-18 二次校准）：几何探针实测卡片头部按钮

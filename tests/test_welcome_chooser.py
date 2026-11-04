@@ -96,6 +96,18 @@ class NeedsChooserTest(ChooserTestBase):
         self.assertEqual((applied, why), ("novel", "last"))
         self.assertFalse(profile.needs_chooser())
 
+    def test_last_choice_wins_over_single_menu_item(self):
+        """2026-11-04 主打小说：菜单只剩 default 一项时，选过 novel 的人不能被拽回全量版。
+
+        真实回归：小说版在 legacy（不进菜单），若单选项分支不看 state，
+        用户重启一次就又是 21 个入口、22 位专家——「主打小说」当场失效。
+        """
+        profile.remember("novel")
+        profile.reset()
+        applied, why = profile.select("", allow_prompt=True, quiet=True)
+        self.assertEqual((applied, why), ("novel", "last"))
+        self.assertFalse(profile.needs_chooser())
+
     def test_last_choice_default_also_skips(self):
         """在欢迎页选了全量版（default）也要记住，否则下次又被送回选择页。"""
         profile.remember("default")

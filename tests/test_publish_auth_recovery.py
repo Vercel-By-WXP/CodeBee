@@ -294,7 +294,8 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         lock.release.assert_called_once()
         queue.assert_called_once_with(
             "task-auth", "fanqie", "",
-            {"force": False, "force_confirmed": False, "force_reason": ""})
+            {"force": False, "force_confirmed": False, "force_reason": "",
+             "force_origin": ""})
 
     def test_pending_create_recovery_is_recreated_after_restart(self):
         from core.publish import manager
@@ -309,6 +310,9 @@ class PublishAuthRecoveryTests(unittest.TestCase):
                         "force": True,
                         "force_confirmed": True,
                         "force_reason": "operator approval",
+                        # 人工按下的放行跨重启必须保真：丢了 origin，
+                        # 重放那一次会被当成无人值守代填而拒放（P0-A2）。
+                        "force_origin": "manual",
                     },
                 },
             },
@@ -322,7 +326,7 @@ class PublishAuthRecoveryTests(unittest.TestCase):
         queue.assert_called_once_with(
             "task-auth", "qimao", "author",
             {"force": True, "force_confirmed": True,
-             "force_reason": "operator approval"})
+             "force_reason": "operator approval", "force_origin": "manual"})
 
     def test_pending_create_markers_are_independent_per_task(self):
         from core.publish import manager

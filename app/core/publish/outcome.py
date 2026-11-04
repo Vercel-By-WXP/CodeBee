@@ -145,6 +145,48 @@ def _snapshot(task, plat) -> dict:
 
 
 # ---------------------------------------------------------------- 写入
+def _force_audit(task_id, platform) -> dict:
+    """反查「这次被判之前，是不是有人按着理由强行发过」。
+
+    为什么值得单独记一条：闸门判「不过」、人绕过去投了、平台再驳回——这三个
+    动作分散在两份台账里，事后没人对得上。实案《一头猎物，三笔账》内部审核
+    R1–R7 全阻断仍被投出，被驳回后只能看到「缺乏吸引力」一句，回答不了
+    「当时哪几条 blocker 被按了放行」。有了这条，同样的稿子下次再想强推时，
+    台账里先躺着上一次的价钱。
+
+    **没有强制放行就返回 None**，调用方据此不写这个键——台账里不许出现
+    `force_audit: {}` 这种「查了没查到」的噪音，否则真假混在一起。
+    """
+    try:
+        from . import ledger
+        row = ledger.last_forced(task_id, platform=platform)
+    except Exception:
+        return None
+    if not row:
+        return None
+    out = {
+        "forced_at": str(row.get("ts") or ""),
+        "action": str(row.get("action") or ""),
+        "chapter_no": int(row.get("chapter_no") or 0),
+        # 存原文，渲染进提示词时才转义（与 quote 同一纪律：审计要看原样）
+        "reason": str(row.get("quality_reason") or "")[:300],
+        "book_id": str(row.get("book_id") or ""),
+    }
+    blockers = [str(x)[:160] for x in (row.get("quality_blockers") or [])
+                if str(x or "").strip()][:6]
+    # 老台账（本条落地之前强发的）没有明细：不写空列表，免得看起来像
+    # 「当时闸门什么都没判」——那比没有记录更容易误导。
+    if blockers:
+        out["blockers"] = blockers
+    # manual=人按着理由推 / auto=程序代填（用户没看见拦截）/ unknown=没写理由。
+    # 这个字段是「别把 bug 记成人性」的唯一依据：auto 的意思是这次的
+    # 「明知有风险还是投了」里没有人的判断，只有一段写死的文案。
+    source = str(row.get("quality_forced_source") or "").strip()
+    if source:
+        out["source"] = source
+    return out
+
+
 def record(task, platform, stage, quote="", note="", reads=None,
            source="manual") -> dict:
     """登记一条平台结果。返回这本书在该平台的最新条目。
@@ -189,6 +231,17 @@ def record(task, platform, stage, quote="", note="", reads=None,
             "words": snap["words"] or entry.get("words") or 0,
             "history": history[-MAX_HISTORY:],
         })
+        if stage in BAD_STAGES:
+            # 只有「被判」才需要交代因果：过审/签约成功没有要复盘的东西。
+            audit = _force_audit(task_id, platform)
+            if audit:
+                audit["stage"] = stage
+                audit["rejected_at"] = at
+                entry["force_audit"] = audit
+            else:
+                # 这次不是强推的：把上一次的因果账摘掉，否则看起来像「这本
+                # 又被强投了一次」。缺失比张冠李戴便宜。
+                entry.pop("force_audit", None)
         book[platform] = entry
         _save(data)
     return entry
@@ -272,6 +325,9 @@ def summary(task_id) -> dict:
             "pending": int(progress.get("pending") or 0),
             "rejected": int(progress.get("rejected") or 0),
             "progress_at": str(progress.get("at") or ""),
+            # 这条结论是不是「强推之后被判」：{} 表示不是（字段恒定存在，
+            # 前端判断用 truthy，不用判 undefined）
+            "force_audit": dict(entry.get("force_audit") or {}),
         }
     return out
 

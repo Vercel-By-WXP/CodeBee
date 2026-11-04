@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .. import atomic, chaptersafe, operations, paths
-from . import fanqie, flow, ledger, qimao
+from . import fanqie, flow, human_wait, ledger, qimao
 from .browser import Browser, BrowserError, Page  # noqa: F401 - 测试 patch 面
 
 PLATFORMS = {"fanqie": fanqie, "qimao": qimao}
@@ -55,17 +55,49 @@ AUTOMATIC_RELEASE_REASON = (
 
 
 def automatic_release_kwargs(auto_submit, force=False, force_confirmed=False,
-                             force_reason="", as_draft=False):
+                             force_reason="", as_draft=False, force_origin=""):
     """Return explicit release override flags without granting auto bypasses.
 
     An unattended schedule requests the workflow; it does not replace task
     contract approval or prove that content passed review. A forced release
     remains an explicit operator action and must carry its audited confirmation
     and reason through unchanged.
+
+    ``force_origin`` 由调用方**显式声明**这次放行是谁发起的（``manual`` /
+    ``auto``），闸门据此判断无人值守放行有没有任务级授权（P0-A2）；空值
+    保持旧行为（按理由文本推断来源），老调用方不受影响。
     """
     return {"force": bool(force),
             "force_confirmed": bool(force_confirmed),
-            "force_reason": str(force_reason or "")}
+            "force_reason": str(force_reason or ""),
+            "force_origin": str(force_origin or "").strip().lower()}
+
+
+# 前端「闸门一拦就自动带 force 重试」写死的理由（`app/ui/app.js` 的
+# `pbApiWithQualityOverride`）。这种放行**用户没看见拦截、也没做决定**，
+# 与「人明知有风险还是按了放行」是两件事。台账不分的话，因果账会把程序
+# 代填的放行记成人的判断（2026-10 那 25 条 forced 全是这一类）。
+AUTO_FORCE_REASON_MARKS = ("用户已启用全自动发布",)
+
+
+def _forced_source(force, reason="", origin=""):
+    """这次强制放行是谁推开的：manual / auto / unknown（没写理由）。
+
+    调用方显式声明 ``origin`` 时以声明为准——理由文本是可以被代填的，
+    谁按的按钮才是事实。没声明才回落按理由文本判（兼容老调用方）；
+    以后前端若要新增代填文案，必须加进 ``AUTO_FORCE_REASON_MARKS``。
+    """
+    if not force:
+        return ""
+    declared = str(origin or "").strip().lower()
+    if declared in ("manual", "auto"):
+        return declared
+    text = str(reason or "").strip()
+    if not text:
+        return "unknown"
+    if any(text.startswith(mark) for mark in AUTO_FORCE_REASON_MARKS):
+        return "auto"
+    return "manual"
 _state = {"platforms": {}}      # {plat: {status, port, at, error, last_login, last_action}}
 _browsers: Dict[str, Browser] = {}  # plat → Browser（进程内缓存，alive 校验兜底）
 _AUTH_WATCH_LOCK = threading.Lock()
@@ -524,8 +556,8 @@ def _story_body_with_sections(body):
 
 def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                          force=False, force_confirmed=False, force_reason="",
-                         as_draft=False, scheduled=False, direct_today=False,
-                         short_story=False,
+                         force_origin="", as_draft=False, scheduled=False,
+                         direct_today=False, short_story=False,
                          _recovery=False, _batch=False, _recovery_epoch=None):
     """把一章自动发布到平台，或通过 as_draft 只保存草稿。
 
@@ -611,7 +643,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     else:
         release_flags = automatic_release_kwargs(
             auto_submit, force=force, force_confirmed=force_confirmed,
-            force_reason=force_reason)
+            force_reason=force_reason, force_origin=force_origin)
         quality = _quality_release_guard(
             task, plat, action="publish", target_chapter=ch_no or None,
             **release_flags)
@@ -623,6 +655,14 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
     # left the platform state harder to diagnose.
     quality_forced = bool(quality.get("forced") or release_flags.get("force"))
     quality_reason = str(release_flags.get("force_reason") or "")
+    # 被按掉的判据要跟着台账走：只记「强制放行=True」事后只能看到一句
+    # 「投了」，看不到当时闸门到底判了哪几条不过（P0-A 因果账）。
+    # 放行成功后 blockers 会被搬到 warnings，所以这里优先取 overridden——
+    # 只读 blockers 的话台账永远是空列表（2026-11-04 实核的缺陷）。
+    quality_blockers = list(quality.get("overridden")
+                            or quality.get("blockers") or [])
+    quality_forced_source = _forced_source(quality_forced, quality_reason,
+                                           release_flags.get("force_origin"))
     n_chars = len(body.replace("\n", "").replace(" ", ""))
     if short_story:
         # 短故事正文补「一/二」分节标记行：两平台都按章节划分校验
@@ -797,6 +837,7 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
              "chapter_file": str(chapter_file), "chapter_no": ch_no,
              "title": title, "auto_submit": True, "force": force,
              "force_confirmed": force_confirmed, "force_reason": force_reason,
+             "force_origin": force_origin,
              "as_draft": as_draft, "scheduled": scheduled,
              "direct_today": direct_today,
              "_recovery_epoch": request_epoch})
@@ -882,7 +923,10 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                               scheduled_time=(str(values.get("scheduled_time") or "")
                                               if recorded_action == "upload_chapter_scheduled" else ""),
                               quality_forced=quality_forced,
-                              quality_reason=quality_reason, account=acc,
+                              quality_reason=quality_reason,
+                              quality_blockers=quality_blockers,
+                              quality_forced_source=quality_forced_source,
+                              account=acc,
                               duration_s=elapsed_s())
             if pending_key:
                 _forget_pending_upload(slot, pending_key)
@@ -896,7 +940,10 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                           ok=False, error=str(e)[:300], operation_id=operation_id,
                           operation_status=operation_status,
                           quality_forced=quality_forced,
-                          quality_reason=quality_reason, account=acc,
+                          quality_reason=quality_reason,
+                          quality_blockers=quality_blockers,
+                          quality_forced_source=quality_forced_source,
+                          account=acc,
                           duration_s=elapsed_s(), log=logs)
             if not _batch and not short_story and _upload_retryable_error(plat, e):
                 try:
@@ -928,7 +975,9 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
                       ok=False, error=error[:300], operation_id=operation_id,
                       operation_status=operation_status,
                       quality_forced=quality_forced,
-                      quality_reason=quality_reason, account=acc)
+                      quality_reason=quality_reason,
+                      quality_blockers=quality_blockers,
+                      quality_forced_source=quality_forced_source, account=acc)
         _save()
         action_lock.release()
         if not _batch and not short_story and _upload_retryable_error(plat, exc):
@@ -949,7 +998,8 @@ def upload_chapter_async(task_id, plat, chapter_file, auto_submit=True,
 
 
 def schedule_chapter_async(task_id, plat, chapter_file, force=False,
-                           force_confirmed=False, force_reason=""):
+                           force_confirmed=False, force_reason="",
+                           force_origin=""):
     """Fill and submit one chapter through the platform's scheduled-publish path.
 
     This is the recovery path for an automatic immediate publish that did not
@@ -968,6 +1018,7 @@ def schedule_chapter_async(task_id, plat, chapter_file, force=False,
                                 auto_submit=True, force=force,
                                 force_confirmed=force_confirmed,
                                 force_reason=force_reason,
+                                force_origin=force_origin,
                                 scheduled=True)
 
 

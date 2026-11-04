@@ -99,5 +99,41 @@ class ProfileNovelTest(unittest.TestCase):
             self.assertIn(flow_id, existing, "profile 引用了不存在的流程 %s" % flow_id)
 
 
+class ProfileNovelDevTest(unittest.TestCase):
+    """2026-11-04 主打小说：写稿用 novel，改 CodeBee 用 novel-dev。
+
+    这一版必须建得出 code 任务，否则改自己代码时只能切回全量版——
+    那等于把「主打小说」做成了「只能写小说」。
+    """
+
+    def setUp(self):
+        self._saved = os.environ.pop(profile.ENV_VAR, None)
+        profile.set_active("novel-dev")
+
+    def tearDown(self):
+        profile.reset()
+        os.environ.pop(profile.ENV_VAR, None)
+        if self._saved is not None:
+            os.environ[profile.ENV_VAR] = self._saved
+
+    def test_keeps_novel_flows_and_code(self):
+        rows = [{"id": x} for x in
+                ("novel", "code", "bid_doc", "short_story",
+                 "serial_novel", "rank_scan", "doc")]
+        got = [row["id"] for row in profile.filter_flows(rows)]
+        self.assertEqual(sorted(got),
+                         sorted(["novel", "short_story", "serial_novel",
+                                 "rank_scan", "code"]))
+
+    def test_features_allow_code_tasks(self):
+        features = profile.current()["features"]
+        self.assertTrue(features["code_tasks"])
+        self.assertTrue(features["git_workbench"])
+
+    def test_resolvable_but_absent_from_menu(self):
+        self.assertIn("novel-dev", profile.names())
+        self.assertNotIn("novel-dev", [row["id"] for row in profile.list_specs()])
+
+
 if __name__ == "__main__":
     unittest.main()

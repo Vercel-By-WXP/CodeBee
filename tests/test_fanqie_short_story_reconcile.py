@@ -159,7 +159,10 @@ class RecoveryAttemptCapTests(unittest.TestCase):
             self.assertEqual(manager._resume_pending_create_recoveries(), 1)
         queue.assert_called_once_with(
             "t-1", "fanqie", "",
-            {"force": False, "force_confirmed": False, "force_reason": ""})
+            {"force": False, "force_confirmed": False, "force_reason": "",
+             # 重放要带上「这次放行是谁按的」：漏传会被当成无人值守自动放行，
+             # 在闸门那边直接拒掉（P0-A2 加的全链透传字段）。
+             "force_origin": ""})
 
     def test_qimao_reconcile_accepts_ghost_flag_for_contract(self):
         sig = inspect.signature(qimao.reconcile_short_story_book_id)

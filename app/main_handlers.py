@@ -287,9 +287,12 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
         force = bool(body.get("force"))
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
+        # 谁按的这次放行：只有 "manual" 才算人做过决定，未声明一律按无人值守
+        # 处理（闸门会在任务未开 auto_publish 时拒绝放行，P0-A2）。
+        force_origin = str(body.get("force_origin") or "").strip().lower()
         if op == "create-book":
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
-                       "force_reason": force_reason}
+                       "force_reason": force_reason, "force_origin": force_origin}
                       if force or force_confirmed or force_reason else {})
             ok, err = pub.create_book_async(task_id, platform, auto_submit,
                                             account=str(body.get("account") or "").strip(),
@@ -342,7 +345,7 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
                 return self._json(400, {"error": chapter_error})
             from core.publish import auto as pub_auto
             kwargs = ({"force": force, "force_confirmed": force_confirmed,
-                       "force_reason": force_reason}
+                       "force_reason": force_reason, "force_origin": force_origin}
                       if force or force_confirmed or force_reason else {})
             if body.get("scheduled"):
                 kwargs["scheduled"] = True
@@ -459,6 +462,7 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
         force = bool(body.get("force"))
         force_confirmed = bool(body.get("force_confirmed"))
         force_reason = str(body.get("force_reason") or "").strip()
+        force_origin = str(body.get("force_origin") or "").strip().lower()
         only = body.get("chapters")            # 批量选择发布：章号数组（可省=全部待发）
         kwargs = {"only": only if isinstance(only, list) else None,
                   "as_draft": bool(body.get("as_draft"))}
@@ -466,7 +470,7 @@ class HandlerPublishApi(BaseHTTPRequestHandler):
             kwargs["scheduled"] = True
         if force or force_confirmed or force_reason:
             kwargs.update(force=force, force_confirmed=force_confirmed,
-                          force_reason=force_reason)
+                          force_reason=force_reason, force_origin=force_origin)
         auto_submit = True
         ok, err = pub_auto.publish_pending_async(
             task_id, platform, auto_submit=auto_submit,

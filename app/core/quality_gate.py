@@ -413,6 +413,20 @@ def evaluate_release(verdict, action="publish", target_chapter=None,
     if majors:
         blockers.append("存在 major 问题（共 %d 条）" % len(majors))
 
+    # 题材承诺兑现（「吸引力门」，2026-11-04 P0-B）：五维评审与 R1–R7 查的是硬伤，
+    # 平台驳回的「缺乏吸引力」这一维原本没有任何判据在测。证据由
+    # `core.quality.appeal` 从**当前正文**现算（前三章每章有没有一次「获得」），
+    # 这里只负责把它的结论并进同一套拦截/放行通道——所以强制放行、二次确认、
+    # 台账留痕全都照旧，不另开一条捷径。enabled=False 时（非连载 / 认不出题材 /
+    # 没有正文）一个字都不加，避免把打猎文的承诺套到别的题材上。
+    appeal = verdict.get("appeal")
+    appeal_warnings = []
+    if isinstance(appeal, dict) and appeal.get("enabled") is True:
+        blockers.extend(str(item) for item in (appeal.get("blockers") or [])
+                        if str(item or "").strip())
+        appeal_warnings = [str(item) for item in (appeal.get("warnings") or [])
+                           if str(item or "").strip()]
+
     if action == "signing":
         checkpoint_value = verdict.get("signing_checkpoint")
         checkpoint = checkpoint_value if isinstance(checkpoint_value, dict) else {}
@@ -451,6 +465,10 @@ def evaluate_release(verdict, action="publish", target_chapter=None,
     # These flags authorize bypassing blockers; JSON strings such as "false"
     # must never become truthy and a string must never count as confirmation.
     forced = force is True
+    # 被放行按掉的判据要单独留一份：放行成功时 blockers 会被搬进 warnings，
+    # 调用方若只读 blockers 就永远拿到空列表，事后复盘「当初哪几条不过」
+    # 无从查起（P0-A 因果账的真实缺陷，2026-11-04 实核 25 条 forced 全为空）。
+    overridden: list = []
     if blockers and forced:
         if force_confirmed is not True:
             blockers.append("强制放行必须二次确认")
@@ -458,9 +476,13 @@ def evaluate_release(verdict, action="publish", target_chapter=None,
             blockers.append("强制放行必须填写人工复核原因")
         if force_confirmed is True and str(force_reason or "").strip() and \
                 all("强制放行必须" not in x for x in blockers):
+            overridden = list(blockers)
             warnings = list(blockers)
             blockers = []
     allowed = not blockers
+    # 提醒类证据（章节偏短等）不参与放行判定，也不能因为强制放行被清掉：
+    # 放行成功时 warnings 会被换成「被按掉的判据」，这些提醒要补回来。
+    warnings = list(warnings) + [item for item in appeal_warnings if item not in warnings]
     return {"allowed": allowed, "status": "allowed" if allowed else "blocked",
             "forced": bool(allowed and forced), "blockers": blockers,
-            "warnings": warnings}
+            "warnings": warnings, "overridden": overridden}

@@ -2597,6 +2597,18 @@ def update_task_params(task_id, patch):
             if task.get("thinking") != thinking:
                 task["thinking"] = thinking
                 changed = True
+        # 无人值守发布授权（P0-A2）：只有任务显式打开这一项，质量闸才接受
+        # 「不是人按的」强制放行。默认关——前端曾经在闸门一拦就自动带
+        # force 重试、理由写死成「用户已启用全自动发布」，而用户既没看见
+        # 拦截也没做决定（台账 2026-10 的 25 条 forced 里 14 条如此）。
+        if "auto_publish" in patch:
+            # 只认 JSON 真布尔：`"true"` / `1` 这类脏值一律忽略、不动现有值。
+            # 写成 `is True` 的话脏值会被当成 False，一次手滑就把授权关掉，
+            # 而且关掉之后闸门下一次拦截会突然开始问人（难查的「随机抽风」）。
+            auto_pub = patch.get("auto_publish")
+            if isinstance(auto_pub, bool) and bool(task.get("auto_publish")) != auto_pub:
+                task["auto_publish"] = auto_pub
+                changed = True
         if task.get("engine") == "direct":
             if task.get("direct_provider_id") != pv or task.get("direct_model") != mv:
                 task["direct_provider_id"] = pv
