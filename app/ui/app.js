@@ -10022,6 +10022,10 @@ function pbBlock(task, platform, selectionOnly = false) {
       // 纯质量闸拦截：不给死路——提示先存草稿（2026-10-09 全部发草稿通路）
       btns += '<div class="pb-hint">' + esc(t("质量闸未过：") + au.quality_blockers.join(t("；")) +
         t("——可先「全部存草稿」落平台（不上线），正式发布前需复审达标或强制放行")) + "</div>";
+      // 判据只说到「哪一章」，作者还得自己翻原稿找改哪一段（2026-11-04 P1-E）：
+      // 给一个入口直接看改稿单（第几章第几段第几句 + 差什么 + 往哪补）。
+      btns += '<div class="pb-hint"><a href="javascript:void(0)" class="pb-link" onclick="openRevisionBrief(\'' +
+        jsq(task.id) + '\')">' + esc(t("看改稿单（哪一段差什么）")) + "</a></div>";
     }
     if (au.drafted > 0) {
       btns += '<div class="pb-hint">' + esc(t("已存草稿 {0} 章（未发布）：到平台章节管理/草稿箱逐章检查后提交发布", au.drafted)) + "</div>";
