@@ -173,8 +173,8 @@
   background:none;display:grid;place-items:center;color:var(--muted)}
 .a-nc-close:hover{border-color:var(--border-strong);color:var(--text)}
 .a-nc-title{font-size:15px;line-height:1.4;letter-spacing:.03em;margin:7px 0 5px;color:var(--text)}
-.a-nc-body{font-size:10.5px;line-height:1.65;color:var(--muted);max-height:56px;overflow:hidden;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.a-nc-body{font-size:10.5px;line-height:1.65;color:var(--muted);max-height: 3lh;overflow:hidden;
+  display:block;white-space:normal;overflow-wrap:anywhere}
 .a-nc-karma{display:flex;align-items:center;gap:7px;margin:9px 0 7px}
 .a-nc-karma span{font:7px var(--mono);letter-spacing:.16em;color:var(--muted)}
 .a-kbar{flex:1;height:2px;background:var(--border);border-radius:4px;overflow:hidden}

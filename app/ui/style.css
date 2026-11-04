@@ -1643,7 +1643,7 @@ body.inspector-open #inspector { display: flex; }
 .prov-item.active { background: var(--panel); border-color: var(--accent); }
 .pi-name {
   font-size: 14.5px; font-weight: 600; line-height: 1.45; word-break: break-word;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: block; max-height: 2lh; overflow: hidden; white-space: normal;
 }
 .pi-meta { display: flex; gap: 8px; align-items: center; margin-top: 5px; }
 /* 名称行：计数与名称首行顶端对齐（不同卡片高度一致），标签独占第二行 */
@@ -2632,7 +2632,7 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 }
 .auto-prompt {
   color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 10px;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: block; max-height: 2lh; overflow: hidden; white-space: normal; overflow-wrap: anywhere;
 }
 .auto-meta {
   display: flex; flex-wrap: wrap; gap: 4px 14px;
@@ -2642,7 +2642,7 @@ html[data-theme="light"] .seg-btn.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .
 .auto-tag-miss { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .auto-tpl-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .auto-tpl-card .note {
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  display: block; max-height: 3lh; overflow: hidden; white-space: normal; overflow-wrap: anywhere;
 }
 .auto-tpl-card .ops { justify-content: space-between; }
 .auto-pace {
@@ -2850,7 +2850,7 @@ html.code-wrap #file-pop .fp-ln { white-space: pre-wrap; word-break: break-word;
 .exp-name { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
 .exp-role { font-style: normal; font-weight: 500; font-size: 12.5px; color: var(--muted); }
 .exp-fav { font-style: normal; font-size: 12px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
-.exp-desc { font-size: 14px; color: var(--muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.exp-desc { font-size: 14px; color: var(--muted); line-height: 1.5; display: block; max-height: 2lh; overflow: hidden; white-space: normal; overflow-wrap: anywhere; }
 .exp-go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: 13px; color: var(--accent); opacity: 0; transition: opacity .15s; }
 .exp-card:hover .exp-go { opacity: 1; }
 /* 专家面板分组标题（大类） */
@@ -7279,7 +7279,7 @@ body.welcome-open { overflow: hidden; }
 #kb-cards .card .head { display: block; margin-bottom: 8px; }
 /* 标题独占首行，最多两行后省略（比单行截断可读得多） */
 #kb-cards .card .name {
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  display: block; max-height: 2lh;
   overflow: hidden; white-space: normal; text-overflow: clip;
   font-size: 16px; line-height: 1.45; margin-bottom: 8px;
 }
@@ -7519,7 +7519,7 @@ button.request-busy > * { opacity: .18; }
 .op-copy span { flex: none; color: var(--muted); font-size: 12px; }
 .op-copy p {
   margin: 4px 0 0; color: var(--bad); font-size: 12.5px; line-height: 1.4;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: block; max-height: 2lh; overflow: hidden; white-space: normal; overflow-wrap: anywhere;
 }
 .op-dismiss {
   width: 26px; height: 26px; padding: 5px; border: 0; border-radius: 6px;
@@ -10319,7 +10319,7 @@ html[data-theme="dark"] .panel {
   background: color-mix(in srgb, var(--bad) 8%, transparent);
   border-radius: 8px; color: var(--bad); font-size: 13px; line-height: 1.5;
   overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: block; max-height: calc(2lh + 14px); overflow: hidden; white-space: normal;
 }
 .avail-row-err.is-history {
   background: color-mix(in srgb, var(--muted) 8%, transparent);

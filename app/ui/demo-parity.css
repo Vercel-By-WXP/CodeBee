@@ -1137,11 +1137,10 @@ html[data-layout="workbench"] #run-detail > #rd-railcol.context-open { z-index: 
 /* 目标那句话在浮层里只是「这是哪次运行」的提示，不必铺满整屏（本任务目标 300+ 字，
    实拍把 5 行统计顶到要滚）。标题 2 行、目标 3 行截断，完整内容任务头里还有。 */
 html[data-layout="workbench"] #rd-meta-popover .rd-overview-title {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
   overflow: hidden;
-  max-height: 3.2em;
+  max-height: 2lh;
+  white-space: normal;
 }
 html[data-layout="workbench"] #rd-meta-popover .rd-overview-goal {
   max-height: 4.6em;

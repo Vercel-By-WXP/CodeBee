@@ -472,11 +472,11 @@
   }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-title { display: none; }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-goal {
-    display: -webkit-box;
+    display: block;
     overflow: hidden;
     margin-top: 0;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    max-height: 2lh;          /* 2 行 */
+    white-space: normal;
     overflow-wrap: anywhere;
   }
   #run-detail .rd-meta-popover #rd-overview .rd-overview-state { min-width: 60px; }

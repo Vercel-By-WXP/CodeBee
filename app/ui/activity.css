@@ -27,7 +27,9 @@
 .activity-status.running { color: var(--accent); }
 .activity-status.done { color: var(--ok); }
 .activity-meta time { flex: none; }
-.activity-summary { margin-top: 4px; color: var(--muted); font-size: 12.5px; line-height: 1.55; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+/* 2 行（1.55 × 2）：-webkit-line-clamp 在 Edge 147+ 失效，一律 max-height 卡整数行。
+   逐个改的原因见 style.css「Edge 147 起 -webkit-box 被弃用」那段 */
+.activity-summary { margin-top: 4px; color: var(--muted); font-size: 12.5px; line-height: 1.55; display: block; max-height: 2lh; overflow: hidden; white-space: normal; overflow-wrap: anywhere; }
 .activity-project { display: block; margin-top: 4px; color: var(--muted); opacity: .75; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .activity-dot .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .activity-empty { padding: 28px 12px; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.7; }

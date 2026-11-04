@@ -760,9 +760,9 @@ button:focus-visible, [tabindex]:focus-visible {
   font-size: 12px;
   line-height: 1.9;
   color: #4b5563;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  /* 3 行（1.9 × 3）：-webkit-line-clamp 在 Edge 147+ 失效，max-height 卡整数行 */
+  display: block;
+  max-height: 3lh;
   overflow: hidden;
 }
 .tagline-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }

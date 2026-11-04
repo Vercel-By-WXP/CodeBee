@@ -105,10 +105,11 @@
   line-height: 1.5;
   color: var(--muted);
   min-height: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  display: block;
+  /* 单行：nowrap + ellipsis 才有省略号（max-height 只会硬切） */
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* 加号：默认藏，悬停整行才现；已在名单的常显绿勾（沿用 .on 配色） */

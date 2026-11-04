@@ -181,7 +181,11 @@
   font-size: 12.6px;
   line-height: 1.5;
   min-height: 0;
-  -webkit-line-clamp: 1;
+  display: block;
+  /* 单行：nowrap + ellipsis 才有省略号（max-height 只会硬切） */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 /* 脚注：参考图是一行小字（⚡ 34.34w  ⇩ 54.64w），这里保持单行＋省略 */
 #sub-market .mk-tile-foot {
@@ -273,7 +277,11 @@
   font-size: 12.6px;
   line-height: 1.5;
   min-height: 0;
-  -webkit-line-clamp: 1;
+  display: block;
+  /* 单行：nowrap + ellipsis 才有省略号（max-height 只会硬切） */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 #sub-market .exp-row-tags {
   display: flex;
@@ -468,9 +476,10 @@ html[data-theme="dark"] #sub-market .mk-promo-card[data-tone="6"] { background: 
   white-space: nowrap;
 }
 #sub-market .mk-team > p {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  max-height: 2lh;            /* 2 行 */
+  white-space: normal;
+  overflow-wrap: anywhere;
   overflow: hidden;
   margin: 0;
   font-size: 13px;

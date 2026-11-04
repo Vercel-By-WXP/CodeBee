@@ -206,10 +206,11 @@
   font-size: 13px;
   color: var(--wb-muted, #7d99a3);
   line-height: 1.55;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: block;
+  max-height: 2lh;              /* 2 行 */
   overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
   min-height: calc(2 * 1.55em);   /* 短句也占两行，整排等高 */
 }
 #sub-market .mk-tile-foot {

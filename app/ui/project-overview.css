@@ -66,7 +66,7 @@
 .project-result:hover { border-color: var(--border-strong); background: var(--panel2); transform: none; }
 .project-result-top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 12px; color: var(--muted); }
 .project-result > b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-result > p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin: 8px 0 16px; font-size: 13px; line-height: 1.65; font-weight: 400; color: var(--muted); }
+.project-result > p { display: block; max-height: 3lh; overflow: hidden; white-space: normal; overflow-wrap: anywhere; margin: 8px 0 16px; font-size: 13px; line-height: 1.65; font-weight: 400; color: var(--muted); }
 .project-result-open { display: flex; align-items: center; justify-content: space-between; margin-top: auto; font-size: 12.5px; color: var(--accent); }
 .project-empty { margin: 0; padding: 20px 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 14.5px; text-align: center; }
 .project-overview :is(button, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
