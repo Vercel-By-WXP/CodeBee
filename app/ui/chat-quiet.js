@@ -25,8 +25,11 @@
 
   const t = (s) => { try { return typeof window.t === "function" ? window.t(s) : s; } catch (e) { return s; } };
   const OPEN = new Set();          // 展开过的组（key = 条数 + 首末行文本指纹）
-  const SEC_OPEN = new Set();      // 展开过的「次要段」（key = 条数 + 首块文本指纹）
-  let busy = false, timer = 0, attempts = 0;
+  const SEC_OPEN = new Set();      // 展开过的「次要段」（key = 段首时间 + 段首文本，不含条数）
+  // 老内核没有 queueMicrotask：Promise.then 同样是微任务，一样赶在 paint 之前。
+  const microtask = typeof queueMicrotask === "function"
+    ? queueMicrotask : (fn) => { Promise.resolve().then(fn); };
+  let busy = false, pending = false, attempts = 0;
 
   const flow = () => document.getElementById("rd-chat-flow");
 
@@ -335,8 +338,11 @@
       // 段里只有「已经收好的账本」（过程组/历次评审）→ 它本身就是一行摘要，不再套一层
       if (rows.length === 1 && members.length === 1
         && !members[0].classList.contains("chat-row")) continue;
-      const key = "sec:" + members.length + ":" + rows.length + ":" +
-        String(members[0].textContent || "").replace(/\s+/g, "").slice(0, 16);
+      const key = "sec:" + clock(rows[0]) + "|" +
+        secLabel(rows[0]).replace(/\s+/g, "").slice(0, 20);
+      // key 里绝不能带条数：运行中每 1.2s 重绘都会往这段里追加几条，条数一变
+      // key 就变，已展开的分段会被当「没展开过」重建 → 用户正盯着的输出被收起，
+      // 观感上又是一次闪。段的起点是不动的历史行，用它当锚才稳。
       const d = document.createElement("details");
       d.className = "cq-sec";
       d.dataset.cqKey = key;
@@ -421,9 +427,14 @@
   }
 
   function schedule() {
-    if (timer) return;
-    // 合并是纯 DOM 搬移，代价很小；这里只做微任务级的节流，避免一次重绘里连跑
-    timer = setTimeout(() => { timer = 0; merge(); }, 40);
+    if (pending) return;
+    // 必须走微任务，不能 setTimeout：app.js 的运行中快轮询每 1.2s 干一次
+    // `flow.innerHTML = html`（整块换新节点），合并若延到 40ms 后，
+    // 中间那 2~3 帧画出来的就是「没分层的原始长列表」→ 视觉上一闪一闪。
+    // MutationObserver 回调本身就是微任务，这里同步排进同一个 checkpoint，
+    // 浏览器还没 paint，重绘和合并落在同一帧里，用户看不到中间态。
+    pending = true;
+    microtask(() => { pending = false; merge(); });
   }
 
   function observe(f) {
