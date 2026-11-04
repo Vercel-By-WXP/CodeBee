@@ -957,6 +957,16 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
         constraint_block = quality_constraints.block_for(task)
     except Exception:
         constraint_block = ""
+    # 改稿单（P1-A）：**这一稿现在哪几章被拦、差什么**。与上面两块的分工：
+    # outcome 是平台给这本书的结局，constraints 是题材级人工要求，这里是
+    # 判据在本稿上的逐章结论（带段号句号锚点）。稿子没被拦就整块不出现——
+    # 没问题的稿子收到改稿单只会让人重写已经过关的章节。
+    # 现算不缓存：作者改完再跑，结论立刻跟着变。
+    try:
+        from .quality import revise as quality_revise
+        revision_block = quality_revise.block_for(task)
+    except Exception:
+        revision_block = ""
     parts, used, lesson_ids = [], [], []
 
     for p in all_packs():
@@ -1002,14 +1012,15 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
                        + "\n".join(lines))
 
     if not parts and not lesson_part and not feedback and not outcome_block \
-            and not constraint_block:
+            and not constraint_block and not revision_block:
         return "", []
 
     header = "## 经验库（写作/工程规范 + 过往经验记录；按证据强度参考）\n\n"
     # Reserve both the attributed lessons and complete rejection records before
     # allocating the generic pack budget. Feedback must not evict lessons.
     reserve = (len(header) + len(lesson_part) + len(feedback)
-               + len(outcome_block) + len(constraint_block) + 120)
+               + len(outcome_block) + len(constraint_block)
+               + len(revision_block) + 120)
     budget = max(0, MAX_INJECT_CHARS - reserve)
     body = "\n\n".join(parts)
     if len(body) > budget:
@@ -1020,7 +1031,9 @@ def block_for(task, scope_override=None, *, stable_order=False, run_id=None):
     # 该怎么改」。顺序反过来会让拒稿意见脱离它对应的那次结果，被读成通用规则。
     # 驳回约束排在两者之间：它是由事实推出的可执行条目，既不是结果本身，
     # 也不是一次性的复盘意见（会反复用于同题材新书的开工）。
-    tail = "\n\n".join(x for x in (outcome_block, constraint_block, feedback) if x)
+    # 改稿单排在复盘之前：它是**这一稿此刻**的结论，比历史复盘更该先被看到。
+    tail = "\n\n".join(x for x in (outcome_block, constraint_block,
+                                      revision_block, feedback) if x)
     if tail:
         text = tail + "\n\n" + text[:max(0, MAX_INJECT_CHARS - len(tail) - 2)]
     if len(text) > MAX_INJECT_CHARS:

@@ -1220,6 +1220,25 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     return self._json(404, {"error": "run not found"})
                 from core import execution_config
                 return self._json(200, execution_config.run_view(run))
+            m = re.match(r"^/api/tasks/([^/]+)/revision$", path)
+            if m:
+                # 改稿单（P1-A）：只读、现算。闸门拦下来之后，作者要的是
+                # 「哪一章哪一段差什么」，而不是一句「没有兑现获得」。
+                # 不缓存：改完稿子再拉一次，结论跟着变。
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core.quality import appeal as quality_appeal
+                from core.quality import revise as quality_revise
+                result = quality_appeal.check_task(task, use_model=False)
+                brief = quality_revise.build(result, task)
+                brief["text"] = quality_revise.render(brief)
+                brief["headline"] = quality_revise.headline(brief)
+                return self._json(200, {"revision": brief,
+                                        "appeal": {k: result.get(k) for k in
+                                                   ("enabled", "reason", "genre",
+                                                    "chapter_count")},
+                                        "blockers": list(result.get("blockers") or [])})
             m = re.match(r"^/api/tasks/([^/]+)/detail$", path)
             if m:
                 task = store.get_task(m.group(1))

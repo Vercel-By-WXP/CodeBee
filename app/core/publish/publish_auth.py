@@ -540,6 +540,17 @@ def _quality_release_guard(task, plat, action="publish", target_chapter=None,
         str(task.get("type") or "").lower() == "serial_novel",
         current_manuscript_fingerprint=current_fingerprint)
     decision["appeal"] = appeal_evidence
+    # 改稿单（P1-A）：拦下来之后要说清「哪一章哪一段差什么」。只给被拦的章出
+    # 锚点；判据没启用、或者这一稿压根没被拦，就是空单——界面据此不显示。
+    # 现算不缓存：作者改完稿子再点一次发布，结论跟着变。
+    try:
+        from ..quality import revise as quality_revise
+        revision = quality_revise.build(appeal_evidence, task)
+        revision["text"] = quality_revise.render(revision)
+        decision["revision"] = revision
+    except Exception:
+        # 改稿单是附加说明，坏了不能把发布判定带崩（同 appeal 的纪律）。
+        decision["revision"] = {"enabled": False, "chapters": [], "text": ""}
     if str(appeal_evidence.get("reason") or "").startswith("error"):
         # 判据自己坏了不能把发布链带崩，也不能装没事：留一条提醒让作者知道
         # 「这一维这次没查」。放行判定保持原样，不因判据故障拦住所有发布。
