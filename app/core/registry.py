@@ -10,6 +10,7 @@ data/orchestration.json 结构：
 from __future__ import annotations
 
 import json
+import os
 import threading
 
 from . import atomic, paths
@@ -138,6 +139,12 @@ def effective_agents(catalog_entries, detected, *, seed_detected=True):
     （「探测到即启用」种子）。显式关闭仍尊重；default_enabled 作兜底硬开。
     """
     enabled = load_enabled()
+    # 公开演示实例：沙箱里没有真实 CLI 的凭据/网络，real 模式 agent 启动后只会
+    # 卡在 running、任务永远不出成果（点开就「成果加载失败：not found」）。
+    # 演示一律改用内置 mock 智能体——它们是专门的模拟执行通道，任务能正常跑完
+    # 并产出（模拟）成果，让访客完整体验编排流程。
+    if os.environ.get("CODEBEE_OPEN_DEMO") == "1":
+        return [dict(m) for m in MOCK_AGENTS]
     out = []
     for entry in catalog_entries:
         det = (detected or {}).get(entry.get("id")) or {}

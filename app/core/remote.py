@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import re
 import secrets
 import shutil
@@ -394,6 +395,11 @@ def effective_ip(socket_ip: str, forwarded: str) -> str:
 
 def request_authed(client_ip: str, forwarded: str, query_token: str, header_token: str) -> bool:
     """本机豁免；远程（或经代理回源）请求必须带正确令牌。"""
+    # 公开演示实例：start_server 设 CODEBEE_OPEN_DEMO=1 时彻底关掉令牌门，
+    # 访客打开分享链接即可体验（演示数据隔离在临时目录，不碰真实任务/密钥）。
+    # 生产环境不设这个变量，行为完全不变。
+    if os.environ.get("CODEBEE_OPEN_DEMO") == "1":
+        return True
     loopback = client_ip in ("127.0.0.1", "::1")
     if loopback and not (_TRUST_PROXY and forwarded):
         return True  # 真本机（trust_proxy 下不带转发头的 loopback 也算）
@@ -413,6 +419,11 @@ def same_origin(origin: str, host: str) -> bool:
     false rejection.  The comparison is host-only because the service may sit
     behind an HTTPS reverse proxy while speaking HTTP on its local socket.
     """
+    # 公开演示实例：与令牌门一并关掉跨站写校验。演示环境无鉴权、无密钥，
+    # CSRF/同源保护在此没有意义；而反代公网部署会把 Host 改写成内网地址，
+    # 留着这条严格比对只会把正常写操作全部误杀成「拒绝跨站写请求」。
+    if os.environ.get("CODEBEE_OPEN_DEMO") == "1":
+        return True
     raw_origin = str(origin or "").strip()
     if not raw_origin:
         return True
@@ -478,6 +489,15 @@ def acquire(client_id: str, name: str, force: bool = False):
     client_id = str(client_id or "")
     if not client_id:
         client_id = "anon-" + secrets.token_hex(4)
+    # 公开演示实例：关掉控制权锁竞争——演示环境谁都能直接写，不需要"先接管
+    # 控制权"。否则补种机器人（X-CodeBee-Name=demo）会抢到锁并一直占着，挡住
+    # 真人访客的写操作（423）。
+    if os.environ.get("CODEBEE_OPEN_DEMO") == "1":
+        with _CTRL_LOCK:
+            _CTRL.update({"client_id": client_id,
+                          "name": _safe_name(name) or "演示访客",
+                          "expires_at": time.time() + CTRL_TTL})
+            return True, control_view(client_id)
     with _CTRL_LOCK:
         c = _live_ctrl()
         if c["client_id"] == client_id:
