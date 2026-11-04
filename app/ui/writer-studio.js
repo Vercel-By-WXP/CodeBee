@@ -16,6 +16,7 @@
   let DS = null;          // { manifests, latest }
 
   function setMsg(text) { if (g("ws-msg")) g("ws-msg").textContent = text || ""; }
+  /* t() 占位符是 {0}/{1}（i18n.js 实现），不是 %s —— 2026-11-05 探针实锤 */
   function setDsMsg(text) { if (g("ws-ds-msg")) g("ws-ds-msg").textContent = text || ""; }
   function setState(text) { if (g("ws-state")) g("ws-state").textContent = text || ""; }
 
@@ -35,12 +36,12 @@
     try {
       WS = await api("/api/writer-slot");
     } catch (e) {
-      setState(t("加载失败：%s", String(e && e.message || e)));
+      setState(t("加载失败：{0}", String(e && e.message || e)));
       return;
     }
     const slot = WS.slot || {};
     const active = slot.active_version || "";
-    setState(active ? t("启用中：%s", active) : t("未启用（不注入）"));
+    setState(active ? t("启用中：{0}", active) : t("未启用（不注入）"));
     wsRenderVersions(active);
     wsRenderLedger(slot.ledger || []);
     wsRenderShadow(slot.shadow || {});
@@ -84,9 +85,9 @@
     try {
       WS = await api("/api/writer-slot", { method: "POST",
         body: JSON.stringify({ action: "set_active", version: key }) });
-      setMsg(t("已启用 %s（新起草的章节开始生效）", key));
+      setMsg(t("已启用 {0}（新起草的章节开始生效）", key));
       await wsLoad();
-    } catch (e) { setMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   async function wsDeactivate() {
@@ -95,7 +96,7 @@
         body: JSON.stringify({ action: "set_active", version: "" }) });
       setMsg(t("已停用（连载链不再注入写手纪律）"));
       await wsLoad();
-    } catch (e) { setMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   async function wsAddVersion() {
@@ -105,11 +106,11 @@
     try {
       const res = await api("/api/writer-slot", { method: "POST",
         body: JSON.stringify({ action: "add_version", prompt, notes }) });
-      setMsg(t("已保存为 %s", res.version || ""));
+      setMsg(t("已保存为 {0}", res.version || ""));
       if (g("ws-new-prompt")) g("ws-new-prompt").value = "";
       if (g("ws-new-notes")) g("ws-new-notes").value = "";
       await wsLoad();
-    } catch (e) { setMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   async function wsSaveHint() {
@@ -120,9 +121,9 @@
           binding_hint: { agent_id: (g("ws-hint-agent") || {}).value || "",
             provider_id: (g("ws-hint-provider") || {}).value || "",
             model: (g("ws-hint-model") || {}).value || "" } }) });
-      setMsg(t("绑定提示已存到 %s", key));
+      setMsg(t("绑定提示已存到 {0}", key));
       await wsLoad();
-    } catch (e) { setMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   async function wsApplyBinding() {
@@ -131,12 +132,12 @@
       const res = await api("/api/writer-slot", { method: "POST",
         body: JSON.stringify({ action: "apply_binding", version: key }) });
       if (res && res.ok) {
-        setMsg(t("已应用到模型绑定：%s", key));
+        setMsg(t("已应用到模型绑定：{0}", key));
         await wsLoad();
       } else {
-        setMsg(t("加载失败：%s", String(res && res.error || "")));
+        setMsg(t("加载失败：{0}", String(res && res.error || "")));
       }
-    } catch (e) { setMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   /* —— 迭代台账 —— */
@@ -189,7 +190,7 @@
           judge_model: (g("ws-sh-judge-model") || {}).value || "" }) });
       setMsg(t("影子配置已保存"));
       await wsLoad();
-    } catch (e) { setMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   function wsRenderShadowReport(rep) {
@@ -204,7 +205,7 @@
     const meanC = (rep.mean_champion === null || rep.mean_champion === undefined)
       ? "—" : String(rep.mean_champion);
     el.textContent = t(
-      "近30天：试写 %s 次（成功 %s / 失败 %s），判了 %s 次；挑战者均分 %s vs 生产均分 %s，赢 %s / 平 %s / 输 %s；逐字重复 %s 次。赢了才值得换将。",
+      "近30天：试写 {0} 次（成功 {1} / 失败 {2}），判了 {3} 次；挑战者均分 {4} vs 生产均分 {5}，赢 {6} / 平 {7} / 输 {8}；逐字重复 {9} 次。赢了才值得换将。",
       String(rep.total), String(rep.ok), String(rep.failed), String(rep.judged),
       meanJ, meanC, String(rep.wins), String(rep.ties), String(rep.losses),
       String(rep.dup_count));
@@ -222,12 +223,12 @@
       const res = await api("/api/writer-dataset", { method: "POST",
         body: JSON.stringify({ action: "collect",
           include_rejected: !!(g("ws-ds-rejected") || {}).checked }) });
-      setDsMsg(t("归集完成：%s 对（%s 本书 / %s 个工作目录）→ %s",
+      setDsMsg(t("归集完成：{0} 对（{1} 本书 / {2} 个工作目录）→ {3}",
         String(res.pairs ?? 0), String(res.tasks ?? 0),
         String(res.workdirs ?? 0), String(res.pairs_file || "")));
       DS = await api("/api/writer-dataset");
       wsRenderDatasetList();
-    } catch (e) { setDsMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setDsMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   async function wsExportSft() {
@@ -236,12 +237,12 @@
       const res = await api("/api/writer-dataset", { method: "POST",
         body: JSON.stringify({ action: "export_sft" }) });
       if (res && res.ok) {
-        setDsMsg(t("导出完成：%s 条 → %s（训练配方见 docs/writer-lora-recipe.md）",
+        setDsMsg(t("导出完成：{0} 条 → {1}（训练配方见 docs/writer-lora-recipe.md）",
           String(res.exported ?? 0), String(res.sft_file || "")));
       } else {
-        setDsMsg(t("加载失败：%s", String(res && res.error || "")));
+        setDsMsg(t("加载失败：{0}", String(res && res.error || "")));
       }
-    } catch (e) { setDsMsg(t("加载失败：%s", String(e && e.message || e))); }
+    } catch (e) { setDsMsg(t("加载失败：{0}", String(e && e.message || e))); }
   }
 
   function wsRenderDatasetList() {
