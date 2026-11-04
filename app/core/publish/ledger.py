@@ -49,7 +49,7 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
            operation_status="", remote_receipt="", quality_forced=False,
            quality_reason="", quality_blockers=None, quality_forced_source="",
            scheduled_date="", scheduled_time="", account="", duration_s=0.0,
-           log=None):
+           source="", log=None):
     """追加一条发布记录。异常全吞——记账失败绝不能影响发布主流程。
 
     ``quality_blockers`` 只在**强制放行**时写：它记的是「当时闸门判了哪几条
@@ -97,6 +97,12 @@ def record(platform, action, task_id="", chapter_no=0, book_id="",
             # 多账号：这单落在哪台账号（空=默认账号）
             "account": str(account or "")[:16],
         }
+        # 来源标记（2026-11-05）：manual=作者在平台网页手工发出后补登的回执。
+        # 不加的话「手工发布的章要不要进成功率」对不了账——行结构与自动发布
+        # 同型（stats 直接可数），来源分开记，报表想拆随时能拆。
+        _src = str(source or "").strip().lower()[:16]
+        if _src:
+            rec["source"] = _src
         if blockers:
             rec["quality_blockers"] = blockers
         source = str(quality_forced_source or "").strip().lower()[:12]
@@ -196,6 +202,56 @@ def scheduled_chapters(task_id, platform):
     except (TypeError, ValueError):
         pass
     return out
+
+
+def record_manual_receipt(task_id, platform, chapters, note=""):
+    """手工发布回执（2026-11-05，补「手动发布包之后没有回执」缺口）。
+
+    作者在平台网页手动发出去的章，作者本人在发布台点选补登：写与自动发布
+    同型的 ``upload_chapter`` 成功行（source=manual）——「已发章数」与成功率
+    因此不再少算；``published_chapters`` 的并集口径让这些章自动进幂等跳过集，
+    下次「发布全部待发」不会重发。已在台账/校准集里的章跳过。
+
+    返回 ``(added, skipped)``。异常折叠成空列表——回执失败不连累发布台。
+    """
+    try:
+        plat = str(platform or "").strip()
+        nums = []
+        for c in (chapters or []):
+            try:
+                n = int(c)
+            except (TypeError, ValueError):
+                continue
+            if 0 < n <= 100000:
+                nums.append(n)
+        nums = sorted(set(nums))[:200]   # 单次封顶：防手滑把全站章号粘进来
+        if not task_id or not plat or not nums:
+            return [], []
+        already = published_chapters(task_id, plat)
+        added, skipped = [], []
+        title = book_id = ""
+        try:
+            from .. import store
+            task = store.get_task(str(task_id)) or {}
+            title = str(task.get("title") or "")[:120]
+        except Exception:
+            pass
+        try:
+            book_id = str((book_for(task_id, plat) or {}).get("book_id") or "")
+        except Exception:
+            pass
+        for n in nums:
+            if n in already:
+                skipped.append(n)
+                continue
+            record(plat, "upload_chapter", task_id=str(task_id), chapter_no=n,
+                   book_id=book_id, title=title, ok=True,
+                   remote_receipt=str(note or "手工发布回执")[:300],
+                   source="manual")
+            added.append(n)
+        return added, skipped
+    except Exception:
+        return [], []
 
 
 def review_chapters(task_id, platform):

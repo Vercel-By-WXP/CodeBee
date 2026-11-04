@@ -2890,6 +2890,27 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     skipped[p] = err
             return self._json(200, {"ok": True, "started": started,
                                     "skipped": skipped})
+        m = re.match(r"^/api/publish/task/([^/]+)/manual-receipt$", path)
+        if m:
+            # 手工发布回执（2026-11-05）：作者在平台网页手动发出去的章补进
+            # 台账（upload_chapter, ok, source=manual）——此前手动发布不进账，
+            # 「已发章数」与成功率少算（第 2 节挂账项）。幂等：台账/校准集
+            # 已有的章跳过。走 store 顶层导入（同 sync-published 块的教训）。
+            from core.publish import ledger as pub_ledger
+            tid = m.group(1)
+            if not store.get_task(tid):
+                return self._json(404, {"error": "任务不存在"})
+            body = self._body() or {}
+            plat = str(body.get("platform") or "").strip()
+            if plat not in pub_ledger.books_for(tid):
+                return self._json(400, {"error": "该平台未登记作品"})
+            added, skipped = pub_ledger.record_manual_receipt(
+                tid, plat, body.get("chapters") or [],
+                note=str(body.get("note") or ""))
+            if not added and not skipped:
+                return self._json(400, {"error": "没有可登记的章号（填 12 或 12-15 或 12,14,16）"})
+            return self._json(200, {"ok": True, "added": added,
+                                    "skipped": skipped})
         m = re.match(r"^/api/publish/task/([^/]+)/outcome$", path)
         if m:
             # 登记平台结果（人工，唯一可信来源：站内信/后台页面）。
