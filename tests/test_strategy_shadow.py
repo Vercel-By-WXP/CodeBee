@@ -124,6 +124,82 @@ class ShadowIsolated(unittest.TestCase):
         self.assertEqual(sel.get("id"), "okcli")
         self.assertEqual(self._shadow_lines(), [])
 
+    def _review_env(self):
+        return (mock.patch.object(router.modelhub, "_binding_for",
+                                  return_value={}),
+                mock.patch.object(router.modelhub, "providers", return_value=[]),
+                mock.patch("app.core.health.down_names", return_value=set()),
+                mock.patch.object(router, "agent_upstreams", return_value=set()),
+                mock.patch("app.core.usage.routing_stats", return_value={}))
+
+    def test_pick_reviewer_writes_shadow(self):
+        # 评审选将也记「挑战者会选谁」（2026-11-05 扩面）：冠军=生产所选
+        # （隔离约束筛过的池子里评分最高者），context 原样进台账。
+        strategy_config.set_challenger(
+            "gentle", {"streak_bench_penalty": -5.0, "history_loss_cap": 2.0})
+        agents = [_agent("badcli", "codex"), _agent("okcli", "mimo")]
+        impl = _agent("implcli", "glm")
+        patches = self._review_env()
+        for p in patches:
+            p.start()
+        try:
+            sel, _reason = router.pick_reviewer(
+                agents, impl, TTYPE, _losing_stats("badcli"),
+                context={"run_id": "r-9", "task_id": "t-9"})
+        finally:
+            for p in patches:
+                p.stop()
+        self.assertEqual(sel.get("id"), "okcli")     # 冠军仍是健康者
+        lines = self._shadow_lines()
+        self.assertEqual(len(lines), 1)
+        rec = lines[0]
+        self.assertEqual(rec["role"], "review")
+        self.assertEqual(rec["champion_agent"], "okcli")
+        self.assertEqual(rec["challenger_agent"], "badcli")
+        self.assertTrue(rec["diverged"])
+        self.assertEqual(rec["run_id"], "r-9")
+        self.assertEqual(rec["task_id"], "t-9")
+
+    def test_pick_critics_writes_panel_head_shadow(self):
+        # 评审组影子记 **panel 头席**（综合分最高的那席）的挑战者对照。
+        strategy_config.set_challenger(
+            "gentle", {"streak_bench_penalty": -5.0, "history_loss_cap": 2.0})
+        agents = [_agent("implcli", "codex"), _agent("okcli", "mimo"),
+                  _agent("midcli", "glm")]
+        impl = _agent("implcli", "codex")
+        patches = self._review_env()
+        for p in patches:
+            p.start()
+        try:
+            chosen, _note = router.pick_critics(
+                agents, TTYPE, _losing_stats("okcli"), impl=impl,
+                context={"run_id": "r-8", "task_id": "t-8"})
+        finally:
+            for p in patches:
+                p.stop()
+        self.assertTrue(chosen)
+        lines = self._shadow_lines()
+        self.assertEqual(len(lines), 1)
+        rec = lines[0]
+        self.assertEqual(rec["role"], "review")
+        self.assertEqual(rec["champion_agent"], chosen[0].get("id"))
+        self.assertEqual(rec["run_id"], "r-8")
+        self.assertEqual(rec["task_id"], "t-8")
+
+    def test_reviewer_no_shadow_without_challenger(self):
+        agents = [_agent("badcli", "codex"), _agent("okcli", "mimo")]
+        impl = _agent("implcli", "glm")
+        patches = self._review_env()
+        for p in patches:
+            p.start()
+        try:
+            router.pick_reviewer(agents, impl, TTYPE, _losing_stats("badcli"),
+                                 context={"run_id": "r-7", "task_id": "t-7"})
+        finally:
+            for p in patches:
+                p.stop()
+        self.assertEqual(self._shadow_lines(), [])
+
     def test_shadow_failure_never_breaks_pick(self):
         strategy_config.set_challenger(
             "gentle", {"streak_bench_penalty": -5.0})

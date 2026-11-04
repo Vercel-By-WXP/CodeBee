@@ -2129,7 +2129,8 @@ def _load_previous_findings(task, run_id):
         return []
 
 
-def _pick_review_verifier(agents, impl, reviewer, stats, difficulty):
+def _pick_review_verifier(agents, impl, reviewer, stats, difficulty,
+                          context=None):
     if not agents or not impl or not reviewer:
         return None, "缺少可用候选"
     if reviewer.get("mode") != "real" or impl.get("mode") != "real":
@@ -2138,7 +2139,7 @@ def _pick_review_verifier(agents, impl, reviewer, stats, difficulty):
     try:
         candidate, reason = router.pick_reviewer(
             agents, reviewer, "code", stats, exclude=exclude,
-            difficulty=difficulty)
+            difficulty=difficulty, context=context)
     except Exception as exc:
         return None, "复核候选选择失败：%s" % type(exc).__name__
     if (not candidate or candidate.get("mode") != "real"
@@ -2154,7 +2155,9 @@ def _verify_review_findings(run_id, task, workdir, reviewer, impl, agents, stats
             "counts": {}}
     if not findings:
         return findings, meta
-    verifier, reason = _pick_review_verifier(agents, impl, reviewer, stats, difficulty)
+    verifier, reason = _pick_review_verifier(
+        agents, impl, reviewer, stats, difficulty,
+        context={"run_id": run_id or "", "task_id": (task or {}).get("id") or ""})
     if verifier is None:
         meta.update({"status": "unavailable", "reason": reason})
         return findings, meta
@@ -2888,7 +2891,8 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
             dead_upstreams.append(ups)
         candidate, why = router.pick_reviewer(
             agents, impl, task_type, stats, exclude=tried,
-            dead_upstreams=dead_upstreams, difficulty=difficulty)
+            dead_upstreams=dead_upstreams, difficulty=difficulty,
+            context={"run_id": run_id or "", "task_id": ""})
         if (candidate is None or candidate.get("id") in tried
                 or candidate.get("mode") != "real"):
             # 隔离约束把所有候选都挡掉时退回换将选路：评审继续比评审缺席
@@ -2920,7 +2924,8 @@ def _critique_step_with_cli_fallback(run_id, role, agent, prompt, workdir, ev, a
         # degraded scoring is recorded.
         candidate, why = router.pick_reviewer(
             agents, impl, task_type, stats, exclude=tried,
-            dead_upstreams=dead_upstreams, difficulty=difficulty)
+            dead_upstreams=dead_upstreams, difficulty=difficulty,
+            context={"run_id": run_id or "", "task_id": ""})
         if (candidate is None or candidate.get("id") in tried
                 or candidate.get("mode") != "real"):
             candidate, why = router.pick_switch_candidate(
@@ -6630,7 +6635,7 @@ def _content_prepare(run, task, agents, ev, stats, mode):
                                             context=_shadow_ctx(run, task))
         critics, route["critics"] = router.pick_critics(
             agents, task_type, stats, impl=impl,
-            limit=workflow.get("reviewers"))
+            limit=workflow.get("reviewers"), context=_shadow_ctx(run, task))
     if impl is None:
         store.update_run(run_id, expected_status="running", status="failed",
                          error="没有可用智能体", ended_at=_now())
@@ -6639,7 +6644,7 @@ def _content_prepare(run, task, agents, ev, stats, mode):
         if mode != "manual":
             critics, route["critics"] = router.pick_critics(
                 agents, task.get("type") or "novel", stats, impl=impl,
-                limit=workflow.get("reviewers"))
+                limit=workflow.get("reviewers"), context=_shadow_ctx(run, task))
         else:
             critics = _pick_critics_manual(agents, task)
 
@@ -6833,7 +6838,8 @@ def _content_draft(st):
                 if mode != "manual":
                     critic_pool, route["critics"] = router.pick_critics(
                         agents, task.get("type") or "novel", stats, impl=impl,
-                        limit=workflow.get("reviewers"))
+                        limit=workflow.get("reviewers"),
+                        context=_shadow_ctx(run, task))
                     critics, review_independence = _content_reseat_reviewers(
                         critic_pool, agents, impl, workflow, mode, route, run_id)
                 plan = planner.make_novel_plan(_steered_task(run_id, task), impl, critics)
@@ -8674,7 +8680,10 @@ def _execute_run_impl_inner(run_id):
                 impl, route["author"] = router.pick(agents, "implement", task["type"], stats,
                                                     context={"run_id": run_id,
                                                              "task_id": (task or {}).get("id") or ""})
-                critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
+                critics, route["critics"] = router.pick_critics(
+                    agents, task["type"], stats, impl=impl,
+                    context={"run_id": run_id,
+                             "task_id": (task or {}).get("id") or ""})
             if impl is None:
                 store.update_run(run_id, expected_status="running", status="failed",
                                  error="没有可用智能体", ended_at=_now())
@@ -8682,7 +8691,9 @@ def _execute_run_impl_inner(run_id):
             if resume_ctx is not None:
                 if mode == "auto":
                     critics, route["critics"] = router.pick_critics(
-                        agents, task["type"], stats, impl=impl)
+                        agents, task["type"], stats, impl=impl,
+                        context={"run_id": run_id,
+                                 "task_id": (task or {}).get("id") or ""})
                 else:
                     critics = _pick_critics_manual(agents, task)
             if task.get("serial"):

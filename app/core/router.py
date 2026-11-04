@@ -306,17 +306,21 @@ def _pick_scored(agents, role, ttype, stats=None, exclude=()):
     return best[1], best_reason
 
 
-def _shadow_note(agents, role, ttype, stats, exclude, champion, context):
+def _shadow_note(agents, role, ttype, stats, exclude, champion, context,
+                 pool=None):
     """冠军/挑战者影子对账（Raven Evolver 借鉴）：只记一笔，绝不影响选将。
 
     挑战者未启用/任何异常都静默跳过——影子链路挂了不能连累生产路由。
-    冠军分数用当前生效权重现场重打（与挑战者同一 stats，口径可比）。"""
+    冠军分数用当前生效权重现场重打（与挑战者同一 stats，口径可比）。
+    pool（可选）：显式给出「生产真可选」的候选集（如评审隔离约束筛过的
+    名单）；不给则回退 agents − exclude。挑战者只在该集合里重排，避免把
+    生产根本选不了的候选记成「挑战者会选谁」的假分歧（2026-11-05 扩面）。"""
     try:
         from . import strategy_config, strategy_lab
         overrides = strategy_config.challenger_weights()
         if not overrides:
             return
-        pool = [a for a in (agents or [])
+        pool = [a for a in (pool if pool is not None else (agents or []))
                 if isinstance(a, dict) and a.get("id")
                 and a.get("id") not in (exclude or ())]
         if not pool:
@@ -905,14 +909,16 @@ def _review_separation(left, right):
 
 
 def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
-                  dead_upstreams=(), difficulty="default"):
+                  dead_upstreams=(), difficulty="default", context=None):
     """评审者：跨厂商是硬规则（Codeband 的对抗式配对）——同族评审有同款盲区，
     评审者必须来自与实现者不同的 kind；跨族池为空才回退同厂商并如实备注，
     绝不把回退伪装成跨厂商。exclude 用于剔除运行时已知死候选（实现步走查证伪
     的 quota/403 死链），与 pick / pick_switch_candidate 的 exclude 同语义。
     dead_upstreams 进一步剔除「与死者同上游」的候选——配额通常按网关/账号烧刻，
     同上游 = 同配额桶，403 权限拒绝也不能换壳重试。评审者又是单点，撞死链会
-    白烧一轮并误报「评审器故障」，故宁可少一个候选也不选已知同上游的。"""
+    白烧一轮并误报「评审器故障」，故宁可少一个候选也不选已知同上游的。
+    context（可选）只进影子台账（2026-11-05 影子扩面：评审选将也记「挑战者会
+    选谁」，与 implement 侧同一份 strategy_shadow.jsonl、同一份对账报告）。"""
     stats = stats or history.agent_stats()
     excluded = set(exclude)
     dead_sets = [set(d) for d in (dead_upstreams or ()) if d]
@@ -951,17 +957,23 @@ def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
     if cross:
         best = max(cross, key=lambda a: score(a, "review", ttype, stats)[0])
         _, reason = score(best, "review", ttype, stats)
+        _shadow_note(agents, "review", ttype, stats, exclude, best, context,
+                     pool=cross)
         return best, "跨模型族/供应商评审（作者 %s，评审 %s）：%s" % (
             impl_identity["family"] or impl_kind,
             _identity(best)["family"] or best.get("kind"), reason)
     if isolated:
         best = max(isolated, key=lambda a: score(a, "review", ttype, stats)[0])
         _, reason = score(best, "review", ttype, stats)
+        _shadow_note(agents, "review", ttype, stats, exclude, best, context,
+                     pool=isolated)
         return best, "隔离约束满足但 CLI kind 相同（%s）：%s" % (
             _identity(best)["family"] or best.get("kind"), reason)
     if real:
         best = max(real, key=lambda a: score(a, "review", ttype, stats)[0])
         _, reason = score(best, "review", ttype, stats)
+        _shadow_note(agents, "review", ttype, stats, exclude, best, context,
+                     pool=real)
         reasons = "; ".join("%s: %s" % (a.get("id"), why)
                             for a, why in rejected[:3])
         return best, ("（无满足模型族/供应商/上游隔离的评审者，"
@@ -972,13 +984,16 @@ def pick_reviewer(agents, impl, ttype, stats=None, exclude=(),
     return impl, "（自评：仅有实现者一个智能体可用）"
 
 
-def pick_critics(agents, ttype, stats=None, impl=None, limit=None):
+def pick_critics(agents, ttype, stats=None, impl=None, limit=None, context=None):
     """自动内容评审组按综合分挑前 ``limit`` 名（排除作者本人）。
 
     旧逻辑让全部已启用 CLI 串行参与每章和全局评审；一条慢/失效链就会把
     任务拖长数分钟，所以必须封顶。封顶数现在由**评审档位**决定
     （`review_tiers`：1 / 2 / 3 席），缺省仍是 ``AUTO_CRITIC_LIMIT``——
     手工模式不走这里。
+    context（可选）只进影子台账：评审组是多人，影子记 **panel 头席**（综合
+    分最高的那席）的「挑战者会选谁」——头席是评审组里话语权最大的一席，
+    与 implement/reviewer 侧同一份台账同一份报告（2026-11-05 扩面）。
     """
     try:
         cap = int(limit) if limit is not None else AUTO_CRITIC_LIMIT
@@ -1004,6 +1019,9 @@ def pick_critics(agents, ttype, stats=None, impl=None, limit=None):
                 count = cap - len(chosen)
                 fallback_used = fallback[:count]
                 chosen.extend(agent for agent, _ in fallback_used)
+            if chosen:
+                _shadow_note(agents, "review", ttype, stats, (), chosen[0],
+                             context, pool=ranked)
             note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (
                 len(chosen), len(ranked))
             if isolated:
@@ -1014,6 +1032,9 @@ def pick_critics(agents, ttype, stats=None, impl=None, limit=None):
                 note += "；同源候选兼容回退（原因：%s）" % detail
             return chosen, note
         chosen = ranked[:cap]
+        if chosen:
+            _shadow_note(agents, "review", ttype, stats, (), chosen[0],
+                         context, pool=ranked)
         note = "按成功率与延迟选择前 %d 名评审（共 %d 名候选）" % (
             len(chosen), len(ranked))
         if impl and all(a.get("kind") == impl.get("kind") for a in chosen):

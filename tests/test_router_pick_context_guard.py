@@ -15,13 +15,15 @@ from pathlib import Path
 
 CORE = Path(__file__).resolve().parents[1] / "app" / "core"
 
-# 文件 → 允许的「无 context pick 调用」数量
+# 文件 → 允许的「无 context 路由调用」数量（pick / pick_reviewer / pick_critics）
 EXPECTED_MISSING = {
-    "pipeline.py": 0,        # _run_direct / _content_prepare / 引擎分派
-    "pipeline_code.py": 0,   # _run_code 主选将 + 评审轮换将
+    "pipeline.py": 0,        # 选将×3 + 复核评审×3 + 评审组×5（2026-11-05 扩面）
+    "pipeline_code.py": 0,   # 选将×2 + 评审×2
     "jobs_mgmt.py": 0,       # _ai_repair
     "bookmeta.py": 1,        # 已知例外：_resolve_author 无 run 作用域
 }
+
+_ROUTING_SHAPES = ("pick", "pick_reviewer", "pick_critics")
 
 
 def _pick_calls_without_context(path):
@@ -29,7 +31,7 @@ def _pick_calls_without_context(path):
     missing = []
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "pick"):
+                and node.func.attr in _ROUTING_SHAPES):
             if not any(kw.arg == "context" for kw in node.keywords):
                 missing.append(node.lineno)
     return missing
