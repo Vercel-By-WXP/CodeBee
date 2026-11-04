@@ -94,7 +94,9 @@ def _run_code(run, task, agents, ev, stats, mode):
     elif mode == "manual":
         impl, _ = _pl()._pick_implementer(agents, task.get("implementer"))
     else:
-        impl, route["implementer"] = _pl().router.pick(agents, "implement", "code", stats)
+        impl, route["implementer"] = _pl().router.pick(agents, "implement", "code", stats,
+                                                       context={"run_id": (run or {}).get("id") or "",
+                                                                "task_id": (task or {}).get("id") or ""})
     if impl is None:
         _pl().store.update_run(run_id, expected_status="running", status="failed",
                          error="没有可用智能体", ended_at=_pl()._now())
@@ -521,7 +523,9 @@ def _run_code(run, task, agents, ev, stats, mode):
             ex = (impl["id"],)
             if impl.get("mode") == "real":
                 ex += ("mock-a", "mock-b")  # 真实实现者失败时不降级到 mock
-            other, other_reason = _pl().router.pick(agents, "implement", "code", stats, exclude=ex)
+            other, other_reason = _pl().router.pick(agents, "implement", "code", stats, exclude=ex,
+                                                    context={"run_id": (run or {}).get("id") or "",
+                                                             "task_id": (task or {}).get("id") or ""})
             if other is not None:
                 note = "换将 %s → %s：%d 轮实现/修复后仍未通过。%s" % (
                     impl["id"], other["id"], round_no + 1, other_reason)

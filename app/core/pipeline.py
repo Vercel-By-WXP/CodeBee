@@ -3201,6 +3201,18 @@ def summarize_direct(task_id):
     return summary, None
 
 
+def _shadow_ctx(run, task):
+    """路由影子对账的关联键（context 只进 strategy_shadow.jsonl 供 report
+    对账用，不参与选将）。此前生产 7 处 pick 调用点全没传，影子记录的
+    run_id/task_id 恒空，strategy_lab.report 全落 unresolved——机制闸收了
+    影子数据却对不了账（2026-11-05 补线）。"""
+    try:
+        return {"run_id": (run or {}).get("id") or "",
+                "task_id": (task or {}).get("id") or ""}
+    except Exception:
+        return None
+
+
 def _run_direct(run, task, agents, ev, stats, mode):
     """直连引擎：目标+附件直接交给一个执行者，跑完即止。
 
@@ -3267,7 +3279,8 @@ def _run_direct(run, task, agents, ev, stats, mode):
     elif mode == "manual":
         impl, _ = _pick_implementer(agents, task.get("implementer"))
     else:
-        impl, route["implementer"] = router.pick(agents, "implement", task["type"], stats)
+        impl, route["implementer"] = router.pick(agents, "implement", task["type"], stats,
+                                                 context=_shadow_ctx(run, task))
     if impl is None and bi is None:
         store.update_run(run_id, expected_status="running", status="failed",
                          error="没有可用智能体", ended_at=_now())
@@ -6613,7 +6626,8 @@ def _content_prepare(run, task, agents, ev, stats, mode):
         critics = _pick_critics_manual(agents, task)
     else:
         task_type = task.get("type") or "novel"
-        impl, route["author"] = router.pick(agents, "implement", task_type, stats)
+        impl, route["author"] = router.pick(agents, "implement", task_type, stats,
+                                            context=_shadow_ctx(run, task))
         critics, route["critics"] = router.pick_critics(
             agents, task_type, stats, impl=impl,
             limit=workflow.get("reviewers"))
@@ -8657,7 +8671,9 @@ def _execute_run_impl_inner(run_id):
                 impl, _ = _pick_implementer(agents, task.get("implementer"))
                 critics = _pick_critics_manual(agents, task)
             else:
-                impl, route["author"] = router.pick(agents, "implement", task["type"], stats)
+                impl, route["author"] = router.pick(agents, "implement", task["type"], stats,
+                                                    context={"run_id": run_id,
+                                                             "task_id": (task or {}).get("id") or ""})
                 critics, route["critics"] = router.pick_critics(agents, task["type"], stats, impl=impl)
             if impl is None:
                 store.update_run(run_id, expected_status="running", status="failed",

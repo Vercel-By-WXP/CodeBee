@@ -238,7 +238,8 @@ def _ai_repair(run_id, entry, ev, failed_cmd, orig_log):
     from . import catalog, manager, registry, router, runner, store
     from . import usage as _usage
     agents = registry.effective_agents(catalog.load(), manager.detect_all())
-    agent, _reason = router.pick(agents, "repair", "mgmt")
+    agent, _reason = router.pick(agents, "repair", "mgmt",
+                                 context={"run_id": run_id or "", "task_id": ""})
     if agent is None or agent.get("mode") != "real":
         return False  # 无真实智能体可用，维持原失败
     try:
