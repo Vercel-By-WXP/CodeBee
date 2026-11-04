@@ -62,6 +62,11 @@ BAD_STAGES = frozenset(s for s, v in STAGES.items() if v["kind"] == "bad")
 _NOVEL_TYPES = ("novel", "serial_novel", "short_story")
 
 
+def is_novel_task(task) -> bool:
+    """这本书算不算「能登记平台结果」的稿子（口径与提示词注入同一处）。"""
+    return str((task or {}).get("type") or "") in _NOVEL_TYPES
+
+
 def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -290,6 +295,29 @@ def note_progress(task_id, platform, live=0, pending=0, total=0,
 
 
 # ---------------------------------------------------------------- 读取
+def own_entries(task_id) -> dict:
+    """本书自己名下的条目；**台账损坏时抛错，不当空表**。
+
+    `entries()` 走 `_load()`，坏文件一律当空——界面不能因为一个坏 JSON 崩。
+    签约评估不能照这个口径：把「读不到」当成「没被拒过」，等于让一次驳回
+    永远不被复核。所以这里单独读一遍，坏了让上游中止这次评估（宁可判不了，
+    也不要假装判过）。文件不存在仍算「没有记录」，返回空表。
+    """
+    task_id = str(task_id or "").strip()
+    if not task_id:
+        return {}
+    path = _file()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("平台结果台账不可用：%s" % exc.__class__.__name__)
+    if not isinstance(data, dict):
+        raise ValueError("平台结果台账格式无效")
+    return dict(data.get(task_id) or {})
+
+
 def entries(task_id) -> dict:
     """这本书在两平台的最新条目（没有的平台不出现）。"""
     task_id = str(task_id or "").strip()
@@ -401,7 +429,7 @@ def _relevant(task, limit=MAX_RECORDS) -> list:
 
 def block_for(task, limit=MAX_RECORDS) -> str:
     """给提示词用的「平台结果」块；没有可用的记录返回空串。"""
-    if str(task.get("type") or "") not in _NOVEL_TYPES:
+    if not is_novel_task(task):
         return ""
     try:
         rows = _relevant(task, limit)

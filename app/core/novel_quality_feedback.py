@@ -358,6 +358,10 @@ def feedback_check_errors(review: Any, chapters: Mapping[int, str], records: lis
             errors.append("拒稿复盘记录 id 无效")
             continue
         rid = raw_id.strip()
+        # 平台原话不是「复盘」（它来自平台结局，不是我们的二次解读）：
+        # 报错里直接用它自己的 id，避免「平台事实 平台事实-fanqie」这种叠字。
+        name = (rid if str(record.get("_source") or "") == "outcome"
+                else "拒稿复盘 %s" % rid)
         chapter_error_added = False
         alias = feedback_record_key(rid)
         accepted_ids = {rid}
@@ -372,7 +376,7 @@ def feedback_check_errors(review: Any, chapters: Mapping[int, str], records: lis
         if not matching:
             if not require_all:
                 continue
-            errors.append("拒稿复盘 %s 缺少逐条处理结论" % rid)
+            errors.append("%s 缺少逐条处理结论" % name)
             continue
         scoped = []
         invalid_chapter = False
@@ -384,22 +388,22 @@ def feedback_check_errors(review: Any, chapters: Mapping[int, str], records: lis
             if candidate_chapter in chapters:
                 scoped.append(candidate)
         if invalid_chapter:
-            errors.append("拒稿复盘 %s 的 chapter 无效" % rid)
+            errors.append("%s 的 chapter 无效" % name)
             chapter_error_added = True
         if not scoped and not require_all and not invalid_chapter:
             continue
         if scoped:
             matching = scoped
         if len(matching) > 1:
-            errors.append("拒稿复盘 %s 出现重复处理结论" % rid)
+            errors.append("%s 出现重复处理结论" % name)
         row = matching[-1]
         status = str(row.get("status") or "").strip()
         if status not in ("addressed", "not_addressed", "not_applicable"):
-            errors.append("拒稿复盘 %s 的 status 无效" % rid)
+            errors.append("%s 的 status 无效" % name)
         chapter = _positive_chapter_number(row.get("chapter"))
         if chapter is None:
             if not chapter_error_added:
-                errors.append("拒稿复盘 %s 的 chapter 无效" % rid)
+                errors.append("%s 的 chapter 无效" % name)
             continue
         # A resumed checkpoint may not include the chapter where the original
         # feedback applies.  The current review cannot verify an unseen quote;
@@ -413,12 +417,12 @@ def feedback_check_errors(review: Any, chapters: Mapping[int, str], records: lis
         raw_quote = row.get("quote")
         raw_analysis = row.get("analysis")
         if not isinstance(raw_quote, str) or not isinstance(raw_analysis, str):
-            errors.append("拒稿复盘 %s 的 quote/analysis 必须是文本" % rid)
+            errors.append("%s 的 quote/analysis 必须是文本" % name)
             continue
         quote = raw_quote.strip()
         analysis = raw_analysis.strip()
         if len(re.sub(r"\s+", "", quote)) < 8 or quote not in text or not analysis:
-            errors.append("拒稿复盘 %s 缺少可定位正文引文与处理分析" % rid)
+            errors.append("%s 缺少可定位正文引文与处理分析" % name)
             continue
         # A copied manuscript sentence plus a placeholder such as "已处理" or
         # "不适用" is not evidence that the rejection feedback was actually
@@ -426,7 +430,7 @@ def feedback_check_errors(review: Any, chapters: Mapping[int, str], records: lis
         # in-scope status; the prompt asks what changed, what remains limited,
         # or why the observation does not apply to the cited passage.
         if not _feedback_analysis_is_substantive(status, analysis):
-            errors.append("拒稿复盘 %s 的处理分析过于简略或与 status 不匹配，须说明正文变化、未解决点或不适用理由" % rid)
+            errors.append("%s 的处理分析过于简略或与 status 不匹配，须说明正文变化、未解决点或不适用理由" % name)
     return errors
 
 
@@ -475,7 +479,10 @@ def feedback_check_issues(review: Any, records: list[dict],
         direction = str(record.get("experiment") or "").strip()
         if not direction:
             direction = str(record.get("recheck_question") or "").strip()
-        out.append({"dim": "拒稿复盘", "severity": "major", "chapter": chapter,
+        # 来源自带归类就用它（平台事实 → 「平台驳回」）；复盘台账的 row 没有
+        # `dim` 字段，落回原来的「拒稿复盘」。
+        dim = str(record.get("dim") or "").strip() or "拒稿复盘"
+        out.append({"dim": dim, "severity": "major", "chapter": chapter,
                     "quote": quote,
                     "revision_direction": direction,
                     "_feedback_issue": True,
