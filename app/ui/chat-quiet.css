@@ -1,0 +1,471 @@
+/* ============================================================================
+ * 对话静音层（chat-quiet.css，2026-11-04）
+ * ============================================================================
+ * 用户反馈：「对话现在看起来眼睛痛，很多不需要的隐藏或去掉，很多内容能不能
+ * 整理成一条」+「思考过程改成滚动」。
+ * 这里只做三件事，全部是「减法」，不加新功能：
+ *   1. meta 归位：时间/用时不再当内容左侧的一列（.chat-row 是 flex 横排，
+ *      第一个子节点 .chat-meta 就落成了参差的左列——那是布局事故，不是设计）。
+ *      改成气泡上方一行极淡小字，hover/focus 才提起注意力。
+ *   2. 过程行合并：连续的「一行状态」步骤由 chat-quiet.js 收进
+ *      details.chat-quiet-group，默认收起；展开后每条压成单行。
+ *   3. 思考行滚动：蜂巢/运行卡的 .hc-think 原来是 nowrap+ellipsis（只看得见
+ *      半句），改成限高多行 + 内部滚动，跟终端一样的看法；对话页的
+ *      .chat-think .ct-body 收紧高度并加「还有内容」的下缘渐隐。
+ * 真源仍是 app.js / conversation-reference.css：删掉 index.html 里两行引用即回滚。
+ * -------------------------------------------------------------------------- */
+
+/* ---------- 1. meta 归位 ---------- */
+/* 只在对话时间线作用域内改：别的 .chat-row（例如卡片里的）保持原样。 */
+#run-detail #rd-chat .chat-row {
+  position: relative;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+/* 时间/用时/复制：**不占一行**。原来它躺在气泡上方占 19px，二十行就是 400px 的
+   「每个消息都自带一行小字」。改成 hover/focus 时才浮在行右上角（绝对定位不参与
+   排版），想看的时候鼠标一停就有，平时一个像素都不占。 */
+#run-detail #rd-chat .chat-row > .chat-meta {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  z-index: 3;
+  min-height: 0;
+  margin: 0;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--wb-bg, var(--panel)) 94%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: .01em;
+  color: var(--chat-muted);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+}
+#run-detail #rd-chat .chat-row:hover > .chat-meta,
+#run-detail #rd-chat .chat-row:focus-within > .chat-meta {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* 「复制」跟着 meta 一起出现，别在安静态挂一排按钮 */
+#run-detail #rd-chat .chat-row > .chat-meta .chat-acts2 { opacity: .9; }
+/* 用户消息行：meta 在 .chat-user-message 内部；时间与操作同样只在 hover 出现 */
+#run-detail #rd-chat .chat-row.me { align-items: flex-end; }
+#run-detail #rd-chat .chat-row.me > .chat-user-message > .chat-meta {
+  min-height: 0;
+  margin: 2px 0 0;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+#run-detail #rd-chat .chat-row.me:hover > .chat-user-message > .chat-meta,
+#run-detail #rd-chat .chat-row.me:focus-within > .chat-user-message > .chat-meta { opacity: 1; }
+
+/* 行距：过程行收进折叠组之后，剩下的都是真内容。24px 是「一段一段」的对话
+   节奏，但一屏几十行时它自己就是 900px 空白——收到 9px，靠下面三条给大块补节奏。 */
+#run-detail #rd-chat .rd-chat-flow { gap: 7px; }
+#run-detail #rd-chat .chat-row.me,
+#run-detail #rd-chat .chat-fail-card,
+#run-detail #rd-chat .chat-result,
+#run-detail #rd-chat .chat-change-row { margin-top: 10px; }
+#run-detail #rd-chat .chat-bubble.agent > .chat-body + .chat-body { margin-top: 10px; }
+
+/* ---------- 2. 过程行合并 ---------- */
+#run-detail #rd-chat .chat-quiet-group {
+  margin: 0;
+  border: 0;
+  border-left: 1px solid var(--chat-rule);
+  padding-left: 12px;
+}
+#run-detail #rd-chat .chat-quiet-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+  color: var(--chat-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  list-style: none;
+}
+#run-detail #rd-chat .chat-quiet-group > summary::-webkit-details-marker { display: none; }
+#run-detail #rd-chat .chat-quiet-group > summary::before {
+  content: "▸";
+  flex: none;
+  font-size: 10px;
+  opacity: .55;
+  transition: transform .15s ease;
+}
+#run-detail #rd-chat .chat-quiet-group[open] > summary::before { transform: rotate(90deg); }
+#run-detail #rd-chat .chat-quiet-group > summary:hover { color: var(--chat-text); }
+
+/* ---------- 2b. 次要段：默认不展示 ---------- */
+/* 主线只留重点（你说的话 / 在跟你说的话 / 失败 / 最新评审 / 正在跑）。
+   次要段整段收进 details，摘要压成一行 11px、半透明——它存在的意义只是
+   「这里跳过了 12 条过程，想看可以点」，不是让人去读。 */
+#run-detail #rd-chat .cq-sec { margin: 0; border: 0; padding: 0; }
+#run-detail #rd-chat .cq-sec > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 17px;
+  padding: 0;
+  border: 0;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  color: var(--chat-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: .65;
+  transition: opacity .12s ease;
+}
+#run-detail #rd-chat .cq-sec > summary::-webkit-details-marker { display: none; }
+#run-detail #rd-chat .cq-sec > summary:hover,
+#run-detail #rd-chat .cq-sec[open] > summary { opacity: 1; }
+#run-detail #rd-chat .cq-sec[open] > summary { margin-bottom: 6px; }
+/* 展开后整段缩进 + 左侧细线：一眼看出「这些是次要账本，刚才折的就是它们」 */
+#run-detail #rd-chat .cq-sec[open] { border-left: 1px solid var(--chat-rule); padding-left: 12px; }
+#run-detail #rd-chat .cq-sec .cq-span { opacity: .8; }
+#run-detail #rd-chat .chat-quiet-group .cq-count { font-variant-numeric: tabular-nums; flex: none; }
+#run-detail #rd-chat .chat-quiet-group .cq-span { opacity: .7; flex: none; font-variant-numeric: tabular-nums; }
+/* 组头尾部那句最近状态：只给一眼看出「停在哪」，超长省略 */
+#run-detail #rd-chat .chat-quiet-group .cq-tail {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: .55;
+}
+/* 展开后：每条压成一行（时间 + 那句状态），不再一人一个气泡的间距 */
+#run-detail #rd-chat .chat-quiet-group .chat-row {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--chat-rule);
+}
+#run-detail #rd-chat .chat-quiet-group .chat-row:last-child { border-bottom: 0; }
+#run-detail #rd-chat .chat-quiet-group .chat-row > .chat-meta {
+  /* 账本行里时间是主体信息之一（一条一条按时刻排），回到行内、不浮起来 */
+  position: static;
+  order: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  opacity: .55;
+  pointer-events: auto;
+  font-size: 11px;
+  white-space: nowrap;
+}
+#run-detail #rd-chat .chat-quiet-group .chat-row > .chat-meta .chat-acts2 { display: none; }
+#run-detail #rd-chat .chat-quiet-group .chat-bubble.agent {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--chat-muted);
+}
+/* 组内是一条账本行，不是一条消息：头像气泡尖角都不需要 */
+#run-detail #rd-chat .chat-quiet-group .chat-bubble.agent::after,
+#run-detail #rd-chat .chat-quiet-group .chat-bubble.agent .wx-tail { display: none; }
+#run-detail #rd-chat .chat-quiet-group .chat-step-meta { display: none; }
+#run-detail #rd-chat .chat-quiet-group .chat-body { color: var(--chat-muted); }
+#run-detail #rd-chat .chat-quiet-group .chat-raw-fold > summary {
+  padding: 2px 0;
+  font-size: 12px;
+}
+/* 单条落单的短步骤：不加组，但也不该摆成一个完整气泡的体量——压成一行账本 */
+#run-detail #rd-chat .chat-row.chat-quiet-solo {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  padding: 1px 0;
+}
+#run-detail #rd-chat .chat-row.chat-quiet-solo > .chat-meta {
+  position: static;
+  order: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  opacity: .55;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+#run-detail #rd-chat .chat-row.chat-quiet-solo > .chat-meta .chat-acts2 { display: none; }
+#run-detail #rd-chat .chat-row.chat-quiet-solo .chat-bubble.agent { flex: 1 1 auto; min-width: 0; }
+#run-detail #rd-chat .chat-row.chat-quiet-solo .chat-step-meta { display: none; }
+#run-detail #rd-chat .chat-row.chat-quiet-solo .chat-body {
+  color: var(--chat-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#run-detail #rd-chat .chat-row.chat-quiet-solo > .chat-bubble.agent > .chat-raw-fold > summary {
+  padding: 2px 0;
+  color: var(--chat-muted);
+  font-size: 12px;
+}
+
+/* 长正文：一步改稿/评审能吐几百字，五行字墙把后面的内容全推走。
+   超过 240px 先夹住，下缘渐隐 + 「展开全文 · N 字」，点开看全。 */
+#run-detail #rd-chat .chat-body.chat-quiet-clamp {
+  max-height: 200px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
+#run-detail #rd-chat .chat-body.chat-quiet-clamp.is-open {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+/* 步骤输出折一行：只留第一行摘要，右端的「查看输出 · N 字」贴在行尾。
+   入口用绝对定位 → 摘要和入口共用一行（否则正文一行 + 入口一行，白多 23px）。
+   右侧留白由 JS 按入口实测宽度写进 --cq-fold-w：只靠 mask 渐隐在 980px 窄窗下
+   会让正文钻到入口背后（实测「review feedb▸查 查看输出」压在一起）。 */
+#run-detail #rd-chat .chat-body.chat-quiet-clamp1 {
+  max-height: 23px;
+  overflow: hidden;
+  padding-right: var(--cq-fold-w, 0px);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+}
+#run-detail #rd-chat .chat-body.chat-quiet-clamp1.is-open {
+  max-height: none;
+  padding-right: 0;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+#run-detail #rd-chat .chat-row .chat-bubble.agent:has(> .chat-quiet-more.is-inline) { position: relative; }
+#run-detail #rd-chat .chat-quiet-more {
+  /* 一行纯文字入口，不加边框：它只是「这里还有东西」的提示，不是按钮墙 */
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--chat-muted);
+  font: 400 12px/1.7 var(--font-ui);
+  opacity: .8;
+  cursor: pointer;
+}
+#run-detail #rd-chat .chat-quiet-more.is-inline {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  padding-left: 10px;
+  background: color-mix(in srgb, var(--wb-bg, var(--panel)) 90%, transparent);
+  font-size: 11.5px;
+  line-height: 23px;
+}
+/* 展开后回到正文下方，别压在文字上 */
+#run-detail #rd-chat .chat-quiet-more.is-inline.is-open { position: static; padding-left: 0; background: transparent; }
+#run-detail #rd-chat .chat-quiet-more:hover { color: var(--chat-text); opacity: 1; }
+
+/* 连续多张评审卡：更早的收进「历次评审 N 次」，只留最新一张在外面 */
+#run-detail #rd-chat .chat-quiet-reviews {
+  margin: 0;
+  border: 0;
+  border-left: 1px solid var(--chat-rule);
+  padding-left: 12px;
+}
+#run-detail #rd-chat .chat-quiet-reviews > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  color: var(--chat-muted);
+  font-size: 12.5px;
+}
+#run-detail #rd-chat .chat-quiet-reviews > summary::-webkit-details-marker { display: none; }
+#run-detail #rd-chat .chat-quiet-reviews > summary::before {
+  content: "▸";
+  flex: none;
+  font-size: 10px;
+  opacity: .55;
+}
+#run-detail #rd-chat .chat-quiet-reviews[open] > summary::before { transform: rotate(90deg); }
+#run-detail #rd-chat .chat-quiet-reviews > summary:hover { color: var(--chat-text); }
+#run-detail #rd-chat .chat-quiet-reviews .chat-review-card { margin: 6px 0 0; }
+/* 评审卡的右侧 meta（谁评的/用了多久）：安静态退到背景里，hover 再提亮 */
+#run-detail #rd-chat .chat-review-meta {
+  font-size: 11px;
+  opacity: .55;
+  transition: opacity .15s ease;
+}
+#run-detail #rd-chat .chat-review-card:hover .chat-review-meta { opacity: 1; }
+
+/* ---------- 3. 思考行滚动 ---------- */
+/* 蜂巢/运行卡：原来 nowrap + ellipsis，180 字只露半句。改成可滚的多行窗口。 */
+.hive-cell .hc-think {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  overflow-y: auto;
+  max-height: 4.6em;
+  line-height: 1.45;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent) transparent;
+}
+.hive-cell .hc-think::-webkit-scrollbar { width: 3px; }
+.hive-cell .hc-think::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+}
+/* 对话页思考块：240px 太高，缩到 168px；下缘渐隐提示「还有」 */
+#run-detail #rd-chat .chat-think .ct-body {
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 30%, transparent) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+}
+#run-detail #rd-chat .chat-think .ct-body::-webkit-scrollbar { width: 3px; }
+#run-detail #rd-chat .chat-think .ct-body::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 30%, transparent);
+}
+/* 贴底时不该被渐隐吃掉最后一行：滚到最底就把遮罩收掉（JS 打 is-bottom） */
+#run-detail #rd-chat .chat-think .ct-body.is-bottom {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* ---------- 4. 卡片压成一行（评审 / 失败） ---------- */
+/* 评审卡原本是「标题一行 + 分数一行」共 49px；分数本来就是给人扫的，没理由占两行。
+   改成 flex 横排：标题 · 通过标记 · 均分 · 各维分数一把排在同一行，右侧 meta 悬浮。
+   结论与逐条意见仍然换行（它们是真内容）。 */
+#run-detail #rd-chat .chat-review-card {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 4px;
+}
+#run-detail #rd-chat .chat-review-head { flex: 0 0 auto; }
+#run-detail #rd-chat .chat-review-scores { margin-top: 0; flex: 1 1 auto; min-width: 0; }
+#run-detail #rd-chat .chat-review-lead,
+#run-detail #rd-chat .chat-review-list,
+#run-detail #rd-chat .chat-review-more { flex: 1 1 100%; }
+#run-detail #rd-chat .chat-review-meta {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--wb-bg, var(--panel)) 94%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+}
+#run-detail #rd-chat .chat-review-card:hover .chat-review-meta,
+#run-detail #rd-chat .chat-review-card:focus-within .chat-review-meta { opacity: 1; }
+
+/* 失败卡：红卡头 20px + 「看原文」20px + 边距 = 66px。把「看原文」提到同一行右端，
+   展开时它自己独占一行（flex-basis:100%），原文仍在下面。 */
+#run-detail #rd-chat .chat-fail-card {
+  position: relative;
+  /* grid 而不是 flex-wrap：flex 下 head 的 min-content 会把「看原文」挤到下一行
+     （690 宽的内容区放不下 597+55+10），换 grid 两列就永远同一行，head 自己收窄。 */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 3px;
+  /* 基线是 10px 13px 的框，内容只有一行时上下各留 10px，白占 14px。收紧成细边。 */
+  padding: 3px 10px;
+}
+#run-detail #rd-chat .chat-fail-head { grid-column: 1; min-width: 0; overflow: hidden; }
+#run-detail #rd-chat .chat-fail-more { grid-column: 2; margin: 0; }
+#run-detail #rd-chat .chat-fail-more[open] { grid-column: 1 / -1; }
+#run-detail #rd-chat .chat-fail-body { grid-column: 1 / -1; }
+#run-detail #rd-chat .chat-fail-meta {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--wb-bg, var(--panel)) 94%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+}
+#run-detail #rd-chat .chat-fail-card:hover .chat-fail-meta { opacity: 1; }
+
+/* 运行中的步骤：step-meta（谁在跑）和「CLI 已启动…」+「查看完整日志」本来是三条
+   各占一行的字，一条步骤就是 79px。并成一行：`critique #43 · aider · 执行中 · 查看日志`。
+   思考块/正文/工具活动仍然整行（flex-basis:100%），它们才是要看的。 */
+#run-detail #rd-chat .chat-bubble.agent.is-running {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 2px;
+}
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-step-meta {
+  /* 运行中：「步骤名 + CLI + 模型全名 + 执行中」能占满整行，把后面两条挤到下一行。
+     这里按 42% 截断，鼠标停上去看全文（title 由 chat-quiet.js 补）。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 42%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-live-status {
+  /* 这条是 .chat-body（块级，宽度吃满整行）——不按住它，后面的「查看日志」永远在下一行。
+     basis 给 60%：剩下 40% 刚够「查看完整 CLI 执行日志」那个小折叠条。 */
+  flex: 0 1 60%;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-log-btn,
+#run-detail #rd-chat .chat-bubble.agent.is-running > details.chat-cli-log { flex: 0 0 auto; margin: 0; }
+/* 「查看完整 CLI 执行日志」在 chat-mode 下仍是 26px 最小高 + 4px 内边距的胶囊，
+   它比同行的 22px 文字高 8px，把整行撑到 30px。这里抹平成纯文字链接。 */
+#run-detail #rd-chat .chat-bubble.agent.is-running > details.chat-cli-log > summary {
+  min-height: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--chat-muted, var(--muted));
+}
+#run-detail #rd-chat .chat-bubble.agent.is-running > details.chat-cli-log[open] { flex: 1 1 100%; }
+/* 注意：`.chat-live-status` 本身就是 `.chat-body`。下面这条必须把它排除掉，
+   否则同特异性（2 个 id + 4 个类）后写的 `flex:1 1 100%` 会把上面 60% 的 basis 覆盖掉，
+   「CLI 已启动…」又吃满一行、把「查看完整日志」挤到下一行。 */
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-body:not(.chat-live-status),
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-think,
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-live-text,
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-tool-group,
+#run-detail #rd-chat .chat-bubble.agent.is-running > .chat-raw-fold { flex: 1 1 100%; }
+
+/* 步骤输出整段收起（评审/改稿执行器吐的几百字，不是在跟你说话）：
+   默认只在原位留一行「查看输出 · 664 字」，点开才铺开。 */
+#run-detail #rd-chat .chat-body.chat-quiet-hidden { display: none; }
+#run-detail #rd-chat .chat-body.chat-quiet-hidden.is-open { display: block; }
