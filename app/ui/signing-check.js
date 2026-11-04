@@ -189,6 +189,10 @@
         "</div>";
     }
     var rows = (data.chapters || []).map(chapterRow).join("");
+    // 前几章来自合稿（`已成稿/前二十章.md`）时说清来源：作者核对不上会以为判错了稿。
+    var merged = (data.sources || []).filter(function (name) {
+      return !/^chapter-\d+\.(md|txt)$/i.test(String(name));
+    });
     var meta = [
       data.genre_name ? String(data.genre_name) : "",
       esc(t("门禁 {0} 章", data.gate || 3)),
@@ -197,6 +201,7 @@
     return '<div class="sc-lead">' + esc(data.headline || "") + "</div>" +
       '<div class="sc-meta">' + meta + "</div>" +
       '<div class="sc-rows">' + rows + "</div>" +
+      block(t("前几章取自合稿"), merged, "is-muted") +
       block(t("会被拦的地方"), data.blockers, "is-bad") +
       block(t("短板（不拦，但读者能感觉到）"), data.warnings, "is-warn") +
       block(t("这几条没有机器判据，得你自己看"), data.unjudged, "is-muted") +

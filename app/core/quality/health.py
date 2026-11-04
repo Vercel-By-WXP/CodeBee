@@ -36,7 +36,8 @@ VERDICT_UNKNOWN = "unknown"
 REASON_TEXT = {
     "not_serial": "这个任务不是长篇 / 连载，不套题材承诺",
     "no_workdir": "任务还没有工作目录",
-    "no_text": "目录里还没有 chapter-01.md 这类章节稿",
+    "no_text": "目录里没有第 1 章起的稿子（也没有能切出「第 1 章」的合稿）",
+    "no_first_chapter": "缺第 1 章起的稿子，判不了签约",
     "unknown_genre": "认不出题材，不硬套别的题材的承诺",
 }
 
@@ -113,10 +114,25 @@ def _numbers(rows, status):
     return [str(row["chapter"]) for row in rows if row["status"] == status]
 
 
-def headline(verdict, rows, reason=""):
+def _reason_text(reason, result=None):
+    """不适用原因的人话。
+
+    `no_first_chapter` 要带上**实际的起始章号**：「目录里是第 21 章起的稿子」
+    比「缺第 1 章」有用得多——作者一看就知道前二十章被归档到别处了，而不是
+    以为稿子丢了（2026-11-04：一本 200 章的书被判成「还没有章节稿」）。
+    """
+    if reason == "no_first_chapter":
+        start = int((result or {}).get("file_start") or 0)
+        count = int((result or {}).get("file_count") or 0)
+        if start > 1 and count:
+            return "目录里是第 %d 章起的 %d 章稿，缺第 1 章" % (start, count)
+    return REASON_TEXT.get(reason) or "这本还判不了"
+
+
+def headline(verdict, rows, reason_text=""):
     """一句人话，≤ HEADLINE_MAX 字。"""
     if verdict == VERDICT_UNKNOWN:
-        text = REASON_TEXT.get(reason) or "这本还判不了"
+        text = str(reason_text or "") or "这本还判不了"
     elif verdict == VERDICT_BLOCKED:
         # 只说**真被拦**的章。门禁外那章虽也空窗，但那条只记短板不拦，
         # 混进「没给读者东西」会让作者以为它跟第 1 章一样要命。
@@ -143,18 +159,20 @@ def report(task, now=None):
     stamp = float(now if now is not None else time.time())
     if not result.get("enabled"):
         reason = str(result.get("reason") or "")
+        reason_text = _reason_text(reason, result)
         return {
             "enabled": False,
             "reason": reason,
-            "reason_text": REASON_TEXT.get(reason) or "这本还判不了",
+            "reason_text": reason_text,
             "genre": "",
             "genre_name": "",
             "verdict": VERDICT_UNKNOWN,
-            "headline": headline(VERDICT_UNKNOWN, [], reason),
+            "headline": headline(VERDICT_UNKNOWN, [], reason_text),
             "chapters": [],
             "blockers": [],
             "warnings": [],
             "unjudged": [],
+            "sources": [str(item) for item in (result.get("sources") or []) if str(item)],
             "gate": appeal.DEFAULT_CHAPTERS,
             "scan": appeal.DEFAULT_SCAN,
             "min_words": appeal.DEFAULT_MIN_WORDS,
@@ -182,6 +200,7 @@ def report(task, now=None):
         "blockers": blockers,
         "warnings": warnings,
         "unjudged": _unjudged(result),
+        "sources": [str(item) for item in (result.get("sources") or []) if str(item)],
         "gate": appeal._positive_int(profile.get("chapters"), appeal.DEFAULT_CHAPTERS),
         "scan": appeal._positive_int(profile.get("scan_chapters"), appeal.DEFAULT_SCAN),
         "min_words": appeal._positive_int(profile.get("min_words"),

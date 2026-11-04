@@ -113,7 +113,8 @@ class UnknownTest(unittest.TestCase):
             return health.report({"type": "code"})
 
     def test_each_reason_has_human_text(self):
-        for reason in ("not_serial", "no_workdir", "no_text", "unknown_genre"):
+        for reason in ("not_serial", "no_workdir", "no_text", "no_first_chapter",
+                       "unknown_genre"):
             data = self._unknown(reason)
             self.assertEqual(data["verdict"], health.VERDICT_UNKNOWN, reason)
             self.assertFalse(data["enabled"])
@@ -126,6 +127,25 @@ class UnknownTest(unittest.TestCase):
         # 「pass」会被界面画成绿标——判不了的时候给绿标等于骗人。
         data = self._unknown("unknown_genre")
         self.assertNotEqual(data["verdict"], health.VERDICT_PASS)
+
+    def test_no_first_chapter_names_the_real_start(self):
+        # 一本 200 章的书，前二十章被并进合稿：不许说「还没有章节稿」，
+        # 要说出「目录里是第 21 章起的稿子」——作者才知道该去找哪几章。
+        payload = {"enabled": False, "reason": "no_first_chapter",
+                   "file_start": 21, "file_end": 200, "file_count": 180}
+        with unittest.mock.patch.object(appeal, "check_task", return_value=payload):
+            data = health.report({"type": "serial_novel"})
+        self.assertEqual(data["reason"], "no_first_chapter")
+        self.assertIn("第 21 章", data["reason_text"])
+        self.assertIn("180", data["reason_text"])
+        self.assertEqual(data["headline"], data["reason_text"])
+        self.assertLessEqual(len(data["headline"]), health.HEADLINE_MAX)
+        self.assertEqual(data["verdict"], health.VERDICT_UNKNOWN)
+
+    def test_unknown_reports_still_carry_source_list(self):
+        # 两个分支键必须一致（界面只有一套渲染）；判不了时来源为空列表。
+        data = self._unknown("no_text")
+        self.assertEqual(data["sources"], [])
 
 
 class UnjudgedTest(unittest.TestCase):
@@ -182,3 +202,25 @@ class RealChainTest(unittest.TestCase):
             data = health.report(task)
         self.assertEqual(data["verdict"], health.VERDICT_UNKNOWN)
         self.assertEqual(data["reason"], "not_serial")
+
+    def test_merged_archive_is_judged_and_named_as_source(self):
+        # 真实那本 200 章的书：根目录第 21 章起，前二十章在 `已成稿/前二十章.md`。
+        # 体检要能判，并且说得清「第 1 章是那份合稿里切出来的」。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for number in (21, 22):
+                (root / ("chapter-%02d.md" % number)).write_text(
+                    self.WORDS, encoding="utf-8")
+            merged = "\n\n".join(
+                "第%d章 第%d回\n\n%s" % (n, n, self.WORDS) for n in range(1, 21))
+            (root / "已成稿").mkdir()
+            (root / "已成稿" / "不周山守村人-前二十章.md").write_text(
+                merged, encoding="utf-8")
+            task = {"id": "t2", "type": "serial_novel", "workdir": str(root),
+                    "appeal_genre": "hunt_1980s"}
+            data = health.report(task)
+        self.assertTrue(data["enabled"])
+        self.assertEqual([c["chapter"] for c in data["chapters"]], [1, 2, 3, 4, 5, 6])
+        self.assertIn("已成稿/不周山守村人-前二十章.md", data["sources"])
+        # 只读前 6 章，所以 chapter-21 那批不会被碰到——来源列表不该报没读过的文件。
+        self.assertNotIn("chapter-21.md", data["sources"])

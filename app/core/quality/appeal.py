@@ -36,6 +36,12 @@ import os
 import re
 from pathlib import Path
 
+# 章号解析 / 章节切分 / 「稿子在哪个文件里」都在 `chapters` 一处（P2-E）。
+# `split_chapters` 与 `_cn_number` 在这里仍是本模块的名字，方便既有调用点。
+from .chapters import cn_number as _cn_number
+from .chapters import discover as _discover
+from .chapters import split_chapters
+
 # 门禁只看前三章：过签评估（平台侧）就是拿开头几章做的决定，第四五章写得再好
 # 也换不回读者在第 1 章划走。
 DEFAULT_CHAPTERS = 3
@@ -93,36 +99,7 @@ _UNREALIZED = re.compile(
 _NEGATION = re.compile(r"[不没未别勿]")
 _NEGATION_WINDOW = 5
 
-_HEADING = re.compile(
-    r"^#{1,6}\s*第([0-9零一二三四五六七八九十百千]{1,6})章[\s:：、.]*(.*)$")
 _SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?…])")
-_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
-              "六": 6, "七": 7, "八": 8, "九": 9}
-
-
-def _cn_number(text):
-    """把「一」「十二」「二十一」解析成整数；解析不了返回 None。"""
-    text = str(text or "").strip()
-    if not text:
-        return None
-    if text.isdigit():
-        return int(text)
-    total, current = 0, 0
-    for char in text:
-        if char in _CN_DIGITS:
-            current = _CN_DIGITS[char]
-        elif char == "十":
-            total += (current or 1) * 10
-            current = 0
-        elif char == "百":
-            total += (current or 1) * 100
-            current = 0
-        elif char == "千":
-            total += (current or 1) * 1000
-            current = 0
-        else:
-            return None
-    return total + current
 
 
 def _positive_int(value, default):
@@ -134,33 +111,6 @@ def _positive_int(value, default):
     except (TypeError, ValueError, OverflowError):
         return default
     return number if number > 0 else default
-
-
-def split_chapters(text):
-    """按「第 N 章」小标题切章；没有标题就整体当一章。"""
-    lines = str(text or "").splitlines()
-    chapters, current = [], None
-    for line in lines:
-        match = _HEADING.match(line.strip())
-        if match:
-            if current is not None:
-                chapters.append(current)
-            number = _cn_number(match.group(1))
-            current = {"chapter": number if number is not None else len(chapters) + 1,
-                       "title": match.group(2).strip(), "lines": []}
-            continue
-        if current is not None:
-            current["lines"].append(line)
-    if current is not None:
-        chapters.append(current)
-    if not chapters:
-        return [{"chapter": 1, "title": "", "text": str(text or "")}]
-    out = []
-    for index, item in enumerate(chapters, 1):
-        number = item["chapter"] if item["chapter"] else index
-        out.append({"chapter": number, "title": item["title"],
-                    "text": "\n".join(item["lines"]).strip()})
-    return out
 
 
 def paragraphs(text):
@@ -502,7 +452,8 @@ def check_task(task, chapters=None, genre=None, use_model=None, model=None,
     """从任务读章节正文并判定；不适用时返回 ``enabled=False`` 及其原因。
 
     不判的四种情况（都返回 enabled=False，绝不出 blocker）：
-    非长篇/连载任务、没有 workdir、目录里没有 chapter-NN.md、题材画像认不出。
+    非长篇/连载任务、没有 workdir、目录里找不到第 1 章起的稿子（`no_text`；
+    有章但不是从第 1 章起则单独报 `no_first_chapter`）、题材画像认不出。
 
     读多少章：``chapters``（门禁章数，默认 3）与 ``scan``（总扫描章数，默认 6）
     取大者。多读的章不参与「每章必须有获得」，只用来判连续空窗与字数——
@@ -521,8 +472,16 @@ def check_task(task, chapters=None, genre=None, use_model=None, model=None,
         return {"enabled": False, "reason": "no_workdir"}
     gate = _positive_int(chapters, DEFAULT_CHAPTERS)
     limit = max(gate, _positive_int(scan, DEFAULT_SCAN))
-    texts = _read_texts(task, limit)
+    rows, info = _discover(task.get("workdir"), limit)
+    texts = [{"chapter": row["chapter"], "text": row["text"]} for row in rows]
     if not texts:
+        # 「一章都没有」和「有章但不是从第 1 章起」是两件事：后者说明稿子在、
+        # 只是前几章被归档/合并到别处了。混成 no_text 会让作者以为目录空的。
+        if int(info.get("file_start") or 0) > 1:
+            return {"enabled": False, "reason": "no_first_chapter",
+                    "file_start": int(info["file_start"]),
+                    "file_end": int(info.get("file_end") or 0),
+                    "file_count": int(info.get("file_count") or 0)}
         return {"enabled": False, "reason": "no_text"}
     # 显式点名题材就按它判：认不出就是认不出，**不拿正文改判成别的题材**——
     # 作者说「这是打猎文」、正文却像都市文时，应当报「认不出打赏题材」让人看，
@@ -530,7 +489,10 @@ def check_task(task, chapters=None, genre=None, use_model=None, model=None,
     explicit = str(genre or task.get("appeal_genre") or "").strip()
     profile = profile_for(explicit) if explicit else profile_for(genre_of(task, texts))
     if profile is None:
-        return {"enabled": False, "reason": "unknown_genre"}
+        # 稿子读到了（可能跨章节文件与合稿），只是题材认不出——把来源带上，
+        # 界面才能说清「读了哪几章、认不出题材」，而不是含糊一句判不了。
+        return {"enabled": False, "reason": "unknown_genre",
+                "sources": list(info.get("sources") or [])}
     want_model = use_model if use_model is not None else (
         task.get("appeal_model") is True or
         str(os.environ.get("TUTTI_APPEAL_MODEL") or "").strip() in ("1", "true", "on"))
@@ -538,33 +500,22 @@ def check_task(task, chapters=None, genre=None, use_model=None, model=None,
     result = analyze(texts, profile=profile, use_model=bool(want_model), model=hook,
                      gate=gate, scan=limit)
     result["workdir"] = str(root)
+    # 这几章分别取自哪个文件（章文件 / 合稿）。判据跨来源取正文时，报告要说得清
+    # 「第 1 章是从 已成稿/前二十章.md 里切出来的」，否则作者核对不上。
+    result["sources"] = list(info.get("sources") or [])
     return result
 
 
 def _read_texts(task, limit=None):
-    """读 workdir 里的 `chapter-NN.md`：没有目录 / 一章都没有时返回空列表。
+    """读前几章正文（章节文件 + 合稿补缺，读法在 `chapters.discover`）。
 
     与 `check_task` 的读法只此一份，题材识别与判据读的是同一批正文——两处各写
     一份读法，迟早出现「判据说看到 5 章、识别说看到 3 章」。
     """
     task = task if isinstance(task, dict) else {}
-    raw = str(task.get("workdir") or "").strip()
-    if not raw:
-        return []
-    root = Path(raw)
-    if not root.is_dir():
-        return []
     limit = _positive_int(limit, max(DEFAULT_CHAPTERS, DEFAULT_SCAN))
-    texts = []
-    for number in range(1, limit + 1):
-        path = root / ("chapter-%02d.md" % number)
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace").strip()
-        except OSError:
-            body = ""
-        if body:
-            texts.append({"chapter": number, "text": body})
-    return texts
+    rows, _info = _discover(task.get("workdir"), limit)
+    return [{"chapter": row["chapter"], "text": row["text"]} for row in rows]
 
 
 def genre_of(task, texts=None):

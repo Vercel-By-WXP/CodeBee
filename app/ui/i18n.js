@@ -786,6 +786,7 @@
     "0 处获得": "No payoff",
     "门禁 {0} 章": "First {0} chapters",
     "字数线 {0} 字": "{0} words min",
+    "前几章取自合稿": "Early chapters read from a merged file",
     "复制日志全文": "Copy full log",
     "已复制": "Copied",
     "已载入原文，可修改后发送": "Original text loaded — edit and send",

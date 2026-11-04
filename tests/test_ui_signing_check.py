@@ -27,7 +27,7 @@ INDEX = UI / "index.html"
 # 允许出现在接口里的字段（前端读、后端给，两边不许各说各话）
 REPORT_KEYS = {"enabled", "reason", "reason_text", "genre", "genre_name", "verdict",
                "headline", "chapters", "blockers", "warnings", "unjudged",
-               "gate", "scan", "min_words", "checked_at"}
+               "sources", "gate", "scan", "min_words", "checked_at"}
 ROW_KEYS = {"chapter", "title", "words", "gains", "gain_labels", "first_gain",
             "gated", "blocked", "status", "note"}
 
@@ -114,11 +114,24 @@ class BloodDebtTest(unittest.TestCase):
         self.assertNotIn("location.reload", js)
 
 
+class SourcesTest(unittest.TestCase):
+    """合稿来源要说出来：前几章从 `已成稿/前二十章.md` 里切出来时，作者得知道。"""
+
+    def test_report_lists_merged_sources_only(self):
+        body = _function_body(_text(JS), "reportHtml")
+        self.assertTrue(body)
+        self.assertIn("data.sources", body)
+        self.assertIn("前几章取自合稿", body)
+        # 只列非 `chapter-NN.md` 的来源，否则每本书都会多一行噪音。
+        self.assertIn("chapter-", body)
+
+
 class I18nTest(unittest.TestCase):
     # 界面文案走 i18n 词条；英文模式下漏一条就是把中文甩给英文用户。
     KEYS = ("过签体检", "看改稿单", "会被拦的地方",
             "短板（不拦，但读者能感觉到）", "这几条没有机器判据，得你自己看",
-            "查了 {0} 章", "第 {0} 章", "{0} 处获得", "单章空窗", "体检报告加载失败")
+            "查了 {0} 章", "第 {0} 章", "{0} 处获得", "单章空窗", "体检报告加载失败",
+            "前几章取自合稿")
 
     def test_keys_registered(self):
         js = _text(UI / "i18n.js")
