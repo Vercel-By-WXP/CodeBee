@@ -1,0 +1,121 @@
+/* ============================================================================
+ * 对话大纲浮层样式（chat-outline.css，2026-11-04）
+ * ----------------------------------------------------------------------------
+ * 参考桌面端观感：对话左缘一条圆点轨道（每个圆点 = 一条用户发言，当前段
+ * 加宽成短横），悬停向右展开历史提问列表，点击平滑跳到那句话。
+ * 规矩（DESIGN.md）：全部消费 token、不写死十六进制；对话页选择器带
+ * `#run-detail #rd-chat` 双 id 前缀（单类压不过 style.css 的复合规则）；
+ * 浮层高度由 JS 按宿主实测钳位，这里不写 100vh（根 zoom 不缩放视口单位）。
+ * -------------------------------------------------------------------------- */
+
+#run-detail #rd-chat {
+  position: relative;   /* #rd-outline 的包含块：量的是对话列，不是 #run-detail */
+}
+
+#run-detail #rd-chat #rd-outline {
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 148px;        /* 底部让开输入坞（.rd-chat-bar 高度 + 余量） */
+  width: 22px;
+  z-index: 6;
+  pointer-events: none; /* 容器不吃事件，轨道/面板各自开 */
+}
+
+#run-detail #rd-chat #rd-outline.hidden { display: none; }
+
+/* —— 圆点轨道 —— */
+#run-detail #rd-chat .rd-outline-rail {
+  position: absolute;
+  left: 3px;
+  top: 4px;
+  bottom: 4px;
+  width: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  pointer-events: auto;
+}
+#run-detail #rd-chat .rd-outline-rail.hidden { display: none; }
+
+#run-detail #rd-chat .rd-outline-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--wb-border-strong, var(--border));
+  cursor: pointer;
+  transition: width .15s ease, background .15s ease;
+}
+#run-detail #rd-chat .rd-outline-dot:hover { background: var(--muted); }
+#run-detail #rd-chat .rd-outline-dot.is-active {
+  width: 12px;
+  background: var(--wb-accent, var(--accent));
+}
+
+/* —— 悬停面板：历史提问一行一条 —— */
+/* 宽度不能挂在宿主（轨道容器只有 22px）的百分比上——calc(100% - 30px)
+   是负数，shrink-to-fit 会塌成十几像素宽的隐形板（2026-11-04 探针实测）。 */
+#run-detail #rd-chat .rd-outline-panel {
+  position: absolute;
+  left: 22px;
+  top: 0;
+  width: 330px;
+  max-width: calc(100vw - 80px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--wb-panel, var(--panel));
+  border: 1px solid var(--wb-border, var(--border));
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  pointer-events: auto;
+}
+#run-detail #rd-chat .rd-outline-panel.hidden { display: none; }
+
+#run-detail #rd-chat .rd-outline-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: 500 13px/1.5 var(--font-ui);
+  text-align: left;
+}
+#run-detail #rd-chat .rd-outline-item:hover { background: var(--panel2); }
+#run-detail #rd-chat .rd-outline-item.is-active { color: var(--wb-accent, var(--accent)); }
+#run-detail #rd-chat .rd-outline-item.is-active .rd-outline-n { color: var(--wb-accent, var(--accent)); }
+
+#run-detail #rd-chat .rd-outline-n {
+  flex: none;
+  min-width: 16px;
+  text-align: right;
+  font: 600 11px/1.5 var(--font-ui);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+#run-detail #rd-chat .rd-outline-t {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* —— 跳转落点闪一圈（一次性，JS 定时摘除）—— */
+#run-detail #rd-chat .chat-row.rd-outline-flash .chat-bubble.me {
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wb-accent, var(--accent)) 28%, transparent);
+  transition: box-shadow .25s ease;
+}
+
+/* 窄屏 / 手机壳：对话列没有富余的左缘，大纲直接退场 */
+@media (max-width: 900px) {
+  #run-detail #rd-chat #rd-outline { display: none !important; }
+}

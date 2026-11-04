@@ -209,6 +209,26 @@ class TestDemoDetailSkeleton(unittest.TestCase):
         self.assertIn("background: transparent !important", body, "背景必须透明")
         self.assertIn("box-shadow: none !important", body, "投影必须清掉")
 
+    def test_change_summary_hides_without_run_detail(self):
+        """fixed 浮卡 #change-summary 的显隐只在 side 快照轮询里刷新：closeRun
+        收起详情后轮询即停，卡会僵在屏幕右上角压住运行列表（2026-11-04 实案）。
+        双保险：CSS 兜底（详情不可见就收）+ closeRun 补一次刷新，缺一不可。"""
+        flat = _flat(self.css)
+        self.assertIn(
+            'html[data-layout="workbench"] main:not(:has(#run-detail:not(.hidden))) #change-summary',
+            flat,
+            "缺少「详情不可见就收起浮卡」的 CSS 兜底规则",
+        )
+        js = _read("app.js")
+        i = js.index("function closeRun()")
+        seg = js[i:js.index("\nfunction ", i + 10)]
+        self.assertIn("renderChangeSummary()", seg, "closeRun 必须补一次 renderChangeSummary()")
+        self.assertGreater(
+            seg.index("renderChangeSummary()"),
+            seg.index('$("run-detail").classList.add("hidden")'),
+            "renderChangeSummary() 要排在详情收起之后",
+        )
+
 
 class TestDemoHomeSample(unittest.TestCase):
     """demo 首页样张（用户 2026-11-02 第三次贴图：「这个样式哟，不要搞错了哟」）。

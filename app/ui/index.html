@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="reference-composer.css">
 <link rel="stylesheet" href="button-reference.css">
 <link rel="stylesheet" href="conversation-reference.css">
+<link rel="stylesheet" href="chat-outline.css">
 <link rel="stylesheet" href="workspace-editor.css">
 <link rel="stylesheet" href="chat-delivery.css">
 <link rel="stylesheet" href="revision-brief.css">
@@ -2995,6 +2996,9 @@
 <!-- 对话条「快捷指令」按钮 + 浮层（发送走 window.chatSend 真源，
      必须放在 app.js 之后） -->
 <script defer src="chat-quickprompts.js?v=20261103"></script>
+<!-- 对话左缘「大纲」轨道（圆点 = 用户发言，悬停出历史列表，点击跳转）。
+     独立覆盖层，不碰 app.js；依赖 #rd-chat-flow 的 DOM，defer 排在后即可 -->
+<script defer src="chat-outline.js"></script>
 <!-- 改稿单查看器（P1-E）：闸门拦住发布时，把「哪一章哪一段差什么」摆出来。
      独立覆盖层，不碰 app.js；只复用 api / openModal / toast 这几个全局 -->
 <script defer src="revision-brief.js"></script>

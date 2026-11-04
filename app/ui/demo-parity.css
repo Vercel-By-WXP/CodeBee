@@ -1323,6 +1323,13 @@ html[data-layout="workbench"] body.files-mode #change-summary {
   display: none !important;
 }
 
+/* 兜底（2026-11-04 运行记录实案）：这张卡的显隐只在 side 快照轮询里刷新，
+   closeRun 收起详情后轮询即停，卡会僵在屏幕右上角压住运行列表。
+   规则：主栏里 #run-detail 不可见（运行列表/主页/概览…）→ 一律不许出现。 */
+html[data-layout="workbench"] main:not(:has(#run-detail:not(.hidden))) #change-summary {
+  display: none !important;
+}
+
 /* ---------- 9. 设置页卡片与标题：按 demo .set-pane / .card / .card-h 收口 ----------
    demo 设置页（theme.css 419-439）：
      .set-pane  padding 18 22 36
