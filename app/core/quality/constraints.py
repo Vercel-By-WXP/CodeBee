@@ -108,15 +108,37 @@ def detect(text):
 
 
 def resolve(task):
-    """给任务找到适用的约束：先看显式题材字段，再看标题/目标/背景里的词。"""
+    """给任务找到适用的约束：显式字段 → 任务描述里的词 → 与判据同一份题材识别。
+
+    第三档是 2026-11-04 补的（P2-D）：前两档只看标题 / 目标 / 背景，而作者在界面上
+    新建一本打猎文时，标题里常常一个词表词都没有（《一头猎物，三笔账》只命中
+    「猎物」，词表收的是「猎获」），目标里写「年代打猎文」也才 1 命中、够不到
+    2 票的门槛。于是判据按正文认出了题材、开工约束却没下发——同一份驳回教训
+    只走了一半，作者照着改也只改到一半。兜底去问 `appeal.genre_of()`：
+    两处认出同一个题材比两处各认各的更重要。
+
+    认不出仍然返回 None：绝不把别的题材的约束套到这本书上。**显式点名了题材
+    却认不出时也不兜底正文**——`appeal_genre` 是「这本书是什么题材」的明示，
+    与 `genre`（平台/产品分类，可能是「都市」「男频」这类画像之外的词）不是一回事。
+    同一本被判「unknown_genre」的书，不该在提示词里收到打猎约束。
+    """
     task = task if isinstance(task, dict) else {}
-    for key in ("appeal_genre", "genre", "类型", "题材"):
+    explicit = str(task.get("appeal_genre") or "").strip()
+    if explicit:
+        return load(explicit)
+    for key in ("genre", "类型", "题材"):
         got = load(task.get(key))
         if got:
             return got
     text = " ".join(str(task.get(k) or "") for k in ("title", "goal", "context"))
     genre = detect(text)
-    return load(genre) if genre else None
+    if genre:
+        return load(genre)
+    try:
+        from . import appeal as quality_appeal
+        return load(quality_appeal.genre_of(task))
+    except Exception:  # noqa: BLE001 - 识别失败只损失这一块，不能拖垮提示词拼装
+        return None
 
 
 def _source_line(data):

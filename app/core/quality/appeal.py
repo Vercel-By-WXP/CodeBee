@@ -521,19 +521,14 @@ def check_task(task, chapters=None, genre=None, use_model=None, model=None,
         return {"enabled": False, "reason": "no_workdir"}
     gate = _positive_int(chapters, DEFAULT_CHAPTERS)
     limit = max(gate, _positive_int(scan, DEFAULT_SCAN))
-    texts = []
-    for number in range(1, limit + 1):
-        path = root / ("chapter-%02d.md" % number)
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace").strip()
-        except OSError:
-            body = ""
-        if body:
-            texts.append({"chapter": number, "text": body})
+    texts = _read_texts(task, limit)
     if not texts:
         return {"enabled": False, "reason": "no_text"}
-    profile = profile_for(genre or task.get("appeal_genre")) or \
-        profile_for(_auto_genre(task, texts)) or None
+    # 显式点名题材就按它判：认不出就是认不出，**不拿正文改判成别的题材**——
+    # 作者说「这是打猎文」、正文却像都市文时，应当报「认不出打赏题材」让人看，
+    # 而不是悄悄换一副承诺清单去判他。
+    explicit = str(genre or task.get("appeal_genre") or "").strip()
+    profile = profile_for(explicit) if explicit else profile_for(genre_of(task, texts))
     if profile is None:
         return {"enabled": False, "reason": "unknown_genre"}
     want_model = use_model if use_model is not None else (
@@ -546,19 +541,63 @@ def check_task(task, chapters=None, genre=None, use_model=None, model=None,
     return result
 
 
-def _auto_genre(task, texts):
-    """先看书目元数据里的类型/题材，猜不出来再看正文。"""
-    from .. import store
+def _read_texts(task, limit=None):
+    """读 workdir 里的 `chapter-NN.md`：没有目录 / 一章都没有时返回空列表。
+
+    与 `check_task` 的读法只此一份，题材识别与判据读的是同一批正文——两处各写
+    一份读法，迟早出现「判据说看到 5 章、识别说看到 3 章」。
+    """
+    task = task if isinstance(task, dict) else {}
+    raw = str(task.get("workdir") or "").strip()
+    if not raw:
+        return []
+    root = Path(raw)
+    if not root.is_dir():
+        return []
+    limit = _positive_int(limit, max(DEFAULT_CHAPTERS, DEFAULT_SCAN))
+    texts = []
+    for number in range(1, limit + 1):
+        path = root / ("chapter-%02d.md" % number)
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            body = ""
+        if body:
+            texts.append({"chapter": number, "text": body})
+    return texts
+
+
+def genre_of(task, texts=None):
+    """这个任务属于哪个题材画像；认不出返回空串（**不猜**）。
+
+    题材识别的唯一真源（2026-11-04 P2-D）：判据（`check_task`）与开工约束
+    （`quality.constraints`）都问这里。原先两处各认各的——判据会看正文，
+    约束只看标题/目标——于是同一本书可能出现「体检说第 1 章没给读者东西」
+    却「提示词里没有对应的开工约束」：一份教训只下发了一半，作者照改也只改到
+    一半。谁先认出来不重要，**两边认出同一个**才重要。
+
+    元数据先看，但字段值**必须真的对得上画像**：`genre` 是平台/产品分类
+    （「都市」「男频」「悬疑」），与内置画像不是同一套命名。原实现只要字段
+    非空就拿去 `profile_for()`，认不出就返回 None 并就此放弃，正文检测永远
+    轮不到——一本打猎文只要分类填成「都市」，判据就彻底不判了。
+    认不出就继续看正文；正文也对不上才算认不出。
+    """
+    task = task if isinstance(task, dict) else {}
     book = {}
     try:
+        from .. import store
         book = store.get_task(task.get("id")) or {}
     except Exception:  # noqa: BLE001 - 元数据读不到不算错
         book = {}
     for key in ("appeal_genre", "genre", "类型", "题材"):
-        value = (task.get(key) or book.get(key) or "")
-        if str(value).strip():
-            return str(value).strip()
-    return detect_genre("\n".join(item["text"] for item in texts))
+        value = str(task.get(key) or book.get(key) or "").strip()
+        if value and profile_for(value) is not None:
+            return value
+    if texts is None:
+        texts = _read_texts(task, DEFAULT_CHAPTERS)
+    sample = "\n".join(str(item.get("text") or "") for item in texts or []
+                       if isinstance(item, dict))
+    return detect_genre(sample) or ""
 
 
 _MODEL_HOOK = None
