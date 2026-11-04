@@ -21,6 +21,8 @@
 <link rel="stylesheet" href="conversation-reference.css">
 <link rel="stylesheet" href="workspace-editor.css">
 <link rel="stylesheet" href="chat-delivery.css">
+<link rel="stylesheet" href="revision-brief.css">
+<link rel="stylesheet" href="signing-check.css">
 <link rel="stylesheet" href="mobile-workbench.css">
 <link rel="stylesheet" href="project-overview.css">
 <link rel="stylesheet" href="task-ops.css">
@@ -2993,5 +2995,12 @@
 <!-- 对话条「快捷指令」按钮 + 浮层（发送走 window.chatSend 真源，
      必须放在 app.js 之后） -->
 <script defer src="chat-quickprompts.js?v=20261103"></script>
+<!-- 改稿单查看器（P1-E）：闸门拦住发布时，把「哪一章哪一段差什么」摆出来。
+     独立覆盖层，不碰 app.js；只复用 api / openModal / toast 这几个全局 -->
+<script defer src="revision-brief.js"></script>
+<!-- 过签体检（P2-A）：闸门只在投递口生效，挡不住拷到平台网页手动投，所以结论
+     前置到详情页右栏。独立覆盖层，不碰 app.js；排在 revision-brief 之后，
+     弹层里的「看改稿单」要能调到 openRevisionBrief -->
+<script defer src="signing-check.js"></script>
 </body>
 </html>

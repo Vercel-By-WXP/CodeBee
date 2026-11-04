@@ -1239,6 +1239,15 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                                                    ("enabled", "reason", "genre",
                                                     "chapter_count")},
                                         "blockers": list(result.get("blockers") or [])})
+            m = re.match(r"^/api/tasks/([^/]+)/signing-check$", path)
+            if m:
+                # 过签体检（P2-A）：闸门只在投递口生效，挡不住「拷到平台网页手动投」，
+                # 所以结论要在稿子写完时就能看见。只读、现算、不落盘。
+                task = store.get_task(m.group(1))
+                if not task:
+                    return self._json(404, {"error": "not found"})
+                from core.quality import health as quality_health
+                return self._json(200, quality_health.report(task))
             m = re.match(r"^/api/tasks/([^/]+)/detail$", path)
             if m:
                 task = store.get_task(m.group(1))

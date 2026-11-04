@@ -1,0 +1,177 @@
+/* 过签体检卡（P2-A）样式
+ *
+ * 落点两处：
+ *   ① 右栏常驻面板里的一张小卡（#rd-tabs-more > #sc-card），188 宽；
+ *   ② 点开的报告弹层（.sc-modal .modal）——注意 openModal 第 4 参挂在
+ *      `.modal-wrap` 上，所以写 `.sc-modal .modal`，不要写 `#modal`
+ *      （`#modal` 是整屏遮罩，写它会收窄遮罩而不是卡）。
+ *
+ * 颜色全走主题变量（--text/--muted/--border/--ok/--warn/--bad），十套 wb-* 主题
+ * 自动跟随；不写死 hex，也不给组件另起色名。
+ */
+#rd-tabs-more > #sc-card {
+  padding: 8px 2px 10px;
+  margin: 0 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+#sc-card .sc-head {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+#sc-card .sc-head:hover { background: rgba(127, 127, 127, .1); }
+
+#sc-card .sc-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+#sc-card[data-verdict="blocked"] .sc-dot { background: var(--bad); }
+#sc-card[data-verdict="warn"] .sc-dot { background: var(--warn); }
+#sc-card[data-verdict="pass"] .sc-dot { background: var(--ok); }
+
+#sc-card .sc-name {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* 一句话结论：面板只有 184 内宽，最多两行，超出截断（不用 -webkit-line-clamp，
+   Edge 147+ 已弃用 -webkit-box，计算值落 flow-root 直接失效）。 */
+#sc-card .sc-badge {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 3em;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: normal;
+  word-break: break-word;
+}
+
+#sc-card[data-verdict="blocked"] .sc-badge { color: var(--bad); }
+#sc-card[data-verdict="pass"] .sc-badge { color: var(--ok); }
+
+#sc-card .sc-sub {
+  padding: 2px 6px 0 19px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: normal;
+}
+
+#sc-card .sc-sub:empty { display: none; }
+
+/* —— 报告弹层 —— */
+.sc-modal .modal {
+  width: min(600px, 94vw);
+}
+
+.sc-modal .sc-lead {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.sc-modal .sc-meta {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.sc-modal .sc-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(127, 127, 127, .04);
+}
+
+.sc-modal .sc-row {
+  display: grid;
+  grid-template-columns: 68px 76px 1fr 78px;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.sc-modal .sc-row[data-status="empty"] { background: rgba(240, 86, 106, .1); }
+.sc-modal .sc-row[data-status="short"] { background: rgba(245, 185, 66, .1); }
+
+/* 空窗但没被拦的章（门禁外单章）：它确实没给东西，但不该跟被拦的章同色——
+   红色一排会让作者以为五章全废。降成橙，文案也换成「单章空窗」。 */
+.sc-modal .sc-row[data-status="empty"][data-blocked="false"] {
+  background: rgba(245, 185, 66, .1);
+}
+
+.sc-modal .sc-ch { color: var(--text); font-weight: 600; }
+.sc-modal .sc-w,
+.sc-modal .sc-g { color: var(--muted); }
+.sc-modal .sc-st { color: var(--text); text-align: right; }
+.sc-modal .sc-row[data-status="empty"] .sc-st { color: var(--bad); }
+.sc-modal .sc-row[data-status="empty"][data-blocked="false"] .sc-st { color: var(--warn); }
+.sc-modal .sc-row[data-status="short"] .sc-st { color: var(--warn); }
+
+.sc-modal .sc-note {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.sc-modal .sc-block {
+  margin-top: 14px;
+}
+
+.sc-modal .sc-h {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  color: var(--muted);
+}
+
+.sc-modal .sc-block.is-bad .sc-h { color: var(--bad); }
+.sc-modal .sc-block.is-warn .sc-h { color: var(--warn); }
+
+.sc-modal .sc-li {
+  padding: 5px 8px;
+  margin-bottom: 3px;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, .07);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text);
+  white-space: normal;
+}
+
+.sc-modal .sc-foot-note {
+  margin-top: 16px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}

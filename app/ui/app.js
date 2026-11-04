@@ -7869,8 +7869,13 @@ function renderTaskDetail() {
   const tk = ((S.state || {}).tasks || []).find((x) => x.id === key);
   const latestSummary = ((S.state || {}).task_latest || {})[key] || {};
   // 专家详情分型 hero：小说/代码型挂首屏带（状态取任务/最近运行摘要）
+  // 注意 `latestSerial` 必须先声明再用：下面 galleryRunId 的 `latestSerial && …`
+  // 只在 latestSummary.id 为空时才求值，而「手工导入、从未跑过运行」的任务
+  // （如实案《一头猎物》）正好命中这一支——声明写在使用之后会抛
+  // `Cannot access 'latestSerial' before initialization`，整个任务详情渲染中断。
+  const latestSerial = latestSerialBatch(tk);
   const covSrc = (tk.cover_gen && (tk.cover_gen.status || tk.cover_gen.run_id))
-    ? tk : (latestSerialBatch(tk) || tk);
+    ? tk : (latestSerial || tk);
   expertHeroPaint(expertHeroKind(tk && tk.type), {
     taskKey: key, taskId: key, type: tk && tk.type, title: tk && tk.title,
     status: (latestSummary.status || (tk && tk.status) || ""),
@@ -7879,7 +7884,6 @@ function renderTaskDetail() {
     cover: covSrc.cover_gen || null,
     galleryRunId: latestSummary.id || (latestSerial && latestSerial.id) || "",
   });
-  const latestSerial = latestSerialBatch(tk);
   const latestSerialSummary = latestSerial
     && (((S.state || {}).task_latest || {})[latestSerial.id]) || {};
   const earlyPlan = (latestSerial && latestSerial.serial && latestSerial.serial.early_finish)
