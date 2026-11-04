@@ -195,28 +195,23 @@ def _advice(chapter, min_words, gate):
     return out
 
 
-def _chapter_texts(task):
-    """按章号读正文：`chapter-01.md` 起，读不到就空。
+def _chapter_texts(task, limit=None):
+    """按章号读正文：读法与 `appeal.check_task()` **同一份**（`chapters.discover`）。
 
     注意 `appeal.analyze()` 的结果里**不带正文**（它只回证据与判据，正文
     一旦塞进返回值就会顺着闸门 decision 进 API 响应）。锚点定位需要原文，
-    所以由这里按章号现读——读法与 `appeal.check_task()` 完全一致。
+    所以由这里按章号现读。
+
+    2026-11-04 P2-E：原先这里自己 glob `chapter-*.md`，与判据各写一套读法。
+    判据开始认「合稿补前几章」之后，两套读法立刻分叉——判据说第 1 章有问题，
+    改稿单却拿不到第 1 章的原文，锚点全退化成章级结论。
     """
-    from pathlib import Path
-    root = Path(str((task or {}).get("workdir") or ""))
-    if not str((task or {}).get("workdir") or "").strip() or not root.is_dir():
+    from . import chapters as chapter_files
+    workdir = str((task or {}).get("workdir") or "").strip()
+    if not workdir:
         return {}
-    out = {}
-    for path in sorted(root.glob("chapter-*.md")):
-        try:
-            number = int(path.stem.split("-")[-1])
-        except (ValueError, IndexError):
-            continue
-        try:
-            out[number] = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-    return out
+    rows, _info = chapter_files.discover(workdir, limit or appeal.DEFAULT_SCAN)
+    return {row["chapter"]: row["text"] for row in rows}
 
 
 def build(result, task=None):
@@ -230,7 +225,14 @@ def build(result, task=None):
     chapters = [c for c in (result.get("chapters") or []) if isinstance(c, dict)]
     if not result.get("blockers") or not chapters:
         return {"enabled": False, "reason": "no_blocker", "chapters": []}
-    texts = _chapter_texts(task)
+    # 只读到「结果里出现的最大章号」为止：200 章的书不该为了前六章的锚点整本读盘。
+    limit = 0
+    for chapter in chapters:
+        try:
+            limit = max(limit, int(chapter.get("chapter") or 0))
+        except (TypeError, ValueError):
+            continue
+    texts = _chapter_texts(task, limit or None)
     profile = appeal.profile_for(result.get("genre")) or {}
     min_words = appeal._positive_int(profile.get("min_words"), appeal.DEFAULT_MIN_WORDS)
     gate_count = appeal._positive_int(profile.get("chapters"), appeal.DEFAULT_CHAPTERS)

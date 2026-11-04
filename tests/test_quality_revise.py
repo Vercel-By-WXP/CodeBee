@@ -153,6 +153,26 @@ class BuildTest(unittest.TestCase):
         self.assertTrue(chapter["pending"])
         self.assertEqual(chapter["paragraph"], 2)
 
+    def test_merged_manuscript_also_yields_anchors(self):
+        """前几章在合稿里时，改稿单同样要拿得到原文（P2-E：两套读法会分叉）。"""
+        result = {"enabled": True, "genre": "hunt_1980s",
+                  "blockers": ["第 1 章没有兑现任何「获得」"],
+                  "chapters": [{"chapter": 1, "words": 2000,
+                                "blockers": ["第 1 章没有兑现任何「获得」"]}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # 根目录只有第 21 章起；前二十章在「已成稿」的合稿里，标题不带 `#`。
+            (root / "chapter-21.md").write_text("沈砚看着任务单。\n", encoding="utf-8")
+            (root / "已成稿").mkdir()
+            body = ("第一章 忙完这阵\n\n猎物在旧线以北。\n\n拟以腌肉一块换木料一根，待明日确认。\n\n"
+                    + "他把门闩插好，回身看见灶台上的灯还亮着。\n\n" * 40
+                    + "第二章 送到医院\n\n" + "沈砚没有抬头。\n\n" * 40)
+            (root / "已成稿" / "前二十章.md").write_text(body, encoding="utf-8")
+            brief = revise.build(result, {"workdir": str(root)})
+        chapter = brief["chapters"][0]
+        self.assertTrue(chapter["located"])
+        self.assertEqual(chapter["anchors"][0]["mark"], "pending")
+
 
 class BlockForTest(unittest.TestCase):
     """提示词入口：有拦截才注入，没拦截一个字都不出现。"""
