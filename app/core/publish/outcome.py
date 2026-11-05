@@ -413,6 +413,13 @@ def _relevant(task, limit=MAX_RECORDS) -> list:
             own = bool(title) and _title_key(entry.get("work")) == title
             same_cat = bool(cats.get(pid)) and \
                 str(entry.get("category") or "").strip().casefold() == cats.get(pid)
+            # 分类未知时的退化口径：只要求同平台，不再要求同分类。
+            # 新书任务的 `book_meta` 基本都是空的（分类只在平台侧才有），
+            # 一刀切要求同分类会让人工登记过的每一条判决都进不了提示词——
+            # 台账录得再准也等于没录（2026-11-05 实测：七猫两条拒签原话录入后，
+            # 新建的七猫书 block 仍是空串）。这里仍以 platforms 非空为前提，
+            # 平台都判断不出来的时候宁可什么都不带，也不跨平台搬结论。
+            cat_fallback = (not cats.get(pid)) and pid in platforms
             if own:
                 picked.append((True, str(entry.get("at")), entry))
             elif stage in BAD_STAGES or stage == "signed":
@@ -421,7 +428,7 @@ def _relevant(task, limit=MAX_RECORDS) -> list:
                 # 它们不构成对新书的任何约束，只会占预算。
                 if platforms and pid not in platforms:
                     continue
-                if same_cat:
+                if same_cat or cat_fallback:
                     picked.append((False, str(entry.get("at")), entry))
     picked.sort(key=lambda x: (x[0], x[1]), reverse=True)
     return [entry for _own, _at, entry in picked[:max(0, int(limit))]]
