@@ -85,7 +85,7 @@
 <link rel="stylesheet" href="ui-scale.css?v=20261103">
 <!-- chat-quiet.css（2026-11-04）：对话降噪——meta 归位到气泡上方、过程行合并成
      一条折叠、思考行改限高滚动。纯覆盖层，删掉本行即回滚（行为层见 chat-quiet.js）。 -->
-<link rel="stylesheet" href="chat-quiet.css?v=20261104c">
+<link rel="stylesheet" href="chat-quiet.css?v=20261105a">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
@@ -3078,7 +3078,7 @@
 <script defer src="chat-outline.js"></script>
 <!-- 对话静音层（2026-11-04）：把连续的「一行状态」过程收进一条折叠摘要。
      独立覆盖层，不碰 app.js；依赖 #rd-chat-flow 的 DOM，defer 排在后即可 -->
-<script defer src="chat-quiet.js?v=20261104c"></script>
+<script defer src="chat-quiet.js?v=20261105a"></script>
 <!-- 改稿单查看器（P1-E）：闸门拦住发布时，把「哪一章哪一段差什么」摆出来。
      独立覆盖层，不碰 app.js；只复用 api / openModal / toast 这几个全局 -->
 <script defer src="revision-brief.js"></script>

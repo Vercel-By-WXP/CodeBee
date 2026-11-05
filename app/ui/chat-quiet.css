@@ -469,3 +469,44 @@
    默认只在原位留一行「查看输出 · 664 字」，点开才铺开。 */
 #run-detail #rd-chat .chat-body.chat-quiet-hidden { display: none; }
 #run-detail #rd-chat .chat-body.chat-quiet-hidden.is-open { display: block; }
+
+/* ---------- 档位胶囊：重点 / 全部（2026-11-05） ---------- */
+/* 不占版面：绝对定位在正文列右上沿（top/right 由 chat-quiet.js 按 flow 实测算，
+   诊断条多高都跟着走，不在这里猜）。默认半透明，悬停/聚焦才实起来——它是
+   「猜错了才去动」的开关，不该跟内容抢注意力。 */
+#run-detail #rd-chat { position: relative; }   /* 胶囊的包含块（与 #rd-outline 同源） */
+#run-detail #rd-chat .cq-level {
+  position: absolute;
+  top: 8px;            /* 兜底值：JS 量到 flow 位置后会覆盖 */
+  right: 2px;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--chat-rule);
+  border-radius: 999px;
+  background: var(--bg, transparent);
+  opacity: .45;
+  transition: opacity .15s ease;
+}
+#run-detail #rd-chat .cq-level:hover,
+#run-detail #rd-chat .cq-level:focus-within { opacity: 1; }
+#run-detail #rd-chat .cq-level > button {
+  border: 0;
+  background: none;
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--chat-muted);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+#run-detail #rd-chat .cq-level > button:hover { color: var(--chat-text); }
+#run-detail #rd-chat .cq-level > button.is-on {
+  background: var(--chat-user-bg);
+  color: var(--chat-text);
+}

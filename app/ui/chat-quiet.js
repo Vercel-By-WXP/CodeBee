@@ -333,7 +333,108 @@
     return txt || label(row);
   }
 
+  /* ---------- 视图档位：重点 / 全部（2026-11-05） ----------
+   * 分层是硬判据（isPrimary），猜错时用户只能一段段点开——补一个不占版面的切换：
+   * 「重点」只留主线（默认，11-04 用户要的效果），「全部」一条不折、按步骤流水看全
+   * 过程。选择存 localStorage，跨刷新保持。
+   *
+   * 三个实现前提，改之前先读：
+   * · 胶囊挂 `#rd-chat` 而不是 `#rd-chat-flow`：后者每次重绘整块 innerHTML（胶囊
+   *   会被抹掉），而且 app.js 的复制/编辑重发按子节点索引回查（塞节点会错位）。
+   * · 「全部」不是把 isPrimary 改一遍，而是干脆不跑 foldSecondary：折叠是破坏性的
+   *   （成员被搬进 details），切回来得把成员原序搬回去（unfoldSecondary）。
+   * · 按钮节点只在文案/档位变化时重建——按下与抬起之间换节点，点击就丢了。 */
+  const LEVEL_KEY = "orch.cqlevel";
+  function level() {
+    try { return localStorage.getItem(LEVEL_KEY) === "all" ? "all" : "focus"; }
+    catch (e) { return "focus"; }
+  }
+
+  /* 反向操作：把被收进 cq-sec 的成员按原顺序搬回 host，再删掉那层 details。
+   * `:scope >` 是必须的——组内部的 details 不归这一段管。 */
+  function unfoldSecondary(host) {
+    host.querySelectorAll(":scope > .cq-sec").forEach((d) => {
+      Array.from(d.children).forEach((k) => {
+        if (k.tagName === "SUMMARY") return;
+        host.insertBefore(k, d);
+      });
+      d.remove();
+    });
+  }
+
+  /* 胶囊的宿主是**对话列**（#rd-chat），不是时间线（#rd-chat-flow）。
+   * merge() 里的 host 就是 flow 本身——直接 append 进去会被下一次
+   * `flow.innerHTML = html` 抹掉（2026-11-05 探针实测：胶囊 parentElement
+   * 正是 rd-chat-flow）。 */
+  function levelBox(host) {
+    return (host && host.closest ? host.closest("#rd-chat") : null)
+      || document.getElementById("rd-chat");
+  }
+
+  function placeLevel(el, box) {
+    // 贴在正文列的右上沿：flow 的 offsetTop/宽度已经把诊断条和居中列算进去了，
+    // 直接读它比在 CSS 里猜「诊断条多高」稳（诊断条随内容变高）。
+    const f = box.querySelector(":scope > .rd-chat-flow");
+    if (!f) return;
+    const top = Math.round(f.offsetTop) + 6;
+    const right = Math.max(2, Math.round(box.clientWidth - (f.offsetLeft + f.offsetWidth))) + 2;
+    if (el.dataset.cqTop !== String(top)) { el.style.top = top + "px"; el.dataset.cqTop = String(top); }
+    if (el.dataset.cqRight !== String(right)) { el.style.right = right + "px"; el.dataset.cqRight = String(right); }
+  }
+
+  function mountLevel(host) {
+    const box = levelBox(host);
+    if (!box) return null;
+    let el = document.getElementById("cq-level");
+    if (el && el.parentElement === box) return el;
+    if (el) el.remove();                       // 挂错层（例如换了宿主）：搬过来，别留孤儿
+    el = document.createElement("div");
+    el.id = "cq-level";
+    el.className = "cq-level";
+    el.setAttribute("role", "group");
+    el.setAttribute("data-i18n-aria", "对话详略");
+    el.setAttribute("aria-label", t("对话详略"));
+    el.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-cq-level]");
+      if (!b) return;
+      const next = b.dataset.cqLevel === "all" ? "all" : "focus";
+      if (next === level()) return;
+      try { localStorage.setItem(LEVEL_KEY, next); } catch (err) { /* 隐私模式：本次有效 */ }
+      const flowEl = box.querySelector(":scope > .rd-chat-flow");
+      if (next !== "focus" && flowEl) unfoldSecondary(flowEl);   // 「重点」的折回由下次对账做
+      if (flowEl) delete flowEl.dataset.cqSig;   // 指纹不清掉，对账会以为没变化直接 return
+      syncLevel(flowEl || host);                 // 先把按钮态改掉，用户立刻看到反馈
+      schedule();
+    });
+    box.appendChild(el);
+    return el;
+  }
+
+  function syncLevel(host) {
+    const el = mountLevel(host);
+    if (!el) return;
+    const box = el.parentElement;
+    const cur = level();
+    const items = [["focus", t("重点")], ["all", t("全部")]];
+    const sig = cur + "|" + items.map((i) => i[1]).join("/");
+    if (el.dataset.cqView !== sig) {           // 只在文案/档位真变了时重建按钮
+      el.dataset.cqView = sig;
+      el.innerHTML = "";
+      items.forEach(([id, text]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.cqLevel = id;
+        b.textContent = text;
+        b.setAttribute("aria-pressed", id === cur ? "true" : "false");
+        if (id === cur) b.classList.add("is-on");
+        el.appendChild(b);
+      });
+    }
+    placeLevel(el, box);
+  }
+
   function foldSecondary(host) {
+    if (level() === "all") return;             // 「全部」档：一条不折
     const kids = Array.from(host.children);
     const primary = kids.filter((el) => el.parentElement === host && isPrimary(el)).length;
     // 全是次要（没有一条重点）时不做：那样整条时间线会缩成一行，等于什么都没了
@@ -416,6 +517,7 @@
       mergeRuns(host);
       clampBodies(host);
       foldSecondary(host);   // 最后一步：重点留主线，次要整段不展示
+      syncLevel(host);       // 档位胶囊（绝对定位在右上角，不参与排版；「全部」时不折）
       // 运行中那行步骤名被 CSS 按 42% 截断：全文挂 title，鼠标停一下能看全
       host.querySelectorAll(".chat-bubble.agent.is-running > .chat-step-meta").forEach((el) => {
         const full = String(el.textContent || "").trim();
