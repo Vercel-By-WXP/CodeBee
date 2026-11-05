@@ -131,6 +131,13 @@ export async function boundedBody(request, limit = MAX_BODY) {
   return result;
 }
 
+// 重连接管时该关掉哪些旧 socket。只挑还处于 OPEN(1) / CLOSING(2) 的：已经
+// CLOSED(3) 的再 close 一次会抛，而休眠恢复后 getWebSockets() 里恰恰可能留着
+// 一堆尸体。这条判断是「接管」能否自愈的关键，所以单独拎出来测。
+export function staleConnectors(sockets) {
+  return (sockets || []).filter(ws => ws && (ws.readyState === 1 || ws.readyState === 2));
+}
+
 export function securityHeaders() {
   return new Headers({
     "cache-control": "no-store", "referrer-policy": "no-referrer",

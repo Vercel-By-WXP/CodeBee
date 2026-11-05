@@ -3,6 +3,7 @@ import {
   ID, SECRET, PAIR_CODE, SESSION_SECONDS, REQUEST_HEADERS, RESPONSE_HEADERS,
   digest, randomSecret, sessionCookie, readSession, sameOrigin, safePath, assetTarget,
   encode, decode, boundedBody, securityHeaders, json, preferredLang, rateLimitSubject,
+  staleConnectors,
 } from "./policy.mjs";
 
 async function allowed(env, request, action, limit, seconds, session = null) {
@@ -185,7 +186,24 @@ export class DeviceRelay extends DurableObject {
       const device = url.pathname.split("/").pop();
       const secret = (request.headers.get("authorization") || "").replace(/^Bearer /, "");
       if (!SECRET.test(secret) || (await digest(secret)).slice(0, 32) !== device) return json({ error: "Unauthorized" }, 401);
-      if (this.socket()) return json({ error: "Device already connected" }, 409);
+      // 同一台电脑重连必须能接管，不能把旧连接当成「别人占着」。
+      //
+      // 崩溃、强杀、休眠唤醒、NAT/代理重置都会让本机先发现连接已死，而云端要
+      // 等收到对端关闭帧或边缘探测失败才回调 webSocketClose；这条链路上还挂着
+      // setWebSocketAutoResponse（客户端 ping 由边缘直接回 pong，根本不唤醒
+      // DO），所以 DO 连「对方还活着吗」都无从判断。旧实现在这里回 409
+      // Device already connected，结果是一条僵尸 socket 把这台电脑永久锁死：
+      // 本机无限重连拿 409，手机侧恒显示「你的电脑当前离线」（2026-11-05 实案）。
+      //
+      // 凭据已经在 Worker 与本对象里双重校验过（Bearer secret → sha256 前 32 位
+      // 必须等于路径里的 device），能走到这里的只可能是这台电脑自己，所以
+      // 「后到的连接取代先到的」不放大任何权限：关掉旧 socket，新连接接管。
+      for (const ws of staleConnectors(this.ctx.getWebSockets("connector"))) {
+        // 旧 socket 上还挂着的请求先收尸，别等一个可能永远不来的
+        // webSocketClose 回调。
+        for (const [id, item] of this.pending) if (item.socket === ws) this.finish(id, "replaced");
+        try { ws.close(1012, "replaced"); } catch { /* already closing */ }
+      }
       const pair = new WebSocketPair();
       this.ctx.acceptWebSocket(pair[1], ["connector"]);
       pair[1].serializeAttachment({ device });
