@@ -13,6 +13,9 @@
 · 只登记账号级死错（error_codes.ACCOUNT_DEAD_CODES：QUOTA/AUTH/
   MISSING_CREDENTIAL/FORBIDDEN/TOOL_LAUNCH）；限流/超时/网络抖动是
   transient，退避重试的既有路径不变，不进台账。
+· 上游不可用类死错（UPSTREAM_SERVER / UPSTREAM_CONFIG）不是账号死错，但同一
+  CLI 同因连撞达阈值也会进本场停用名单（见 note_blocked_failure）：blocked
+  只说明「不怪产出」，不代表「值得一直撞」。
 · 一切读接口静默容错：台账挂了不能连累编排主链路。
 """
 from __future__ import annotations
@@ -277,6 +280,7 @@ def reset(run_id):
     with _LOCK:
         _BENCHED.pop(str(run_id), None)
         _NETDEAD.pop(str(run_id), None)
+        _BLOCKED_STREAK.pop(str(run_id), None)
 
 
 def is_benched(run_id, agent_id):
@@ -447,6 +451,105 @@ def network_dead_upstreams(run_id):
                     if n >= _NET_FUSE_THRESHOLD}
     except Exception:
         return set()
+
+
+# ------------------------------------------- 阻塞型死错连败熔断（2026-11-05）
+
+# 上游不可用类死错（UPSTREAM_SERVER / UPSTREAM_CONFIG）在判决轴上属 blocked，
+# 刻意不在 ACCOUNT_DEAD_CODES 里：一次 502 不该把一条 CLI 停掉，也不该算
+# 「候选链连续失败」。但 blocked 不等于「可以一直撞」——2026-11-05 生产实案：
+# 一日 92 条 UPSTREAM_SERVER 全是 codex 上游 503，摊在 26 个不同步骤上（同一本
+# 书 8 个章节的评审席），每一步都把同一个 CLI 重新选上，时间线排出 13 张失败
+# 卡。那次连供应商级熔断都没建立（provider 归属为空 80 条、命中已停用配置被
+# 丢弃 28 条），于是「谁都没数」——护栏只保护它数得到的动作。
+# 这一层只做一件事：同一 CLI 同一错误码**连续** N 次（中途该 CLI 无成功）→
+# 记入本场停用名单；既有换将/补位的 exclude 经 benched_ids 直接吃到，run 收场
+# 随 reset() 一起清。
+# 粒度取舍：不做账号级（那是 ACCOUNT_DEAD_CODES 的事，会落盘跨 run 生效），
+# 也不做上游级（runner 的 NETWORK 熔断按 upstream 记，前提是拿得到归属）——
+# 按 CLI 记是「归属为空」时唯一还数得清的量。
+_BLOCKED_FUSE_THRESHOLD = 3
+_BLOCKED_FUSE_CODES = frozenset({
+    ErrorCode.UPSTREAM_SERVER.value,
+    ErrorCode.UPSTREAM_CONFIG.value,
+})
+# run_id -> {agent_id: {"code": str, "n": int, "at": float}}
+_BLOCKED_STREAK = {}
+
+
+def note_blocked_failure(run_id, agent_id, code, at=None):
+    """记一次阻塞型死错；同因连败达阈值即把该 CLI 记入本场停用名单。
+
+    返回 True 表示「这一条把 CLI 熔断了」，调用方可在步骤备注里说明原因。
+    同因判定只看错误码：换码说明换了一种故障，重新计数——「连续失败」指的是
+    同一件事反复失败，混码累计会把一次抖动叠成死错。
+
+    只认 UPSTREAM_SERVER / UPSTREAM_CONFIG。TIMEOUT 是慢不是死；NETWORK 有
+    自己的 upstream 级熔断（见 note_network_failure）；QUOTA/FORBIDDEN 走
+    账号级首报即停。放进这里会让三类各自的有效语义互相打架。
+    """
+    if not run_id or not agent_id:
+        return False
+    value = error_code_value(code)
+    if value not in _BLOCKED_FUSE_CODES:
+        return False
+    now = float(at if at is not None else time.time())
+    aid = str(agent_id)
+    with _LOCK:
+        rows = _BLOCKED_STREAK.setdefault(str(run_id), {})
+        row = rows.get(aid) or {}
+        n = int(row.get("n") or 0) + 1 if row.get("code") == value else 1
+        rows[aid] = {"code": value, "n": n, "at": now}
+        if len(_BLOCKED_STREAK) > _MAX_RUNS:
+            oldest = min(_BLOCKED_STREAK,
+                         key=lambda k: max((r.get("at") or 0)
+                                           for r in _BLOCKED_STREAK[k].values()) or 0)
+            _BLOCKED_STREAK.pop(oldest, None)
+        if n < _BLOCKED_FUSE_THRESHOLD:
+            return False
+        entries = _BENCHED.setdefault(str(run_id), {})
+        if aid in entries:
+            return False   # 已停用，保留首报现场（与 bench() 同语义）
+        entries[aid] = {
+            "code": value,
+            "summary": safe_error_summary(value),
+            "at": now,
+            "source": "blocked",
+            "streak": n,
+        }
+        if len(_BENCHED) > _MAX_RUNS:
+            oldest = min(_BENCHED, key=lambda k: max(
+                (v.get("at") or 0) for v in _BENCHED[k].values()) or 0)
+            _BENCHED.pop(oldest, None)
+    _LOG.info("[bench] %s 同因连续 %d 次 %s，本场绕开", aid, n, value)
+    return True
+
+
+def note_blocked_ok(run_id, agent_id):
+    """该 CLI 真实成功一次：连败清零，并把「连败熔断」摘掉。
+
+    只摘 source=blocked 的那条——账号级死错要等 record_success 的统一恢复
+    语义处理，不能靠一次成功把「欠费」也当没事。熔断中的 CLI 本不会被选中，
+    所以这条路主要服务「熔断后又被兜底选上、居然成功了」的情形。
+    """
+    if not run_id or not agent_id:
+        return False
+    aid = str(agent_id)
+    with _LOCK:
+        rows = _BLOCKED_STREAK.get(str(run_id))
+        cleared = False
+        if rows and aid in rows:
+            rows.pop(aid, None)
+            cleared = True
+            if not rows:
+                _BLOCKED_STREAK.pop(str(run_id), None)
+        entries = _BENCHED.get(str(run_id)) or {}
+        if (entries.get(aid) or {}).get("source") == "blocked":
+            entries.pop(aid, None)
+            if not entries:
+                _BENCHED.pop(str(run_id), None)
+            cleared = True
+        return cleared
 
 
 def model_benched_agents(run_id):

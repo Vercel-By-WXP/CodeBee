@@ -1647,6 +1647,21 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
                                           res.get("error") or "")
         except Exception:
             pass
+        # 阻塞型死错连败台账：上游 503/端点不匹配属 blocked（不停账号、不算
+        # 产品失败），但同一 CLI 同因连撞三次之后，更后面的章节没有理由再把
+        # 它选一遍。2026-11-05 实案：25 条 UPSTREAM_SERVER 全来自 codex，摊在
+        # 26 个步骤上（8 个章节的评审席各选一次），一本 1103 步的书时间线排出
+        # 13 张失败卡——那次的供应商级熔断压根没建立（provider 归属为空 80
+        # 条、命中已停用配置被丢弃 28 条），所以没人记账。这条按 CLI 记，不依赖
+        # 供应商归属，达阈值即进本场停用名单（换将/补位经 benched_ids 自动绕开）。
+        try:
+            from . import bench as _bench
+            if agent.get("id") and agent.get("mode") == "real":
+                for _aid in _account_ids(agent):
+                    _bench.note_blocked_failure(run_id, _aid,
+                                                res.get("error_code"))
+        except Exception:
+            pass
         # 模型格台账：模型名不存在/该订阅不含此模型（MODEL_UNAVAILABLE）只证明
         # 这一格不可用，不能停用整条 CLI（同 CLI 换模型照常能干活）；但同一 run
         # 内没有理由再试一次。2026-10-23 实案：grok-build 未配绑定被推荐了 6 个
@@ -1671,6 +1686,9 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
             if agent.get("id") and agent.get("mode") == "real":
                 for _aid in _account_ids(agent):
                     _bench.record_success(_aid)
+                    # 真实成功＝连败链条到此为止：清阻塞连败计数，并把「连败
+                    # 熔断」那条摘掉（账号级死错仍归 record_success 统一恢复）。
+                    _bench.note_blocked_ok(run_id, _aid)
         except Exception:
             pass
     # A failed step with an entirely failed candidate history is a routing
