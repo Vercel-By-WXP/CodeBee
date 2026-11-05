@@ -86,6 +86,9 @@
 <!-- chat-quiet.css（2026-11-04）：对话降噪——meta 归位到气泡上方、过程行合并成
      一条折叠、思考行改限高滚动。纯覆盖层，删掉本行即回滚（行为层见 chat-quiet.js）。 -->
 <link rel="stylesheet" href="chat-quiet.css?v=20261105a">
+<!-- 空间管家（2026-11-05）：设置 → 数据页的磁盘透视 / 清理 / 搬家 / 账本覆盖层。
+     纯样式覆盖层，删掉本行 + cspace.js 那行 script 即回滚；后端包不受影响。 -->
+<link rel="stylesheet" href="cspace.css?v=20261105">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
@@ -3086,5 +3089,9 @@
      前置到详情页右栏。独立覆盖层，不碰 app.js；排在 revision-brief 之后，
      弹层里的「看改稿单」要能调到 openRevisionBrief -->
 <script defer src="signing-check.js"></script>
+<!-- 空间管家（2026-11-05）：设置 → 数据页注入磁盘透视 / 清理 / 搬家 / 账本。
+     必须在 i18n.js / app.js / borrow-ui.js 之后（要用 t / authHeaders / uiApproveCard）；
+     删掉本行 + cspace.css 那行 link 即整层回滚。 -->
+<script defer src="cspace.js?v=20261105"></script>
 </body>
 </html>

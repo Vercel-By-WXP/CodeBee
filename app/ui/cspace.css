@@ -1,0 +1,254 @@
+/* 空间管家（设置 → 数据页的独立覆盖层，2026-11-05）
+ *
+ * 只消费 wb-* token，不定义色板、不写死十六进制颜色；删掉 index.html 里
+ * 本文件那一行 <link> 即整层回滚。行为在 cspace.js。
+ * 卡行数一律 max-height: Nlh（新版 Edge 已不支持 -webkit-line-clamp）。
+ */
+details.cspace-box {
+  margin: 0 0 16px;
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  background: var(--wb-panel);
+  padding: 10px 14px 14px;
+}
+details.cspace-box > summary {
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wb-text);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details.cspace-box > summary::-webkit-details-marker { display: none; }
+details.cspace-box > summary::before {
+  content: "▸";
+  color: var(--wb-muted);
+  font-size: 12px;
+}
+details.cspace-box[open] > summary::before { content: "▾"; }
+.cs-sub {
+  margin: 4px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--wb-muted);
+}
+.cs-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 1px 8px;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: 999px;
+  color: var(--wb-muted);
+  background: var(--wb-panel2);
+  font-weight: 500;
+}
+.cs-lock.cs-open {
+  color: var(--wb-warn);
+  border-color: var(--wb-warn);
+}
+.cs-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--wb-border);
+  margin-bottom: 12px;
+}
+.cs-tab {
+  border: 0;
+  background: transparent;
+  color: var(--wb-muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+}
+.cs-tab:hover { color: var(--wb-text); background: var(--wb-panel2); }
+.cs-tab.on {
+  color: var(--wb-accent);
+  border-bottom-color: var(--wb-accent);
+  font-weight: 600;
+}
+.cs-pane { min-height: 88px; }
+.cs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.cs-bar input[type="text"], .cs-bar input[type="number"], .cs-bar select {
+  border: 1px solid var(--wb-border-strong);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--wb-panel);
+  color: var(--wb-text);
+  min-width: 0;
+}
+.cs-bar input[type="text"]:focus, .cs-bar input[type="number"]:focus {
+  outline: none;
+  border-color: var(--wb-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wb-accent) 15%, transparent);
+}
+.cs-bar .grow { flex: 1 1 240px; }
+.cs-bar .hint { font-size: 12px; color: var(--wb-muted); }
+.cs-list {
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 320px;
+  background: var(--wb-panel);
+}
+.cs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px dashed var(--wb-border);
+  font-size: 13px;
+  color: var(--wb-text);
+  min-height: 32px;
+}
+.cs-row:last-child { border-bottom: 0; }
+.cs-row.click { cursor: pointer; }
+.cs-row.click:hover { background: var(--wb-panel2); }
+.cs-row .cs-name {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-height: 2lh;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cs-row .cs-meta {
+  color: var(--wb-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cs-row .cs-path {
+  color: var(--wb-muted);
+  font-size: 11.5px;
+  max-height: 1lh;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.cs-badge {
+  flex: none;
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--wb-border-strong);
+  color: var(--wb-muted);
+  background: var(--wb-panel2);
+}
+.cs-badge.ok { color: var(--wb-ok); border-color: var(--wb-ok); }
+.cs-badge.mid { color: var(--wb-warn); border-color: var(--wb-warn); }
+.cs-badge.no { color: var(--wb-warn); border-color: var(--wb-warn); }
+.cs-empty {
+  padding: 14px 10px;
+  color: var(--wb-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.cs-out {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--wb-text);
+  max-height: 220px;
+  overflow: auto;
+}
+.cs-out .cs-wait { color: var(--wb-muted); }
+.cs-out .cs-err { color: var(--wb-warn); }
+.cs-out .cs-ok { color: var(--wb-ok); }
+.cs-plan {
+  margin-top: 8px;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--wb-panel2);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.cs-plan strong { font-weight: 600; }
+.cs-steps { margin: 6px 0 0; padding-left: 18px; }
+.cs-steps li { max-height: 2lh; overflow: hidden; }
+.cs-crumb {
+  font-size: 12px;
+  color: var(--wb-muted);
+  margin-bottom: 6px;
+  max-height: 2lh;
+  overflow: hidden;
+  word-break: break-all;
+}
+.cs-crumb button {
+  border: 0;
+  background: transparent;
+  color: var(--wb-accent);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.cs-drives { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.cs-drive {
+  border: 1px solid var(--wb-border);
+  border-radius: 10px;
+  padding: 7px 10px;
+  min-width: 132px;
+  background: var(--wb-panel);
+}
+.cs-drive b { font-size: 13px; font-weight: 600; }
+.cs-drive .cs-meta { display: block; margin-top: 2px; }
+.cs-meter {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--wb-panel2);
+  margin-top: 6px;
+  overflow: hidden;
+}
+.cs-meter > i {
+  display: block;
+  height: 100%;
+  background: var(--wb-accent);
+}
+.cs-foot {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--wb-muted);
+}
+.cs-btn {
+  border: 1px solid var(--wb-border-strong);
+  border-radius: 8px;
+  background: var(--wb-panel);
+  color: var(--wb-text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 11px;
+  cursor: pointer;
+}
+.cs-btn:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
+.cs-btn:disabled { opacity: .5; cursor: not-allowed; }
+.cs-btn.primary {
+  background: var(--wb-accent);
+  border-color: var(--wb-accent);
+  color: var(--wb-panel);
+}
+.cs-btn.danger { border-color: var(--wb-warn); color: var(--wb-warn); }
+@media (max-width: 820px) {
+  .cs-row { flex-wrap: wrap; }
+  .cs-row .cs-name { flex-basis: 100%; }
+  .cs-list { max-height: 260px; }
+}

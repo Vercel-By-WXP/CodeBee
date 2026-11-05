@@ -374,6 +374,15 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
     def _route_get(self):
         path = urlparse(self.path).path
         m = None
+        # 空间管家（2026-11-05）：GET 一律只读，全部逻辑在独立包里；
+        # 删掉这段转发即整层回滚，不碰任何既有路由。
+        if path.startswith("/api/cspace/"):
+            if not self._authed():
+                return self._json(401, {"error": "需要访问令牌"})
+            from core.cspace import api as cspace_api
+            code, payload = cspace_api.handle_get(
+                path, parse_qs(urlparse(self.path).query))
+            return self._json(code, payload)
         # 静态页不设防（无敏感信息）：远程裸地址打开时由前端令牌门引导输入
         if path in ("/", "/index.html"):
             # 2026-10-28 用户拍板：去掉独立欢迎页，根路径直接进工作台。
@@ -1699,6 +1708,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             self._body()
         except RequestBodyError as e:
             return self._json(e.status, {"error": str(e)})
+        # 空间管家（2026-11-05）：POST 默认 dry-run，写动作要显式 confirm；
+        # 鉴权与同源已在上面统一把过，这里只做转发。
+        if path.startswith("/api/cspace/"):
+            from core.cspace import api as cspace_api
+            code, payload = cspace_api.handle_post(path, self._body() or {})
+            return self._json(code, payload)
         if path == "/api/availability/refresh":
             # 手动「重新体检」：并行重探异常通道（有界等待）后连同台账一并返回。
             # 单条探针最久 20s，后端 join 25s 盖满；前端按钮超时须 ≥30s。
