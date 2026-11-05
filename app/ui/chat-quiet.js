@@ -174,6 +174,8 @@
         if (full <= 26) return;                          // 本来就一行，别加按钮
         mode = jsony ? "hidden" : "clamp1";
       } else if (full > CLAMP_H + 60) {
+        // 同一条前提的另一处：isStep 恒为真，所以这份「真回复折三行」走不到。
+        // 与 isPrimary 的最后一行同源，改渲染规则时两处要一起看。
         mode = "clamp";
       } else {
         return;                                          // 智能体回复不短，别动
@@ -277,12 +279,23 @@
 
   /* ---------- 语义分层：重点 / 次要（2026-11-04 用户「分一下重点和次要」） ----------
    * 前面几步是「把过程压薄」，本质还是在展示它们。用户真正要的是分层：
-   *   **重点**：你说的话、智能体在跟你说的话（没有 step-meta 的成段正文）、
-   *             执行失败、最新一次评审、正在跑的那条、结果/文件变更卡。
+   *   **重点**：你说的话、智能体在跟你说的话、执行失败、最新一次评审、
+   *             正在跑的那条、结果/文件变更卡。
    *   **次要**：系统记录、过程记录、历次评审、重试账本、步骤输出、CLI 原始输出。
    * 次要内容默认**不展示**：整段收进一个默认收起的 details，摘要只有一行极淡的
    * 「⋯ 过程 12 条」——主线上一眼只剩重点，又不至于让人以为中间被跳过了。
-   * 一个都不要漏的判据思路：**认不出来的一律当重点**（宁可多留一行，不误吞结果）。 */
+   * 一个都不要漏的判据思路：**认不出来的一律当重点**（宁可多留一行，不误吞结果）。
+   *
+   * 2026-11-05 实测修正：「智能体在跟你说话 = 没有 step-meta 的成段正文」这条
+   * 最初写下来的形态**在产品里并不存在**——app.js 的 stepMeta 表达式在 done 状态下
+   * 补一句 t("完成")，所以每个 agent 气泡都带 `.chat-step-meta`。在 4 个真实任务
+   * （连载 1103 行 / 短篇 228 行 / 研究 359 行 / 已完结 8 行）、共 1695 条 agent 行
+   * 上数过：带 step-meta 的 100%，「成段回复」0 条（`scratch/cq-primary-audit.mjs`）。
+   * 对话时间线本来就是步骤流水，没有独立的「回复」形态——这不是缺陷，是产品形态，
+   * 步骤全折是用户要的效果。但下面那句 `return true` 因此走不到，别把它当活判据。
+   * 前提是跨文件的：哪天 app.js 不再写 step-meta，本层会把所有智能体输出当重点，
+   * 而且**不会报错**。`tests/test_ui_chat_quiet_primary.py` 锁住了这条前提。 */
+
   const PRIMARY_BAD = ".chat-result,.chat-change-row,.chat-fups,.chat-fail-card,.chat-review-card";
   function isPrimary(el) {
     const c = el.classList;
@@ -303,7 +316,9 @@
     // 「系统记录 ×8」这类在气泡内部、但整条就是调度说明的行：次要
     if (b.querySelector(".chat-sysnote-group,.chat-quiet-group,.chat-quiet-reviews")) return false;
     if (b.querySelector(":scope > .chat-step-meta")) return false; // 步骤输出 = 次要
-    return true;                                                   // 在跟你说话
+    // 兜底：当前渲染规则下走不到（每个 agent 气泡都带 step-meta，见上方实测说明）。
+    // 留着是为了「哪天渲染规则变了」之后不至于把真回复当步骤吞掉。
+    return true;
   }
 
   // 组内所有行（组是 details，成员在里面）
