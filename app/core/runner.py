@@ -1894,6 +1894,35 @@ def _codex_fallback_model():
     return value.strip() or None
 
 
+_CLAUDE_DEFAULT_MAX_THINKING = 8192
+
+
+def _claude_thinking_cap(ant_env):
+    """claude 的思考预算上限：返回字符串，None 表示不干预。
+
+    claude-code 认不出绑定的第三方模型（2026-11-05 实案：``glm-5.3-flash``
+    打在 ``open.bigmodel.cn/api/anthropic`` 上，日志里是
+    ``[claude-code:unrecognized_model]``）时不会套用任何模型画像，thinking
+    预算无人约束——两本新书的 ``draft-c1`` 各自写到 3.4~3.6 万思考 token、
+    二十多分钟、正文一个字都没有。同一 settings 加 ``MAX_THINKING_TOKENS``
+    后实测 76 个思考 delta 就正常出正文，故按上限兜住。
+
+    已显式配了 ``MAX_THINKING_TOKENS`` 的尊重原值；env
+    ``TUTTI_CLAUDE_MAX_THINKING_TOKENS`` 置 ``off`` 关闭本兜底。
+    """
+    if "MAX_THINKING_TOKENS" in (ant_env or {}):
+        return None
+    raw = (os.environ.get("TUTTI_CLAUDE_MAX_THINKING_TOKENS", "") or "").strip()
+    if raw.lower() in ("off", "none", "disabled"):
+        return None
+    if raw:
+        try:
+            return str(max(0, int(raw)))
+        except (TypeError, ValueError):
+            pass
+    return str(_CLAUDE_DEFAULT_MAX_THINKING)
+
+
 def _noop_browser_command():
     """返回喂给 ``BROWSER`` 环境变量的静默 noop 命令（含 ``%s`` 占位符）。
 
@@ -1977,6 +2006,14 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
         # 优先级高于用户 settings.json（同日实测），临时文件进程结束随 tmp_files 删。
         ant = {k: v for k, v in (agent.get("env") or {}).items()
                if k.startswith("ANTHROPIC_")}
+        # 绑定里显式写了思考预算的，原样带进 settings（它不带 ANTHROPIC_ 前缀，
+        # 会被上面那行过滤掉，不过滤就等于「配了也被兜底默认值顶掉」）。
+        explicit_cap = str((agent.get("env") or {}).get("MAX_THINKING_TOKENS") or "").strip()
+        if explicit_cap:
+            ant["MAX_THINKING_TOKENS"] = explicit_cap
+        cap = _claude_thinking_cap(ant)
+        if cap:
+            ant["MAX_THINKING_TOKENS"] = cap
         if ant:
             try:
                 fd, sp = tempfile.mkstemp(prefix="tutti_claude_settings_", suffix=".json")
