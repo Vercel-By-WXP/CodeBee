@@ -2258,7 +2258,43 @@ def _entry_endpoint(prov, allowed):
         cap = caps.get(p) or {}
         if cap.get("base") and _wire_endpoint_compatible(p, cap["base"]):
             return p, cap["base"], cap.get("wire_api") or "responses"
+    bridged = _bridged_endpoint(prov, allowed)
+    if bridged:
+        return bridged
     return None
+
+
+def _bridged_endpoint(prov, allowed):
+    """协议对不上时，用本机 wire 桥把 OpenAI 面「翻译」成 Anthropic 面。
+
+    只有一种情形需要它：**claude 只吃 anthropic，而上游只开 OpenAI 面**
+    （2026-11-05 实案：本机 Hy4 网关 `/v1/messages` 直接 404，于是「有额度
+    但绑不上」，每一步都退化成换将）。此处不改上游、不改 CLI，只在 127.0.0.1
+    起一个翻译层，返回的端点让 `_chain_entry_env` 照常注入 ANTHROPIC_BASE_URL。
+
+    不接管的情形：协议本来就匹配（上面已 return）、非 openai 上游（没有可翻译
+    的面）、无密钥、地址被 `_wire_endpoint_compatible` 判不安全。失败一律返回
+    None，维持原来「绑不上」的语义——桥是增益，不是新依赖。
+    """
+    if "anthropic" not in (allowed or ()):
+        return None
+    if prov.get("protocol") != "openai":
+        return None
+    base = prov.get("base_url") or ""
+    if not _wire_endpoint_compatible("openai", base):
+        return None
+    key = prov.get("api_key") or ""
+    if not key:
+        return None
+    try:
+        from . import wire_bridge
+        # model 传空：桥按每次请求体里的 model 透传，换链上模型不必重建
+        url = wire_bridge.register(base, key, "")
+    except Exception:
+        return None
+    if not url:
+        return None
+    return "anthropic", url, "responses"
 
 
 def _native_cli_provider(prov, target=""):
