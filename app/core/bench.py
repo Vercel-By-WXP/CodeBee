@@ -469,6 +469,12 @@ def network_dead_upstreams(run_id):
 # 也不做上游级（runner 的 NETWORK 熔断按 upstream 记，前提是拿得到归属）——
 # 按 CLI 记是「归属为空」时唯一还数得清的量。
 _BLOCKED_FUSE_THRESHOLD = 3
+# 「要不要把码集放宽」这件事已经有实测答案，别再猜：拿 11-05 全量 step 失败
+# （124 条 / 15 个 run）按时间重放进这套台账，只认 UPSTREAM_* 时 124 → 56
+# （绕开 68 条）；把 VENDOR_ERROR 也收进来**多省 0 步**，再收 TIMEOUT /
+# PARSE_FAIL / NETWORK 仍然 0——24 条 VENDOR_ERROR 全在 codex 名下，而同一条
+# CLI 的 UPSTREAM_SERVER 早已先把它熔断，后来的每一条都落在「已绕开」里。
+# 扩码集只会放大误判面（把「慢/本地崩溃」的通道也赶下场），收益是零。
 _BLOCKED_FUSE_CODES = frozenset({
     ErrorCode.UPSTREAM_SERVER.value,
     ErrorCode.UPSTREAM_CONFIG.value,
