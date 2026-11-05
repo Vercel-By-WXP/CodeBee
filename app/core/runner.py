@@ -1825,6 +1825,75 @@ def _normalize_aider_model(model, env):
     return model
 
 
+# aider 的上下文上限从 litellm 的 model_prices_and_context_window 取；CodeBee
+# 绑定的网关模型名（glm-5.3-flash、nvidia/nemotron-3-ultra-550b-a55b:free 等）
+# litellm 一张表里都没有 → max_input_tokens 取不到 → aider 算出
+# 「Total tokens: ~21011 of 0 -- possibly exhausted context window!」，
+# 任何输入都被判超限，进程却正常退出（exit 0）。2026-11-05 实案：signing-eval
+# 走 aider 兜底，日志只有思考过程、tokens 记 0，签约评估被判 review_degraded，
+# 上层只看到「done」——比红叉更难发现。这里把绑定模型名注册进本地元数据表。
+_AIDER_DEFAULT_MAX_INPUT = 128000
+_AIDER_DEFAULT_MAX_OUTPUT = 8192
+
+
+def _aider_model_metadata_file(model, workdir=None):
+    """为 aider 生成一份 litellm 格式的模型元数据文件，返回路径（失败返回 None）。
+
+    ``--model-metadata-file`` 走 aider 的 ``register_litellm_models``，落到
+    ``model_info_manager.local_model_metadata``；查找是**按完整模型名精确匹配**
+    （``get_model_from_cached_json_db`` → ``local_model_metadata.get(model)``），
+    所以 key 必须与 ``--model`` 传进去的字符串逐字一致（含 ``anthropic/`` 前缀）。
+
+    ``litellm_provider`` 要跟前缀同值：无命中时 aider 还会拿 ``a/b`` 拆成
+    ``pieces[1]`` 再查一次并要求 provider 相等，填错会静默退回空元数据。
+
+    上下文取 ``TUTTI_AIDER_MAX_INPUT_TOKENS``，未设时 128000——比任何一个在用
+    网关模型的真实窗口都小或相等，宁可让 aider 提前压缩，也不要它判 0 空转。
+    """
+    if not model:
+        return None
+    try:
+        max_in = int(os.environ.get("TUTTI_AIDER_MAX_INPUT_TOKENS",
+                                    str(_AIDER_DEFAULT_MAX_INPUT)))
+    except (TypeError, ValueError):
+        max_in = _AIDER_DEFAULT_MAX_INPUT
+    max_in = max(2048, max_in)
+    provider = model.split("/", 1)[0] if "/" in model else "openai"
+    entry = {
+        "max_input_tokens": max_in,
+        "max_output_tokens": _AIDER_DEFAULT_MAX_OUTPUT,
+        "max_tokens": max_in + _AIDER_DEFAULT_MAX_OUTPUT,
+        # 成本填 0：网关是包月/按量自结，aider 只拿它算「本次花费」，
+        # 填真实价反而要按每家供应商改表，收益不抵成本。
+        "input_cost_per_token": 0.0,
+        "output_cost_per_token": 0.0,
+        "litellm_provider": provider,
+        "mode": "chat",
+    }
+    try:
+        fd, path = tempfile.mkstemp(prefix="tutti_aider_models_", suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({model: entry}, f, ensure_ascii=False)
+        return path
+    except Exception:
+        return None
+
+
+def _codex_fallback_model():
+    """codex 无绑定模型时的兜底：返回 env 指定或 None。
+
+    ``~/.codex/config.toml`` 的默认 model 一旦在网关上失去通道（2026-11-05
+    实案：``gpt-5.6-sol`` → ``503 No available channel for this model``），
+    codex 每一步都会在 10 秒内退出，而 CodeBee 侧只看到「换将」，会把整条
+    编排链逐路撞一遍。同网关的 ``glm-5.3-flash`` 走 ``/v1/responses`` 实测
+    200，故无绑定时用它兜底；env 置空字符串可退回旧行为（用 CLI 默认）。
+    """
+    value = os.environ.get("TUTTI_CODEX_FALLBACK_MODEL")
+    if value is None:
+        return "glm-5.3-flash"
+    return value.strip() or None
+
+
 def _noop_browser_command():
     """返回喂给 ``BROWSER`` 环境变量的静默 noop 命令（含 ``%s`` 占位符）。
 
@@ -1850,6 +1919,12 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
     if kind == "codex":
         cp = agent.get("codex_provider")
         reasoning = str(agent.get("reasoning_effort") or "").strip().lower()
+        # 无绑定模型时 codex 会用 config.toml 的默认 model，而那个默认值可能
+        # 已在网关上失去通道（2026-11-05 实案：gpt-5.6-sol →
+        # 503 No available channel，每步 10 秒即退，整条编排链逐路撞墙）。
+        # 同一网关的 glm-5.3-flash 走 /v1/responses 实测 200，无绑定时用它兜底。
+        if not model:
+            model = _codex_fallback_model()
         if sid:
             # resume 子命令不支持 -s 也不支持 --full-auto（0.154 实测：
             # "unexpected argument '--full-auto'"）——读/写模式都用 -c sandbox_mode
@@ -1966,6 +2041,12 @@ def _build_call(agent, kind, sid, readonly, model, prompt, images=None, workdir=
             # _normalize_aider_model 注释，2026-11-02 实案）。
             model = _normalize_aider_model(model, agent.get("env") or {})
             argv += ["--model", model]
+            # 自定义网关模型名不在 litellm 表里 → aider 把上下文判成 0 →
+            # 兜底步骤 exit 0 却零产出（见 _aider_model_metadata_file 注释）。
+            meta = _aider_model_metadata_file(model, workdir)
+            if meta:
+                argv += ["--model-metadata-file", meta]
+                tmp_files.append(meta)
     else:  # generic：模板把 {prompt}/{session} 嵌进参数（注意 cmd 行长度限制）
         tmpl = agent.get("argv_template") or ["-p", "{prompt}"]
         if sid and agent.get("resume_argv_template"):
