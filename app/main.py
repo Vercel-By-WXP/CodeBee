@@ -4997,7 +4997,11 @@ def _state_run_summary(run):
               "started_at", "ended_at", "summary", "error", "paused", "pause_phase",
               "pause_requested_at", "pause_reached_at", "direct_session",
               "auto_resumes", "resume_enqueue_at", "cost_usd", "tokens",
-              "blocked_by")
+              "blocked_by",
+              # 「重启打断」的两个标记：视图层据此把这一条从红色「失败」降级成
+              # 灰色「已中断」，并在被续跑接上（superseded_by）之后不再占一行
+              # （2026-11-05：一次同步重启在运行记录里留了六行红）。
+              "interrupted", "interrupted_at", "superseded_by")
     fields += ("project_memory_id",)
     summary = {key: run[key] for key in fields if key in run}
     run_steps = run.get("steps") or []

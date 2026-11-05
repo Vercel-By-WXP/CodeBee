@@ -265,9 +265,14 @@ class WaitResumeTests(unittest.TestCase):
             self.assertTrue(jobs._maybe_auto_resume("r1"))
         rt.assert_called_once()
         # 等待类：正式预算不动，等待计数 +1
-        kwargs = ur.call_args.kwargs
-        self.assertEqual(kwargs.get("auto_resumes"), 5)
-        self.assertEqual(kwargs.get("auto_wait_resumes"), 1)
+        # 续跑成功后会再写一次 superseded_by，所以按「带预算的那次调用」取，
+        # 不能取 call_args（= 最后一次），否则预算键不在、断言取到 None。
+        calls = [c.kwargs for c in ur.call_args_list]
+        budget = next(c for c in calls if "auto_resumes" in c)
+        self.assertEqual(budget.get("auto_resumes"), 5)
+        self.assertEqual(budget.get("auto_wait_resumes"), 1)
+        # 旧 run 挂反向指针，界面才能折成「已中断·已续跑」
+        self.assertIn({"superseded_by": "r2"}, calls)
         se.assert_called_once()
 
     def test_maybe_auto_resume_hard_error_burns_budget(self):
@@ -285,9 +290,11 @@ class WaitResumeTests(unittest.TestCase):
              mock.patch.object(store, "update_run") as ur, \
              mock.patch.object(jobs, "_schedule_enqueue"):
             self.assertTrue(jobs._maybe_auto_resume("r1"))
-        kwargs = ur.call_args.kwargs
-        self.assertEqual(kwargs.get("auto_resumes"), 1)
-        self.assertEqual(kwargs.get("auto_wait_resumes"), 0)
+        calls = [c.kwargs for c in ur.call_args_list]
+        budget = next(c for c in calls if "auto_resumes" in c)
+        self.assertEqual(budget.get("auto_resumes"), 1)
+        self.assertEqual(budget.get("auto_wait_resumes"), 0)
+        self.assertIn({"superseded_by": "r2"}, calls)
 
     def test_wait_budget_cap_stops(self):
         from app.core import store

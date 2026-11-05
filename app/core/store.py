@@ -42,6 +42,10 @@ LOCK = threading.RLock()
 _TASKS = {}
 _RUNS = {}
 
+# 服务重启打断时写进 run.error 的前缀（只在本文件的读盘收尸里写过）。留着当前缀
+# 用：老数据没有 interrupted 标记，只能靠这串字回头认（2026-11-05 用户实拍）。
+_RESTART_INTERRUPT_TEXT = "服务重启中断"
+
 # 评审文案里的章号提及（「第22章」「第26—28章」）——与 pipeline._CH_MENTION_RE
 # 保持同一口径（store 不得反向 import pipeline，只能各存一份；改动须两处同步）。
 _CH_MENTION_RE = re.compile(r"第\s*(\d{1,4})\s*(?:[—–\-~至到]\s*(\d{1,4})\s*)?章")
@@ -898,7 +902,15 @@ def load_all():
                                 not r.get("resume_enqueue_at")))
                 if interrupted:
                     r["status"] = "failed"
-                    r["error"] = r.get("error") or "服务重启中断，可重试"
+                    r["error"] = r.get("error") or _RESTART_INTERRUPT_TEXT + "，可重试"
+                    # 「被重启打断」不是「跑挂了」（2026-11-05 用户实拍：一次同步
+                    # 重启后运行记录里连着六条红色「失败」，其实全是同一个断点）。
+                    # 状态仍记 failed（重试/继承/统计的既有口径不变），另打一个标记
+                    # 让视图层能换一种说法与颜色；自动续跑接上之后还会补
+                    # superseded_by，那时这条就只是账本，不必再占一行。
+                    r["interrupted"] = r.get("interrupted") or "restart"
+                    r["interrupted_at"] = r.get("interrupted_at") or time.strftime(
+                        "%Y-%m-%d %H:%M:%S")
                     # 补 ended_at：收尸只改状态不收时间，run 永远挂着「无结束
                     # 时间」的空壳（2026-10-15 实案：中断 run 反复被收尸重写
                     # 却始终 ended_at=None，UI 上像仍在跑）。就地生成当前时间。
@@ -908,6 +920,22 @@ def load_all():
                     # 级错误记录；避免错误台账的文件 I/O 拉长全局锁。
                     recovered_failures.append(dict(r))
                 _RUNS[r["id"]] = r
+            except Exception:
+                pass
+        # 老账回填（只读，不落盘）：两件事在旧数据里没有显式字段，靠已有信息推导——
+        # ① 被打断的老 run 只留下一句错误文案（那串字只有本函数写过，认得出来）；
+        # ② 「旧 run 被新 run 续跑接上」这层关系，历史上只存在后继 run 的
+        #    auto_resumed_from 里。两代口径都认，界面上才不会一直挂着陈年红点。
+        # 不落盘是刻意的：它是推导值，每次启动重算一遍即可，也就不怕写坏文件。
+        for r in _RUNS.values():
+            try:
+                if (r.get("status") == "failed" and not r.get("interrupted")
+                        and str(r.get("error") or "").startswith(_RESTART_INTERRUPT_TEXT)):
+                    r["interrupted"] = "restart"
+                prev = _RUNS.get(str(r.get("auto_resumed_from") or ""))
+                if prev is not None and not prev.get("superseded_by"):
+                    prev["superseded_by"] = r["id"]
+                    prev.setdefault("interrupted", "restart")
             except Exception:
                 pass
         # 回填历史遗留：运行已终态而任务仍停在 created/queued/running 的脏状态

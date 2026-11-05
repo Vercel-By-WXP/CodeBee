@@ -628,6 +628,8 @@ body.side-resizing iframe { pointer-events: none; }
 .sglyph.warn { background: var(--warn); }
 .sglyph.ring { box-sizing: border-box; background: none; border: 1.5px solid var(--muted); }
 .sglyph.none { background: var(--border); }
+/* 被服务重启打断（不是跑挂）：中灰细点，与「从未运行」的暗点区分开 */
+.sglyph.intr { box-sizing: border-box; background: none; border: 1.5px solid var(--muted); opacity: .7; }
 .sglyph.ast {
   width: 12px; height: 12px; border-radius: 0; background: none;
   color: var(--text); font-size: 12.5px; line-height: 12px; text-align: center;
@@ -1083,6 +1085,11 @@ button.small { padding: 4px 10px; font-size: 13px; }
   font-size: 13px; color: var(--muted);
 }
 
+/* 「另有 N 条被重启打断、已自动续跑」：一条折叠行，不跟活着的 run 抢版面 */
+.run-ghost-line { margin: 2px 0 6px; font-size: 12.5px; color: var(--muted); }
+.run-ghost-line .ghost.small { font-size: 12.5px; color: var(--muted); padding: 2px 0; opacity: .8; }
+.run-ghost-line .ghost.small:hover { opacity: 1; color: var(--text); }
+
 .empty {
   padding: 26px 16px; text-align: center; color: var(--muted); font-size: 14.5px;
   border: 1px dashed var(--border-strong); border-radius: var(--r-md);
@@ -1096,6 +1103,9 @@ button.small { padding: 4px 10px; font-size: 13px; }
 .chip.done { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 /* 失败徽章底色降到 9%：失败连排时 14% 粉底满屏累眼，字色保持 --bad 仍一眼可辨 */
 .chip.failed { background: color-mix(in srgb, var(--bad) 9%, transparent); color: var(--bad); }
+/* 「已中断」：灰，不用红。红的只留给真的失败——一次同步重启会把在跑的三本
+   全标成 failed，满屏红看着像全线崩了（2026-11-05 实拍） */
+.chip.interrupted { background: var(--chip-queued-bg); color: var(--muted); }
 .chip.cancelled { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 /* 慢 ≠ 坏：CLI 能力探测没在预算内返回版本时用 warn，不用 failed */
 .chip.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }

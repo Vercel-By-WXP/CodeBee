@@ -2052,6 +2052,9 @@ function runStatusText(run) {
   }
   const txt = { queued: t("排队中"), running: t("运行中"), done: t("完成"),
     failed: t("失败"), cancelled: t("已取消"), timeout: t("超时") }[st] || st;
+  // 服务重启打断的：说清「被打断」而不是「失败」，续跑接上了再补一句
+  if (st === "failed" && run && run.interrupted)
+    return run.superseded_by ? t("已中断·已续跑") : t("已中断·可续跑");
   if ((st === "queued" || st === "running") && run && run.paused) {
     return run.pause_phase === "paused"
       ? t("已到达暂停点·等待放行")
@@ -6748,6 +6751,21 @@ async function deleteSideDir(ids, dir) {
 /* 运行中/排队中的记录不可删除，勾选框置灰 */
 function runDeletable(r) { return r.status !== "queued" && r.status !== "running"; }
 
+/* 「被服务重启打断」不是「跑挂了」：状态仍是 failed（重试/继承/统计口径不动），
+ * 但行色与文案分开说——红点只留给真的失败（2026-11-05 用户实拍六行红）。 */
+function runChipClass(r) {
+  const st = String((r && r.status) || "");
+  if (st === "failed" && r && r.interrupted) return "interrupted";
+  return st;
+}
+
+/* 「已中断·已续跑」的账本行默认折起来：它们仍在 allRuns 里（可勾选/可全清），
+ * 只是不跟活着的 run 抢同一屏。 */
+function toggleShowInterrupted() {
+  S.showInterrupted = !S.showInterrupted;
+  renderRunList();
+}
+
 function renderPauseAllButton() {
   const btn = $("btn-pause-all");
   if (!btn) return;
@@ -6768,7 +6786,12 @@ function renderRunList() {
   const box = $("run-list");
   if (!box) return;
   const allRuns = (S.state && S.state.runs) || [];
-  const runs = allRuns.slice(0, 30);
+  // 「已被续跑接上」的中断记录默认不占行（2026-11-05 用户实拍：一次同步重启 +
+  // 自动续跑，同一本书在列表里变成「运行中 1 条 + 失败 2 条」，红的比活的多）。
+  // 它们仍在 allRuns 里，勾选/全清/计数口径不变，只是默认折到一行里。
+  const ghosts = allRuns.filter((r) => r.superseded_by);
+  const visible = S.showInterrupted ? allRuns : allRuns.filter((r) => !r.superseded_by);
+  const runs = visible.slice(0, 30);
   const pickable = new Set(runs.filter(runDeletable).map((r) => r.id));
   // 记录被删/转为活跃后清掉残留勾选，避免下次批量误删
   S.selRuns = S.selRuns || {};
@@ -6776,7 +6799,17 @@ function renderRunList() {
   const selN = Object.keys(S.selRuns).length;
   const clr = $("btn-clear-runs");
   if (clr) clr.disabled = !allRuns.some(runDeletable);
-  if (!runs.length) { box.innerHTML = '<div class="empty">' + t("暂无运行记录") + '</div>'; return; }
+  const ghostLine = ghosts.length
+    ? '<div class="run-ghost-line"><button class="ghost small" onclick="toggleShowInterrupted()">'
+      + (S.showInterrupted
+        ? t("收起 {0} 条已中断记录", String(ghosts.length))
+        : t("另有 {0} 条被重启打断、已自动续跑（显示）", String(ghosts.length)))
+      + "</button></div>"
+    : "";
+  if (!runs.length) {
+    box.innerHTML = ghostLine + '<div class="empty">' + t("暂无运行记录") + '</div>';
+    return;
+  }
   const tools = '<div class="run-tools">' +
     '<label class="toggle"><input type="checkbox"' +
     (pickable.size && selN === pickable.size ? " checked" : "") +
@@ -6785,7 +6818,7 @@ function renderRunList() {
     (selN ? '<button class="danger small" onclick="deleteSelectedRuns()">' + t("删除所选") + '</button>' +
             '<button class="ghost small" onclick="clearRunSel()">' + t("取消选择") + '</button>' : "") +
     "</div>";
-  box.innerHTML = tools + runs.map((r) => {
+  box.innerHTML = ghostLine + tools + runs.map((r) => {
     const can = runDeletable(r);
     // 行结构照参考站的「主副标题 + 右侧状态与相对时间」：标题与摘要竖排成一块，
     // 状态点用侧栏同款字形（staskGlyph），时间用相对档（完整时间戳挪进悬停提示）
@@ -6795,12 +6828,12 @@ function renderRunList() {
       '<input type="checkbox" class="rcheck"' + (S.selRuns[r.id] ? " checked" : "") + (can ? "" : " disabled") +
       ' title="' + (can ? t("勾选以批量删除") : t("运行中的记录不可删除，请先取消")) + '"' +
       ' onclick="event.stopPropagation()" onchange="toggleRunSel(\'' + jsq(r.id) + '\', this.checked)">' +
-      '<span class="rglyph">' + staskGlyph(r.status || "") + "</span>" +
+      '<span class="rglyph">' + staskGlyph(r.status || "", r) + "</span>" +
       '<div class="rt">' +
       '<span class="name">' + esc(r.title) + runKindTag(r.kind) + "</span>" +
       (sub ? '<span class="desc">' + esc(t(sub)) + "</span>" : "") +
       "</div>" +
-      '<span class="chip ' + esc(r.status || "") + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
+      '<span class="chip ' + esc(runChipClass(r)) + (r.paused ? " pause-" + esc(r.pause_phase || "requested") : "") + '">' + esc(runStatusText(r)) + "</span>" +
       '<span class="time" title="' + esc(r.created_at) + '">' + esc(relTime(r.created_at)) + "</span>" +
       '<button class="danger small" title="' + (can ? t("删除该记录") : t("运行中的记录不可删除，请先取消")) + '"' + (can ? "" : " disabled") +
       ' onclick="event.stopPropagation(); deleteRun(\'' + jsq(r.id) + '\')">' + t("删除") + '</button></div></div>';
@@ -6824,8 +6857,11 @@ function relTime(s, now) {
 
 /* 任务行状态字形（ZCode 桌面端式样）：进行中旋转✻ / 完成绿点 / 失败红点 /
  * 取消橙点 / 排队空圈 / 从未运行暗点 */
-function staskGlyph(status) {
+function staskGlyph(status, run) {
   if (status === "running") return '<span class="sglyph ast">✻</span>';
+  // 被服务重启打断的：灰点。红色留给「真的跑挂了」——一次同步重启不该在
+  // 运行记录里堆出一片红（2026-11-05 用户实拍六行）。
+  if (status === "failed" && run && run.interrupted) return '<span class="sglyph intr"></span>';
   if (status === "done") return '<span class="sglyph ok"></span>';
   if (status === "failed") return '<span class="sglyph bad"></span>';
   if (status === "cancelled") return '<span class="sglyph warn"></span>';

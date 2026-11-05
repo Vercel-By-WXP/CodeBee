@@ -945,6 +945,13 @@ def _maybe_auto_resume(run_id):
             new_counters["auto_resumes"] = auto_resumes + 1
             new_counters["auto_wait_resumes"] = wait_resumes
         store.update_run(new_run["id"], **new_counters)
+        # 反向指针：旧 run 已被这次续跑接上，视图层据此把它降级成「账本」而不是
+        # 再占一行红色「失败」（2026-11-05 用户实拍：同一本书的断点被重启打断三次，
+        # 列表里就是三行红）。只写一笔，不改状态——重试/继承的既有口径不动。
+        try:
+            store.update_run(run_id, superseded_by=new_run["id"])
+        except Exception:
+            pass
 
         _schedule_enqueue({"kind": "orchestration", "run_id": new_run["id"],
                            "task_id": task["id"]}, AUTO_RESUME_DELAY_S)
