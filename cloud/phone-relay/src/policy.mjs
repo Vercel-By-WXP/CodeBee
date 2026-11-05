@@ -138,6 +138,25 @@ export function staleConnectors(sockets) {
   return (sockets || []).filter(ws => ws && (ws.readyState === 1 || ws.readyState === 2));
 }
 
+// 挑「当前该用哪条连接」——必须是最后接管进来的那条，不是列表里的第一条。
+//
+// getWebSockets() 的顺序不作承诺，而对端已死、云端还没收到关闭帧的 socket 同样
+// 报 readyState === 1。接管发生后若仍按 .find() 取第一条，请求会被投进那条死
+// 连接：手机上每个 /api/xxx 都要等满 DO 的 120 秒收尸，最后回「电脑连接已中断」
+// ——配对和 /relay/session 全绿，只有真正转发数据时才塌（2026-11-05 实案）。
+//
+// at 由 acceptWebSocket 时写进 serializeAttachment，休眠恢复后还在，所以按它
+// 排序不依赖内存状态。
+export function newestConnector(sockets, atOf = () => 0) {
+  let best = null, bestAt = -Infinity;
+  for (const ws of sockets || []) {
+    if (!ws || ws.readyState !== 1) continue;
+    const at = atOf(ws);
+    if (at >= bestAt) { best = ws; bestAt = at; }
+  }
+  return best;
+}
+
 export function securityHeaders() {
   return new Headers({
     "cache-control": "no-store", "referrer-policy": "no-referrer",

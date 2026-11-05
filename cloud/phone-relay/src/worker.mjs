@@ -3,7 +3,7 @@ import {
   ID, SECRET, PAIR_CODE, SESSION_SECONDS, REQUEST_HEADERS, RESPONSE_HEADERS,
   digest, randomSecret, sessionCookie, readSession, sameOrigin, safePath, assetTarget,
   encode, decode, boundedBody, securityHeaders, json, preferredLang, rateLimitSubject,
-  staleConnectors,
+  staleConnectors, newestConnector,
 } from "./policy.mjs";
 
 async function allowed(env, request, action, limit, seconds, session = null) {
@@ -177,7 +177,10 @@ export class DeviceRelay extends DurableObject {
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
-  socket() { return this.ctx.getWebSockets("connector").find(ws => ws.readyState === 1); }
+  socket() {
+    return newestConnector(this.ctx.getWebSockets("connector"),
+      ws => (ws.deserializeAttachment() || {}).at || 0);
+  }
 
   async fetch(request) {
     const url = new URL(request.url);
@@ -206,7 +209,9 @@ export class DeviceRelay extends DurableObject {
       }
       const pair = new WebSocketPair();
       this.ctx.acceptWebSocket(pair[1], ["connector"]);
-      pair[1].serializeAttachment({ device });
+      // at 决定 socket() 用哪条（见 newestConnector）：接管进来的新连接永远比
+      // 那条可能还报 OPEN 的僵尸新。serializeAttachment 跨休眠存活。
+      pair[1].serializeAttachment({ device, at: Date.now() });
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
     if (url.pathname === "/relay/pair") {
@@ -332,7 +337,10 @@ export class DeviceRelay extends DurableObject {
       return;
     }
     const item = this.pending.get(message.id);
-    if (!item || item.socket !== ws) return;
+    // 不校验 item.socket === ws：本 DO 的每条 connector socket 都是用同一个
+    // secret 换来的（同一个 device），电脑中途重连时响应会从新 socket 回来。
+    // 认死旧 socket 会让那条请求一直挂到 120 秒收尸。
+    if (!item) return;
     this.touch(message.id);
     if (message.type === "headers" && !item.started) {
       const headers = securityHeaders();

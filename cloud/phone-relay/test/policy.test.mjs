@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { assetTarget, rateLimitSubject, REQUEST_HEADERS, staleConnectors } from "../src/policy.mjs";
+import { assetTarget, rateLimitSubject, REQUEST_HEADERS, staleConnectors, newestConnector } from "../src/policy.mjs";
 
 const DEVICE = "a".repeat(32);
 const PHONE_A = "b".repeat(64);
@@ -49,6 +49,30 @@ test("reconnect evicts every socket that can still be closed", () => {
   assert.deepEqual(staleConnectors([open, closing, closed]), [open, closing]);
   assert.deepEqual(staleConnectors([]), []);
   assert.deepEqual(staleConnectors(undefined), []);
+});
+
+test("the socket used for forwarding is the newest one, not the first", () => {
+  // 对端已死、云端还没收到关闭帧的 socket 同样报 readyState === 1，而
+  // getWebSockets() 顺序不作承诺。取 .find() 第一条会把请求投进僵尸连接：
+  // 配对与 /relay/session 全绿，只有真正转发数据时才挂 120 秒。
+  const zombie = { readyState: 1, at: 100 };
+  const taken = { readyState: 1, at: 200 };
+  const closed = { readyState: 3, at: 300 };
+  const atOf = ws => ws.at;
+  assert.equal(newestConnector([zombie, taken, closed], atOf), taken);
+  assert.equal(newestConnector([taken, zombie], atOf), taken);
+  assert.equal(newestConnector([closed], atOf), null);
+  assert.equal(newestConnector([], atOf), null);
+  assert.equal(newestConnector(undefined, atOf), null);
+});
+
+test("relay forwards over either connector socket of the same device", async () => {
+  // 响应原先被 item.socket !== ws 挡掉：电脑中途重连后，响应从新 socket 回来，
+  // 而 item 记的是旧 socket，那条请求只能挂到 120 秒超时。
+  const src = await readFile(new URL("../src/worker.mjs", import.meta.url), "utf8");
+  const code = src.split("\n").filter(line => !/^\s*(\/\/|\/\*|\*)/.test(line)).join("\n");
+  assert.equal(/item\.socket !== ws/.test(code), false);
+  assert.match(code, /newestConnector\(/);
 });
 
 test("connector reconnect is never refused with 409", async () => {
