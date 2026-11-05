@@ -126,6 +126,57 @@ class BlockedFuseTests(unittest.TestCase):
         self.assertEqual(bench.benched_ids(RUN), set())
 
 
+class BlockedWarningTests(unittest.TestCase):
+    """熔断必须留下人话：换将成功的那本，用户否则什么都看不到。"""
+
+    def _fake_store(self, warnings=None):
+        from unittest import mock
+        fake = mock.Mock()
+        fake.get_run.return_value = {"warnings": list(warnings or [])}
+        return fake
+
+    def test_warning_names_the_cli_and_the_reason(self):
+        from unittest import mock
+        fake = self._fake_store()
+        with mock.patch.object(pipeline, "store", fake):
+            pipeline._note_blocked_warning(
+                RUN, {"label": "Codex CLI", "id": "codex-cli"},
+                "codex-cli", _SUM_UPSTREAM)
+        kwargs = fake.update_run.call_args[1]
+        text = kwargs["warnings"][0]
+        self.assertIn("Codex CLI", text, "要说清是哪条通道被绕开")
+        self.assertIn(_SUM_UPSTREAM, text, "要带错误码，便于对台账")
+        self.assertIn("已绕开", text, "要说清后果：后续步骤不再选它")
+
+    def test_threshold_in_copy_comes_from_the_fuse(self):
+        # 文案里的次数必须跟判据同源：改了阈值文案不能还对不上
+        from unittest import mock
+        fake = self._fake_store()
+        with mock.patch.object(pipeline, "store", fake):
+            pipeline._note_blocked_warning(RUN, {"label": "X"}, "x", _SUM_UPSTREAM)
+        text = fake.update_run.call_args[1]["warnings"][0]
+        self.assertIn("连续 %d 次" % bench.blocked_threshold(), text)
+
+    def test_same_warning_is_not_appended_twice(self):
+        from unittest import mock
+        from unittest.mock import patch
+        fake = self._fake_store()
+        with patch.object(pipeline, "store", fake):
+            pipeline._note_blocked_warning(RUN, {"label": "X"}, "x", _SUM_UPSTREAM)
+            first = fake.update_run.call_args[1]["warnings"][0]
+        fake2 = self._fake_store([first])
+        with patch.object(pipeline, "store", fake2):
+            pipeline._note_blocked_warning(RUN, {"label": "X"}, "x", _SUM_UPSTREAM)
+        self.assertFalse(fake2.update_run.called, "同一句话每 run 只留一次")
+
+    def test_store_failure_never_breaks_the_step(self):
+        from unittest import mock
+        fake = mock.Mock()
+        fake.get_run.side_effect = RuntimeError("store 挂了")
+        with mock.patch.object(pipeline, "store", fake):
+            pipeline._note_blocked_warning(RUN, {"label": "X"}, "x", _SUM_UPSTREAM)
+
+
 class PipelineWiringTests(unittest.TestCase):
     """跨文件前提：这一步的记账必须挂在步收尾上，否则熔断永远数不到。"""
 
@@ -133,6 +184,13 @@ class PipelineWiringTests(unittest.TestCase):
         src = inspect.getsource(pipeline._finish_step_result)
         self.assertIn("note_blocked_failure", src)
         self.assertIn("note_blocked_ok", src)
+
+    def test_fuse_uses_the_return_value_to_warn(self):
+        # 只要返回值被丢，熔断就只剩内存态：看不见、事后也解释不了
+        src = inspect.getsource(pipeline._finish_step_result)
+        self.assertIn("if _bench.note_blocked_failure", src,
+                      "必须吃返回值，否则不会写 run.warnings")
+        self.assertIn("_note_blocked_warning(", src)
 
     def test_wiring_is_guarded_by_real_agent(self):
         # mock 步骤不记账：mock 的失败不代表任何通道不可用

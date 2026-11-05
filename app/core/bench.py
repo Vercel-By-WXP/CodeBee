@@ -483,6 +483,11 @@ _BLOCKED_FUSE_CODES = frozenset({
 _BLOCKED_STREAK = {}
 
 
+def blocked_threshold():
+    """连败熔断阈值。文案与判据共用这一处，避免改了阈值文案还对不上。"""
+    return _BLOCKED_FUSE_THRESHOLD
+
+
 def note_blocked_failure(run_id, agent_id, code, at=None):
     """记一次阻塞型死错；同因连败达阈值即把该 CLI 记入本场停用名单。
 

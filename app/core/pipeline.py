@@ -1535,6 +1535,30 @@ def _step_summary_text(res):
     return (text or res.get("error") or "")[:600].strip()
 
 
+def _note_blocked_warning(run_id, agent, agent_id, code):
+    """连败熔断触发时，在 run 上留一条人话警告。
+
+    只写内存台账的话，用户看到的是「几张失败卡 → 后面突然换成别的 CLI」：
+    换将成功反而什么都看不出来，事后也无法解释这本为什么没用某条通道。
+    `run.warnings` 是既有通道（执行结果卡以 ⚠ 列出，与工作目录租约等警告
+    同一处），去重后追加，同一条每 run 只留一次。
+    """
+    try:
+        from . import bench as _bench
+        label = (agent or {}).get("label") or (agent or {}).get("id") or agent_id
+        summary = safe_error_summary(code) or str(code or "上游错误")
+        # 摘要有几条带括号长解释（「上游拒绝请求路径或格式（多为 base_url/
+        # 端点配置不匹配）」），塞进一行警告会盖住重点；只留主句。
+        summary = summary.split("（")[0].strip() or summary
+        text = ("%s 连续 %d 次%s（%s），本场已绕开该 CLI，后续步骤自动换将"
+                % (label, _bench.blocked_threshold(), summary, code))
+        prior = (store.get_run(run_id) or {}).get("warnings") or []
+        if text not in prior:
+            store.update_run(run_id, warnings=list(prior) + [text])
+    except Exception:
+        pass
+
+
 def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
                         admission=None):
     """step 收尾：记录 + 用量 + 运行时断言（5F）。"""
@@ -1658,8 +1682,11 @@ def _finish_step_result(run_id, step, res, role, agent, start, *, readonly=None,
             from . import bench as _bench
             if agent.get("id") and agent.get("mode") == "real":
                 for _aid in _account_ids(agent):
-                    _bench.note_blocked_failure(run_id, _aid,
-                                                res.get("error_code"))
+                    if _bench.note_blocked_failure(run_id, _aid,
+                                                   res.get("error_code")):
+                        _note_blocked_warning(
+                            run_id, agent, _aid,
+                            error_code_value(res.get("error_code")))
         except Exception:
             pass
         # 模型格台账：模型名不存在/该订阅不含此模型（MODEL_UNAVAILABLE）只证明
