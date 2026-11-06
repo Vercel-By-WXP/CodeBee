@@ -1,24 +1,39 @@
 # -*- coding: utf-8 -*-
 """额度见底期 → 恢复日（2026-11-09 14:09）的检查与恢复脚本。
 
-把交接单第 3 节第 3 条那段 curl 变成**可校验**的动作，同时把 14:39 定下的
-「续跑验收看 verdict 三件套」代码化，避免 11-09 靠人眼比对字段。
+把交接单第 3 节第 3 条那段 curl 变成**可校验**的动作，同时把「续跑验收看
+verdict」代码化，避免 11-09 靠人眼比对字段。
 
     py -3.13 scripts/quota_recovery.py --check                      # 只读，随时可跑
     py -3.13 scripts/quota_recovery.py --verify-run <run_id>       # 只读，出人话结论
     py -3.13 scripts/quota_recovery.py --resume-tasks --dry-run    # 只看会做什么
     py -3.13 scripts/quota_recovery.py --resume-tasks --confirm-quota-restored
 
-判据的四个字段陷阱（都是 2026-11-06 15:00 从生产详情量出来的，别再踩）：
+判据的字段陷阱（11-06 15:00 / 15:2x 从生产详情量出来的，别再踩）：
 
-1. `/api/state` 的 `verdict` 是 `_state_run_summary` 的**压缩白名单**，两条真实
-   run 只带 `{"publishable": False}`；判三件套必须走 `/api/runs/<id>` 详情。
+1. `/api/state` 的 `verdict` 是 `main.py:5034 _state_run_summary` 的**压缩白名单**
+   （`pass/publishable/verify_pass/review_pass/end_chapter/quality_status` 六键），
+   真实 run 只带 `{"publishable": False}`；判质量必须走 `/api/runs/<id>` 详情。
 2. 429 写在 step 的 `summary` / `note`（`error` 常为空）；而且 request id 里
    会巧合出现 "429" → 只认 `429 Too Many Requests` / `last status: 429`。
 3. `completed_seats` 在 `verdict.review_resources.completed_seats`，不是顶层；
    `review_fallbacks` 在真实 run 里**根本没有这个键**。`local-heuristic` 是
    `app/core/local_fallback.py` 的常量、只出现在守测期望值里，不是落盘基线。
 4. 真调模型成功步按 `cost_usd > 0` 数：断点续跑复用成稿是 `cost=0/model=''`。
+5. **verdict 有两种落盘 schema，按字段形状分，不能只看 `type`**：
+   `type=doc`（短稿）带 `review_resources.completed_seats` / 数值 `overall`；
+   `type=serial_novel`（连载，11-09 要续跑的就是它）带 `review_status` /
+   `global_reviewer_count` / `review_degradation_reasons`，**没有 `review_resources`、
+   `overall` 是 null**。旧版 `judge_run` 对 serial 详情一律报「这是 /api/state
+   压缩版，请走详情」——它本来就是详情。所以「评审席位 0→1」这条 A/B 硬基线
+   **只适用 doc 链**；serial 链要看 `review_status: not_evaluated → evaluated`。
+6. 真实样本 `r-20261106-002051-8753` 是 `global_reviewer_count=2`、
+   `review_independence=cross-vendor`，却仍 `review_status=not_evaluated`、
+   `review_quality=degraded`、`publishable=False` → **排了 2 个评审席位
+   不等于评审跑完了**，别拿 reviewer_count 当恢复成功的证据。
+7. serial 的 `review_degraded` 会被 `review_config.assess`（`review_config.py:174`）
+   按「评分低于最低门槛」重写；`review_status`（`pipeline.py:6164`）才是评估前的
+   原始信号。判「评审有没有真跑」看 `review_status` 与降级理由，不看这个布尔。
 
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。
@@ -42,6 +57,11 @@ TASK_IDS = (
 )
 RATE_LIMIT_RE = re.compile(r"429\s+Too\s+Many\s+Requests|last\s+status:\s*429", re.I)
 _RL_FIELDS = ("summary", "error", "output", "note")
+# main.py:5034 _state_run_summary 的 verdict 白名单，compact 严格按这个集合判。
+STATE_VERDICT_KEYS = frozenset(("pass", "publishable", "verify_pass",
+                                "review_pass", "end_chapter", "quality_status"))
+# 评审证据缺口（区别于「评分低于最低门槛」那种正常的判据否决）。
+_INCOMPLETE_REVIEW_WORDS = ("未完成", "未判定", "证据不完整", "缺少可定位正文引文")
 
 
 def _open(base):
@@ -71,30 +91,64 @@ def _step_rate_limited(step):
     return False
 
 
+def detect_schema(verdict):
+    """按落盘字段形状判 schema；compact 按白名单精确判，不靠「键少」猜。"""
+    if not isinstance(verdict, dict) or not verdict:
+        return "unknown"
+    if isinstance(verdict.get("review_resources"), dict) or verdict.get("type") == "doc":
+        return "doc"
+    if (verdict.get("type") == "serial_novel" or "review_status" in verdict
+            or "chapter_scores" in verdict or "global_reviewer_count" in verdict):
+        return "serial_novel"
+    if "publishable" in verdict and set(verdict) <= STATE_VERDICT_KEYS:
+        return "compact"
+    return "unknown"
+
+
 def judge_run(run):
     """输入 `/api/runs/<id>` 的 `run` 对象，输出可比对的结构化结论。"""
     verdict = run.get("verdict") or {}
     if not isinstance(verdict, dict):
         verdict = {}
+    schema = detect_schema(verdict)
     resources = verdict.get("review_resources") or {}
     if not isinstance(resources, dict):
         resources = {}
     steps = [s for s in (run.get("steps") or []) if isinstance(s, dict)]
 
-    # 三件套字段是否齐全：state 的压缩版只有 publishable，不能拿它判质量。
-    fields_complete = all(k in verdict for k in
-                          ("publishable", "review_independence", "overall")) and bool(resources)
     rate_limited = [s.get("n") for s in steps if _step_rate_limited(s)]
     model_steps = sum(1 for s in steps if (s.get("cost_usd") or 0) > 0)
     seats = resources.get("completed_seats")
     independence = verdict.get("review_independence")
     publishable = verdict.get("publishable")
+    review_status = verdict.get("review_status")
+    review_degraded = verdict.get("review_degraded")
+    reasons = [str(x) for x in (verdict.get("review_degradation_reasons") or []) if x]
+    incomplete_reasons = [r for r in reasons
+                          if any(w in r for w in _INCOMPLETE_REVIEW_WORDS)]
 
-    honest = bool(fields_complete and publishable is False
-                  and independence == "no-review" and seats == 0)
+    if schema == "doc":
+        # 三件套字段是否齐全：state 的压缩版只有 publishable，不能拿它判质量。
+        fields_complete = all(k in verdict for k in
+                              ("publishable", "review_independence", "overall")) and bool(resources)
+        honest = bool(fields_complete and publishable is False
+                      and independence == "no-review" and seats == 0)
+    elif schema == "serial_novel":
+        # 连载链没有 review_resources；诚实标注 = 「质量未判定 → 不放行」。
+        fields_complete = all(k in verdict for k in
+                              ("publishable", "review_status", "review_degraded",
+                               "review_independence")) and "global_reviewer_count" in verdict
+        honest = bool(fields_complete and publishable is False
+                      and review_status == "not_evaluated"
+                      and review_degraded is True and bool(incomplete_reasons))
+    else:
+        fields_complete = False
+        honest = False
+
     return {
         "run_id": run.get("id"),
         "status": run.get("status"),
+        "schema": schema,
         "fields_complete": fields_complete,
         "publishable": publishable,
         "overall": verdict.get("overall"),
@@ -104,6 +158,14 @@ def judge_run(run):
         "required_seats": resources.get("required_seats"),
         # 真实 run 里通常没有这个键，缺省就是空列表；不要凭空补 local-heuristic。
         "review_fallbacks": verdict.get("review_fallbacks") or [],
+        "review_status": review_status,
+        "review_quality": verdict.get("review_quality"),
+        "review_degraded": review_degraded,
+        "review_degradation_reasons": reasons,
+        "incomplete_review_reasons": incomplete_reasons,
+        "reviewer_count": verdict.get("global_reviewer_count"),
+        "reviewer_consensus": verdict.get("global_reviewer_consensus"),
+        "quality_status": verdict.get("quality_status"),
         "successful_model_steps": model_steps,
         "rate_limited_steps": rate_limited,
         "last_step_rate_limited": bool(steps) and _step_rate_limited(steps[-1]),
@@ -111,18 +173,76 @@ def judge_run(run):
     }
 
 
-def human_verdict(d):
+def judge_recovery(d):
+    """判「额度恢复后的真跑」是否达标。不看 publishable：稿子分低被拦是判据
+    正常工作，不是额度没恢复。输出 blockers 人话缺口，11-09 不用人眼比字段。"""
+    blockers = []
+    notes = []
     if not d["fields_complete"]:
-        return ("字段不足：这是 /api/state 的压缩 verdict（白名单只留 publishable 等 6 键），"
-                "判三件套请改用 --verify-run 走 /api/runs/<id> 详情")
-    bits = []
+        blockers.append("verdict schema=%s 字段不足，无法判质量" % d["schema"])
+    if d["rate_limited_steps"]:
+        blockers.append("仍有 %d 步 429（n=%s）" % (
+            len(d["rate_limited_steps"]),
+            ",".join(str(n) for n in d["rate_limited_steps"][:12])))
+    if d["successful_model_steps"] < 1:
+        blockers.append("没有真调模型的步骤（cost_usd>0）")
+
+    if d["schema"] == "doc":
+        seats, req = d["completed_seats"], d["required_seats"]
+        if d["review_independence"] == "no-review" or not seats or (req and seats < req):
+            blockers.append("评审席位 %s/%s、independence=%s（仍是 no-review）" % (
+                seats, req, d["review_independence"]))
+    elif d["schema"] == "serial_novel":
+        if d["review_status"] != "evaluated":
+            blockers.append("review_status=%s，评审证据未判定" % d["review_status"])
+        if d["incomplete_review_reasons"]:
+            blockers.append("降级理由里仍有 %d 条评审证据缺口" %
+                            len(d["incomplete_review_reasons"]))
+        if not d["reviewer_count"]:
+            blockers.append("global_reviewer_count=%s，没有真实评审员" % d["reviewer_count"])
+        if d["reviewer_count"]:
+            notes.append("global_reviewer_count=%s 只说明排了席位，不等于评审跑完"
+                         "（见底期真实样本就是 2 席仍 not_evaluated）" % d["reviewer_count"])
+        if d["review_quality"] == "degraded":
+            notes.append("review_quality=degraded 可能只是评分低于门槛；"
+                         "review_config.assess 会按评分重写 review_degraded，"
+                         "判「评审有没有真跑」看 review_status 与降级理由")
+    else:
+        blockers.append("schema=%s，没有对应恢复判据" % d["schema"])
+    return {"recovery_ok": not blockers, "blockers": blockers, "notes": notes}
+
+
+def human_verdict(d):
+    schema = d["schema"]
+    if not d["fields_complete"]:
+        if schema == "compact":
+            return ("字段不足：这是 /api/state 的压缩 verdict（白名单只留 6 键），"
+                    "判三件套请改用 --verify-run 走 /api/runs/<id> 详情")
+        if schema == "unknown":
+            return "不认识的 verdict schema，别拿它下质量结论（先看 /api/runs/<id> 详情的键）"
+        return "详情字段仍不足（schema=%s），别拿它下质量结论" % schema
+
+    bits = ["schema=%s" % schema]
     if d["publishable"] is True:
         bits.append("可发布")
     else:
-        reason = ("无真实评审席位（%s / %s 席）" %
-                  (d["review_independence"], d["completed_seats"])
-                  if d["review_independence"] == "no-review" or d["completed_seats"] == 0
-                  else "评分 %s < 阈值 %s" % (d["overall"], d["threshold"]))
+        if schema == "doc":
+            reason = ("无真实评审席位（%s / %s 席）" %
+                      (d["review_independence"], d["completed_seats"])
+                      if d["review_independence"] == "no-review" or d["completed_seats"] == 0
+                      else "评分 %s < 阈值 %s" % (d["overall"], d["threshold"]))
+        elif schema == "serial_novel":
+            if d["review_status"] == "not_evaluated":
+                reason = ("评审证据未判定：review_status=%s、review_quality=%s、%d 条降级理由（首条：%s）" %
+                          (d["review_status"], d["review_quality"],
+                           len(d["review_degradation_reasons"]),
+                           str(d["review_degradation_reasons"][0])[:60]
+                           if d["review_degradation_reasons"] else "无"))
+            else:
+                reason = ("全局/章级评审未过或仍有 major 问题：review_status=%s、quality_status=%s" %
+                          (d["review_status"], d["quality_status"]))
+        else:
+            reason = "评分 %s < 阈值 %s" % (d["overall"], d["threshold"])
         bits.append("不可发布：" + reason)
         if d["verdict_honest"]:
             bits.append("判据层已诚实标注，不是假绿")
@@ -135,6 +255,16 @@ def human_verdict(d):
     else:
         bits.append("无限流步骤")
     return "；".join(bits)
+
+
+def human_recovery(r):
+    if r["recovery_ok"]:
+        lines = ["恢复判据：通过（无 429、真调模型、评审证据完整）"]
+    else:
+        lines = ["恢复判据：未通过，%d 条缺口" % len(r["blockers"])]
+        lines.extend("  - " + b for b in r["blockers"])
+    lines.extend("  提醒：" + n for n in r["notes"])
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- 动作
@@ -173,13 +303,24 @@ def cmd_verify_run(base, run_id):
     detail = api_get(base, "/api/runs/" + run_id)
     run = detail.get("run") or detail
     d = judge_run(run)
-    print("%s  status=%s" % (run_id, d["status"]))
+    print("%s  status=%s  schema=%s" % (run_id, d["status"], d["schema"]))
     for key in ("publishable", "overall", "threshold", "review_independence",
                 "completed_seats", "required_seats", "review_fallbacks",
+                "review_status", "review_quality", "review_degraded",
+                "reviewer_count", "reviewer_consensus", "quality_status",
+                "incomplete_review_reasons", "review_degradation_reasons",
                 "successful_model_steps", "rate_limited_steps",
                 "last_step_rate_limited", "verdict_honest"):
-        print("  %-24s %s" % (key, d[key]))
+        value = d[key]
+        if key == "rate_limited_steps" and isinstance(value, list):
+            shown = ",".join(str(n) for n in value[:12])
+            value = shown + (" …共 %d 步" % len(value) if len(value) > 12 else "")
+        elif isinstance(value, list) and (len(value) > 3 or
+                                          (value and len(str(value[0])) > 80)):
+            value = "%d 条（首条：%s…）" % (len(value), str(value[0])[:70])
+        print("  %-26s %s" % (key, value))
     print("结论：" + human_verdict(d))
+    print(human_recovery(judge_recovery(d)))
     return 0
 
 
@@ -216,7 +357,7 @@ def cmd_resume_tasks(base, confirm, dry_run):
     print("复核通过：4 个任务 enabled=true 且 next_run 非空。")
     print("后续（脚本不代做）：重启 8765（POST /api/selfupdate/restart）→ "
           "一本串行续跑（POST /api/tasks/<id>/retry，续跑前 min_words 调 3000+）→ "
-          "--verify-run <id> 看 verdict 三件套")
+          "--verify-run <id> 看 verdict 与恢复判据")
     return 0
 
 

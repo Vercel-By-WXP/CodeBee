@@ -2,7 +2,7 @@
  "_source": {
   "api": "/api/runs/<id>",
   "captured_at": "2026-11-06T15:03:58",
-  "note": "真实落盘值，仅裁掉 command/configuration/output 等无关大字段；未改写任何字符串"
+  "note": "真实落盘值，3 条 run（2 条 doc + 1 条 serial_novel r-20261106-002051-8753）；仅裁掉 command/configuration/output/log 与 verdict 里的 route/volumes/chapter_scores/major_issues/signing_checkpoint 等无关大字段；未改写任何字符串"
  },
  "runs": [
   {
@@ -282,6 +282,785 @@
      "cost_usd": 0.0,
      "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519123741795813204dff52aYj1IDNPV（退出码 1）",
      "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/81 验收成功（-8.0），P95 329.2s（-18.0），均价 $0.1623（-4.0），样本层 task，总分 65.0）"
+    }
+   ]
+  },
+  {
+   "id": "r-20261106-002051-8753",
+   "status": "done",
+   "cost_usd": 9.9398,
+   "verdict": {
+    "type": "serial_novel",
+    "engine": "review",
+    "serial": true,
+    "publishable": false,
+    "overall": null,
+    "mode": "auto",
+    "review_degraded": true,
+    "review_independence": "cross-vendor",
+    "review_status": "not_evaluated",
+    "review_degradation_reasons": [
+     "开篇评审未完成，稿件质量未判定：开篇吸引力缺少可定位正文引文与分析；情节推进缺少可定位正文引文与分析；文风统一缺少可定位正文引文与分析；情感细腻度缺少可定位正文引文与分析；节奏控制缺少可定位正文引文与分析",
+     "开篇闸门终评未完成，稿件质量未判定：开篇吸引力缺少可定位正文引文与分析；情节推进缺少可定位正文引文与分析；文风统一缺少可定位正文引文与分析；情感细腻度缺少可定位正文引文与分析；节奏控制缺少可定位正文引文与分析"
+    ],
+    "threshold": 7.0,
+    "chapters_used": 8,
+    "start_chapter": 1,
+    "end_chapter": 8,
+    "total_words": 23993,
+    "global_scores": {
+     "情节": 7.4,
+     "人物": 7.5,
+     "文笔": 7.5,
+     "节奏": 7.4,
+     "吸引力": 7.5
+    },
+    "provisional_global_scores": {},
+    "manuscript_fingerprint": "c73761dac0cc292ba51a65eec6f22f1444d1e638a4c45ccc9cc5b9591c742eca",
+    "global_shortfalls": {},
+    "global_pass": true,
+    "global_reviewer_count": 2,
+    "global_reviewer_consensus": true,
+    "global_reviewer_spreads": {
+     "情节": 0.8,
+     "人物": 0.9,
+     "文笔": 1.1,
+     "节奏": 0.8,
+     "吸引力": 1.0
+    },
+    "quality_status": "continue_only",
+    "review_quality": "degraded"
+   },
+   "steps": [
+    {
+     "n": 1,
+     "role": "outline",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "继承上一遍大纲（共 8 章），已完成 7 章将被复用"
+    },
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-01.md（约 3268 字）"
+    },
+    {
+     "n": 3,
+     "role": "critique-c1",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_fj6r_i79.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 4,
+     "role": "critique-c1",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_lao9nli4.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 5,
+     "role": "critique-c1",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_c69ki9ek.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 6,
+     "role": "critique-c1",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516385757922255204dff52aHatHmL9f（退出码 1）"
+    },
+    {
+     "n": 7,
+     "role": "critique-c1",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516395423367213804dff52aqmL5Hcpz（退出码 1）"
+    },
+    {
+     "n": 8,
+     "role": "critique-c1",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516405110830215404dff52a6BhC5Auo（退出码 1）"
+    },
+    {
+     "n": 9,
+     "role": "signing-eval",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "签约评估 （开篇闸门：核第 1 章能否抓住读者）",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 202611051641474538501504dff52aF416gUrd（退出码 1）"
+    },
+    {
+     "n": 10,
+     "role": "signing-eval",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "签约评估 （开篇闸门：核第 1 章能否抓住读者）",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_m7c7ha6g.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"开篇吸引力\": 7,\n    \"情节推进\": 7,\n    \"文风统一\": 8,\n    \"情感细腻度\": 7,\n    \"节奏控制\": 7\n  },\n  \"evidence\": [\n    {\n      \"dim\": \"开篇吸引力\",\n      \"chapter\": 1,\n      \"quote\": \"喜宴过半，柳氏忽然搁了杯，起身朝满堂宾客福了一福。\",\n      \"analysis\": \n\"开篇即进入核心冲突场景——喜宴上柳氏当众宣布换嫁，直接兑现了‘换嫁当夜’的承诺。事\n件具体（谁、场合、原话），且立刻让主角沈知微处于被剥夺婚约的处境。读者能迅速识\n别主角的欲望（保住婚约）与代价（被替嫁、被旧案威胁）。首个回报是沈知微当众撕婚\n书并改嫁裴砚，有可见结果（婚书被撕、满堂哗然），不是空泛心理活动。局限在于‘望气\n’能力仅作为一次信息工具出现，未在开篇形成持续悬念，但符合红线要求。\"\n    }"
+    },
+    {
+     "n": 11,
+     "role": "revise-c1",
+     "agent": "claude-code",
+     "model": "glm-5.3-flash",
+     "status": "done",
+     "cost_usd": 1.2096,
+     "note": "",
+     "summary": "修订完成，只改写了 `chapter-01.md`，其余文件（含 `.codebee/`、第 2–7 章）一律未动。\n\n## 修订结果\n\n**针对的 major 问题**（吸引力 6.3 / 确定性信号：前 1200 字缺少可见后果）：\n\n原稿里主角的选择（第 406 字走出、第 600 字质问官媒）没有产生代价——局面直到第 1016 字才被旧案威胁压下来，而且那不是她这一选择引出的后果。修订重排了开篇因果链：\n\n| 节点 | 位置 | 修订后 |\n|---|---|---|\n| 选择 | 390 字 | 当众走出，逼官媒作证换名 |\n| 局面可见变化 | 631 字 | 满堂贺声断，团扇夫人公开追问「原是给哪位姑娘下的定」——柳氏在自己摆的席上失了场面的控制权 |\n| **代价** | 844 字 | 新增因果桥：柳氏以「你既开了口……把话说个明白——再给你一桩天大的体面」作答，她这一问直接触发替嫁婚书当众展开——她想拦的事，被她的开口亲手变成满堂见证 |\n| 两段「原话」 | 1015 / 1155 字 | 知瑶旧案逼嫁 + 柳氏抗婚威胁，全在 1500 字硬指标线内（谁/场合/原话/抢走什么齐全） |\n| 撕书+改嫁 | 1977 字 | 落在 1500–3000 区间，具体结果全部保留（乐师停手、世子首次抬头、家丁被一句话钉住、夫人倒戈、知瑶被噎） |\n\n**连续性**："
+    },
+    {
+     "n": 12,
+     "role": "critique-c1",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516560879563086004dff52aOaS0L4US（退出码 1）"
+    },
+    {
+     "n": 13,
+     "role": "critique-c1",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516570440770017304dff52axTGDevJd（退出码 1）"
+    },
+    {
+     "n": 14,
+     "role": "critique-c1",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516580011948299904dff52aQMEr9qNa（退出码 1）"
+    },
+    {
+     "n": 15,
+     "role": "critique-c1",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_9mv1i27x.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.0,\n    \"吸引力\": 6.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"开篇前600字未进入具体冲突，前1200字缺少可见后果。柳氏宣布换嫁、沈知微撕书等关\n键事件虽在，但冲突的推进依赖大量对话与心理描写，缺乏动作与生理细节的支撑，导致\n情节推进感偏弱。\",\n      \"quote\": \"喜宴过半，柳氏忽然搁了杯，起身朝满堂宾客福了一福。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微的‘望气’能力在关键处使用了一次（看到沈知瑶的冤气），但该信息未在后续行"
+    },
+    {
+     "n": 16,
+     "role": "critique-c1",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_zv2s3ha9.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 17,
+     "role": "critique-c1",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_a_8n14bf.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 18,
+     "role": "signing-eval",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "签约评估 （开篇闸门终判：重设计/修订后能否申请签约评估）",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110517002420034008704dff52a90T3KY3f（退出码 1）"
+    },
+    {
+     "n": 19,
+     "role": "signing-eval",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "签约评估 （开篇闸门终判：重设计/修订后能否申请签约评估）",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_6nc_9l9g.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"开篇吸引力\": 7,\n    \"情节推进\": 7,\n    \"文风统一\": 8,\n    \"情感细腻度\": 7,\n    \"节奏控制\": 7\n  },\n  \"evidence\": [\n    {\n      \"dim\": \"开篇吸引力\",\n      \"chapter\": 1,\n      \"quote\": \"柳氏忽然搁了杯，起身朝满堂宾客福了一福。\",\n      \"analysis\": \n\"开篇即进入喜宴场景，柳氏当众开口，直接引出换嫁冲突，没有铺垫环境或身世。读者能\n迅速识别核心矛盾：嫡姐抢婚、养女被逼替嫁。承诺（书名与简介中的换嫁、撕婚书、改\n嫁三叔）在第一章内得到兑现：沈知微当众撕婚书并改口要嫁裴砚本人。首个回报具体：\n撕婚书、当众改口、柳氏被堵住话头，有可见结果。局限在于裴砚的回应只到一句反问，\n尚未形成完整闭环，但已足够支撑继续阅读。\"\n    },\n    {\n      \"dim\": \""
+    },
+    {
+     "n": 20,
+     "role": "draft-c2",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-02.md（约 3232 字）"
+    },
+    {
+     "n": 21,
+     "role": "draft-c3",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-03.md（约 3303 字）"
+    },
+    {
+     "n": 22,
+     "role": "critique-c3",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110517085998606306504dff52a95z0gT5T（退出码 1）"
+    },
+    {
+     "n": 23,
+     "role": "critique-c3",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110517095635632754504dff52ahVgmBX4S（退出码 1）"
+    },
+    {
+     "n": 24,
+     "role": "critique-c3",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110517105287460822804dff52amZaNTXqu（退出码 1）"
+    },
+    {
+     "n": 25,
+     "role": "critique-c3",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_ga9o3wu3.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.0,\n    \"吸引力\": 6.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"开篇前600字未进入具体冲突，而是从柴房被放出的日常动作开始，冲突信号延迟。\",\n      \"quote\": \"天刚透出一线灰白，柴房的门闩被人从外头挑开了。\"\n    },\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"章末钩子未形成事件级悬念，只以『离月底，还有八日』收束，读者无法说出下一章具体\n会发生什么。\",\n      \"quote\": \"离月底，还有八日。\"\n    },\n    {"
+    },
+    {
+     "n": 26,
+     "role": "critique-c3",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt__gxgo829.md to the chat (read-only).\n\nlitellm.Timeout: AnthropicException Timeout - \n{\"error\":{\"type\":\"bad_response_status_code\",\"message\":\"bad response status code\n504 (request id: 202611051736260869343578268d9d64xniFfUK)\"},\"type\":\"error\"}\nThe API provider timed out without returning a response. They may be down or \noverloaded.\nRetrying in 0.2 seconds...\nlitellm.Timeout: AnthropicException Timeout - \n{\"error\":{\"type\":\"bad_response_status_code\",\"message\":\"bad response st"
+    },
+    {
+     "n": 27,
+     "role": "critique-c3",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_q7a1nxu2.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.0,\n    \"吸引力\": 6.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"开篇300字内未进入具体冲突，前段以柴房、令牌丢失等铺垫为主，直到约600字后才出现\n裴砚与婚书的核心冲突，未满足『开篇在前600字进入具体冲突』的评审要求。\",\n      \"quote\": \n\"天刚透出一线灰白，柴房的门闩被人从外头挑开了。进来的是个粗使婆子，把一个旧包袱\n丢在地上：「主母有话，天亮出府，自便。」\"\n    },\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"章末钩子为『离月底，还有八日』"
+    },
+    {
+     "n": 28,
+     "role": "revise-c3",
+     "agent": "claude-code",
+     "model": "glm-5.3-flash",
+     "status": "done",
+     "cost_usd": 1.7188,
+     "note": "",
+     "summary": "修订完成，只改写了 `chapter-03.md` 一个文件。复核结果如下。\n\n## 修订针对的问题\n\n评审唯一低于阈值的是**吸引力 5.6**（其余维度已达标）。原稿的问题是：全章无人对抗——令牌丢失无代价、裴砚交割过于顺滑、三夫人爽点一笔带过、读卷宗像流程记录。按「改事件、改选择、改后果，不换词」的原则修订。\n\n## 改动的选择/后果（不是润色）\n\n1. **开场由「发现丢东西」改为「丢的是罪名」**：她一夜推演出牌落柳氏手里就是「结交边将」的现行，把「除名」改成「送官」——她仍然独自走向西侧门（她唯一的路），开头 600 字内有具体危局与主动选择。\n2. **讨牌改为她先开口**：「先讲我丢的东西……我来问侯爷讨」，兑现账本「持牌讨诺」的主动位；裴砚交代取牌、验牌、五更亲提沈家旧档的完整逻辑（认牌不认人，与第 4 章吕主事原话对齐，消除了原稿「持牌人亲到才用得动」与第 4 章的表述冲突）。\n3. **新增对等谈判**：她当面点破「今日能取，明日就能放」，逼出明规矩——牌不再碰、岗只守墙外、岗报她不报他、他答「准」。同盟有了代价和条款，裴砚不再是无条件助力。\n4. **三夫人爽点加重**：受婢女一礼「站定受了」；写全名落到「末一捺收笔，纸背透出一道印」。\n5. **章末钩子压成倒计时**：春杏信（烧棺＋挪活口）＋「备车，天亮之前见侯爷」＋「离月底，还有八日」，下一章要发生的事"
+    },
+    {
+     "n": 29,
+     "role": "critique-c3",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 202611051758112984847404dff52aR8F67jNg（退出码 1）"
+    },
+    {
+     "n": 30,
+     "role": "critique-c3",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110517590714208647104dff52ab7Re57j3（退出码 1）"
+    },
+    {
+     "n": 31,
+     "role": "critique-c3",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110518000329328836504dff52a8ttLltaw（退出码 1）"
+    },
+    {
+     "n": 32,
+     "role": "critique-c3",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_m1hdp91j.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.0,\n    \"吸引力\": 6.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"节奏\",\n      \"severity\": \"major\",\n      \"note\": \n\"章末200字无悬念信号，确定性检测显示章末200字悬念信号0处。本章结尾停在沈知微问\n日期、得知月底烧棺，但未留下下一章必须发生的事件级悬念（如有人上门、文书被换、\n棺被挖开），仅以时间压力收束，属于情绪空钩。\",\n      \"quote\": \"「回三夫人，廿二。」烧棺的日子压在月底。离月底，还有八日。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微在柴房发现令牌丢失后，情绪动作密度骤"
+    },
+    {
+     "n": 33,
+     "role": "critique-c3",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_tckup1a9.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.8,\n    \"吸引力\": 6.2\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"本章核心事件（沈知微持令牌要求裴砚兑现承诺、获得三夫人名分、翻阅案卷发现父亲死\n因有疑）基本完成，但『章末钩子』未按大纲要求落地：案卷夹层掉出信件的发现被处理\n为『她捏起那方折纸』，缺少『掉出』的意外感，且信的内容与『沈知瑶的贴身丫鬟』关\n联不够直接（信落款是春杏，但春杏是沈知微的梳头丫头，不是沈知瑶的贴身丫鬟），与\n大纲『落款是沈知瑶的贴身丫鬟』不符。\",\n      \"quote\": \n\"她捏起那方折纸。纸色黄旧，折痕却利落，是近期折过又展开的。她展开信。不长，通篇\n没有称呼，没有署名，字迹娟"
+    },
+    {
+     "n": 34,
+     "role": "critique-c3",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_ntkt61o6.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.0,\n    \"吸引力\": 6.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"章末钩子未达到事件级悬念，读者无法明确说出下一章具体会发生什么。\",\n      \"quote\": \"离月底，还有八日。\"\n    },\n    {\n      \"dim\": \"节奏\",\n      \"severity\": \"major\",\n      \"note\": \n\"开篇前600字未进入具体冲突，柴房场景铺垫较长，核心冲突（令牌被取）在约200字后才\n出现。\",\n      \"quote\": \"天刚透出一线灰白，柴房的门闩被人从外头挑开了。\"\n    },\n    {\n      \"dim\""
+    },
+    {
+     "n": 35,
+     "role": "draft-c4",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-04.md（约 3220 字）"
+    },
+    {
+     "n": 36,
+     "role": "draft-c5",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-05.md（约 1973 字）"
+    },
+    {
+     "n": 37,
+     "role": "draft-c6",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-06.md（约 3126 字）"
+    },
+    {
+     "n": 38,
+     "role": "draft-c7",
+     "agent": "claude-code",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "断点续跑",
+     "summary": "（断点续跑）复用上一遍成稿 chapter-07.md（约 2772 字）"
+    },
+    {
+     "n": 39,
+     "role": "critique-c7",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110518161669398333304dff52aXfqJNwFF（退出码 1）"
+    },
+    {
+     "n": 40,
+     "role": "critique-c7",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110518171410562935404dff52a6P1IF0au（退出码 1）"
+    },
+    {
+     "n": 41,
+     "role": "critique-c7",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110518180952302264404dff52aRfMpVGGH（退出码 1）"
+    },
+    {
+     "n": 42,
+     "role": "critique-c7",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_9lgc5if8.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.2,\n    \"人物\": 7.8,\n    \"文笔\": 7.5,\n    \"节奏\": 7.0,\n    \"吸引力\": 7.4\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"章末钩子强度不足，柳府丞退堂后仅以‘改日再审’收束，未留下下一章必须发生的具体事\n件级悬念，读者无法明确说出下一章会发生什么。\",\n      \"quote\": \"「今日暂退。」他站起身，袍角带翻了笏板，「改日再审——退堂！」\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微在堂上多次直接引用‘谕旨’‘军功’等外部权威，但未充分展现她自身对‘望气’能力\n的运用，人物弧光更多依赖外部靠山而非"
+    },
+    {
+     "n": 43,
+     "role": "critique-c7",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_uv6ga345.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 7.0,\n    \"节奏\": 7.0,\n    \"吸引力\": 7.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"章末钩子强度不足，柳府丞退堂后仅以『改日再审』收束，未留下下一章必须发生的具体\n事件（如有人上门、文书被换等），读者无法明确预知下一章将发生什么。\",\n      \"quote\": \"「今日暂退。」他站起身，袍角带翻了笏板，「改日再审——退堂！」\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微在堂上多次使用『柳大人』『府丞大人』等称呼，但柳府丞身份为宗人府府丞，称\n呼基本一致；不过她称『"
+    },
+    {
+     "n": 44,
+     "role": "critique-c7",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_czo578ul.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 6.5,\n    \"人物\": 7.0,\n    \"文笔\": 7.5,\n    \"节奏\": 6.0,\n    \"吸引力\": 6.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"major\",\n      \"note\": \n\"大纲要求的『差役当堂翻供』已实现，但『柳氏兄长脸色骤变，退堂急书』的钩子被弱化\n为『柳府丞没有接话……退堂』，且未明确写出『脸色骤变』，情绪爆点不足。\",\n      \"quote\": \"柳府丞没有接话。他盯着书吏案上那页供纸，像盯着一件烫手的东西。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微的『望气』能力在本章未使用，与全书设定中『只在关键处用』的约束一致，但本\n章缺少一次能力展示"
+    },
+    {
+     "n": 45,
+     "role": "revise-c7",
+     "agent": "claude-code",
+     "model": "glm-5.3-flash",
+     "status": "done",
+     "cost_usd": 1.6449,
+     "note": "",
+     "summary": "修订完成并通过复核。仅改写了 `chapter-07.md`，其余章节文件与 `manuscript.md` 均未触碰（时间戳可证）。\n\n## 修订报告\n\n**针对「吸引力 6.3（未达标）」的主刀改动**\n1. **前 600 字加入实体威胁**：柳府丞「先治你这个人」后立即「抬杖」——黑漆长杖横在她身前三步。此后贯穿全章形成一条完整因果链：她顶回去（「杖搁在这儿正好。等我说完，大人要用，还来得及」）→ 裴砚起立、皂隶缩退廊柱后 → 退堂时「杖从头到尾没派上用场，柳府丞下堂绕着它走的」。对手从口头威胁升级为实质动作，不再是原地挨打。\n2. **堵住逻辑缺口、令牌二次生效**：柳府丞刚说「行文原籍快则两月」，三骑却一夜带回郑安——补一句「解役册上写着他的原籍，牌子调档那日就抄了册子，北境的马不走公文」，同时呼应第 3/4 章调档情节，兑现「这样东西持续生效，不能亮一次就消失」的硬指标。\n3. **章末钩子落到事件**：结尾由情绪收束改为具体行动指令——柳府丞密信进宫（灭口的手今夜就该伸出）+ 沈知微下令「今夜三更，北境的马出城，抢在头里」。读者能说出下一章发生什么：灭口与反灭口、抢保活口。\n\n**针对确定性提示（偏长句、重复说明）**\n- 拆分军功陈词长句（「北境十四年……今日侯爷就在堂上。」+ 顿 + 三件事分述）。\n- 删四处重复说明：与首段重复的「谕旨会审审的是沈家旧案」、与"
+    },
+    {
+     "n": 46,
+     "role": "critique-c7",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110518571974311230604dff52a84ozQXgh（退出码 1）"
+    },
+    {
+     "n": 47,
+     "role": "critique-c7",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110518591469756822404dff52aGfRPpMY9（退出码 1）"
+    },
+    {
+     "n": 48,
+     "role": "critique-c7",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519003237807288504dff52ac1H6bYnO（退出码 1）"
+    },
+    {
+     "n": 49,
+     "role": "critique-c7",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_ov24kv4h.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 50,
+     "role": "critique-c7",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_c5mfjo81.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 51,
+     "role": "critique-c7",
+     "agent": "aider",
+     "model": "glm-5.3",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/glm-5.3 with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_3ig_i9q2.md to the chat (read-only).\n\nlitellm.NotFoundError: AnthropicException - {\"error\": {\"code\": 5,\"message\": \n\"NOT_FOUND\",\"details\": []}}"
+    },
+    {
+     "n": 52,
+     "role": "signing-eval",
+     "agent": "codex-cli",
+     "model": "sensenova-6.8-flash",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "签约评估 （2万字签约预评估检查点）",
+     "summary": "退出码 1；stderr/stdout: stderr: Reading prompt from stdin...；stdout: \n  user (C:\\Users\\HP\\.codex\\config.toml): `mcp_servers.memory.type` is ignored.\n  ... and 2 more ignored settings.\n【错误】Model metadata for `sensenova-6.8-flash` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."
+    },
+    {
+     "n": 53,
+     "role": "signing-eval",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "签约评估 （2万字签约预评估检查点）",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_amv3ohaz.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"开篇吸引力\": 8,\n    \"情节推进\": 8,\n    \"文风统一\": 8,\n    \"情感细腻度\": 7,\n    \"节奏控制\": 8\n  },\n  \"evidence\": [\n    {\n      \"dim\": \"开篇吸引力\",\n      \"chapter\": 1,\n      \"quote\": \"「母亲方才说，这门亲不能断。」她抬起头，「那就不断。」\",\n      \"analysis\": \n\"开篇即进入核心冲突：柳氏当众换名逼嫁，沈知微当场撕婚书并改嫁裴砚。承诺（书名/\n简介）在正文中兑现：嫡姐抢婚约、替嫁、撕书改嫁三叔。事件有具体场合（喜宴）、具\n体原话（柳氏当众宣布换名）、可见结果（婚书被撕、满堂哗然）。人物选择（撕书改嫁\n）立即改变局面，产生阶段结果（裴砚开口问话）。读者能明确知道主角要什么、对手是\n谁、下一步会怎样。局限：开篇前1500字内柳氏换名逼嫁的细节已落地，但裴砚的回应在"
+    },
+    {
+     "n": 54,
+     "role": "draft-c8",
+     "agent": "claude-code",
+     "model": "glm-5.3-flash",
+     "status": "done",
+     "cost_usd": 1.6012,
+     "note": "",
+     "summary": "第 8 章完成（约 2800 字）\n\n（检查点范围提示：Git 仓库没有可用 HEAD：外部 CLI 文件改动无法安全快照）"
+    },
+    {
+     "n": 55,
+     "role": "critique-c8",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 202611051931384429516304dff52aNeCHYldT（退出码 1）"
+    },
+    {
+     "n": 56,
+     "role": "critique-c8",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519323528097054704dff52aKTnqa3Ib（退出码 1）"
+    },
+    {
+     "n": 57,
+     "role": "critique-c8",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 202611051933319145685404dff52aqZriJp3g（退出码 1）"
+    },
+    {
+     "n": 58,
+     "role": "critique-c8",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_r_erovkh.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 8.5,\n    \"节奏\": 7.0,\n    \"吸引力\": 7.5\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"本章核心事件（裴砚翻案）推进扎实，但章末钩子（沈知瑶求救）与本章主线（翻案）之\n间缺乏因果铺垫，读者难以预判下一章具体行动。\",\n      \"quote\": \"二更刚过，角门上来人急报：有个女子闯府，拦不住。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微在堂上表现冷静，但翻案后与裴砚的对话中，她主动说出“你没有克妻”这一判断，\n稍显直白，削弱了“望气”作为工具的神秘感，且与前期“只给"
+    },
+    {
+     "n": 59,
+     "role": "critique-c8",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt__gn2le_a.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 7.0,\n    \"节奏\": 7.5,\n    \"吸引力\": 7.0\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"本章核心冲突（翻案）推进扎实，但章末钩子（沈知瑶求救）与本章主线（翻案）衔接稍\n显突兀，缺乏前文铺垫。\",\n      \"quote\": \"二更刚过，角门上来人急报：有个女子闯府，拦不住。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"裴砚自述两任正妻死因时，语气过于平静，缺乏情感层次，与“克妻”传闻带来的压抑感匹\n配度稍弱。\",\n      \"quote\": \"他说得平，像在报一份军报。\""
+    },
+    {
+     "n": 60,
+     "role": "critique-c8",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_qq719ud1.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 7.8,\n    \"节奏\": 7.2,\n    \"吸引力\": 7.6\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"本章核心冲突（翻案）推进扎实，但章末钩子（沈知瑶求救）与本章主线（翻案）之间缺\n少因果铺垫，读者难以预判下一章具体事件。\",\n      \"quote\": \"二更刚过，角门上来人急报：有个女子闯府，拦不住。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"裴砚自述两任正妻死因时，语气过于平静，缺少情绪层次，与“克妻”传闻带来的心理负担\n匹配度不足。\",\n      \"quote\": \"他说得平，"
+    },
+    {
+     "n": 61,
+     "role": "revise-c8",
+     "agent": "claude-code",
+     "model": "glm-5.3-flash",
+     "status": "done",
+     "cost_usd": 2.4639,
+     "note": "",
+     "summary": "第 8 章修订完成（约 2800 字）\n\n（检查点范围提示：Git 仓库没有可用 HEAD：外部 CLI 文件改动无法安全快照）"
+    },
+    {
+     "n": 62,
+     "role": "critique-c8",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519470398030800804dff52aTPlocUsw（退出码 1）"
+    },
+    {
+     "n": 63,
+     "role": "critique-c8",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519475942258674004dff52a6XJl4xxE（退出码 1）"
+    },
+    {
+     "n": 64,
+     "role": "critique-c8",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 202611051948554724559904dff52avg26vvn1（退出码 1）"
+    },
+    {
+     "n": 65,
+     "role": "critique-c8",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_bdcisgfi.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 8.5,\n    \"节奏\": 8.0,\n    \"吸引力\": 8.0\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"开篇冲突进入较快，但裴砚带来的证据链在堂上呈现时，部分关键证据（如药渣、收棺簿\n）的出示过程略显集中，缺少一次真正的交锋或反转，柳府丞的退让稍显轻易。\",\n      \"quote\": \"柳府丞把簿子接过去，从头看到尾。手是稳的。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微在堂上表现果断，但她的心理活动与情绪变化着墨较少，尤其在面对柳府丞质疑时\n，她的内心判断（如对证据可信度的评估）"
+    },
+    {
+     "n": 66,
+     "role": "critique-c8",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_s67pv4dh.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 8.5,\n    \"节奏\": 8.0,\n    \"吸引力\": 8.0\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"本章核心事件（翻案）完成度高，但部分推进依赖对话交代，缺乏动作场面支撑；柳府丞\n的回避与姑姑交珠等关键转折略显顺滑，冲突张力在堂审后迅速回落。\",\n      \"quote\": \n\"柳府丞盯着那页纸，看了很久。然后他伸手把官帽摘了下来，搁在案角：「本官，自请回\n避。」\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微的成长弧光在本章得到兑现（从替嫁弃女到为父翻案），但裴砚的『克妻』洗白过"
+    },
+    {
+     "n": 67,
+     "role": "critique-c8",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_r0fg47tn.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7.5,\n    \"人物\": 8.0,\n    \"文笔\": 8.5,\n    \"节奏\": 8.0,\n    \"吸引力\": 8.0\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"本章核心事件（翻案）完成度高，但部分证据链依赖外部叙述（如老周、老医、军汉的证\n词），主角沈知微在堂上的主动行动偏少，更多是裴砚主导推进。\",\n      \"quote\": \n\"裴砚从大门进来，玄色常服，身后跟着五个人：两个北境军汉，一个背药箱的老医，一个\n捧关防匣子的书办。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\"沈知微的成长弧光在本章有体现（从替嫁弃女到为父翻案），但她的关键决策（如"
+    },
+    {
+     "n": 68,
+     "role": "signing-eval",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "签约评估 （2万字签约预评估检查点）",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110520005275553817204dff52apYgWqA5K（退出码 1）"
+    },
+    {
+     "n": 69,
+     "role": "signing-eval",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "签约评估 （2万字签约预评估检查点）",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_6c5a0ukv.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"开篇吸引力\": 7,\n    \"情节推进\": 7,\n    \"文风统一\": 8,\n    \"情感细腻度\": 7,\n    \"节奏控制\": 7\n  },\n  \"evidence\": [\n    {\n      \"dim\": \"开篇吸引力\",\n      \"chapter\": 1,\n      \"quote\": \n\"柳氏一开口，她先数了一遍自己名下还剩什么——数来数去，只剩三月初六下的那门亲。\",\n      \"analysis\": \n\"开篇即进入核心冲突：柳氏当众宣布换嫁，沈知微名下只剩一门亲，且这门亲已被换名。\n承诺（书名/简介）与正文一致：嫡姐抢婚约、逼替嫁。事件具体（喜宴、当众、原话），\n人物欲望（保住自己名分）与代价（抗婚即被旧案压死）清晰。首个回报是撕婚书并当众\n改嫁裴砚，有可见结果（婚书撕碎、满堂哗然、裴砚开口），不是空泛承诺。局限：撕婚\n书后裴砚只问一句“你可知我克死过两任正妻”，未立即给出应"
+    },
+    {
+     "n": 70,
+     "role": "global-critique",
+     "agent": "codex-cli",
+     "model": "",
+     "status": "failed",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110520043513256389904dff52aQxGvJcx8（退出码 1）"
+    },
+    {
+     "n": 71,
+     "role": "global-critique",
+     "agent": "aider",
+     "model": "DeepSeek-V4-Flash",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_thgjwe57.md to the chat (read-only).\n\n```json\n{\n  \"scores\": {\n    \"情节\": 7,\n    \"人物\": 7,\n    \"文笔\": 7,\n    \"节奏\": 7,\n    \"吸引力\": 7\n  },\n  \"issues\": [\n    {\n      \"dim\": \"情节\",\n      \"severity\": \"minor\",\n      \"note\": \n\"第1章前1500字内冲突落地，但第2章柳氏加码的靠山（族老+宫里姑姑）在花厅中同时出\n现，且姑姑的动机（比对旧画像）在第2章已埋，但第3章才揭示姑姑与鄂州赏药姑姑为同\n一人，中间隔了一章，读者可能暂时无法将两处线索关联，影响因果链的即时性。\",\n      \"quote\": \n\"姑姑的腕子内侧，绕着一缕灰白的气，细得像一炷将尽的香。沈知瑶颈上那一缕，就是这\n个颜色。\"\n    },\n    {\n      \"dim\": \"人物\",\n      \"severity\": \"minor\",\n      \"note\": \n\""
+    },
+    {
+     "n": 72,
+     "role": "global-critique",
+     "agent": "claude-code",
+     "model": "glm-5.3-flash",
+     "status": "done",
+     "cost_usd": 1.3014,
+     "note": "",
+     "summary": "均分 7.9（情节 7.8·人物 7.9·文笔 8.1·节奏 7.8·吸引力 8.0）：所读一至八章全部落地前三章硬指标且每章兑现事件级钩子，因果链与克制短句文风是突出优势；主要风险在终章证据链两处硬伤（乌头『七日』毒理与初九寅时殁矛盾、『老周』身；意见 12 条（含 major 2）：[major] 情节：第八章堂上关键证言称乌头毒发『慢，不疼，七日』，但第四章与第七章的铁账是初八夜间赏药当夜发作、初九寅时病殁（间隔约半日），即便从初七换差『按…"
+    },
+    {
+     "n": 73,
+     "role": "merge",
+     "agent": "builtin",
+     "model": "",
+     "status": "done",
+     "cost_usd": 0.0,
+     "note": "",
+     "summary": "已合并 8 章为 manuscript.md（约 23993 字，分 1 卷）"
     }
    ]
   }
