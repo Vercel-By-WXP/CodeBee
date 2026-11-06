@@ -1,0 +1,2966 @@
+{
+ "_source": {
+  "api": "/api/state + /api/runs/<id>",
+  "captured_at": "2026-11-06T17:33:09",
+  "note": "真实落盘值：4 个 11-09 待续跑 task 下的全部 20 条 run。裁剪规则（未改写任何剩下的字符串）：chapter_scores 只留 chapter/passed/reused/words；outline.chapters 只留 title（长度不变）；steps 只留 draft-c 起草步（retry_task 只认它）；裁掉 inherit.outline、messages、command/configuration/output/log 与 verdict 里与章号继承无关的字段。4 条 09:48 批次 run 保留生产原值 status=running/paused=true/pause_phase=paused；重启收尸后的 failed+interrupted=restart 属派生，由守测 _reap_after_restart() 生成并单列标注，不计真样本。"
+ },
+ "task_ids": [
+  "t-20261022-104907-1000",
+  "t-20261029-102103-5910",
+  "t-20261104-170153-4815",
+  "t-20261105-152926-2324"
+ ],
+ "tasks": [
+  {
+   "id": "t-20261022-104907-1000",
+   "title": "神瞳鉴宝：31-40章修订复评（第二轮·33/38/40点名修）·续14",
+   "status": "running",
+   "serial": {
+    "chapters": 10,
+    "words_per_chapter": 4000,
+    "start_chapter": 52,
+    "continues": "t-20261022-094358-1904",
+    "volumes": [
+     {
+      "title": "神瞳初醒（上）",
+      "start": 1,
+      "end": 10,
+      "chapters": null
+     },
+     {
+      "title": "神瞳初醒（下）",
+      "start": 11,
+      "end": 20,
+      "chapters": null
+     },
+     {
+      "title": "册上之人",
+      "start": 21,
+      "end": 40,
+      "chapters": null
+     },
+     {
+      "title": "眼为心用",
+      "start": 41,
+      "end": 60,
+      "chapters": null
+     },
+     {
+      "title": "册外之争",
+      "start": 61,
+      "end": 80,
+      "chapters": null
+     },
+     {
+      "title": "真赝同体",
+      "start": 81,
+      "end": 100,
+      "chapters": null
+     },
+     {
+      "title": "翻案之路",
+      "start": 101,
+      "end": 120,
+      "chapters": null
+     },
+     {
+      "title": "暗流掌眼",
+      "start": 121,
+      "end": 140,
+      "chapters": null
+     },
+     {
+      "title": "定海神针",
+      "start": 141,
+      "end": 160,
+      "chapters": null
+     },
+     {
+      "title": "总账清算",
+      "start": 161,
+      "end": 180,
+      "chapters": null
+     },
+     {
+      "title": "怀山归位",
+      "start": 181,
+      "end": 200,
+      "chapters": null
+     }
+    ]
+   },
+   "type": "serial_novel",
+   "workdir": "E:\\AI小说\\神瞳鉴宝：我在当铺断真假",
+   "created_at_ns": 1792637347801150400
+  },
+  {
+   "id": "t-20261029-102103-5910",
+   "title": "《头七结账人》21-24章修订复评（第二轮·整章重写至规格）·续7",
+   "status": "running",
+   "serial": {
+    "chapters": 10,
+    "words_per_chapter": 4000,
+    "start_chapter": 59,
+    "continues": "t-20261019-093327-6806",
+    "volumes": [
+     {
+      "title": "开账",
+      "start": 1,
+      "end": 24,
+      "chapters": null
+     },
+     {
+      "title": "阳账",
+      "start": 25,
+      "end": 48,
+      "chapters": null
+     },
+     {
+      "title": "假账",
+      "start": 49,
+      "end": 72,
+      "chapters": null
+     },
+     {
+      "title": "桥塌",
+      "start": 73,
+      "end": 96,
+      "chapters": null
+     },
+     {
+      "title": "翻账",
+      "start": 97,
+      "end": 120,
+      "chapters": null
+     },
+     {
+      "title": "对簿",
+      "start": 121,
+      "end": 144,
+      "chapters": null
+     },
+     {
+      "title": "父名",
+      "start": 145,
+      "end": 168,
+      "chapters": null
+     },
+     {
+      "title": "两清",
+      "start": 169,
+      "end": 196,
+      "chapters": null
+     }
+    ]
+   },
+   "type": "serial_novel",
+   "workdir": "E:\\AI小说\\头七结账人",
+   "created_at_ns": 1793240463274661000
+  },
+  {
+   "id": "t-20261104-170153-4815",
+   "title": "屏幕上跳出下周五 -32℃ 的预报时，所有人都笑着说，是苹果",
+   "status": "running",
+   "serial": {
+    "chapters": 8,
+    "words_per_chapter": 2500,
+    "volume_chapters": 20
+   },
+   "type": "serial_novel",
+   "workdir": "E:\\AI小说\\-32度",
+   "created_at_ns": 1793782913027426000
+  },
+  {
+   "id": "t-20261105-152926-2324",
+   "title": "阴账铺子：我专收死人欠的账",
+   "status": "running",
+   "serial": {
+    "chapters": 8,
+    "words_per_chapter": 2600,
+    "volume_chapters": 20
+   },
+   "type": "serial_novel",
+   "workdir": "E:\\AI小说\\阴账铺子",
+   "created_at_ns": 1793863766664620800
+  }
+ ],
+ "runs": [
+  {
+   "id": "r-20261106-094827-3523",
+   "task_id": "t-20261104-170153-4815",
+   "status": "running",
+   "created_at_ns": 1793929707939684700,
+   "interrupted": null,
+   "paused": true,
+   "pause_phase": "paused",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(维云模型开放平台 · claude-sonnet-5-5)",
+    "chapters": [
+     {
+      "title": "苹果天气没有坏"
+     },
+     {
+      "title": "一堆被标价的煤"
+     },
+     {
+      "title": "母亲的猫"
+     },
+     {
+      "title": "站长的算盘"
+     },
+     {
+      "title": "周三的限气通知"
+     },
+     {
+      "title": "周五十四点"
+     },
+     {
+      "title": "二十一点四十分"
+     },
+     {
+      "title": "天亮后的数字"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": false,
+      "reused": true,
+      "words": 2590
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 3155
+     },
+     {
+      "chapter": 3,
+      "passed": true,
+      "reused": true,
+      "words": 2667
+     },
+     {
+      "chapter": 4,
+      "passed": true,
+      "reused": true,
+      "words": 2706
+     },
+     {
+      "chapter": 5,
+      "passed": true,
+      "reused": true,
+      "words": 2660
+     },
+     {
+      "chapter": 6,
+      "passed": false,
+      "words": 2729
+     },
+     {
+      "chapter": 7,
+      "passed": false,
+      "words": 3152
+     },
+     {
+      "chapter": 8,
+      "passed": false,
+      "words": 2562
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 20,
+     "role": "draft-c2",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2435
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-094824-4277",
+   "task_id": "t-20261022-104907-1000",
+   "status": "running",
+   "created_at_ns": 1793929704768237300,
+   "interrupted": null,
+   "paused": true,
+   "pause_phase": "paused",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "第52章 天亮前来的车"
+     },
+     {
+      "title": "第53章 白手套的规矩"
+     },
+     {
+      "title": "第54章 第二页"
+     },
+     {
+      "title": "第55章 牌子与单子"
+     },
+     {
+      "title": "第56章 出过海的名字"
+     },
+     {
+      "title": "第57章 挂在堂上的面具"
+     },
+     {
+      "title": "第58章 没花的那笔工钱"
+     },
+     {
+      "title": "第59章 掌眼前夜"
+     },
+     {
+      "title": "第60章 掌眼"
+     },
+     {
+      "title": "第61章 册外第一件"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     52,
+     53
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 52,
+      "passed": false,
+      "words": 4720
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c52",
+     "status": "done"
+    },
+    {
+     "n": 21,
+     "role": "draft-c53",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 52,
+     "passed": false,
+     "words": 4752
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-094822-4307",
+   "task_id": "t-20261105-152926-2324",
+   "status": "running",
+   "created_at_ns": 1793929702507085000,
+   "interrupted": null,
+   "paused": true,
+   "pause_phase": "paused",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "还三斗米"
+     },
+     {
+      "title": "不问死因"
+     },
+     {
+      "title": "落款是我"
+     },
+     {
+      "title": "王家祖坟"
+     },
+     {
+      "title": "沈青禾的账"
+     },
+     {
+      "title": "进坟收账"
+     },
+     {
+      "title": "三日期限"
+     },
+     {
+      "title": "第七代账"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": false,
+      "words": 2700
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 20,
+     "role": "draft-c2",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2560
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-094817-8634",
+   "task_id": "t-20261029-102103-5910",
+   "status": "running",
+   "created_at_ns": 1793929697965597200,
+   "interrupted": null,
+   "paused": true,
+   "pause_phase": "paused",
+   "outline": {
+    "degraded": null,
+    "source": "llm(claude-code)",
+    "chapters": [
+     {
+      "title": "第五行"
+     },
+     {
+      "title": "袖套底下"
+     },
+     {
+      "title": "旧地址"
+     },
+     {
+      "title": "未到的人"
+     },
+     {
+      "title": "两份说法"
+     },
+     {
+      "title": "留存理由"
+     },
+     {
+      "title": "抽页"
+     },
+     {
+      "title": "谁来认账"
+     },
+     {
+      "title": "三十六不动"
+     },
+     {
+      "title": "栏名"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     59,
+     60,
+     61,
+     62,
+     63,
+     64
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 59,
+      "passed": true,
+      "reused": true,
+      "words": 4109
+     },
+     {
+      "chapter": 60,
+      "passed": true,
+      "reused": true,
+      "words": 4929
+     },
+     {
+      "chapter": 61,
+      "passed": true,
+      "reused": true,
+      "words": 3969
+     },
+     {
+      "chapter": 62,
+      "passed": true,
+      "reused": true,
+      "words": 4015
+     },
+     {
+      "chapter": 63,
+      "passed": true,
+      "reused": true,
+      "words": 3848
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c59",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c60",
+     "status": "done"
+    },
+    {
+     "n": 4,
+     "role": "draft-c61",
+     "status": "done"
+    },
+    {
+     "n": 5,
+     "role": "draft-c62",
+     "status": "done"
+    },
+    {
+     "n": 6,
+     "role": "draft-c63",
+     "status": "done"
+    },
+    {
+     "n": 7,
+     "role": "draft-c64",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 59,
+     "passed": true,
+     "reused": true,
+     "words": 4109
+    },
+    {
+     "chapter": 60,
+     "passed": true,
+     "reused": true,
+     "words": 4929
+    },
+    {
+     "chapter": 61,
+     "passed": true,
+     "reused": true,
+     "words": 3969
+    },
+    {
+     "chapter": 62,
+     "passed": true,
+     "reused": true,
+     "words": 4015
+    },
+    {
+     "chapter": 63,
+     "passed": true,
+     "reused": true,
+     "words": 3848
+    },
+    {
+     "chapter": 64,
+     "passed": false,
+     "words": 4225
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-083948-1126",
+   "task_id": "t-20261029-102103-5910",
+   "status": "failed",
+   "created_at_ns": 1793925588493637100,
+   "interrupted": "restart",
+   "paused": true,
+   "pause_phase": "paused",
+   "outline": {
+    "degraded": null,
+    "source": "llm(claude-code)",
+    "chapters": [
+     {
+      "title": "第五行"
+     },
+     {
+      "title": "袖套底下"
+     },
+     {
+      "title": "旧地址"
+     },
+     {
+      "title": "未到的人"
+     },
+     {
+      "title": "两份说法"
+     },
+     {
+      "title": "留存理由"
+     },
+     {
+      "title": "抽页"
+     },
+     {
+      "title": "谁来认账"
+     },
+     {
+      "title": "三十六不动"
+     },
+     {
+      "title": "栏名"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     59,
+     60,
+     61,
+     62,
+     63,
+     64,
+     65,
+     66,
+     67,
+     68
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 59,
+      "passed": true,
+      "reused": true,
+      "words": 4109
+     },
+     {
+      "chapter": 60,
+      "passed": true,
+      "reused": true,
+      "words": 4929
+     },
+     {
+      "chapter": 61,
+      "passed": true,
+      "reused": true,
+      "words": 3969
+     },
+     {
+      "chapter": 62,
+      "passed": true,
+      "reused": true,
+      "words": 4015
+     },
+     {
+      "chapter": 63,
+      "passed": true,
+      "reused": true,
+      "words": 3848
+     },
+     {
+      "chapter": 64,
+      "passed": false,
+      "words": 4199
+     },
+     {
+      "chapter": 65,
+      "passed": false,
+      "words": 4112
+     },
+     {
+      "chapter": 66,
+      "passed": false,
+      "words": 4114
+     },
+     {
+      "chapter": 67,
+      "passed": false,
+      "words": 4346
+     },
+     {
+      "chapter": 68,
+      "passed": false,
+      "words": 4298
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c59",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c60",
+     "status": "done"
+    },
+    {
+     "n": 4,
+     "role": "draft-c61",
+     "status": "done"
+    },
+    {
+     "n": 5,
+     "role": "draft-c62",
+     "status": "done"
+    },
+    {
+     "n": 6,
+     "role": "draft-c63",
+     "status": "done"
+    },
+    {
+     "n": 7,
+     "role": "draft-c64",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 59,
+     "passed": true,
+     "reused": true,
+     "words": 4109
+    },
+    {
+     "chapter": 60,
+     "passed": true,
+     "reused": true,
+     "words": 4929
+    },
+    {
+     "chapter": 61,
+     "passed": true,
+     "reused": true,
+     "words": 3969
+    },
+    {
+     "chapter": 62,
+     "passed": true,
+     "reused": true,
+     "words": 4015
+    },
+    {
+     "chapter": 63,
+     "passed": true,
+     "reused": true,
+     "words": 3848
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-083058-6777",
+   "task_id": "t-20261105-152926-2324",
+   "status": "failed",
+   "created_at_ns": 1793925058135687800,
+   "interrupted": "restart",
+   "paused": true,
+   "pause_phase": "requested",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "还三斗米"
+     },
+     {
+      "title": "不问死因"
+     },
+     {
+      "title": "落款是我"
+     },
+     {
+      "title": "王家祖坟"
+     },
+     {
+      "title": "沈青禾的账"
+     },
+     {
+      "title": "进坟收账"
+     },
+     {
+      "title": "三日期限"
+     },
+     {
+      "title": "第七代账"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": false,
+      "words": 2618
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2503
+     },
+     {
+      "chapter": 3,
+      "passed": false,
+      "words": 2718
+     },
+     {
+      "chapter": 4,
+      "passed": false,
+      "words": 2583
+     },
+     {
+      "chapter": 5,
+      "passed": false,
+      "words": 2601
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 18,
+     "role": "draft-c2",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2700
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-081358-1596",
+   "task_id": "t-20261022-104907-1000",
+   "status": "failed",
+   "created_at_ns": 1793924038406549100,
+   "interrupted": "restart",
+   "paused": true,
+   "pause_phase": "paused",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "第52章 天亮前来的车"
+     },
+     {
+      "title": "第53章 白手套的规矩"
+     },
+     {
+      "title": "第54章 第二页"
+     },
+     {
+      "title": "第55章 牌子与单子"
+     },
+     {
+      "title": "第56章 出过海的名字"
+     },
+     {
+      "title": "第57章 挂在堂上的面具"
+     },
+     {
+      "title": "第58章 没花的那笔工钱"
+     },
+     {
+      "title": "第59章 掌眼前夜"
+     },
+     {
+      "title": "第60章 掌眼"
+     },
+     {
+      "title": "第61章 册外第一件"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     52,
+     53,
+     54,
+     55,
+     56,
+     57
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 52,
+      "passed": false,
+      "words": 4719
+     },
+     {
+      "chapter": 53,
+      "passed": false,
+      "words": 4814
+     },
+     {
+      "chapter": 54,
+      "passed": false,
+      "words": 4234
+     },
+     {
+      "chapter": 55,
+      "passed": false,
+      "words": 4255
+     },
+     {
+      "chapter": 56,
+      "passed": false,
+      "words": 4580
+     },
+     {
+      "chapter": 57,
+      "passed": false,
+      "words": 3820
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c52",
+     "status": "done"
+    },
+    {
+     "n": 21,
+     "role": "draft-c53",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 52,
+     "passed": false,
+     "words": 4720
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-055755-2822",
+   "task_id": "t-20261104-170153-4815",
+   "status": "failed",
+   "created_at_ns": 1793915875077444600,
+   "interrupted": "restart",
+   "paused": true,
+   "pause_phase": "requested",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(维云模型开放平台 · claude-sonnet-5-5)",
+    "chapters": [
+     {
+      "title": "苹果天气没有坏"
+     },
+     {
+      "title": "一堆被标价的煤"
+     },
+     {
+      "title": "母亲的猫"
+     },
+     {
+      "title": "站长的算盘"
+     },
+     {
+      "title": "周三的限气通知"
+     },
+     {
+      "title": "周五十四点"
+     },
+     {
+      "title": "二十一点四十分"
+     },
+     {
+      "title": "天亮后的数字"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": true,
+      "reused": true,
+      "words": 2483
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2993
+     },
+     {
+      "chapter": 3,
+      "passed": true,
+      "reused": true,
+      "words": 2600
+     },
+     {
+      "chapter": 4,
+      "passed": true,
+      "reused": true,
+      "words": 2706
+     },
+     {
+      "chapter": 5,
+      "passed": true,
+      "words": 2660
+     },
+     {
+      "chapter": 6,
+      "passed": false,
+      "words": 2420
+     },
+     {
+      "chapter": 7,
+      "passed": false,
+      "words": 2724
+     },
+     {
+      "chapter": 8,
+      "passed": false,
+      "words": 2608
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 16,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 17,
+     "role": "draft-c4",
+     "status": "done"
+    },
+    {
+     "n": 18,
+     "role": "draft-c5",
+     "status": "done"
+    },
+    {
+     "n": 19,
+     "role": "draft-c6",
+     "status": "done"
+    },
+    {
+     "n": 33,
+     "role": "draft-c7",
+     "status": "done"
+    },
+    {
+     "n": 47,
+     "role": "draft-c8",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "reused": true,
+     "words": 2590
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 3155
+    },
+    {
+     "chapter": 3,
+     "passed": true,
+     "reused": true,
+     "words": 2667
+    },
+    {
+     "chapter": 4,
+     "passed": true,
+     "reused": true,
+     "words": 2706
+    },
+    {
+     "chapter": 5,
+     "passed": true,
+     "reused": true,
+     "words": 2660
+    },
+    {
+     "chapter": 6,
+     "passed": false,
+     "words": 2729
+    },
+    {
+     "chapter": 7,
+     "passed": false,
+     "words": 3152
+    },
+    {
+     "chapter": 8,
+     "passed": false,
+     "words": 2562
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-042553-9551",
+   "task_id": "t-20261105-152926-2324",
+   "status": "timeout",
+   "created_at_ns": 1793910353614488200,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "还三斗米"
+     },
+     {
+      "title": "不问死因"
+     },
+     {
+      "title": "落款是我"
+     },
+     {
+      "title": "王家祖坟"
+     },
+     {
+      "title": "沈青禾的账"
+     },
+     {
+      "title": "进坟收账"
+     },
+     {
+      "title": "三日期限"
+     },
+     {
+      "title": "第七代账"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": false,
+      "words": 2596
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2556
+     },
+     {
+      "chapter": 3,
+      "passed": false,
+      "words": 2844
+     },
+     {
+      "chapter": 4,
+      "passed": false,
+      "words": 2591
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 20,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 34,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 44,
+     "role": "draft-c4",
+     "status": "done"
+    },
+    {
+     "n": 58,
+     "role": "draft-c5",
+     "status": "done"
+    },
+    {
+     "n": 72,
+     "role": "draft-c6",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2618
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2503
+    },
+    {
+     "chapter": 3,
+     "passed": false,
+     "words": 2718
+    },
+    {
+     "chapter": 4,
+     "passed": false,
+     "words": 2583
+    },
+    {
+     "chapter": 5,
+     "passed": false,
+     "words": 2601
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-033426-2214",
+   "task_id": "t-20261029-102103-5910",
+   "status": "timeout",
+   "created_at_ns": 1793907266246668100,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "llm(claude-code)",
+    "chapters": [
+     {
+      "title": "第五行"
+     },
+     {
+      "title": "袖套底下"
+     },
+     {
+      "title": "旧地址"
+     },
+     {
+      "title": "未到的人"
+     },
+     {
+      "title": "两份说法"
+     },
+     {
+      "title": "留存理由"
+     },
+     {
+      "title": "抽页"
+     },
+     {
+      "title": "谁来认账"
+     },
+     {
+      "title": "三十六不动"
+     },
+     {
+      "title": "栏名"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     59,
+     60,
+     61,
+     62,
+     63,
+     64,
+     65,
+     66,
+     67
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 59,
+      "passed": true,
+      "reused": true,
+      "words": 4109
+     },
+     {
+      "chapter": 60,
+      "passed": true,
+      "reused": true,
+      "words": 4929
+     },
+     {
+      "chapter": 61,
+      "passed": true,
+      "reused": true,
+      "words": 3969
+     },
+     {
+      "chapter": 62,
+      "passed": true,
+      "reused": true,
+      "words": 4015
+     },
+     {
+      "chapter": 63,
+      "passed": true,
+      "reused": true,
+      "words": 3848
+     },
+     {
+      "chapter": 64,
+      "passed": false,
+      "words": 4091
+     },
+     {
+      "chapter": 65,
+      "passed": false,
+      "words": 4199
+     },
+     {
+      "chapter": 66,
+      "passed": false,
+      "words": 4087
+     },
+     {
+      "chapter": 67,
+      "passed": false,
+      "words": 4202
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c59",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c60",
+     "status": "done"
+    },
+    {
+     "n": 4,
+     "role": "draft-c61",
+     "status": "done"
+    },
+    {
+     "n": 5,
+     "role": "draft-c62",
+     "status": "done"
+    },
+    {
+     "n": 6,
+     "role": "draft-c63",
+     "status": "done"
+    },
+    {
+     "n": 7,
+     "role": "draft-c64",
+     "status": "done"
+    },
+    {
+     "n": 23,
+     "role": "draft-c65",
+     "status": "done"
+    },
+    {
+     "n": 39,
+     "role": "draft-c66",
+     "status": "done"
+    },
+    {
+     "n": 55,
+     "role": "draft-c67",
+     "status": "done"
+    },
+    {
+     "n": 71,
+     "role": "draft-c68",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 59,
+     "passed": true,
+     "reused": true,
+     "words": 4109
+    },
+    {
+     "chapter": 60,
+     "passed": true,
+     "reused": true,
+     "words": 4929
+    },
+    {
+     "chapter": 61,
+     "passed": true,
+     "reused": true,
+     "words": 3969
+    },
+    {
+     "chapter": 62,
+     "passed": true,
+     "reused": true,
+     "words": 4015
+    },
+    {
+     "chapter": 63,
+     "passed": true,
+     "reused": true,
+     "words": 3848
+    },
+    {
+     "chapter": 64,
+     "passed": false,
+     "words": 4199
+    },
+    {
+     "chapter": 65,
+     "passed": false,
+     "words": 4112
+    },
+    {
+     "chapter": 66,
+     "passed": false,
+     "words": 4114
+    },
+    {
+     "chapter": 67,
+     "passed": false,
+     "words": 4346
+    },
+    {
+     "chapter": 68,
+     "passed": false,
+     "words": 4298
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-030828-8219",
+   "task_id": "t-20261022-104907-1000",
+   "status": "timeout",
+   "created_at_ns": 1793905708633438400,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "第52章 天亮前来的车"
+     },
+     {
+      "title": "第53章 白手套的规矩"
+     },
+     {
+      "title": "第54章 第二页"
+     },
+     {
+      "title": "第55章 牌子与单子"
+     },
+     {
+      "title": "第56章 出过海的名字"
+     },
+     {
+      "title": "第57章 挂在堂上的面具"
+     },
+     {
+      "title": "第58章 没花的那笔工钱"
+     },
+     {
+      "title": "第59章 掌眼前夜"
+     },
+     {
+      "title": "第60章 掌眼"
+     },
+     {
+      "title": "第61章 册外第一件"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     52,
+     53,
+     54
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 52,
+      "passed": false,
+      "words": 4638
+     },
+     {
+      "chapter": 53,
+      "passed": false,
+      "words": 4861
+     },
+     {
+      "chapter": 54,
+      "passed": false,
+      "words": 4115
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c52",
+     "status": "done"
+    },
+    {
+     "n": 21,
+     "role": "draft-c53",
+     "status": "done"
+    },
+    {
+     "n": 37,
+     "role": "draft-c54",
+     "status": "done"
+    },
+    {
+     "n": 53,
+     "role": "draft-c55",
+     "status": "done"
+    },
+    {
+     "n": 69,
+     "role": "draft-c56",
+     "status": "done"
+    },
+    {
+     "n": 85,
+     "role": "draft-c57",
+     "status": "done"
+    },
+    {
+     "n": 101,
+     "role": "draft-c58",
+     "status": "timeout"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 52,
+     "passed": false,
+     "words": 4719
+    },
+    {
+     "chapter": 53,
+     "passed": false,
+     "words": 4814
+    },
+    {
+     "chapter": 54,
+     "passed": false,
+     "words": 4234
+    },
+    {
+     "chapter": 55,
+     "passed": false,
+     "words": 4255
+    },
+    {
+     "chapter": 56,
+     "passed": false,
+     "words": 4580
+    },
+    {
+     "chapter": 57,
+     "passed": false,
+     "words": 3820
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-015242-9914",
+   "task_id": "t-20261104-170153-4815",
+   "status": "timeout",
+   "created_at_ns": 1793901162731536100,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(维云模型开放平台 · claude-sonnet-5-5)",
+    "chapters": [
+     {
+      "title": "苹果天气没有坏"
+     },
+     {
+      "title": "一堆被标价的煤"
+     },
+     {
+      "title": "母亲的猫"
+     },
+     {
+      "title": "站长的算盘"
+     },
+     {
+      "title": "周三的限气通知"
+     },
+     {
+      "title": "周五十四点"
+     },
+     {
+      "title": "二十一点四十分"
+     },
+     {
+      "title": "天亮后的数字"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": true,
+      "reused": true,
+      "words": 2483
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2573
+     },
+     {
+      "chapter": 3,
+      "passed": true,
+      "reused": true,
+      "words": 2600
+     },
+     {
+      "chapter": 4,
+      "passed": true,
+      "reused": true,
+      "words": 2706
+     },
+     {
+      "chapter": 5,
+      "passed": false,
+      "words": 2660
+     },
+     {
+      "chapter": 6,
+      "passed": false,
+      "words": 2474
+     },
+     {
+      "chapter": 7,
+      "passed": false,
+      "words": 2534
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 17,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 18,
+     "role": "draft-c4",
+     "status": "done"
+    },
+    {
+     "n": 19,
+     "role": "draft-c5",
+     "status": "done"
+    },
+    {
+     "n": 25,
+     "role": "draft-c6",
+     "status": "done"
+    },
+    {
+     "n": 39,
+     "role": "draft-c7",
+     "status": "done"
+    },
+    {
+     "n": 53,
+     "role": "draft-c8",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": true,
+     "reused": true,
+     "words": 2483
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2993
+    },
+    {
+     "chapter": 3,
+     "passed": true,
+     "reused": true,
+     "words": 2600
+    },
+    {
+     "chapter": 4,
+     "passed": true,
+     "reused": true,
+     "words": 2706
+    },
+    {
+     "chapter": 5,
+     "passed": true,
+     "words": 2660
+    },
+    {
+     "chapter": 6,
+     "passed": false,
+     "words": 2420
+    },
+    {
+     "chapter": 7,
+     "passed": false,
+     "words": 2724
+    },
+    {
+     "chapter": 8,
+     "passed": false,
+     "words": 2608
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261106-002047-3319",
+   "task_id": "t-20261105-152926-2324",
+   "status": "timeout",
+   "created_at_ns": 1793895647812930300,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "还三斗米"
+     },
+     {
+      "title": "不问死因"
+     },
+     {
+      "title": "落款是我"
+     },
+     {
+      "title": "王家祖坟"
+     },
+     {
+      "title": "沈青禾的账"
+     },
+     {
+      "title": "进坟收账"
+     },
+     {
+      "title": "三日期限"
+     },
+     {
+      "title": "第七代账"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": false,
+      "words": 2712
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2729
+     },
+     {
+      "chapter": 3,
+      "passed": false,
+      "words": 2843
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 20,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 34,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 48,
+     "role": "draft-c4",
+     "status": "done"
+    },
+    {
+     "n": 62,
+     "role": "draft-c5",
+     "status": "timeout"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2596
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2556
+    },
+    {
+     "chapter": 3,
+     "passed": false,
+     "words": 2844
+    },
+    {
+     "chapter": 4,
+     "passed": false,
+     "words": 2591
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-222904-4371",
+   "task_id": "t-20261029-102103-5910",
+   "status": "timeout",
+   "created_at_ns": 1793888944487666500,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "llm(claude-code)",
+    "chapters": [
+     {
+      "title": "第五行"
+     },
+     {
+      "title": "袖套底下"
+     },
+     {
+      "title": "旧地址"
+     },
+     {
+      "title": "未到的人"
+     },
+     {
+      "title": "两份说法"
+     },
+     {
+      "title": "留存理由"
+     },
+     {
+      "title": "抽页"
+     },
+     {
+      "title": "谁来认账"
+     },
+     {
+      "title": "三十六不动"
+     },
+     {
+      "title": "栏名"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     59,
+     60,
+     61,
+     62,
+     63,
+     64,
+     65,
+     66,
+     67
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 59,
+      "passed": true,
+      "reused": true,
+      "words": 4109
+     },
+     {
+      "chapter": 60,
+      "passed": true,
+      "reused": true,
+      "words": 4929
+     },
+     {
+      "chapter": 61,
+      "passed": true,
+      "reused": true,
+      "words": 3969
+     },
+     {
+      "chapter": 62,
+      "passed": true,
+      "reused": true,
+      "words": 4015
+     },
+     {
+      "chapter": 63,
+      "passed": true,
+      "reused": true,
+      "words": 3848
+     },
+     {
+      "chapter": 64,
+      "passed": false,
+      "words": 3865
+     },
+     {
+      "chapter": 65,
+      "passed": false,
+      "words": 4101
+     },
+     {
+      "chapter": 66,
+      "passed": false,
+      "words": 4106
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c59",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c60",
+     "status": "done"
+    },
+    {
+     "n": 4,
+     "role": "draft-c61",
+     "status": "done"
+    },
+    {
+     "n": 5,
+     "role": "draft-c62",
+     "status": "done"
+    },
+    {
+     "n": 6,
+     "role": "draft-c63",
+     "status": "done"
+    },
+    {
+     "n": 7,
+     "role": "draft-c64",
+     "status": "done"
+    },
+    {
+     "n": 23,
+     "role": "draft-c65",
+     "status": "done"
+    },
+    {
+     "n": 39,
+     "role": "draft-c66",
+     "status": "done"
+    },
+    {
+     "n": 55,
+     "role": "draft-c67",
+     "status": "done"
+    },
+    {
+     "n": 71,
+     "role": "draft-c68",
+     "status": "timeout"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 59,
+     "passed": true,
+     "reused": true,
+     "words": 4109
+    },
+    {
+     "chapter": 60,
+     "passed": true,
+     "reused": true,
+     "words": 4929
+    },
+    {
+     "chapter": 61,
+     "passed": true,
+     "reused": true,
+     "words": 3969
+    },
+    {
+     "chapter": 62,
+     "passed": true,
+     "reused": true,
+     "words": 4015
+    },
+    {
+     "chapter": 63,
+     "passed": true,
+     "reused": true,
+     "words": 3848
+    },
+    {
+     "chapter": 64,
+     "passed": false,
+     "words": 4091
+    },
+    {
+     "chapter": 65,
+     "passed": false,
+     "words": 4199
+    },
+    {
+     "chapter": 66,
+     "passed": false,
+     "words": 4087
+    },
+    {
+     "chapter": 67,
+     "passed": false,
+     "words": 4202
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-220550-8375",
+   "task_id": "t-20261022-104907-1000",
+   "status": "timeout",
+   "created_at_ns": 1793887550325554400,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "第52章 天亮前来的车"
+     },
+     {
+      "title": "第53章 白手套的规矩"
+     },
+     {
+      "title": "第54章 第二页"
+     },
+     {
+      "title": "第55章 牌子与单子"
+     },
+     {
+      "title": "第56章 出过海的名字"
+     },
+     {
+      "title": "第57章 挂在堂上的面具"
+     },
+     {
+      "title": "第58章 没花的那笔工钱"
+     },
+     {
+      "title": "第59章 掌眼前夜"
+     },
+     {
+      "title": "第60章 掌眼"
+     },
+     {
+      "title": "第61章 册外第一件"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [],
+    "chapter_scores": [],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c52",
+     "status": "done"
+    },
+    {
+     "n": 21,
+     "role": "draft-c53",
+     "status": "done"
+    },
+    {
+     "n": 37,
+     "role": "draft-c54",
+     "status": "done"
+    },
+    {
+     "n": 53,
+     "role": "draft-c55",
+     "status": "timeout"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 52,
+     "passed": false,
+     "words": 4638
+    },
+    {
+     "chapter": 53,
+     "passed": false,
+     "words": 4861
+    },
+    {
+     "chapter": 54,
+     "passed": false,
+     "words": 4115
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-214735-6265",
+   "task_id": "t-20261104-170153-4815",
+   "status": "timeout",
+   "created_at_ns": 1793886455834018300,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(维云模型开放平台 · claude-sonnet-5-5)",
+    "chapters": [
+     {
+      "title": "苹果天气没有坏"
+     },
+     {
+      "title": "一堆被标价的煤"
+     },
+     {
+      "title": "母亲的猫"
+     },
+     {
+      "title": "站长的算盘"
+     },
+     {
+      "title": "周三的限气通知"
+     },
+     {
+      "title": "周五十四点"
+     },
+     {
+      "title": "二十一点四十分"
+     },
+     {
+      "title": "天亮后的数字"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": true,
+      "words": 2483
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2651
+     },
+     {
+      "chapter": 3,
+      "passed": true,
+      "words": 2600
+     },
+     {
+      "chapter": 4,
+      "passed": true,
+      "words": 2706
+     },
+     {
+      "chapter": 5,
+      "passed": false,
+      "words": 2528
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 17,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 18,
+     "role": "draft-c4",
+     "status": "done"
+    },
+    {
+     "n": 19,
+     "role": "draft-c5",
+     "status": "done"
+    },
+    {
+     "n": 31,
+     "role": "draft-c6",
+     "status": "done"
+    },
+    {
+     "n": 45,
+     "role": "draft-c7",
+     "status": "done"
+    },
+    {
+     "n": 58,
+     "role": "draft-c8",
+     "status": "timeout"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": true,
+     "reused": true,
+     "words": 2483
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2573
+    },
+    {
+     "chapter": 3,
+     "passed": true,
+     "reused": true,
+     "words": 2600
+    },
+    {
+     "chapter": 4,
+     "passed": true,
+     "reused": true,
+     "words": 2706
+    },
+    {
+     "chapter": 5,
+     "passed": false,
+     "words": 2660
+    },
+    {
+     "chapter": 6,
+     "passed": false,
+     "words": 2474
+    },
+    {
+     "chapter": 7,
+     "passed": false,
+     "words": 2534
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-200143-6309",
+   "task_id": "t-20261105-152926-2324",
+   "status": "timeout",
+   "created_at_ns": 1793880103028437100,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "还三斗米"
+     },
+     {
+      "title": "不问死因"
+     },
+     {
+      "title": "落款是我"
+     },
+     {
+      "title": "王家祖坟"
+     },
+     {
+      "title": "沈青禾的账"
+     },
+     {
+      "title": "进坟收账"
+     },
+     {
+      "title": "三日期限"
+     },
+     {
+      "title": "第七代账"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1,
+     2,
+     3,
+     4
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 1,
+      "passed": false,
+      "words": 2759
+     },
+     {
+      "chapter": 2,
+      "passed": false,
+      "words": 2729
+     },
+     {
+      "chapter": 3,
+      "passed": false,
+      "words": 2785
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 17,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 27,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 37,
+     "role": "draft-c4",
+     "status": "failed"
+    },
+    {
+     "n": 38,
+     "role": "draft-c4",
+     "status": "failed"
+    },
+    {
+     "n": 39,
+     "role": "draft-c4",
+     "status": "failed"
+    },
+    {
+     "n": 40,
+     "role": "draft-c4",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2712
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2729
+    },
+    {
+     "chapter": 3,
+     "passed": false,
+     "words": 2843
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-174730-9762",
+   "task_id": "t-20261104-170153-4815",
+   "status": "timeout",
+   "created_at_ns": 1793872050684227400,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(维云模型开放平台 · claude-sonnet-5-5)",
+    "chapters": [
+     {
+      "title": "苹果天气没有坏"
+     },
+     {
+      "title": "一堆被标价的煤"
+     },
+     {
+      "title": "母亲的猫"
+     },
+     {
+      "title": "站长的算盘"
+     },
+     {
+      "title": "周三的限气通知"
+     },
+     {
+      "title": "周五十四点"
+     },
+     {
+      "title": "二十一点四十分"
+     },
+     {
+      "title": "天亮后的数字"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1
+    ],
+    "chapter_scores": [],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 18,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 28,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 29,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 39,
+     "role": "draft-c4",
+     "status": "failed"
+    },
+    {
+     "n": 40,
+     "role": "draft-c4",
+     "status": "done"
+    },
+    {
+     "n": 45,
+     "role": "draft-c5",
+     "status": "done"
+    },
+    {
+     "n": 59,
+     "role": "draft-c6",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": true,
+     "words": 2483
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2651
+    },
+    {
+     "chapter": 3,
+     "passed": true,
+     "words": 2600
+    },
+    {
+     "chapter": 4,
+     "passed": true,
+     "words": 2706
+    },
+    {
+     "chapter": 5,
+     "passed": false,
+     "words": 2528
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-171605-0233",
+   "task_id": "t-20261105-152926-2324",
+   "status": "failed",
+   "created_at_ns": 1793870165018975900,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "编排者(幻城 · DeepSeek-V4-Flash)",
+    "chapters": [
+     {
+      "title": "还三斗米"
+     },
+     {
+      "title": "不问死因"
+     },
+     {
+      "title": "落款是我"
+     },
+     {
+      "title": "王家祖坟"
+     },
+     {
+      "title": "沈青禾的账"
+     },
+     {
+      "title": "进坟收账"
+     },
+     {
+      "title": "三日期限"
+     },
+     {
+      "title": "第七代账"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     1
+    ],
+    "chapter_scores": [],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c1",
+     "status": "done"
+    },
+    {
+     "n": 20,
+     "role": "draft-c2",
+     "status": "done"
+    },
+    {
+     "n": 30,
+     "role": "draft-c3",
+     "status": "done"
+    },
+    {
+     "n": 42,
+     "role": "draft-c4",
+     "status": "failed"
+    },
+    {
+     "n": 43,
+     "role": "draft-c4",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 1,
+     "passed": false,
+     "words": 2759
+    },
+    {
+     "chapter": 2,
+     "passed": false,
+     "words": 2729
+    },
+    {
+     "chapter": 3,
+     "passed": false,
+     "words": 2785
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  },
+  {
+   "id": "r-20261105-171025-3047",
+   "task_id": "t-20261029-102103-5910",
+   "status": "timeout",
+   "created_at_ns": 1793869825982029300,
+   "interrupted": null,
+   "paused": null,
+   "pause_phase": "none",
+   "outline": {
+    "degraded": null,
+    "source": "llm(claude-code)",
+    "chapters": [
+     {
+      "title": "第五行"
+     },
+     {
+      "title": "袖套底下"
+     },
+     {
+      "title": "旧地址"
+     },
+     {
+      "title": "未到的人"
+     },
+     {
+      "title": "两份说法"
+     },
+     {
+      "title": "留存理由"
+     },
+     {
+      "title": "抽页"
+     },
+     {
+      "title": "谁来认账"
+     },
+     {
+      "title": "三十六不动"
+     },
+     {
+      "title": "栏名"
+     }
+    ]
+   },
+   "inherit": {
+    "done_chapters": [
+     59,
+     60,
+     61,
+     62,
+     63,
+     64
+    ],
+    "chapter_scores": [
+     {
+      "chapter": 59,
+      "passed": true,
+      "reused": true,
+      "words": 4109
+     },
+     {
+      "chapter": 60,
+      "passed": true,
+      "reused": true,
+      "words": 4929
+     },
+     {
+      "chapter": 61,
+      "passed": true,
+      "reused": true,
+      "words": 3969
+     },
+     {
+      "chapter": 62,
+      "passed": true,
+      "reused": true,
+      "words": 4015
+     },
+     {
+      "chapter": 63,
+      "passed": true,
+      "reused": true,
+      "words": 3848
+     }
+    ],
+    "redo_issues": []
+   },
+   "steps": [
+    {
+     "n": 2,
+     "role": "draft-c59",
+     "status": "done"
+    },
+    {
+     "n": 3,
+     "role": "draft-c60",
+     "status": "done"
+    },
+    {
+     "n": 4,
+     "role": "draft-c61",
+     "status": "done"
+    },
+    {
+     "n": 5,
+     "role": "draft-c62",
+     "status": "done"
+    },
+    {
+     "n": 6,
+     "role": "draft-c63",
+     "status": "done"
+    },
+    {
+     "n": 7,
+     "role": "draft-c64",
+     "status": "done"
+    },
+    {
+     "n": 23,
+     "role": "draft-c65",
+     "status": "done"
+    },
+    {
+     "n": 33,
+     "role": "draft-c66",
+     "status": "done"
+    },
+    {
+     "n": 47,
+     "role": "draft-c67",
+     "status": "done"
+    }
+   ],
+   "chapter_scores": [
+    {
+     "chapter": 59,
+     "passed": true,
+     "reused": true,
+     "words": 4109
+    },
+    {
+     "chapter": 60,
+     "passed": true,
+     "reused": true,
+     "words": 4929
+    },
+    {
+     "chapter": 61,
+     "passed": true,
+     "reused": true,
+     "words": 3969
+    },
+    {
+     "chapter": 62,
+     "passed": true,
+     "reused": true,
+     "words": 4015
+    },
+    {
+     "chapter": 63,
+     "passed": true,
+     "reused": true,
+     "words": 3848
+    },
+    {
+     "chapter": 64,
+     "passed": false,
+     "words": 3865
+    },
+    {
+     "chapter": 65,
+     "passed": false,
+     "words": 4101
+    },
+    {
+     "chapter": 66,
+     "passed": false,
+     "words": 4106
+    }
+   ],
+   "verdict": {},
+   "messages": []
+  }
+ ]
+}

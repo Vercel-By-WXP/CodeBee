@@ -2040,10 +2040,38 @@ def retry_task(task_id):
                                   if s.get("status") == "done"
                                   and (s.get("role") or "").startswith("draft-c")
                                   and str(s.get("role")).split("c")[-1].isdigit()})
+                    # 断点续跑链防衰减（2026-11-06 生产实案）：中途暂停/超时/
+                    # 重启中断的 run，steps 只覆盖到中断点；上一遍继承来并已
+                    # 复用的章（inherit.done_chapters）不写进 steps，只按 steps
+                    # 取会把它们判成未完成 → 下一遍重写，白烧刚恢复的额度。
+                    # pipeline.py:4606 的 reuse 要求章号在 done_set 里，磁盘
+                    # 有稿也不够。同一 prev 的 inherit 与 steps 属同批次，合并
+                    # 安全；下方 redo 剔除与已发布章豁免照常生效。
+                    prev_inh = prev.get("inherit") or {}
+                    inh_done = set()
+                    for _c in (prev_inh.get("done_chapters") or []):
+                        if isinstance(_c, bool):
+                            continue
+                        try:
+                            inh_done.add(int(_c))
+                        except (TypeError, ValueError):
+                            continue
+                    got = sorted(set(got) | inh_done)
                     if got:
                         done = got
-                        base_scores = ((prev.get("verdict") or {}).get("chapter_scores")
-                                       or prev.get("chapter_scores") or [])
+                        scores = ((prev.get("verdict") or {}).get("chapter_scores")
+                                  or prev.get("chapter_scores") or [])
+                        base_scores = scores
+                        if prev_inh:
+                            # 继承分数按章号补缺：实时分数优先，避免「章号补回
+                            # 但分数缺失 → 复用章被重评」再烧一轮 token。
+                            known = {c.get("chapter") for c in scores
+                                     if isinstance(c, dict)
+                                     and isinstance(c.get("chapter"), (int, str))}
+                            base_scores = list(scores) + [
+                                c for c in (prev_inh.get("chapter_scores") or [])
+                                if isinstance(c, dict)
+                                and c.get("chapter") not in known]
                 if outline is not None and done and ledger is not None:
                     break
                 pv = prev.get("verdict") or {}
