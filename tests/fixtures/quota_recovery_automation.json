@@ -1,0 +1,97 @@
+{
+ "_source": {
+  "captured_at": "2026-11-06 15:36:06",
+  "endpoint": "GET /api/automation (生产 127.0.0.1:8765，只读)",
+  "note": "真实落盘值，5 条定时任务；只保留判恢复计划要用的调度字段，裁掉 prompt/flow/workdir 等无关大字段；未改写任何字符串。",
+  "kept_keys": [
+   "id",
+   "name",
+   "kind",
+   "time",
+   "weekday",
+   "interval_hours",
+   "enabled",
+   "next_run",
+   "last_run",
+   "last_status",
+   "run_count",
+   "task_id"
+  ],
+  "known_disabled_ids": [
+   "auto-20260921-135622-8720"
+  ],
+  "known_disabled_basis": "交接单第 3 节第 1 条：14:19 停用的是「4 个 enabled 定时任务」，第 5 个本来就是 disabled，不属于待恢复集合。"
+ },
+ "tasks": [
+  {
+   "id": "auto-20261008-154934-6259",
+   "name": "每日仓库巡检",
+   "kind": "daily",
+   "time": "09:00",
+   "weekday": null,
+   "interval_hours": null,
+   "enabled": false,
+   "next_run": "",
+   "last_run": "2026-11-06 09:00:22",
+   "last_status": "failed",
+   "run_count": 26,
+   "task_id": "t-20261105-090019-9616"
+  },
+  {
+   "id": "auto-20261008-154914-2446",
+   "name": "经验库周整理",
+   "kind": "weekly",
+   "time": "18:00",
+   "weekday": 6,
+   "interval_hours": null,
+   "enabled": false,
+   "next_run": "",
+   "last_run": "2026-11-01 18:00:45",
+   "last_status": "failed",
+   "run_count": 4,
+   "task_id": "t-20261011-180004-6283"
+  },
+  {
+   "id": "auto-20260921-140044-8443",
+   "name": "经验库周整理",
+   "kind": "daily",
+   "time": "00:30",
+   "weekday": null,
+   "interval_hours": null,
+   "enabled": false,
+   "next_run": "",
+   "last_run": "2026-11-06 00:30:02",
+   "last_status": "done",
+   "run_count": 43,
+   "task_id": "t-20261105-003005-4821"
+  },
+  {
+   "id": "auto-20260921-135806-8411",
+   "name": "知识库整理",
+   "kind": "daily",
+   "time": "03:00",
+   "weekday": null,
+   "interval_hours": null,
+   "enabled": false,
+   "next_run": "",
+   "last_run": "2026-11-06 03:00:05",
+   "last_status": "done",
+   "run_count": 42,
+   "task_id": "t-20260929-030024-4439"
+  },
+  {
+   "id": "auto-20260921-135622-8720",
+   "name": "CodeBee自我迭代",
+   "kind": "interval",
+   "time": null,
+   "weekday": null,
+   "interval_hours": 12,
+   "enabled": false,
+   "next_run": "",
+   "last_run": "2026-10-16 03:41:54",
+   "last_status": "failed",
+   "run_count": 106,
+   "task_id": "t-20261014-154058-9890"
+  }
+ ]
+}

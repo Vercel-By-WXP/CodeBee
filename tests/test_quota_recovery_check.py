@@ -3,11 +3,11 @@
 
 夹具 `tests/fixtures/quota_recovery_runs.json` 是 2026-11-06 15:03 / 15:2x
 从生产 `/api/runs/<id>` 只读取的 **3 条真实 run**（2 条 doc 各 11 步、1 条
-serial_novel 73 步），只裁掉 command / configuration / output / log 与 verdict
-里 route / volumes / chapter_scores / major_issues / signing_checkpoint 等无关
+serial_novel 73 步）；`tests/fixtures/quota_recovery_automation.json` 是 15:36
+从生产 `/api/automation` 只读取的 **5 条真实定时任务**。两者都只裁掉无关
 大字段，**没有改写任何字符串**。
 
-守四件事（后两件是 15:2x 新量出来的）：
+守五件事（后三件是 15:2x / 15:3x 新量出来的）：
 
 1. 三件套按**真实字段路径**判：`completed_seats` 在 `review_resources` 里，
    `review_fallbacks` 在真实 run 里根本没有键（不是 `[local-heuristic]`）。
@@ -16,8 +16,10 @@ serial_novel 73 步），只裁掉 command / configuration / output / log 与 ve
 3. `/api/state` 的压缩 verdict 只有白名单 6 键 → 必须报「字段不足」；
    **但 serial_novel 的完整详情没有 `review_resources`、`overall=null`，
    不能被误判成压缩版**——它本来就是详情。
-4. `--resume-tasks` 不带人工确认标志时拒绝写生产；dry-run 不产生写调用；
-   `--verify-run` 必须真的把恢复判据打到 stdout（判据有消费点）。
+4. `--verify-run` 必须真的把恢复判据打到 stdout（判据有消费点）。
+5. **11-09 唯一的写操作 `--resume-tasks` 有验收证据**：写前核对真实清单、
+   恰好 4 次 toggle 且只碰待恢复 id、任一失败立即停、写后复核、
+   dry-run 与缺人工确认零写。
 
 决策 18：报出真被判过的真实样本数。合成样本只用于反向覆盖边界，单独标注、
 不计入真样本数。
@@ -35,6 +37,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_runs.json"
+AUTOMATION_FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_automation.json"
 _spec = importlib.util.spec_from_file_location(
     "quota_recovery", ROOT / "scripts" / "quota_recovery.py")
 qr = importlib.util.module_from_spec(_spec)
@@ -43,6 +46,20 @@ _spec.loader.exec_module(qr)
 
 def _runs():
     return json.loads(FIXTURE.read_text(encoding="utf-8"))["runs"]
+
+
+def _automation():
+    return json.loads(AUTOMATION_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _tasks_after_recovery():
+    """合成：恢复后的任务清单，仅用于反向覆盖写后复核，不算真样本。"""
+    tasks = copy.deepcopy(_automation()["tasks"])
+    for t in tasks:
+        if t["id"] in qr.TASK_IDS:
+            t["enabled"] = True
+            t["next_run"] = "2026-11-10 09:00:00"
+    return tasks
 
 
 def _by_schema(schema):
@@ -260,33 +277,227 @@ class VerifyRunCliTest(unittest.TestCase):
         post.assert_not_called()
 
 
+class ResumePlanTest(unittest.TestCase):
+    """真实 /api/automation 清单：5 条全 disabled，4 条待恢复 + 1 条本来停用。"""
+
+    def test_real_automation_tasks_are_all_judged_and_print_sample_count(self):
+        doc = _automation()
+        tasks = doc["tasks"]
+        plan = qr.plan_resume(tasks)
+        judged = 0
+        for t in tasks:
+            self.assertIn(t["id"], set(qr.TASK_IDS) | set(qr.KNOWN_DISABLED_IDS), t["id"])
+            self.assertIs(t["enabled"], False, t["id"])
+            self.assertEqual(t["next_run"], "", t["id"])
+            judged += 1
+        print("真被判过的真实定时任务样本数: %d / %d" % (judged, len(tasks)))
+        self.assertEqual(judged, 5)
+        self.assertEqual(plan["total"], 5)
+        self.assertEqual(plan["missing"], [])
+        self.assertEqual(plan["unexpected_disabled"], [])
+        self.assertEqual(plan["known_disabled"], list(qr.KNOWN_DISABLED_IDS))
+        self.assertEqual([t["id"] for t in plan["targets"]], list(qr.TASK_IDS))
+        self.assertTrue(all(t["enabled"] is False and t["next_run"] == ""
+                            for t in plan["targets"]))
+        self.assertEqual(doc["_source"]["known_disabled_ids"], list(qr.KNOWN_DISABLED_IDS))
+
+    def test_plan_detects_missing_target_id(self):
+        tasks = [t for t in _automation()["tasks"] if t["id"] != qr.TASK_IDS[1]]
+        plan = qr.plan_resume(tasks)
+        self.assertEqual(plan["missing"], [qr.TASK_IDS[1]])
+        self.assertEqual(len(plan["targets"]), 3)
+        self.assertEqual(plan["unexpected_disabled"], [])
+
+    def test_plan_flags_unexpected_disabled_but_ignores_unexpected_enabled(self):
+        """合成边界：白名单外停用 = 疑似误停；白名单外启用 = 正常。"""
+        tasks = copy.deepcopy(_automation()["tasks"])
+        tasks.append({"id": "auto-synth-disabled", "enabled": False})
+        tasks.append({"id": "auto-synth-enabled", "enabled": True})
+        plan = qr.plan_resume(tasks)
+        self.assertEqual(plan["unexpected_disabled"], ["auto-synth-disabled"])
+        self.assertNotIn("auto-synth-enabled", plan["unexpected_disabled"])
+        print("合成边界任务 2 条（反向覆盖用，不计入真样本数）")
+
+    def test_recovered_list_marks_four_already_enabled(self):
+        plan = qr.plan_resume(_tasks_after_recovery())
+        self.assertEqual(plan["already_enabled"], list(qr.TASK_IDS))
+        self.assertEqual(plan["known_disabled"], list(qr.KNOWN_DISABLED_IDS))
+
+
+class ResumeWritePathTest(unittest.TestCase):
+    """11-09 唯一写操作的验收证据：全部在 fake HTTP 上跑，绝不碰 8765。"""
+
+    @staticmethod
+    def _fake_get(tasks_before, tasks_after=None, state=None):
+        seen = []
+
+        def fake_get(_base, path):
+            seen.append(path)
+            if path == "/api/state":
+                return state or {"pause_control": {}, "runs": []}
+            n = sum(1 for p in seen if p == "/api/automation")
+            return {"tasks": tasks_before if n == 1
+                    else (tasks_after if tasks_after is not None else tasks_before)}
+        return fake_get, seen
+
+    def test_success_writes_exactly_four_toggles_and_verifies(self):
+        posts, gets = [], []
+        tasks_before = _automation()["tasks"]
+        fake_get, gets = self._fake_get(tasks_before, _tasks_after_recovery())
+
+        def fake_post(_base, path, body):
+            posts.append((path, body))
+            return {"ok": True, "task": {"enabled": True}}
+
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post", side_effect=fake_post), \
+             redirect_stdout(buf):
+            rc = qr.main(["--resume-tasks", "--confirm-quota-restored"])
+        self.assertEqual(rc, 0, buf.getvalue())
+        self.assertEqual([p for p, _ in posts],
+                         ["/api/automation/%s/toggle" % t for t in qr.TASK_IDS])
+        self.assertTrue(all(b == {"enabled": True} for _, b in posts))
+        # 第 5 个本来 disabled 的任务绝不能被打开。
+        self.assertNotIn("/api/automation/%s/toggle" % list(qr.KNOWN_DISABLED_IDS)[0],
+                         [p for p, _ in posts])
+        self.assertEqual(gets.count("/api/automation"), 2)  # 写前核对 + 写后复核
+        self.assertIn("写前核对", buf.getvalue())
+        self.assertIn("复核通过", buf.getvalue())
+        print("恢复写路径真跑过：4 次 toggle、2 次只读复核，第 5 个任务保持停用")
+
+    def test_stops_immediately_when_a_toggle_fails(self):
+        posts = []
+        fake_get, gets = self._fake_get(_automation()["tasks"], _tasks_after_recovery())
+
+        def fake_post(_base, path, body):
+            posts.append((path, body))
+            if len(posts) == 2:
+                raise RuntimeError("connection reset")
+            return {"ok": True, "task": {"enabled": True}}
+
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post", side_effect=fake_post), \
+             redirect_stdout(buf):
+            rc = qr.main(["--resume-tasks", "--confirm-quota-restored"])
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(posts), 2, "失败后还继续写 = 半恢复当成功")
+        self.assertEqual(gets.count("/api/automation"), 1, "失败后不该做写后复核")
+        self.assertIn("[失败]", buf.getvalue())
+
+    def test_ok_false_response_is_a_failure(self):
+        posts = []
+        fake_get, _ = self._fake_get(_automation()["tasks"], _tasks_after_recovery())
+
+        def fake_post(_base, path, body):
+            posts.append((path, body))
+            return {"ok": False, "error": "locked"}
+
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post", side_effect=fake_post), \
+             redirect_stdout(io.StringIO()):
+            rc = qr.main(["--resume-tasks", "--confirm-quota-restored"])
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(posts), 1)
+
+    def test_refuses_when_a_target_id_is_missing(self):
+        tasks = [t for t in _automation()["tasks"] if t["id"] != qr.TASK_IDS[0]]
+        fake_get, _ = self._fake_get(tasks)
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
+            rc = qr.main(["--resume-tasks", "--confirm-quota-restored"])
+        self.assertEqual(rc, 1)
+        self.assertIn("拒绝写", buf.getvalue())
+        post.assert_not_called()
+
+    def test_refuses_when_unexpected_disabled_task_appears(self):
+        tasks = copy.deepcopy(_automation()["tasks"])
+        tasks.append({"id": "auto-synth-mistakenly-disabled", "enabled": False})
+        fake_get, _ = self._fake_get(tasks)
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
+            rc = qr.main(["--resume-tasks", "--confirm-quota-restored"])
+        self.assertEqual(rc, 1)
+        self.assertIn("拒绝写", buf.getvalue())
+        post.assert_not_called()
+
+    def test_post_write_verification_catches_empty_next_run(self):
+        after = _tasks_after_recovery()
+        for t in after:
+            if t["id"] == qr.TASK_IDS[2]:
+                t["next_run"] = ""
+        fake_get, _ = self._fake_get(_automation()["tasks"], after)
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post",
+                               return_value={"ok": True, "task": {"enabled": True}}), \
+             redirect_stdout(buf):
+            rc = qr.main(["--resume-tasks", "--confirm-quota-restored"])
+        self.assertEqual(rc, 1)
+        self.assertIn("复核失败", buf.getvalue())
+
+    def test_check_after_recovery_tells_to_restart_first(self):
+        state = {"pause_control": {"active": 4, "paused": 4}, "runs": []}
+        tasks = _tasks_after_recovery()
+        fake_get, _ = self._fake_get(tasks, state=state)
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
+            rc = qr.main(["--check"])
+        self.assertEqual(rc, 0)
+        self.assertIn("先重启 8765 清残留", buf.getvalue())
+        post.assert_not_called()
+
+        state2 = {"pause_control": {"active": 0, "paused": 0}, "runs": []}
+        fake_get2, _ = self._fake_get(tasks, state=state2)
+        buf2 = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get2), \
+             redirect_stdout(buf2):
+            qr.main(["--check"])
+        self.assertIn("直接一本串行续跑", buf2.getvalue())
+
+
 class ResumeSafetyTest(unittest.TestCase):
     def test_task_ids_are_the_four_actually_disabled(self):
+        real_ids = {t["id"] for t in _automation()["tasks"]}
         self.assertEqual(len(qr.TASK_IDS), 4)
-        self.assertTrue(all(t.startswith("auto-") for t in qr.TASK_IDS))
         self.assertEqual(len(set(qr.TASK_IDS)), 4)
+        self.assertTrue(set(qr.TASK_IDS) <= real_ids,
+                        "TASK_IDS 与生产真实清单不一致，11-09 会开错任务")
 
     def test_resume_without_confirmation_is_refused_without_any_write(self):
-        with mock.patch.object(qr, "api_post") as post:
+        with mock.patch.object(qr, "api_post") as post, \
+             mock.patch.object(qr, "api_get") as get:
             rc = qr.main(["--resume-tasks"])
         self.assertEqual(rc, 2)
         post.assert_not_called()
+        get.assert_not_called()
 
-    def test_dry_run_never_writes(self):
-        with mock.patch.object(qr, "api_post") as post, \
-             mock.patch.object(qr, "api_get") as get:
+    def test_dry_run_never_writes_but_reads_real_state(self):
+        fake_get, gets = ResumeWritePathTest._fake_get(_automation()["tasks"])
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
             rc = qr.main(["--resume-tasks", "--dry-run",
                           "--confirm-quota-restored"])
         self.assertEqual(rc, 0)
+        self.assertIn("写前核对", buf.getvalue())
+        self.assertIn("dry-run 结束，生产未改动", buf.getvalue())
         post.assert_not_called()
-        get.assert_not_called()
+        self.assertEqual(gets.count("/api/automation"), 1)
 
     def test_check_reports_suppressed_state_without_writing(self):
         state = {"pause_control": {"active": 4, "paused": 4},
                  "runs": [{"id": "r-20261106-094827-3523", "status": "running",
                            "pause_phase": "paused"}]}
-        tasks = {"tasks": [{"id": t, "name": "n", "enabled": False, "next_run": ""}
-                           for t in qr.TASK_IDS]}
+        tasks = {"tasks": _automation()["tasks"]}
 
         def fake_get(_base, path):
             return tasks if path == "/api/automation" else state
@@ -298,6 +509,7 @@ class ResumeSafetyTest(unittest.TestCase):
             rc = qr.main(["--check"])
         self.assertEqual(rc, 0)
         self.assertIn("抑制态", buf.getvalue())
+        self.assertIn("保持停用", buf.getvalue())
         post.assert_not_called()
 
 

@@ -36,7 +36,9 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
    原始信号。判「评审有没有真跑」看 `review_status` 与降级理由，不看这个布尔。
 
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
-`--confirm-quota-restored`，否则拒绝任何写操作。
+`--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
+核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
+一律拒绝写（清单已变，盲 POST 会开错任务）。
 """
 from __future__ import annotations
 
@@ -55,6 +57,9 @@ TASK_IDS = (
     "auto-20260921-140044-8443",
     "auto-20260921-135806-8411",
 )
+# 交接单第 3 节第 1 条：14:19 停用的是「4 个 enabled 定时任务」，
+# 第 5 个本来就是 disabled；白名单外再出现停用任务 = 清单变了，别盲写。
+KNOWN_DISABLED_IDS = frozenset(("auto-20260921-135622-8720",))
 RATE_LIMIT_RE = re.compile(r"429\s+Too\s+Many\s+Requests|last\s+status:\s*429", re.I)
 _RL_FIELDS = ("summary", "error", "output", "note")
 # main.py:5034 _state_run_summary 的 verdict 白名单，compact 严格按这个集合判。
@@ -267,6 +272,37 @@ def human_recovery(r):
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- 恢复计划（纯函数）
+
+def plan_resume(tasks):
+    """输入 GET /api/automation 的 tasks，输出恢复计划 + 写前 blockers。
+
+    见底期真实清单是 5 条全 disabled：4 条待恢复、1 条本来 disabled。
+    「待恢复 id 缺失」或「白名单外还有被停用的任务」都说明清单已变，
+    这时盲 POST 会把不该开的任务开回来、或漏开被误停的任务。
+    """
+    by_id = {t.get("id"): t for t in (tasks or [])
+             if isinstance(t, dict) and t.get("id")}
+    missing = [tid for tid in TASK_IDS if tid not in by_id]
+    unexpected = sorted(tid for tid, t in by_id.items()
+                        if tid not in TASK_IDS and not t.get("enabled")
+                        and tid not in KNOWN_DISABLED_IDS)
+    known = sorted(tid for tid in by_id
+                   if tid in KNOWN_DISABLED_IDS and not by_id[tid].get("enabled"))
+    return {
+        "total": len(by_id),
+        "missing": missing,
+        "unexpected_disabled": unexpected,
+        "known_disabled": known,
+        "already_enabled": [tid for tid in TASK_IDS
+                            if (by_id.get(tid) or {}).get("enabled")],
+        "targets": [{"id": tid,
+                     "enabled": bool((by_id.get(tid) or {}).get("enabled")),
+                     "next_run": (by_id.get(tid) or {}).get("next_run") or ""}
+                    for tid in TASK_IDS if tid in by_id],
+    }
+
+
 # ---------------------------------------------------------------- 动作
 
 def cmd_check(base):
@@ -274,6 +310,7 @@ def cmd_check(base):
           % QUOTA_RECOVERY_AT)
     tasks = api_get(base, "/api/automation").get("tasks") or []
     by_id = {t.get("id"): t for t in tasks}
+    plan = plan_resume(tasks)
     enabled = 0
     for tid in TASK_IDS:
         t = by_id.get(tid)
@@ -284,6 +321,10 @@ def cmd_check(base):
         enabled += on
         print("  [%s] %-32s name=%-14s next_run=%s" % (
             "开" if on else "停", tid, str(t.get("name") or "")[:14], t.get("next_run")))
+    for tid in plan["known_disabled"]:
+        print("  [保持停用] %-32s 本来就 disabled，不在恢复集合里" % tid)
+    for tid in plan["unexpected_disabled"]:
+        print("  [异常] %-32s 白名单外也被停用，可能是误停，先人工核对" % tid)
     state = api_get(base, "/api/state")
     pause = state.get("pause_control") or {}
     print("pause_control: %s" % json.dumps(pause, ensure_ascii=False))
@@ -292,10 +333,21 @@ def cmd_check(base):
     print("09:48 批次 run %d 条：%s" % (
         len(paused), ", ".join("%s(%s/%s)" % (r.get("id"), r.get("status"),
                                               r.get("pause_phase")) for r in paused)))
-    print("结论：%s" % ("定时任务已恢复、可进入重启 / 串行续跑"
-                     if enabled == len(TASK_IDS)
-                     else "仍处额度见底期抑制态（启用 %d/%d），不要开跑" %
-                     (enabled, len(TASK_IDS))))
+    paused_n = int(pause.get("paused") or 0)
+    if plan["missing"] or plan["unexpected_disabled"]:
+        conclusion = ("清单异常（缺失 %d / 白名单外停用 %d），先人工核对 /api/automation，别开跑"
+                      % (len(plan["missing"]), len(plan["unexpected_disabled"])))
+    elif enabled < len(TASK_IDS):
+        conclusion = ("仍处额度见底期抑制态（启用 %d/%d），不要开跑"
+                      % (enabled, len(TASK_IDS)))
+    elif paused_n > 0:
+        conclusion = ("4 个定时任务已恢复，但还有 %d 条 paused run：先重启 8765 清残留"
+                      "（收尸把 running → failed，pause_control 自动归零），再一本串行续跑"
+                      % paused_n)
+    else:
+        conclusion = ("4 个定时任务已恢复且无暂停残留：直接一本串行续跑，"
+                      "再 --verify-run <id> 看 blockers")
+    print("结论：%s" % conclusion)
     return 0
 
 
@@ -329,6 +381,21 @@ def cmd_resume_tasks(base, confirm, dry_run):
         print("拒绝：--resume-tasks 会写生产调度，必须显式带 --confirm-quota-restored，"
               "并先自行确认 %s 额度已恢复" % QUOTA_RECOVERY_AT)
         return 2
+    plan = plan_resume(api_get(base, "/api/automation").get("tasks") or [])
+    print("写前核对：清单 %d 条，待恢复 %d 条，本来 disabled %d 条%s" % (
+        plan["total"], len(plan["targets"]), len(plan["known_disabled"]),
+        "（dry-run，不写）" if dry_run else ""))
+    for tid in plan["known_disabled"]:
+        print("  [保持停用] %s" % tid)
+    if plan["missing"]:
+        print("拒绝写：待恢复 id 在清单里找不到 %s —— 清单已变，先人工核对" % plan["missing"])
+        return 1
+    if plan["unexpected_disabled"]:
+        print("拒绝写：白名单外还有被停用的任务 %s —— 可能是 11-06 误停，先人工确认"
+              % plan["unexpected_disabled"])
+        return 1
+    if plan["already_enabled"]:
+        print("  [已启用] %s（重复 toggle 幂等，但会重算 next_run）" % plan["already_enabled"])
     print("目标：开回 %d 个定时任务%s" % (len(TASK_IDS), "（dry-run，不写）" if dry_run else ""))
     for tid in TASK_IDS:
         print("  POST /api/automation/%s/toggle {\"enabled\":true}" % tid)
