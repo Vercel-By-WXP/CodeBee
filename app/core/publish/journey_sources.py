@@ -25,11 +25,13 @@ jsonl——没有事件采集时报告只能显示 unknown，指标等于没上�
    等于把 bug 记成人性；反过来算「没救火」同样没有证据。只有
    ``source == "manual"`` 才生成 ``force_publish``；``auto`` 是程序代填，
    单列计数但不进救火口径；缺失/未知来源一律哨兵 → unknown。
-3. **三类人工动作目前没有埋点**：``manual_retry`` / ``manual_pause_resume``
-   / ``manual_revise`` 在 store / ledger / audit 里都没有可判别来源的记录。
-   「没记录」不等于「没发生」。因此只要 ``UNOBSERVED_RESCUE_KINDS`` 非空，
-   所有**有终态证据**（本来能进分母）的书都会带一个哨兵事件，被
-   ``classify_journey`` 判成 unknown。宁可真被判过 0 本，也不许假绿。
+3. **埋点只能记录启用之后的动作**：历史 run 里 ``retry_task`` 不写来源、
+   解除暂停还会把 ``pause_requested_at`` 清成 None，只读回溯不出人工痕迹。
+   契约真源在 ``telemetry_contract.py``：四类救火里三类有埋点、
+   ``manual_revise`` 无产品入口（不适用）。但**启用时刻未声明**
+   （``telemetry_since=None``，默认）或建单早于启用时刻的书，一律带
+   ``legacy_no_telemetry`` 哨兵被判 unknown。宁可真被判过 0 本，也不许
+   把「查不到历史记录」当成「没救火」。
 
 哨兵 ``UNOBSERVABLE_KIND`` 不是真实事件，是用来阻止「把没埋点当成没救火」
 的显式标记；守测锁死它**不在** ``journey.VALID_KINDS`` 里。将来补齐埋点，
@@ -47,7 +49,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import journey
+from . import journey, telemetry_contract as contract
 
 # 与 outcome.is_novel_task / stats._LIVE_ACTIONS 对齐；守测锁一致性，防口径漂移。
 NOVEL_TYPES = frozenset(("novel", "serial_novel", "short_story"))
@@ -66,9 +68,11 @@ STAGE_TERMINALS = {
 TASK_STATUS_TERMINALS = {"cancelled": "cancelled", "failed": "failed"}
 RUNNING_STATUSES = frozenset(("running", "queued", "pending"))
 
-# 当前有可判别落盘埋点的救火类型；其余一律视为不可观测。
-OBSERVED_RESCUE_KINDS = frozenset(("force_publish",))
-UNOBSERVED_RESCUE_KINDS = frozenset(journey.RESCUE_KINDS) - OBSERVED_RESCUE_KINDS
+# 契约真源在 telemetry_contract（写侧 rescue_telemetry 与读侧共用）；
+# 这里只留别名，兼容已有守测与调用方。
+OBSERVED_RESCUE_KINDS = contract.OBSERVED_RESCUE_KINDS
+NOT_APPLICABLE_RESCUE_KINDS = contract.NOT_APPLICABLE_RESCUE_KINDS
+UNOBSERVED_RESCUE_KINDS = contract.UNOBSERVED_RESCUE_KINDS
 
 UNOBSERVABLE_KIND = "__telemetry_unobservable__"
 
@@ -215,6 +219,28 @@ def load_publish_records(data_dir):
     return records, stat, problems
 
 
+def load_rescue_records(data_dir):
+    """只读 publish/rescue-*.jsonl（人工救火台账），返回 (记录, 统计, 问题)。"""
+    folder = Path(data_dir) / "publish"
+    stat = {"exists": folder.is_dir(), "files": 0, "rows": 0,
+            "bad_lines": 0, "invalid_rows": 0, "by_kind": {}}
+    problems, rows = [], []
+    if not folder.is_dir():
+        return rows, stat, problems
+    for path in sorted(folder.glob(contract.RESCUE_FILE_GLOB)):
+        stat["files"] += 1
+        data, bad = _read_jsonl(path)
+        if isinstance(bad, str):
+            problems.append("rescue/ " + bad)
+            continue
+        stat["bad_lines"] += bad
+        if bad:
+            problems.append("%s: %d 行无法解析（不静默丢弃）" % (path.name, bad))
+        rows.extend(data)
+        stat["rows"] += len(data)
+    return rows, stat, problems
+
+
 def _outcome_terminal(book, task_id, problems):
     """从回执条目取终态 kind；返回 (kind 或 None, 是否有结论证据)。"""
     if not isinstance(book, dict):
@@ -249,23 +275,45 @@ def _ledger_for_task(records, task_id):
     return has_published, forced
 
 
-def derive_events(data_dir="."):
+def derive_events(data_dir=".", telemetry_since=None):
     """只读派生：返回 ``{events, coverage}``。
 
     ``events`` 可直接喂 ``journey.from_events``；``coverage`` 记录每个事件源
     的真实条数与不可判定原因，供报告打印「真被判过样本数」之外的上线缺口。
+
+    ``telemetry_since`` 是埋点启用时刻（``YYYY-MM-DD HH:MM[:SS]``）。
+    **None 表示未声明 → 所有书都判不了**；只有建单晚于该时刻的书才可能
+    进分母。别拿历史书假装「没救火」。
     """
     root = Path(data_dir)
     tasks, task_stat, problems = load_tasks(root)
     outcomes, outcome_stat, outcome_problems = load_outcomes(root)
     records, ledger_stat, ledger_problems = load_publish_records(root)
-    problems += outcome_problems + ledger_problems
+    rescue_rows, rescue_stat, rescue_problems = load_rescue_records(root)
+    problems += outcome_problems + ledger_problems + rescue_problems
+    since = contract.normalize_since(telemetry_since)
+
+    # 按 task 聚合救火台账；坏行 / 无 source / 不认识的 kind 单列，不静默计入。
+    rescue_by_task = {}
+    for rec in rescue_rows:
+        kind = str(rec.get("kind") or "").strip()
+        tid = str(rec.get("task_id") or "").strip()
+        src = str(rec.get("source") or "").strip()
+        if kind not in contract.RESCUE_LOG_KINDS or not tid or not src:
+            rescue_stat["invalid_rows"] += 1
+            problems.append("rescue-*.jsonl: kind=%s task=%s 缺字段或不认识，不进分母"
+                            % (kind or "?", tid or "?"))
+            continue
+        rescue_by_task.setdefault(tid, set()).add(kind)
+        rescue_stat["by_kind"][kind] = rescue_stat["by_kind"].get(kind, 0) + 1
 
     events = []
     counts = {"novel_tasks": 0, "skipped_non_novel": 0,
               "terminal_evidence": 0, "aborted": 0, "running": 0,
               "done_without_outcome": 0, "forced_unknown_source_tasks": 0,
-              "sentinel_unobserved": 0, "bad_task_files": 0}
+              "sentinel_unobserved": 0, "sentinel_legacy": 0,
+              "post_telemetry": 0, "legacy_without_telemetry": 0,
+              "rescue_events": 0, "bad_task_files": 0}
 
     for task in tasks:
         tid = str(task.get("id") or "").strip()
@@ -287,6 +335,8 @@ def derive_events(data_dir="."):
                            "ts": created, "source": "tasks/" + str(task.get("__file__") or "")})
         else:
             events.append(_sentinel(tid, "missing_created_at", "tasks/"))
+        post = contract.is_post_telemetry(created, since)
+        counts["post_telemetry" if post else "legacy_without_telemetry"] += 1
 
         status = str(task.get("status") or "").strip().lower()
         aborted_kind = TASK_STATUS_TERMINALS.get(status)
@@ -319,6 +369,11 @@ def derive_events(data_dir="."):
         else:
             events.append(_sentinel(tid, "no_terminal_evidence", "tasks/"))
 
+        for kind in sorted(rescue_by_task.get(tid, ())):
+            counts["rescue_events"] += 1
+            events.append({"task_id": tid, "kind": kind,
+                           "source": "publish/rescue-*.jsonl"})
+
         has_published, forced = _ledger_for_task(records, tid)
         if has_published:
             events.append({"task_id": tid, "kind": "published",
@@ -335,11 +390,17 @@ def derive_events(data_dir="."):
                 events.append(_sentinel(tid, "quality_forced_source_unknown",
                                         "publish/publish-*.jsonl"))
 
-        # 三类人工动作没有埋点：有终态证据的书一律不许进分母，防止假绿。
+        # 埋点契约：仍有救火类型不可观测、或这本书建单早于埋点启用时刻，
+        # 有终态证据也不许进分母（没记录 ≠ 没发生）。aborted 的书本来就不
+        # 进分母，不注入哨兵，免得被误报成 unknown。
         if terminal and UNOBSERVED_RESCUE_KINDS:
             counts["sentinel_unobserved"] += 1
             events.append(_sentinel(tid, "unobserved:" + ",".join(
                 sorted(UNOBSERVED_RESCUE_KINDS)), "telemetry_contract"))
+        elif terminal and not post:
+            counts["sentinel_legacy"] += 1
+            events.append(_sentinel(tid, "legacy_no_telemetry",
+                                    "telemetry_contract"))
 
     # 回执挂在非 task 键上：单列，绝不硬塞进某本书。
     task_ids = set(str(t.get("id") or "") for t in tasks)
@@ -354,9 +415,12 @@ def derive_events(data_dir="."):
     coverage = {
         "data_dir": str(root.resolve()),
         "sources": {"tasks": task_stat, "outcomes": outcome_stat,
-                    "publish_ledger": ledger_stat},
+                    "publish_ledger": ledger_stat,
+                    "rescue_ledger": rescue_stat},
         "counts": counts,
+        "telemetry_since": since,
         "observed_rescues": sorted(OBSERVED_RESCUE_KINDS),
+        "not_applicable_rescues": sorted(NOT_APPLICABLE_RESCUE_KINDS),
         "unobserved_rescues": sorted(UNOBSERVED_RESCUE_KINDS),
         "problems": problems,
     }
@@ -366,7 +430,8 @@ def derive_events(data_dir="."):
 def human_coverage(coverage):
     """把事件源覆盖率说成人话，重点说「还差哪几个埋点」。"""
     s, c = coverage["sources"], coverage["counts"]
-    o, l, t = s["outcomes"], s["publish_ledger"], s["tasks"]
+    o, l, t, r = (s["outcomes"], s["publish_ledger"], s["tasks"],
+                  s["rescue_ledger"])
     lines = [
         "数据来源：%s（只读）" % coverage["data_dir"],
         "真实落盘：task %d 个（可入指标 %d / 非小说跳过 %d / 坏文件 %d）；"
@@ -380,14 +445,29 @@ def human_coverage(coverage):
         "来源不明涉及 %d 本（只有有终态证据的那些才影响分母）"
         % (l["forced"], l["forced_manual"], l["forced_auto"],
            l["forced_unknown_source"], c["forced_unknown_source_tasks"]),
-        "救火埋点：已观测 [%s]；未观测 [%s]"
+        "救火埋点：已观测 [%s]；不适用 [%s]；未观测 [%s]"
         % (", ".join(coverage["observed_rescues"]) or "无",
+           ", ".join(coverage["not_applicable_rescues"]) or "无",
            ", ".join(coverage["unobserved_rescues"]) or "无"),
+        "救火台账：%d 文件 %d 行（坏行 %d / 无效行 %d）；启用时刻 %s；"
+        "之后新建 %d 本 / 之前 %d 本"
+        % (r["files"], r["rows"], r["bad_lines"], r["invalid_rows"],
+           coverage["telemetry_since"] or "未声明",
+           c["post_telemetry"], c["legacy_without_telemetry"]),
     ]
     if coverage["unobserved_rescues"]:
         lines.append("严格口径：%d 类救火不可观测 → %d 本有终态证据的书一律 unknown，"
                      "不上绿标（没记录 ≠ 没发生）"
                      % (len(coverage["unobserved_rescues"]), c["sentinel_unobserved"]))
+    elif not coverage["telemetry_since"]:
+        lines.append("严格口径：埋点启用时刻未声明 → %d 本历史书一律 unknown，"
+                     "不上绿标（没记录 ≠ 没发生）"
+                     % c["legacy_without_telemetry"])
+    else:
+        lines.append("严格口径：启用时刻 %s 之前的 %d 本单列不进分母，"
+                     "之后的 %d 本才可能进分母"
+                     % (coverage["telemetry_since"],
+                        c["legacy_without_telemetry"], c["post_telemetry"]))
     if c["aborted"]:
         lines.append("中途夭折 %d 本（cancelled/failed）单列，不算完成也不算「无需救火」"
                      % c["aborted"])

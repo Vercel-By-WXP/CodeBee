@@ -13,9 +13,14 @@
     py -3.13 scripts/journey_report.py --events <events.jsonl>
 
 ``--prod`` / ``--data-dir`` 走 ``journey_sources.py``：从 task 文件、平台
-回执、发布台账派生事件。**判不了一律 unknown**：三类人工救火动作目前没有
-埋点、``status=done`` 不等于过签、``quality_forced`` 缺来源不可判定——这些
-都会以哨兵事件阻止假绿，报告同时打印「还差哪几个埋点」。
+回执、发布台账、人工救火台账派生事件。**判不了一律 unknown**：
+``status=done`` 不等于过签、``quality_forced`` 缺来源不可判定、埋点启用
+时刻未声明（或建单早于它）的历史书查不到人工痕迹——这些都会以哨兵事件
+阻止假绿，报告同时打印事件源覆盖率。
+
+``--telemetry-since "YYYY-MM-DD HH:MM"`` 声明埋点启用时刻。**默认不传**：
+历史书一律判不了；只有 11-09 重启埋点真生效后，把那个真实时刻传进来，
+之后新建的书才会进分母。别提前传一个未来时间造绿标。
 
 dev / prod：
 - dev 用仓库 ``data/`` 或临时结构夹具验证口径，不需要起服务；
@@ -86,6 +91,8 @@ def main(argv=None):
     src.add_argument("--data-dir", help="真实落盘数据目录（含 tasks/ 与 publish/）")
     src.add_argument("--prod", action="store_true",
                      help="读生产库 %%APPDATA%%/CodeBee（只读）")
+    ap.add_argument("--telemetry-since", default=None,
+                    help="埋点启用时刻 YYYY-MM-DD HH:MM[:SS]；不传=未声明，历史书一律判不了")
     ap.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     args = ap.parse_args(argv)
     if not (args.events or args.data_dir or args.prod):
@@ -101,7 +108,8 @@ def main(argv=None):
             print(journey.human_report(summary))
         return 0
 
-    derived = journey_sources.derive_events(str(path))
+    derived = journey_sources.derive_events(
+        str(path), telemetry_since=args.telemetry_since)
     summary = journey.from_events(derived["events"])
     coverage = derived["coverage"]
     if args.json:

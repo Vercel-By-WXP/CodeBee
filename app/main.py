@@ -2605,6 +2605,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
                     {"kind": "orchestration", "run_id": run["id"], "task_id": m.group(1)})
                 if not queued:
                     return self._json(503, {"error": qerr, "run_id": run["id"]})
+                # 人工重试埋点：只在成功入队后记，失败路径不算一次救火。
+                # 记账异常全吞，绝不影响这次重试（见 rescue_telemetry.record）。
+                from core.publish import rescue_telemetry
+                rescue_telemetry.record(
+                    "manual_retry", m.group(1), "api:task_retry",
+                    run_id=run["id"])
                 return self._json(200, {"ok": True, "run_id": run["id"]})
             elif m.group(2) == "continue":
                 # 继续连载：在旧任务基础上新建任务（沿用目标/目录/评审设置，章节号衔接）
@@ -3025,6 +3031,12 @@ class Handler(HandlerPublishApi, BaseHTTPRequestHandler):
             if not store.set_paused(m.group(1), paused):
                 return self._json(404, {"error": "not found"})
             run = store.get_run(m.group(1)) or {}
+            if not paused:
+                # 暂停本身是步骤边界的正常控制；只有人工解除暂停算一次救火。
+                from core.publish import rescue_telemetry
+                rescue_telemetry.record(
+                    "manual_pause_resume", (run.get("task_id") or ""),
+                    "api:run_pause", run_id=m.group(1))
             return self._json(200, {"ok": True, "paused": paused,
                                     "pause_phase": run.get("pause_phase", "none")})
         if path == "/api/runs/pause_all":

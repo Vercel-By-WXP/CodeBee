@@ -25,7 +25,8 @@ APP = ROOT / "app"
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
 
-from core.publish import journey, journey_sources, outcome, stats  # noqa: E402
+from core.publish import (journey, journey_sources, outcome, stats,  # noqa: E402
+                          telemetry_contract as contract)
 
 SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
@@ -79,14 +80,25 @@ class JourneySourcesContractTest(unittest.TestCase):
         self.assertEqual(journey_sources.NOVEL_TYPES, set(outcome._NOVEL_TYPES))
         self.assertEqual(journey_sources.LIVE_ACTIONS, set(stats._LIVE_ACTIONS))
 
-    def test_sentinel_is_not_a_valid_event_kind(self):
-        # 一旦被加进白名单，「没埋点」就会被当成一次正常事件 → 假绿。
+    def test_telemetry_contract_is_a_three_way_partition(self):
+        # 一旦哨兵被加进白名单，「没埋点」就会被当成一次正常事件 → 假绿。
         self.assertNotIn(journey_sources.UNOBSERVABLE_KIND, journey.VALID_KINDS)
+        # 四类救火必须恰好分成「有埋点 / 无产品入口 / 不可观测」三路，无遗漏无重叠。
         self.assertEqual(
             frozenset(journey.RESCUE_KINDS),
-            journey_sources.OBSERVED_RESCUE_KINDS
-            | journey_sources.UNOBSERVED_RESCUE_KINDS)
-        self.assertEqual(3, len(journey_sources.UNOBSERVED_RESCUE_KINDS))
+            contract.OBSERVED_RESCUE_KINDS
+            | contract.NOT_APPLICABLE_RESCUE_KINDS
+            | contract.UNOBSERVED_RESCUE_KINDS)
+        for a, b in (("observed", "not_applicable"),
+                     ("observed", "unobserved"),
+                     ("not_applicable", "unobserved")):
+            left = getattr(contract, "%s_RESCUE_KINDS" % a.upper())
+            right = getattr(contract, "%s_RESCUE_KINDS" % b.upper())
+            self.assertEqual(set(), set(left) & set(right), (a, b))
+        self.assertEqual(frozenset(), contract.UNOBSERVED_RESCUE_KINDS)
+        self.assertEqual(frozenset(("manual_revise",)),
+                         contract.NOT_APPLICABLE_RESCUE_KINDS)
+        self.assertEqual(3, len(contract.OBSERVED_RESCUE_KINDS))
 
     def test_done_without_outcome_never_maps_to_accepted(self):
         with tempfile.TemporaryDirectory() as td:
