@@ -1438,6 +1438,25 @@ def _run_sandbox(run_id):
     return (task or {}).get("sandbox") or {}
 
 
+def _pin_scope_of(run_id):
+    """run → 成功粘性作用域（task_id）。读不到就退回 run_id，绝不抛。"""
+    try:
+        row = store.get_run(run_id) or {}
+        return str(row.get("task_id") or run_id)
+    except Exception:
+        return str(run_id)
+
+
+def _bind_pin_scope(run_id):
+    """在线程入口补绑粘性作用域。
+
+    contextvar 不跨线程继承，而并行起草/评审线程里 `modelhub.bind_agent(...)`
+    常是 `_run_step(...)` 的**实参**——比 _run_step 里的绑定更早求值，等于拿着
+    空作用域去解析，钉位直接退回全局。每个 Thread 目标函数开头调一次。
+    """
+    modelhub.bind_scope(_pin_scope_of(run_id))
+
+
 def _spawn_step(session_run_id, role, agent, prompt, workdir, readonly, ev,
                 timeout, resume, step, log_abs, images=None, require_tools=False,
                 deadline=None):
@@ -2546,6 +2565,7 @@ def _code_bestof(run, task, impl, difficulty, ev):
                      "detail": task.get("goal") or ""}]
 
         def _race_one(k, wt_path):
+            _bind_pin_scope(run_id)
             agt_b = modelhub.bind_agent(impl, difficulty)
             res = None
             try:
@@ -4972,6 +4992,7 @@ def _serial_draft_chapter(st, i, ch, ch_file, cx, run_critique):
                 results = {}
 
                 def _draft_one(kk, agent):
+                    _bind_pin_scope(run_id)
                     vfile = "chapter-%02d-v%d.md" % (i, kk)
                     vp = _draft_prompt(vfile)
                     if race_round and len(vp) > 12000 and sk_block and sk_block in vp:
@@ -6296,6 +6317,7 @@ def _bestof_draft(run_id, task, impl, prompt_fn, ms_name, workdir, step_wd, ev,
     results = {}
 
     def _one(kk):
+        _bind_pin_scope(run_id)
         vfile = _variant_name(ms_name, kk)
         p = prompt_fn(vfile) + BESTOF_STRATEGIES[kk % len(BESTOF_STRATEGIES)]
         r = _run_step(run_id, "draft-v%d" % kk,

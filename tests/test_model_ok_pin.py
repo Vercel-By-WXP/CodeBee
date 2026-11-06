@@ -389,6 +389,29 @@ class TestOkPinWiring(_Base):
     def test_run_step_binds_scope(self):
         self.assertIn("modelhub.bind_scope(", self._body("_run_step"))
 
+    def test_thread_targets_bind_scope_first(self):
+        """并行线程里 `bind_agent(...)` 是 `_run_step(...)` 的**实参**。
+
+        求值顺序决定成败：实参先算，那时若还没绑定作用域，解析就退回全局钉位，
+        按本隔离等于没做。这三个 Thread 目标必须在开头补绑。
+        """
+        src = Path("app/core/pipeline.py").read_text(encoding="utf-8")
+        for name in ("_race_one", "_draft_one", "_one"):
+            i = src.index("def %s(" % name)
+            head = src[i:i + 260]
+            self.assertIn("_bind_pin_scope(run_id)", head, "%s 缺少入口补绑" % name)
+
+    def test_pin_scope_of_prefers_task_id(self):
+        from app.core import pipeline
+        with mock.patch.object(pipeline.store, "get_run",
+                               return_value={"task_id": "t-abc"}):
+            self.assertEqual(pipeline._pin_scope_of("r-1"), "t-abc")
+
+    def test_pin_scope_of_falls_back_to_run_id(self):
+        from app.core import pipeline
+        with mock.patch.object(pipeline.store, "get_run", side_effect=OSError("boom")):
+            self.assertEqual(pipeline._pin_scope_of("r-1"), "r-1")
+
     def test_execute_run_uses_scope_ctx(self):
         body = self._body("execute_run")
         self.assertIn("modelhub.scope_ctx(", body)
