@@ -26,6 +26,11 @@ except ImportError:
         is_rate_limited_error, quota_recovery_at, describe_error_text,
     )
 
+try:
+    from core import bench as _bench
+except ImportError:
+    from app.core import bench as _bench
+
 # 逐条来自 11-05 直连 body 原话（见 .workbuddy/memory/2026-11-05.md 16:00 节）
 QUOTA_TEXTS = (
     "429 [1310]已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用",   # prov-36
@@ -122,3 +127,33 @@ def test_every_sample_was_actually_judged():
     judged = sum(1 for s in samples if classify_error_text(s) is not None)
     print("真被判过的总样本数: %d / %d" % (judged, len(samples)))
     assert judged >= 15, "有效判据样本不足，验收不成立"
+
+
+def test_account_card_actually_consumes_recovery_time():
+    """判据沉默三问的第三问：人话函数没人消费，等于没写。
+
+    链路：pipeline -> bench.record_failure -> health.snapshot -> 前端账号卡
+    `a.last_error || a.summary`。恢复时刻必须真的落进 last_error，
+    且任意 stderr（可能含凭据）不许跟着进台账。
+    """
+    from unittest import mock
+
+    quota_text = QUOTA_TEXTS[0]
+    with mock.patch.object(_bench, "_ACCOUNTS", {}), \
+            mock.patch.object(_bench, "_persist", lambda: None):
+        assert _bench.record_failure("codex", ErrorCode.QUOTA, quota_text)
+        rows = {r["agent_id"]: r for r in _bench.snapshot()["accounts"]}
+        row = rows["codex"]
+        assert row["code"] == ErrorCode.QUOTA.value
+        assert row["summary"] == row["last_error"]
+        assert "2026-11-09 14:09" in row["last_error"]
+        assert "不是限速" in row["last_error"]
+        assert "降并发" not in row["last_error"]
+        assert "429 [1310]" not in row["last_error"], "任意 stderr 不该进台账"
+
+        # 原文判类与调用方已判的 code 不一致时，不许被噪声改写归因
+        assert _bench.record_failure("aider", ErrorCode.QUOTA,
+                                     "429 Too Many Requests")
+        rows = {r["agent_id"]: r for r in _bench.snapshot()["accounts"]}
+        assert "2026-11-09" not in rows["aider"]["last_error"]
+        assert rows["aider"]["code"] == ErrorCode.QUOTA.value

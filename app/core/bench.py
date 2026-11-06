@@ -27,7 +27,8 @@ import logging
 from pathlib import Path
 
 from . import atomic
-from .error_codes import (ErrorCode, error_code_value, is_account_dead_error,
+from .error_codes import (ErrorCode, classify_error_text, describe_error_text,
+                          error_code_value, is_account_dead_error,
                           safe_error_summary)
 
 _LOCK = threading.Lock()
@@ -147,23 +148,31 @@ def record_failure(agent_id, code, error="", at=None):
     aid = str(agent_id)
     now = float(at if at is not None else time.time())
     value = error_code_value(code)
+    # 2026-11-06：额度类死错的人话必须带「X 时刻后恢复」，否则账号卡只说
+    # 「触发速率或并发限制」，把人引去降并发/加退避。describe_error_text 只返回
+    # 固定模板（不落任意 stderr，凭据不会进台账）；仅当原文判类与调用方已判的
+    # code 一致时才采用，避免一句噪声原文改写台账归因。
+    summary = safe_error_summary(value)
+    if error and error_code_value(classify_error_text(error)) == value:
+        summary = describe_error_text(error) or summary
     with _LOCK:
         state = _ACCOUNTS.get(aid)
         new_episode = not state or state.get("status") != "down"
         if state is None:
             state = {
             "agent_id": aid, "status": "down", "code": value,
-            "summary": safe_error_summary(value), "failed_at": now,
+            "summary": summary, "failed_at": now,
             "last_error": "", "last_probe_at": 0, "next_probe_at": now + _ACCOUNT_PROBE_DELAY,
             "probe_failures": 0, "recovered_at": 0,
             "ever_succeeded": False, "last_success_at": 0,
             }
             _ACCOUNTS[aid] = state
         state.update({"agent_id": aid, "status": "down", "code": value,
-                      "summary": safe_error_summary(value),
+                      "summary": summary,
                       # Runner stderr is arbitrary provider/CLI output and may
-                      # contain credentials. Persist a canonical summary only.
-                      "last_error": safe_error_summary(value)})
+                      # contain credentials. Persist a canonical summary only
+                      # (describe_error_text 返回的是固定模板，不是原文).
+                      "last_error": summary})
         # Do not postpone an already-due probe on every repeated failure.
         if new_episode:
             state["failed_at"] = now
