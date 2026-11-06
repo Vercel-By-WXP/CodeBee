@@ -46,6 +46,7 @@ import io
 import json
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -377,6 +378,14 @@ class ResumePlanTest(unittest.TestCase):
 
 class ResumeWritePathTest(unittest.TestCase):
     """11-09 唯一写操作的验收证据：全部在 fake HTTP 上跑，绝不碰 8765。"""
+
+    def setUp(self):
+        # 20:3x 加恢复窗口硬判据后，这 6 条写路径守测把时钟钉在窗口之后；
+        # 生产 CLI 仍取真实时间，11-09 前一律拒写（见 test_quota_recovery_window.py）。
+        patcher = mock.patch.object(qr, "_now",
+                                    return_value=datetime(2026, 11, 9, 14, 10))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @staticmethod
     def _fake_get(tasks_before, tasks_after=None, state=None):

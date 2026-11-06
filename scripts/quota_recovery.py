@@ -9,6 +9,7 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     py -3.13 scripts/quota_recovery.py --check-inherit            # 只读，报续跑会倒退哪几章
     py -3.13 scripts/quota_recovery.py --resume-tasks --dry-run    # 只看会做什么
     py -3.13 scripts/quota_recovery.py --resume-tasks --confirm-quota-restored
+                                        # 上游窗口变了可加 --recovery-at "YYYY-MM-DD HH:MM"
 
 判据的字段陷阱（11-06 15:00 / 15:2x 从生产详情量出来的，别再踩）：
 
@@ -59,6 +60,16 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     API 不暴露 → 命中 `publishable=False` 完结 verdict 时一律报 `unknown`，
     不上绿标、也不把「主动回炉」误报成「被动倒退」。
 
+11. **「人工确认」不等于「到点了」**（20:3x）：`QUOTA_RECOVERY_AT` 原先只被
+    打印进文案，写路径没有任何时间判据。11-06/07/08 只要手滑带上
+    `--confirm-quota-restored` 就能把 4 个调度开回去，白烧见底的池子。
+    现在 `--resume-tasks` 真写前用 `judge_quota_window` 硬判：未到
+    `2026-11-09 14:09`（或 `--recovery-at` 覆盖值）一律拒写且**零 IO**；
+    解析不了按 `unknown` fail-closed。`--dry-run` 允许提前预演但打印提醒。
+    时间只是**必要非充分条件**：窗口过了也可能账号续期 / 仍见底，
+    人工确认照样必需。解析用与 `error_codes.quota_recovery_at()` 同款正则，
+    能直接从生产 `[1310]` 原话取时刻，守测做交叉验证。
+
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
 核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
@@ -68,6 +79,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 import re
 import sys
 import urllib.request
@@ -435,6 +447,80 @@ def judge_retry_readiness(state):
     }
 
 
+# ---------------------------------------------------------------- 恢复窗口判据（只读）
+
+# 与 app/core/error_codes.py:_QUOTA_RECOVERY_RE 同一正则：上游原话
+# 「[1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用]」。
+RECOVERY_AT_IN_TEXT_RE = re.compile(
+    r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?::\d{2})?\s*后可继续使用")
+PLAIN_RECOVERY_AT_RE = re.compile(
+    r"^\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?::\d{2})?\s*$")
+
+
+def parse_recovery_at(text):
+    """恢复时刻 → datetime；支持常量格式与上游 [1310] 原话。
+
+    解析不了返回 None（判不了就 fail-closed，别给绿标）。与
+    error_codes.quota_recovery_at() 同一正则，守测做交叉验证。
+    """
+    text = str(text or "")
+    m = RECOVERY_AT_IN_TEXT_RE.search(text) or PLAIN_RECOVERY_AT_RE.match(text)
+    if not m:
+        return None
+    try:
+        return datetime.strptime("%s %s" % (m.group(1), m.group(2)),
+                                 "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
+def _now():
+    """模块级可注入时钟：守测 patch 它，生产取真实本地时间（GMT+8）。"""
+    return datetime.now()
+
+
+def _human_remaining(seconds):
+    seconds = max(0, int(seconds))
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return "%d 天 %d 小时 %d 分" % (days, hours, minutes)
+    if hours:
+        return "%d 小时 %d 分" % (hours, minutes)
+    return "%d 分钟" % max(1, minutes)
+
+
+def judge_quota_window(at_text=None, now=None):
+    """恢复窗口判据：reached=True/False/None（None=解析不了，fail-closed）。
+
+    时间只是**必要非充分条件**：窗口过了也可能账号续期 / 仍见底，
+    --confirm-quota-restored 的人工确认照样必需。
+    """
+    at_text = QUOTA_RECOVERY_AT if at_text is None else at_text
+    now = _now() if now is None else now
+    at = parse_recovery_at(at_text)
+    if at is None:
+        return {"at_text": str(at_text), "at": None, "now": now,
+                "reached": None, "remaining_seconds": 0,
+                "human": "恢复时刻解析不了（%s），按 unknown 处理：不写生产调度"
+                         % str(at_text)[:80]}
+    delta = (at - now).total_seconds()
+    if delta > 0:
+        return {"at_text": str(at_text), "at": at, "now": now,
+                "reached": False, "remaining_seconds": int(delta),
+                "human": "距额度恢复窗口 %s 还有 %s（现在 %s）；别恢复调度"
+                         % (at.strftime("%Y-%m-%d %H:%M"),
+                            _human_remaining(delta),
+                            now.strftime("%Y-%m-%d %H:%M"))}
+    return {"at_text": str(at_text), "at": at, "now": now,
+            "reached": True, "remaining_seconds": 0,
+            "human": "额度恢复窗口 %s 已过 %s；仍需 --confirm-quota-restored "
+                     "人工确认额度真恢复（时间只是必要非充分条件）"
+                     % (at.strftime("%Y-%m-%d %H:%M"),
+                        _human_remaining(-delta))}
+
+
 # ---------------------------------------------------------------- 断点续跑继承判据（只读）
 
 def _chapter_arg(value):
@@ -626,6 +712,7 @@ def _fmt_chapters(chs, cap=14):
 # ---------------------------------------------------------------- 动作
 
 def cmd_check(base):
+    print("恢复窗口判据：%s" % judge_quota_window()["human"])
     print("额度恢复参考时刻：%s（脚本不替你确认额度，恢复前别带 --confirm-quota-restored）"
           % QUOTA_RECOVERY_AT)
     tasks = api_get(base, "/api/automation").get("tasks") or []
@@ -757,11 +844,19 @@ def cmd_verify_run(base, run_id):
     return 0
 
 
-def cmd_resume_tasks(base, confirm, dry_run):
+def cmd_resume_tasks(base, confirm, dry_run, at_text=None):
     if not confirm:
         print("拒绝：--resume-tasks 会写生产调度，必须显式带 --confirm-quota-restored，"
               "并先自行确认 %s 额度已恢复" % QUOTA_RECOVERY_AT)
         return 2
+    window = judge_quota_window(at_text)
+    if not dry_run and window["reached"] is not True:
+        print("拒绝写：%s" % window["human"])
+        print("（--confirm-quota-restored 只是人工确认，不能替代时间判据；"
+              "--dry-run 可提前预演，上游窗口变更用 --recovery-at 覆盖）")
+        return 2
+    if dry_run and window["reached"] is not True:
+        print("提示（dry-run 只预演、不写）：%s" % window["human"])
     plan = plan_resume(api_get(base, "/api/automation").get("tasks") or [])
     print("写前核对：清单 %d 条，待恢复 %d 条，本来 disabled %d 条%s" % (
         plan["total"], len(plan["targets"]), len(plan["known_disabled"]),
@@ -820,9 +915,12 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="与 --resume-tasks 合用，只打印不写")
     ap.add_argument("--confirm-quota-restored", action="store_true",
                     help="人工确认额度已恢复；缺这个标志拒绝任何写操作")
+    ap.add_argument("--recovery-at", default=QUOTA_RECOVERY_AT,
+                    help="覆盖上游恢复时刻（默认 2026-11-09 14:09）；支持 YYYY-MM-DD HH:MM 或 [1310] 原话")
     args = ap.parse_args(argv)
     if args.resume_tasks:
-        return cmd_resume_tasks(args.base, args.confirm_quota_restored, args.dry_run)
+        return cmd_resume_tasks(args.base, args.confirm_quota_restored,
+                                args.dry_run, args.recovery_at)
     if args.verify_run:
         return cmd_verify_run(args.base, args.verify_run)
     if args.check_inherit:
