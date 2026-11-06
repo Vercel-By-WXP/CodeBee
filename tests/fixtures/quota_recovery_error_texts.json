@@ -1,0 +1,100 @@
+{
+ "_source": {
+  "captured_at": "2026-11-06 15:49:29",
+  "endpoint": "GET /api/runs/<id> (生产 127.0.0.1:8765，只读)",
+  "note": "真实落盘 step 原文，按 expected 分 3 类；Aider 长转录按前 400 字符截取并在 truncated 标注，截断内字符未改写。噪音是生产里真实出现、含「上限」或「429」却不是额度错误的原文，用来守「别放宽裸词」。",
+  "scanned_runs": 26
+ },
+ "cases": [
+  {
+   "run_id": "r-20261105-174730-9762",
+   "step": 39,
+   "field": "summary",
+   "text": "claude 返回 is_error: API Error: Request rejected (429) · [1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用。如需超限额按量付费使用，可联系管理员开启超额按量付费。][2026110519492250b2daaec4ff4b46]",
+   "expected": "quota_blocked",
+   "label": "1310-七天上限",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261105-174730-9762",
+   "step": 52,
+   "field": "summary",
+   "text": "claude 返回 is_error: API Error: Request rejected (429) · [1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用。如需超限额按量付费使用，可联系管理员开启超额按量付费。][2026110520091393f9bbd1d2c74521]",
+   "expected": "quota_blocked",
+   "label": "1310-七天上限",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261105-171029-5845",
+   "step": 38,
+   "field": "summary",
+   "text": "claude 返回 is_error: API Error: Request rejected (429) · [1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用。如需超限额按量付费使用，可联系管理员开启超额按量付费。][20261105194039e666a6a2077547e0]",
+   "expected": "quota_blocked",
+   "label": "1310-七天上限",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261106-015242-9914",
+   "step": 38,
+   "field": "summary",
+   "text": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_q1ewxxh4.md to the chat (read-only).\n\nlitellm.RateLimitError: AnthropicException - <!DOCTYPE HTML PUBLIC \n\"-//IETF//DTD HTML 2.0//EN\">\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\"\n        content=\"width=device-width, user-scalable=no, \ninitial-sca",
+   "expected": "quota_blocked",
+   "label": "RateLimitError",
+   "truncated": true
+  },
+  {
+   "run_id": "r-20261106-002047-3319",
+   "step": 60,
+   "field": "summary",
+   "text": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\n\nlitellm.RateLimitError: AnthropicException - <!DOCTYPE HTML PUBLIC \n\"-//IETF//DTD HTML 2.0//EN\">\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\"\n        content=\"width=device-width, user-scalable=no, \ninitial-scale=1.0,maximum-scale=1.0, minimum-scale=1.0\">\n  <meta ht",
+   "expected": "quota_blocked",
+   "label": "RateLimitError",
+   "truncated": true
+  },
+  {
+   "run_id": "r-20261105-171025-3047",
+   "step": 17,
+   "field": "summary",
+   "text": "CLI 转录全是上游报错（exit 0 假完成）：litellm.RateLimitError: AnthropicException -",
+   "expected": "quota_blocked",
+   "label": "RateLimitError",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261106-094827-3523",
+   "step": 3,
+   "field": "summary",
+   "text": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110601532324126370104dff52abCScTTba（退出码 1）",
+   "expected": "rate_limited",
+   "label": "字面429",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261106-094827-3523",
+   "step": 4,
+   "field": "summary",
+   "text": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110601542366499523804dff52a1iKepOEv（退出码 1）",
+   "expected": "rate_limited",
+   "label": "字面429",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261106-083948-1126",
+   "step": 14,
+   "field": "summary",
+   "text": "CLI 输出超过捕获上限（stdout/stderr 各最多 8388608 字节），本次结果不完整",
+   "expected": "neither",
+   "label": "噪音-捕获上限",
+   "truncated": false
+  },
+  {
+   "run_id": "r-20261106-094827-3523",
+   "step": 6,
+   "field": "summary",
+   "text": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_0f50be6i.md to the chat (read-only).\n\nlitellm.Timeout: AnthropicException Timeout - \n{\"error\":{\"type\":\"bad_response_status_code\",\"message\":\"bad response status code\n504 (request id: 202611060200138511094298268d9d6eiltte5T)\"},\"type\":\"error\"}\nThe API provider timed out without",
+   "expected": "neither",
+   "label": "噪音-数字巧合",
+   "truncated": true
+  }
+ ]
+}

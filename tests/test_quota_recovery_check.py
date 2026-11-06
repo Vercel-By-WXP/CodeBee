@@ -7,7 +7,7 @@ serial_novel 73 步）；`tests/fixtures/quota_recovery_automation.json` 是 15:
 从生产 `/api/automation` 只读取的 **5 条真实定时任务**。两者都只裁掉无关
 大字段，**没有改写任何字符串**。
 
-守五件事（后三件是 15:2x / 15:3x 新量出来的）：
+守六件事（后四件是 15:2x / 15:3x / 15:5x 新量出来的）：
 
 1. 三件套按**真实字段路径**判：`completed_seats` 在 `review_resources` 里，
    `review_fallbacks` 在真实 run 里根本没有键（不是 `[local-heuristic]`）。
@@ -20,12 +20,21 @@ serial_novel 73 步）；`tests/fixtures/quota_recovery_automation.json` 是 15:
 5. **11-09 唯一的写操作 `--resume-tasks` 有验收证据**：写前核对真实清单、
    恰好 4 次 toggle 且只碰待恢复 id、任一失败立即停、写后复核、
    dry-run 与缺人工确认零写。
+6. **额度耗尽原话不只长着 429 的样子**：生产 step 里真实存在
+   `[1310][已达到 7 天使用上限...]` 与 `litellm.RateLimitError`，
+   旧 `RATE_LIMIT_RE` 一条都检不出；新增零歧义词表并与
+   `error_codes.py:_QUOTA_STRONG` 逐字对齐，噪音（捕获上限 / request id 429）不误判。
+
+夹具 `tests/fixtures/quota_recovery_error_texts.json` 是 15:5x 从生产
+`/api/runs/<id>` 只读取的 **10 条真实 step 原文**（3 类），长转录按前 400
+字符截取并标注，截断内字符未改写。
 
 决策 18：报出真被判过的真实样本数。合成样本只用于反向覆盖边界，单独标注、
 不计入真样本数。
 """
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import io
@@ -38,6 +47,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_runs.json"
 AUTOMATION_FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_automation.json"
+ERROR_TEXTS_FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_error_texts.json"
 _spec = importlib.util.spec_from_file_location(
     "quota_recovery", ROOT / "scripts" / "quota_recovery.py")
 qr = importlib.util.module_from_spec(_spec)
@@ -50,6 +60,10 @@ def _runs():
 
 def _automation():
     return json.loads(AUTOMATION_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _error_cases():
+    return json.loads(ERROR_TEXTS_FIXTURE.read_text(encoding="utf-8"))
 
 
 def _tasks_after_recovery():
@@ -510,6 +524,113 @@ class ResumeSafetyTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("抑制态", buf.getvalue())
         self.assertIn("保持停用", buf.getvalue())
+        post.assert_not_called()
+
+
+class QuotaErrorTextTest(unittest.TestCase):
+    """15:5x：额度耗尽原话不只长着 429 的样子，旧判据整条漏判。"""
+
+    @staticmethod
+    def _judge(text, field="summary"):
+        return qr.judge_run({
+            "id": "r-case", "verdict": {"publishable": False},
+            "steps": [{"n": 7, field: text, "cost_usd": 1.2}]})
+
+    def test_all_real_error_texts_are_judged_and_print_sample_count(self):
+        cases = _error_cases()["cases"]
+        judged = 0
+        for c in cases:
+            d = self._judge(c["text"], c["field"])
+            q, r = d["quota_blocked_steps"], d["rate_limited_steps"]
+            tag = "%s/%s/n=%s" % (c["label"], c["run_id"][-8:], c["step"])
+            if c["expected"] == "quota_blocked":
+                self.assertEqual(q, [7], tag)
+                self.assertEqual(r, [], tag + " 不该靠 429 字面检出")
+            elif c["expected"] == "rate_limited":
+                self.assertEqual(r, [7], tag)
+                self.assertEqual(q, [], tag)
+            else:
+                self.assertEqual(q, [], tag + " 噪音被误判成额度错误")
+                self.assertEqual(r, [], tag)
+            judged += 1
+        print("真被判过的真实额度/限流/噪音原文样本数: %d / %d" % (judged, len(cases)))
+        self.assertEqual(judged, 10)
+
+    def test_old_429_regex_misses_real_quota_originals(self):
+        """钉住「这是真缺陷不是假想」：旧正则对这些额度原文确实零命中。"""
+        missed = 0
+        for c in _error_cases()["cases"]:
+            if c["expected"] == "quota_blocked" and c["label"] == "1310-七天上限":
+                self.assertIsNone(qr.RATE_LIMIT_RE.search(c["text"]),
+                                  c["label"] + "/" + c["run_id"])
+                missed += 1
+        print("旧 429 正则真实漏判的 [1310] 额度原文: %d 条" % missed)
+        self.assertEqual(missed, 3)
+
+    def test_noise_bare_words_are_not_quota_blocked(self):
+        words = {w.lower() for w in qr.QUOTA_STRONG_WORDS}
+        for bare in ("429", "quota", "上限", "使用上限", "limit", "余额"):
+            self.assertNotIn(bare, words, "词表出现裸词会误报噪音: " + bare)
+        # 合成边界：request id 里的 429 数字巧合（反向覆盖，不计真样本）
+        self.assertFalse(qr._step_quota_blocked(
+            {"summary": "request id: 2026110516490068394296004dff52a0zCklXBH"}))
+        self.assertFalse(qr._step_quota_blocked({"note": "达到并发使用上限"}))
+        print("合成边界 2 条（反向覆盖用，不计入真样本数）")
+
+    def test_wordlist_matches_error_codes_quota_strong(self):
+        """防口径漂移：脚本词表与 app/core/error_codes.py:_QUOTA_STRONG 逐字一致。"""
+        tree = ast.parse((ROOT / "app" / "core" / "error_codes.py").read_text(encoding="utf-8"))
+        node = next(n for n in tree.body if isinstance(n, ast.Assign)
+                    and any(getattr(t, "id", "") == "_QUOTA_STRONG" for t in n.targets))
+        strong = set(ast.literal_eval(node.value))
+        self.assertEqual(strong, set(qr.QUOTA_STRONG_WORDS))
+        self.assertGreaterEqual(len(strong), 15)
+
+    def test_recovery_is_blocked_by_quota_original_even_when_other_signals_pass(self):
+        """核心防假绿：其它判据全达标，只要还剩 [1310] 原话就不能判恢复。"""
+        text = next(c["text"] for c in _error_cases()["cases"]
+                    if c["label"] == "1310-七天上限")
+        run = {"id": "r-synth-quota", "status": "done",
+               "verdict": {"type": "serial_novel", "publishable": False,
+                           "threshold": 7.0, "review_independence": "cross-vendor",
+                           "review_status": "evaluated", "review_degraded": True,
+                           "review_quality": "degraded",
+                           "review_degradation_reasons": ["评分低于最低门槛"],
+                           "global_reviewer_count": 2},
+               "steps": [{"n": 1, "status": "done", "cost_usd": 1.2,
+                          "summary": "评审完成"},
+                         {"n": 2, "status": "done", "cost_usd": 0.9,
+                          "summary": text}]}
+        d = qr.judge_run(run)
+        self.assertTrue(d["fields_complete"])
+        self.assertEqual(d["quota_blocked_steps"], [2])
+        self.assertEqual(d["rate_limited_steps"], [])
+        r = qr.judge_recovery(d)
+        self.assertFalse(r["recovery_ok"], "含 [1310] 却判恢复通过 = 11-09 假绿")
+        self.assertTrue(any("额度耗尽原话" in b for b in r["blockers"]))
+        # 反向覆盖：把那一步改回正常文本，恢复判据必须通过。
+        run["steps"][1]["summary"] = "修订完成"
+        self.assertTrue(qr.judge_recovery(qr.judge_run(run))["recovery_ok"])
+        print("合成边界样本 1 条（反向覆盖用，不计入真样本数）")
+
+    def test_verify_run_prints_quota_blocker(self):
+        """消费点：CLI 必须把额度原话缺口打到 stdout。"""
+        text = next(c["text"] for c in _error_cases()["cases"]
+                    if c["label"] == "1310-七天上限")
+        run = {"id": "r-quota", "status": "failed",
+               "verdict": {"type": "doc", "publishable": False, "overall": 6.2,
+                           "threshold": 7.0, "review_independence": "no-review",
+                           "review_resources": {"completed_seats": 0,
+                                                "required_seats": 1}},
+               "steps": [{"n": 39, "summary": text}]}
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", return_value={"run": run}), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
+            rc = qr.main(["--verify-run", "r-quota"])
+        self.assertEqual(rc, 0)
+        self.assertIn("quota_blocked_steps", buf.getvalue())
+        self.assertIn("额度耗尽原话", buf.getvalue())
         post.assert_not_called()
 
 

@@ -35,6 +35,12 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
    按「评分低于最低门槛」重写；`review_status`（`pipeline.py:6164`）才是评估前的
    原始信号。判「评审有没有真跑」看 `review_status` 与降级理由，不看这个布尔。
 
+8. **429 字面不等于「额度没恢复」的全部信号**：生产 step 里真实存在
+   `[1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用]` 与
+   `litellm.RateLimitError`（含 exit 0 假完成的 Aider 转录），两者都不含
+   `429 Too Many Requests` / `last status: 429`，旧 `RATE_LIMIT_RE` 检不出。
+   `judge_recovery` 另认一组零歧义额度原话，避免 11-09 假绿。
+
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
 核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
@@ -61,6 +67,23 @@ TASK_IDS = (
 # 第 5 个本来就是 disabled；白名单外再出现停用任务 = 清单变了，别盲写。
 KNOWN_DISABLED_IDS = frozenset(("auto-20260921-135622-8720",))
 RATE_LIMIT_RE = re.compile(r"429\s+Too\s+Many\s+Requests|last\s+status:\s*429", re.I)
+# 额度耗尽 / 上游限流原话（15:5x 从生产 26 条 run 的 step 只读取证）：
+#   [1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用]
+#   litellm.RateLimitError（含 exit 0 假完成的 Aider 转录）
+# 这两种最关键的额度信号都不带 "429 Too Many Requests"，旧正则整条漏判。
+# 词表与 app/core/error_codes.py:_QUOTA_STRONG 逐字对齐（守测用 ast 锁防漂移）；
+# 绝不放裸 "429" / 裸 "quota" / 裸「上限」：生产里有
+# "CLI 输出超过捕获上限" 与 request id 里的 429 数字巧合。
+QUOTA_STRONG_WORDS = (
+    "预扣费", "剩余额度", "额度不足", "insufficient balance",
+    "insufficient quota", "insufficient credit", "insufficient credits",
+    "quota exhausted", "exceed quota limit", "quota limit exceeded",
+    "monthly quota", "余额不足", "欠费停", "payment required",
+    "billing address", "套餐已到期", "套餐到期", "订阅已到期",
+    "subscription expired", "plan has expired",
+)
+QUOTA_EXTRA_RE = re.compile(
+    r"\[131[09]\]|已达到\s*\d+\s*天使用上限|RateLimitError|request\s+rejected", re.I)
 _RL_FIELDS = ("summary", "error", "output", "note")
 # main.py:5034 _state_run_summary 的 verdict 白名单，compact 严格按这个集合判。
 STATE_VERDICT_KEYS = frozenset(("pass", "publishable", "verify_pass",
@@ -96,6 +119,16 @@ def _step_rate_limited(step):
     return False
 
 
+def _step_quota_blocked(step):
+    """认额度耗尽原话（非 429 字面）；裸 429 / 裸「上限」一律不算。"""
+    for key in _RL_FIELDS:
+        text = str(step.get(key) or "")
+        low = text.lower()
+        if any(w.lower() in low for w in QUOTA_STRONG_WORDS) or QUOTA_EXTRA_RE.search(text):
+            return True
+    return False
+
+
 def detect_schema(verdict):
     """按落盘字段形状判 schema；compact 按白名单精确判，不靠「键少」猜。"""
     if not isinstance(verdict, dict) or not verdict:
@@ -122,6 +155,7 @@ def judge_run(run):
     steps = [s for s in (run.get("steps") or []) if isinstance(s, dict)]
 
     rate_limited = [s.get("n") for s in steps if _step_rate_limited(s)]
+    quota_blocked = [s.get("n") for s in steps if _step_quota_blocked(s)]
     model_steps = sum(1 for s in steps if (s.get("cost_usd") or 0) > 0)
     seats = resources.get("completed_seats")
     independence = verdict.get("review_independence")
@@ -173,6 +207,7 @@ def judge_run(run):
         "quality_status": verdict.get("quality_status"),
         "successful_model_steps": model_steps,
         "rate_limited_steps": rate_limited,
+        "quota_blocked_steps": quota_blocked,
         "last_step_rate_limited": bool(steps) and _step_rate_limited(steps[-1]),
         "verdict_honest": honest,
     }
@@ -189,6 +224,12 @@ def judge_recovery(d):
         blockers.append("仍有 %d 步 429（n=%s）" % (
             len(d["rate_limited_steps"]),
             ",".join(str(n) for n in d["rate_limited_steps"][:12])))
+    quota_steps = d.get("quota_blocked_steps") or []
+    if quota_steps:
+        blockers.append("仍有 %d 步额度耗尽原话（n=%s）：[1310] 七天上限 / "
+                        "RateLimitError 等非 429 字面，旧正则检不出" % (
+                            len(quota_steps),
+                            ",".join(str(n) for n in quota_steps[:12])))
     if d["successful_model_steps"] < 1:
         blockers.append("没有真调模型的步骤（cost_usd>0）")
 
@@ -258,7 +299,13 @@ def human_verdict(d):
             ",".join(str(n) for n in d["rate_limited_steps"]),
             "、末步 429" if d["last_step_rate_limited"] else ""))
     else:
-        bits.append("无限流步骤")
+        bits.append("无 429 字面限流步骤")
+    quota_steps = d.get("quota_blocked_steps") or []
+    if quota_steps:
+        bits.append("额度耗尽原话 %d 步（n=%s）" % (
+            len(quota_steps), ",".join(str(n) for n in quota_steps)))
+    elif not d["rate_limited_steps"]:
+        bits.append("无额度耗尽原话")
     return "；".join(bits)
 
 
@@ -362,6 +409,7 @@ def cmd_verify_run(base, run_id):
                 "reviewer_count", "reviewer_consensus", "quality_status",
                 "incomplete_review_reasons", "review_degradation_reasons",
                 "successful_model_steps", "rate_limited_steps",
+                "quota_blocked_steps",
                 "last_step_rate_limited", "verdict_honest"):
         value = d[key]
         if key == "rate_limited_steps" and isinstance(value, list):
