@@ -10,6 +10,7 @@
 4. **平台事实与人工判断分栏**（决策 11）：平台原话原样引用，判断条目必须标明
    「不是平台规则」，否则作者的自省会被下一本书当成平台禁令。
 5. **台账坏了只损失这一块**：坏 JSON 不能让提示词拼装抛错。
+6. **超预算不许静默丢条**（2026-11-06）：丢了几条、哪几条被截字，必须在块里说清。
 """
 from __future__ import annotations
 
@@ -156,6 +157,52 @@ class SkillsInjectionTest(_DirMixin):
         from core import skills
         text, _used = skills.block_for({"type": "novel", "appeal_genre": "hunt_1980s"})
         self.assertNotIn("驳回约束", text)
+
+
+class ConstraintBudgetVisibilityTest(_DirMixin):
+    """2026-11-06：`block_for` 两处 `break` 原本静默丢条。
+
+    数据文件是人工维护的，加一条约束或把某条 rule 写长，后面的约束就悄悄
+    不下发，模型会以为「开工约束就这些」，过签率掉了查不到原因。守两件事：
+    正常 profile 一个字都不许变；真丢了东西必须报数，且提示要完整出现在末尾
+    （别被 1100 字硬截断正好切掉）。
+    """
+
+    NOTICE_TAIL = "不要据此认为约束已列全。）"
+
+    @staticmethod
+    def _rules(n, chars=10):
+        return [{"kind": "类型", "rule": "第%02d条 " % i + "核" * chars,
+                 "fact": "依据%02d" % i} for i in range(1, n + 1)]
+
+    def _render(self, items):
+        self.write(_profile(constraints=items))
+        return constraints.block_for({"type": "novel", "appeal_genre": "hunt_1980s"})
+
+    def test_normal_profile_has_no_notice(self):
+        text = self._render(_profile()["constraints"])
+        self.assertNotIn("提示：", text)
+        self.assertNotIn("已截断", text)
+
+    def test_extra_rules_report_how_many_were_dropped(self):
+        text = self._render(self._rules(8))
+        self.assertIn("2 条同类约束因篇幅预算未注入", text)
+        self.assertTrue(text.rstrip().endswith(self.NOTICE_TAIL))
+
+    def test_overlong_rule_is_reported(self):
+        text = self._render(self._rules(2, 300))
+        self.assertIn("2 条约束原文超长被截字", text)
+        self.assertTrue(text.rstrip().endswith(self.NOTICE_TAIL))
+
+    def test_notice_survives_budget_pressure(self):
+        # 条数与单条长度同时超：既有未注入条目，也有被截字的原文。
+        text = self._render(self._rules(8, 240))
+        self.assertLessEqual(len(text), constraints.MAX_BLOCK_CHARS + 20)
+        self.assertIn("同类约束因篇幅预算未注入", text)
+        self.assertIn("约束原文超长被截字", text)
+        self.assertIn("完整清单见题材约束文件", text)
+        self.assertTrue(text.rstrip().endswith(self.NOTICE_TAIL),
+                        "提示被硬截断吃掉了：%r" % text[-80:])
 
 
 if __name__ == "__main__":

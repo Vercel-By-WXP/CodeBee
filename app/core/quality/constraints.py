@@ -164,7 +164,14 @@ def _source_line(data):
 
 
 def block_for(task):
-    """给提示词用的「驳回约束」块；不适用时返回空串（绝不返回占位段）。"""
+    """给提示词用的「驳回约束」块；不适用时返回空串（绝不返回占位段）。
+
+    2026-11-06：原来两处 `break`（预算不够 / 到 MAX_CONSTRAINTS）都是**静默丢条**，
+    模型只看到前几条会以为「开工约束就这些」。数据文件是人工维护的，往里加一条
+    或把某条 rule 写长，后面的约束就会悄悄不下发，而过签率下降查不到原因。
+    现在只在「确实丢了东西」时补一行可见提示；三份真实数据当前全装得下，
+    notice 为空 → 走原逻辑，输出字节不变。
+    """
     if str((task or {}).get("type") or "") not in ("novel", "serial_novel"):
         return ""
     try:
@@ -173,14 +180,16 @@ def block_for(task):
         return ""
     if not data:
         return ""
+    items = [it for it in (data.get("constraints") or [])
+             if isinstance(it, dict) and str(it.get("rule") or "").strip()]
     lines = [_HEADER, _source_line(data)]
     count = 0
-    for item in data.get("constraints") or []:
-        if not isinstance(item, dict):
-            continue
+    skipped = 0   # 因预算/条数上限没下发的条目数
+    clipped = 0   # rule 超 MAX_RULE_CHARS 被截字的条目数
+    for item in items:
         rule = str(item.get("rule") or "").strip()
-        if not rule:
-            continue
+        if len(rule) > MAX_RULE_CHARS:
+            clipped += 1
         label = str(item.get("kind") or "约束").strip()[:8]
         fact = str(item.get("fact") or "").strip()
         one = "%d. [%s] %s" % (count + 1, label, _clean(rule, MAX_RULE_CHARS))
@@ -188,14 +197,29 @@ def block_for(task):
             one += "\n   依据：%s" % _clean(fact, 120)
         rendered = "\n".join(lines)
         if len(rendered) + len(one) + 40 > MAX_BLOCK_CHARS:
+            skipped = len(items) - count
             break
         lines.append(one)
         count += 1
         if count >= MAX_CONSTRAINTS:
+            skipped = len(items) - count
             break
     if not count:
         return ""
     lines.append("（以上是给这本书的开工约束。它们来自一次真实的签约驳回，"
                  "用于自查同类问题；不是平台规则，也不代表这样写就能过签。）")
+    dropped = []
+    if skipped:
+        dropped.append("%d 条同类约束因篇幅预算未注入" % skipped)
+    if clipped:
+        dropped.append("%d 条约束原文超长被截字" % clipped)
+    notice = ("（提示：%s；完整清单见题材约束文件，不要据此认为约束已列全。）"
+              % "，".join(dropped)) if dropped else ""
     text = "\n".join(lines)
-    return text if len(text) <= MAX_BLOCK_CHARS else text[:MAX_BLOCK_CHARS] + "\n…（已截断）"
+    if not notice:
+        return text if len(text) <= MAX_BLOCK_CHARS else text[:MAX_BLOCK_CHARS] + "\n…（已截断）"
+    # 有未下发/截字时，先给提示预留空间，否则 1100 字硬截断会正好把提示切掉。
+    budget = max(1, MAX_BLOCK_CHARS - len(notice) - 1)
+    if len(text) > budget:
+        text = text[:budget] + "\n…（已截断）"
+    return text + "\n" + notice

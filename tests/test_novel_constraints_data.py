@@ -11,7 +11,9 @@
 
 1. 每份文件都能被 `_load_file` 接受（字段齐、constraints 非空）。
 2. 拿它自己的 detect 词造一个任务，能渲染出非空块（题材投票投得回来）。
-3. 渲染出来的条数不少于 3 条（`MAX_BLOCK_CHARS` 预算内不该只剩一两条）。
+3. **每一条约束都真的进了提示词**（2026-11-06 收紧）。原断言只要求 `>=3` 条，
+   而三份真数据是 5/6 条——`block_for` 的预算 `break` 静默丢掉后半截时它照样绿，
+   模型拿到残缺的开工约束却以为已列全。现在按决策 18 报出真被判过的样本数。
 4. 不串味：A 的 detect 词只引出 A 的平台原话，绝不出现 B 的原话。
 """
 from __future__ import annotations
@@ -60,12 +62,27 @@ class ConstraintDataFilesTest(unittest.TestCase):
             if quote:
                 self.assertIn(quote[:12], text, "%s 块里没有平台原话" % path.name)
 
-    def test_block_keeps_at_least_three_items(self):
+    def test_every_rule_reaches_the_prompt(self):
+        """宽松阈值绿灯的反面：不数「至少几条」，数「每一条在不在」。"""
+        judged = 0
         for path in _files():
             data = json.loads(path.read_text(encoding="utf-8-sig"))
             text = constraints.block_for(self._task_for(data))
-            items = text.count("\n   依据：")
-            self.assertGreaterEqual(items, 3, "%s 只渲染出 %d 条" % (path.name, items))
+            rules = [str(it.get("rule") or "").strip()
+                     for it in (data.get("constraints") or [])
+                     if isinstance(it, dict) and str(it.get("rule") or "").strip()]
+            self.assertNotIn("提示：", text, "%s 开始静默丢条" % path.name)
+            self.assertNotIn("已截断", text, "%s 被硬截断" % path.name)
+            for rule in rules:
+                self.assertIn(rule[:12], text,
+                              "%s 的约束没进提示词：%s" % (path.name, rule[:20]))
+                judged += 1
+            print("  %-34s 真被判过 %d/%d 条，块长 %d/%d（余 %d 字）" % (
+                path.name, len(rules), len(rules), len(text),
+                constraints.MAX_BLOCK_CHARS,
+                constraints.MAX_BLOCK_CHARS - len(text)))
+        print("真被判过的约束总样本数: %d" % judged)
+        self.assertGreaterEqual(judged, 15, "真实约束样本不足，验收不成立")
 
     def test_genres_do_not_leak_into_each_other(self):
         loaded = []
