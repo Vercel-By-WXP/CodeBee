@@ -6,6 +6,7 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
 
     py -3.13 scripts/quota_recovery.py --check                      # 只读，随时可跑
     py -3.13 scripts/quota_recovery.py --verify-run <run_id>       # 只读，出人话结论
+    py -3.13 scripts/quota_recovery.py --check-inherit            # 只读，报续跑会倒退哪几章
     py -3.13 scripts/quota_recovery.py --resume-tasks --dry-run    # 只看会做什么
     py -3.13 scripts/quota_recovery.py --resume-tasks --confirm-quota-restored
 
@@ -46,6 +47,17 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
    `paused` 解成 false 时 `pause_control` 立刻归零，但 run 仍 `running`，
    `POST /api/tasks/<id>/retry` 仍被拒；四本同时解除暂停更会直接齐跑抢额度。
    `judge_retry_readiness` 按真实前置判，`--check` 不再拿 paused 数当续跑信号。
+
+10. **「可 retry」不等于「retry 不重写已完成章」**（17:37 生产实案）：
+    `store.retry_task` 的 `done` 原先只取 `prev["steps"]` 里 `draft-cN done`，
+    而 `pipeline.py:4606` 是 `reuse = i in done_set and os.path.exists(ch_file)`
+    —— **章号必须进 done_set，磁盘有稿也不够**。中途暂停 / 重启中断的 run
+    steps 只覆盖到中断点，上一遍继承来并已复用的章（`inherit.done_chapters`）
+    会丢。修复（并回同一 prev 的 inherit 章号）已同步部署包但**未重启**；
+    `--check-inherit` 只读复现两版结果，报倒退章清单与真被判过样本数。
+    ledger 的 redo 剔除 / 已发布章豁免要读 `publish.ledger.published_chapters`，
+    API 不暴露 → 命中 `publishable=False` 完结 verdict 时一律报 `unknown`，
+    不上绿标、也不把「主动回炉」误报成「被动倒退」。
 
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
@@ -423,6 +435,194 @@ def judge_retry_readiness(state):
     }
 
 
+# ---------------------------------------------------------------- 断点续跑继承判据（只读）
+
+def _chapter_arg(value):
+    """章号统一转 int；bool / 非数字一律 None（对齐 store.retry_task:2052-2058）。"""
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _draft_done_chapters(steps):
+    """store.retry_task:2037-2042 的取法：只认 status=done 的 draft-cN。"""
+    out = set()
+    for s in steps or []:
+        if not isinstance(s, dict) or s.get("status") != "done":
+            continue
+        role = str(s.get("role") or "")
+        if not role.startswith("draft-c"):
+            continue
+        tail = role.split("c")[-1]
+        if tail.isdigit():
+            out.add(int(tail))
+    return out
+
+
+def _run_historical_chapters(run):
+    """一条 run 里出现过的章号：起草 done 步 / 继承章号 / 章分数（有分数即有稿）。
+
+    口径是「历史出现过的章号并集」，不是「当前磁盘成稿」——磁盘文件不在 API 里，
+    判不了，所以只拿落盘字段说话。未过线章（chapter_scores.passed=False）也算，
+    但由 redo_risk 把「ledger 主动回炉」与「steps 截断被动丢失」分开判。
+    """
+    out = _draft_done_chapters(run.get("steps"))
+    for c in ((run.get("inherit") or {}).get("done_chapters") or []):
+        n = _chapter_arg(c)
+        if n is not None:
+            out.add(n)
+    for scores in (run.get("chapter_scores"),
+                   (run.get("verdict") or {}).get("chapter_scores")):
+        for c in scores or []:
+            if isinstance(c, dict):
+                n = _chapter_arg(c.get("chapter"))
+                if n is not None:
+                    out.add(n)
+    return out
+
+
+def project_retry_inherit(runs, task_id):
+    """复现 store.retry_task 在「重启收尸后」为某 task 生成的 inherit.done_chapters。
+
+    纯函数、只读。四处与 store.py 逐条对齐：
+      - 收尸派生：queued/running → failed + interrupted=restart（store.py:900）；
+        这是 11-09 才会出现的派生状态，单列返回、不计真样本。
+      - outline：按 (created_at_ns, id) 倒序取第一个非 degraded（2027-2034）。
+      - ledger：倒序找最近一个 publishable 明确的完结 verdict（2077-2082）；
+        True 清账、False 触发 redo 剔除。API 没有 published_chapters 与完整
+        major_issues → 只报 redo_risk，不猜具体章（判不了就 unknown）。
+      - done：最新终态 prev 的 draft-c done ∪ 同 run 的 inherit.done_chapters
+        （2037-2061，17:37 修复后）。旧代码 / 部署包未重启时只按 steps。
+    """
+    rows = [dict(r) for r in (runs or []) if isinstance(r, dict)]
+    reaped = []
+    for r in rows:
+        if r.get("status") in ACTIVE_RUN_STATUSES:
+            reaped.append(r.get("id"))
+            r["status"] = "failed"
+            r["interrupted"] = "restart"
+    ordered = sorted(rows, key=lambda r: (r.get("created_at_ns") or 0,
+                                          str(r.get("id") or "")), reverse=True)
+    outline = None
+    for r in ordered:
+        o = r.get("outline")
+        if o and not o.get("degraded"):
+            outline = o
+            break
+    redo_risk = False
+    redo_risk_run_ids = []
+    for r in ordered:
+        if r.get("status") not in TASK_TERMINAL_STATUSES:
+            continue
+        pv = r.get("verdict") or {}
+        if pv.get("publishable") is True:
+            break
+        if pv.get("publishable") is False:
+            redo_risk = True
+            redo_risk_run_ids.append(r.get("id"))
+            break
+    prev = next((r for r in ordered
+                 if r.get("status") in TASK_TERMINAL_STATUSES), None)
+    from_steps = _draft_done_chapters((prev or {}).get("steps"))
+    from_inherit = set()
+    for c in (((prev or {}).get("inherit") or {}).get("done_chapters") or []):
+        n = _chapter_arg(c)
+        if n is not None:
+            from_inherit.add(n)
+    limitations = []
+    if not outline:
+        limitations.append("没有可继承的非降级大纲：retry 不会落 inherit，整本从零重写")
+    if redo_risk:
+        limitations.append("最近完结 verdict 是 publishable=False：ledger 会剔除未达标章，"
+                           "published_chapters 不在 API 里，判不了最终章号")
+    if not prev:
+        limitations.append("该 task 下没有终态 run：收尸后才有，判不了")
+    return {
+        "task_id": task_id,
+        "judged_run_count": len(rows),
+        "derived_reaped_run_ids": reaped,
+        "prev_run_id": (prev or {}).get("id") or "",
+        "prev_status": (prev or {}).get("status") or "",
+        "from_steps": sorted(from_steps),
+        "from_inherit": sorted(from_inherit),
+        "done_chapters": sorted(from_steps | from_inherit),
+        "legacy_done_chapters": sorted(from_steps),
+        "outline_available": bool(outline),
+        "redo_risk": redo_risk,
+        "redo_risk_run_ids": redo_risk_run_ids,
+        "limitations": limitations,
+    }
+
+
+def plan_check_inherit(state_runs, details):
+    """输入 /api/state 简表 + /api/runs/<id> 详情，判 4 个 task 的续跑倒退。
+
+    verdict 三档：ok（一章不丢）/ regress（明确会丢 N 章，列清单）/
+    unknown（判不了，不上绿标）。决策 18：报真被判过样本数，派生收尸单列。
+    """
+    task_of = {s["id"]: s.get("task_id") for s in (state_runs or [])
+               if isinstance(s, dict) and s.get("id")}
+    results = []
+    for tid in RESUME_TASK_IDS:
+        rows = []
+        for rid, r in (details or {}).items():
+            if not isinstance(r, dict):
+                continue
+            if (r.get("task_id") or task_of.get(rid)) != tid:
+                continue
+            row = dict(r)
+            row.setdefault("id", rid)
+            row["task_id"] = tid
+            rows.append(row)
+        p = project_retry_inherit(rows, tid)
+        hist = set()
+        for r in rows:
+            hist |= _run_historical_chapters(r)
+        lost = sorted(hist - set(p["done_chapters"]))
+        lost_legacy = sorted(hist - set(p["legacy_done_chapters"]))
+        if not rows:
+            verdict, reasons = "unknown", ["该 task 下没有可读的 run 详情，判不了"]
+        elif not p["outline_available"] or not p["prev_run_id"]:
+            verdict, reasons = "unknown", p["limitations"] or ["缺大纲或终态 run"]
+        elif p["redo_risk"]:
+            verdict, reasons = "unknown", p["limitations"]
+        else:
+            verdict = "regress" if lost else "ok"
+            reasons = []
+        p.update({
+            "historical_chapters": sorted(hist),
+            "lost_chapters": lost,
+            "lost_legacy_chapters": lost_legacy,
+            "extra_lost_without_restart": sorted(set(lost_legacy) - set(lost)),
+            "verdict": verdict,
+            "reasons": reasons,
+        })
+        results.append(p)
+    ok = [r for r in results if r["verdict"] == "ok"]
+    recommended = (max(ok, key=lambda r: len(r["done_chapters"]))["task_id"]
+                   if ok else "")
+    return {
+        "judged_run_count": sum(r["judged_run_count"] for r in results),
+        "judged_task_count": sum(1 for r in results if r["judged_run_count"]),
+        "derived_reaped_count": sum(len(r["derived_reaped_run_ids"]) for r in results),
+        "historical_chapter_count": sum(len(r["historical_chapters"]) for r in results),
+        "unknown_task_count": sum(1 for r in results if r["verdict"] == "unknown"),
+        "results": results,
+        "recommended_first": recommended,
+    }
+
+
+def _fmt_chapters(chs, cap=14):
+    if not chs:
+        return "[]"
+    if len(chs) <= cap:
+        return "[" + ",".join(str(c) for c in chs) + "]"
+    return "[%s … 共 %d 章]" % (",".join(str(c) for c in chs[:cap]), len(chs))
+
+
 # ---------------------------------------------------------------- 动作
 
 def cmd_check(base):
@@ -477,6 +677,57 @@ def cmd_check(base):
                       "POST /api/tasks/<id>/retry；只先 retry 一本（4 个 task_id 见上），"
                       "别四本齐跑抢见底池，再 --verify-run <id> 看 blockers")
     print("结论：%s" % conclusion)
+    print("提示：挑本子先跑 --check-inherit（只读，报倒退章清单与真被判过样本数）")
+    return 0
+
+
+def cmd_check_inherit(base):
+    print("断点续跑继承判据（只读：只 GET /api/state + /api/runs/<id>，零 POST）")
+    state = api_get(base, "/api/state")
+    state_runs = state.get("runs") or []
+    ids = [s["id"] for s in state_runs
+           if isinstance(s, dict) and s.get("id")
+           and s.get("task_id") in RESUME_TASK_IDS]
+    details = {}
+    for rid in ids:
+        d = api_get(base, "/api/runs/" + rid)
+        details[rid] = d.get("run") or d
+    plan = plan_check_inherit(state_runs, details)
+    print("真被判过的真实 run 样本数 %d/%d；待续跑 task %d/%d；"
+          "历史出现过的章号合计 %d 章" % (
+              plan["judged_run_count"], len(ids),
+              plan["judged_task_count"], len(RESUME_TASK_IDS),
+              plan["historical_chapter_count"]))
+    print("派生重启收尸 run %d 条（11-09 才会出现，单列标注、不计真样本）；"
+          "判不了的 task %d 个（unknown 不算判准）" % (
+              plan["derived_reaped_count"], plan["unknown_task_count"]))
+    for r in plan["results"]:
+        label = {"ok": "一章不丢",
+                 "regress": "会倒退 %d 章" % len(r["lost_chapters"]),
+                 "unknown": "判不了"}[r["verdict"]]
+        print("\n[%s] %s  最新终态 prev=%s(%s，模拟重启收尸后)" % (
+            r["task_id"], label, r["prev_run_id"] or "无", r["prev_status"] or "无"))
+        print("  retry 会继承 %s（steps %s ∪ inherit %s）" % (
+            _fmt_chapters(r["done_chapters"]), _fmt_chapters(r["from_steps"]),
+            _fmt_chapters(r["from_inherit"])))
+        print("  历史出现过 %s；倒退章 %s" % (
+            _fmt_chapters(r["historical_chapters"]),
+            _fmt_chapters(r["lost_chapters"])))
+        extra = r["extra_lost_without_restart"]
+        print("  部署包未重启按旧代码只会继承 %s%s" % (
+            _fmt_chapters(r["legacy_done_chapters"]),
+            ("，多丢 %s" % _fmt_chapters(extra)) if extra else "（与修复后相同）"))
+        for reason in r["reasons"]:
+            print("  [判不了] %s" % reason)
+    if plan["recommended_first"]:
+        print("\n结论：先只 retry %s（ok 里继承最完整的一本）；其余 %d 本先核对"
+              "磁盘成稿与历史章号，别四本齐跑。" % (
+                  plan["recommended_first"],
+                  sum(1 for r in plan["results"] if r["verdict"] != "ok")))
+    else:
+        print("\n结论：没有一本能判定「一章不丢」，先按上面 unknown / 倒退清单人工核对，别 retry")
+    print("提醒：部署包 store.py 已同步但运行进程仍加载旧模块，必须先重启 8765"
+          "（POST /api/selfupdate/restart）后修复才生效；重启后重跑 --check 确认可 retry。")
     return 0
 
 
@@ -563,6 +814,8 @@ def main(argv=None):
     ap.add_argument("--base", default=BASE, help="服务地址（隔离实例可覆盖，默认生产 8765）")
     ap.add_argument("--check", action="store_true", help="只读复核调度与暂停状态（默认）")
     ap.add_argument("--verify-run", metavar="RUN_ID", help="只读判一条 run 的 verdict")
+    ap.add_argument("--check-inherit", action="store_true",
+                    help="只读复现 retry 会继承的章号，报倒退章清单")
     ap.add_argument("--resume-tasks", action="store_true", help="开回 4 个定时任务（写操作）")
     ap.add_argument("--dry-run", action="store_true", help="与 --resume-tasks 合用，只打印不写")
     ap.add_argument("--confirm-quota-restored", action="store_true",
@@ -572,6 +825,8 @@ def main(argv=None):
         return cmd_resume_tasks(args.base, args.confirm_quota_restored, args.dry_run)
     if args.verify_run:
         return cmd_verify_run(args.base, args.verify_run)
+    if args.check_inherit:
+        return cmd_check_inherit(args.base)
     return cmd_check(args.base)
 
 
