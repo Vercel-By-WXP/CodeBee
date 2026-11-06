@@ -1,0 +1,289 @@
+{
+ "_source": {
+  "api": "/api/runs/<id>",
+  "captured_at": "2026-11-06T15:03:58",
+  "note": "真实落盘值，仅裁掉 command/configuration/output 等无关大字段；未改写任何字符串"
+ },
+ "runs": [
+  {
+   "id": "r-20261106-003002-5467",
+   "status": "done",
+   "cost_usd": 1.8432,
+   "verdict": {
+    "publishable": false,
+    "overall": 6.2,
+    "threshold": 7.0,
+    "review_independence": "no-review",
+    "review_degraded": false,
+    "review_resources": {
+     "required_seats": 1,
+     "completed_seats": 0,
+     "distinct_cli_count": 0,
+     "distinct_model_count": 0,
+     "independence_level": "rules-only",
+     "seat_count_satisfied": false,
+     "planned_seats": 1
+    },
+    "review_degradation_reasons": [],
+    "scores": {
+     "准确性": 7.0,
+     "结构清晰": 5.1,
+     "表达流畅": 5.5,
+     "实用价值": 7.0
+    }
+   },
+   "steps": [
+    {
+     "n": 1,
+     "role": "draft",
+     "agent": "provided-manuscript",
+     "status": "done",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "沿用已有稿件作为本次评审输入",
+     "note": ""
+    },
+    {
+     "n": 2,
+     "role": "critique-r1",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516312849462027104dff52aReTO2oZG（退出码 1）",
+     "note": ""
+    },
+    {
+     "n": 3,
+     "role": "critique-r1",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_zsetpdk8.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 7,\n\n    \"结构清晰\": 8,\n\n    \"表达流畅\": 7,\n\n    \"实用价值\": 8\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告声称'只读分析'，但附录A给出了可复现脚本，且附录B/C/D/E提供了大量可验证的细\n节，这些细节与'只读'并不矛盾，但报告在'执行注意事项'中明确说'本报告为只读分析'\n，而附录A的脚本会读取skills.json，这属于只读操作，不构成矛盾。但报告在'修订记录\n'中多次提到'修复表格断行'、'拼接后全部sk-*引用id重新对照skills.json实存核验'，\n这些操作涉及读取文件，仍属只读。因此准确性方面没有发现实质错误。但报告在'汇总数\n字'中给出'总条目数1203'，而在'数据源与时点'中又",
+     "note": "评审自动换 CLI：codex-cli → aider（（无满足模型族/供应商/上游隔离的评审者，兼容回退同源候选；原因：aider: 上游相同（open.bigmodel.cn））能力基线 70，reasoning 匹配 +1.0，无历史记录，在线 203/1096 验收成功（-8.0），P95 943.3s（-18.0），均价 $0.1180（-4.0），样本层 global，总分 41.0）；前序失败：codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516312849462027104dff52aReTO2oZG（退出码 1）"
+    },
+    {
+     "n": 4,
+     "role": "critique-r1",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_trb7gs5o.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 6,\n\n    \"结构清晰\": 7,\n\n    \"表达流畅\": 6,\n\n    \"实用价值\": 7\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \"报告声称'只读分析'，但多处出现'2026-10-27 复跑现库 1259 \n条'等对现库的实时操作描述，与'只读'边界冲突；且'现库复核'部分明确写了'对现库 \n1259 \n条完成全量程序复跑'，这属于对数据源的实际读取与计算，虽未修改文件，但已超出'只\n读分析原文件'的原始意图。\",\n\n      \"quote\": \"现库复核 | 2026-10-27 对现库 1259 \n条完成全量程序复跑、边界带人工复核与实存核验；差额对账见附录 C\"\n\n    },\n\n    {\n\n      \"dim\": \"准确",
+     "note": "评审自动换 CLI：codex-cli → aider（（无满足模型族/供应商/上游隔离的评审者，兼容回退同源候选；原因：aider: 上游相同（open.bigmodel.cn））能力基线 70，reasoning 匹配 +1.0，无历史记录，在线 203/1096 验收成功（-8.0），P95 943.3s（-18.0），均价 $0.1180（-4.0），样本层 global，总分 41.0）；前序失败：codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516312849462027104dff52aReTO2oZG（退出码 1）"
+    },
+    {
+     "n": 5,
+     "role": "revise-r1",
+     "agent": "claude-code",
+     "status": "done",
+     "model": "glm-5.3-flash",
+     "cost_usd": 1.8432,
+     "summary": "修订完成，验收复核全部通过。按契约逐项核验：`document.md` 已直接写入并以 UTF-8（无 BOM）保存；320 处 sk- 引用 id 与修订前多重集完全一致、组 1–57 逐组齐全、关键数字零丢失（增量均来自新增速览块）、全部交叉引用可解析且无对已删节的残留引用、表格无残缺行；`skills.json` 全程未触碰，仅处理结构清晰（5.1）与表达流畅（5.5）两个 major 维度，未借机改动任何结论。\n\n**本轮修改说明（3 句）：**\n\n1. **结构清晰**：在标题下新增带口径标注的「结论速览」使汇总数字真正前置，并附阅读路径；删除游离的无编号节「方法与裁决依据」（其 4 条依据条目并入第二节开头），把「修订记录」整体移至文末并追加第 6 轮条目，前置节统一为不编号层级，正文形成「速览→读者目的→数据源→一至六→修订记录→附录 A–E」的连贯动线。\n2. **表达流畅**：拆分汇总表「疑似过时」单元格、5.1 证据段（改为 3 条列表）等多分句长句，修正「该带兜底」拗口表述，第六节执行批次由长句改为逐批列表，第四节开头先解释表内三列再给合并纪律，组 7 与前置节中重复出现的交付名说明收敛为短句＋指向 5.3 的交叉引用，4.5 原挂在第 1 条下的「高置信对去向」子弹点抽出为独立对账段。\n3. **未改动项**：全部数字（1203/1259/57/147/13",
+     "note": ""
+    },
+    {
+     "n": 6,
+     "role": "critique-r2",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_xq8jox_3.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 6.5,\n\n    \"结构清晰\": 7.0,\n\n    \"表达流畅\": 6.0,\n\n    \"实用价值\": 7.5\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告声称'全部建议待人工逐组确认'，但第4节合并建议清单中部分组（如组12）已给出\n非常具体的合并后表述，且第6节给出了明确的执行批次与验收清单，这与'只读分析、不\n执行'的边界存在表述矛盾，可能误导读者认为已可执行。\",\n\n      \"quote\": \"全部建议待人工逐组确认，本报告未改写 `skills.json`。\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \"第5.",
+     "note": ""
+    },
+    {
+     "n": 7,
+     "role": "critique-r2",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_1pxmi0dv.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 6.5,\n\n    \"结构清晰\": 7.0,\n\n    \"表达流畅\": 6.0,\n\n    \"实用价值\": 7.5\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \"报告声称'全部采纳后 1203 → 1056'，但第五节又给出'高置信退役后 \n1203 → 1049'，两处数字不一致，且未说明 1056 与 1049 的差异来源。\",\n\n      \"quote\": \"全部采纳后 1203 → 1056；高置信退役后 1203 → 1049\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \"报告在'结论速览'中称'拟并入 147 \n条'，但第",
+     "note": ""
+    },
+    {
+     "n": 8,
+     "role": "critique-r2",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_2caev1sy.md to the chat (read-only).\n\nlitellm.Timeout: AnthropicException Timeout - \n{\"error\":{\"type\":\"bad_response_status_code\",\"message\":\"bad response status code\n504 (request id: 202611051645574243353588268d9d6f3L5stGC)\"},\"type\":\"error\"}\nThe API provider timed out without returning a response. They may be down or \noverloaded.\nRetrying in 0.2 seconds...\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 6.5,\n\n    \"结构清晰\": 7.0,\n\n    \"表达流畅\": 6.0,\n\n    \"实用价值\": 7.5\n\n  },\n\n  \"issues\": [",
+     "note": ""
+    },
+    {
+     "n": 9,
+     "role": "critique-r2",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516480584434532404dff52afpO7AvSk（退出码 1）",
+     "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/80 验收成功（-8.0），P95 370.6s（-18.0），均价 $0.2633（-4.0），样本层 task，总分 65.0）"
+    },
+    {
+     "n": 10,
+     "role": "critique-r2",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110516490068394296004dff52a0zCklXBH（退出码 1）",
+     "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/80 验收成功（-8.0），P95 370.6s（-18.0），均价 $0.2633（-4.0），样本层 task，总分 65.0）"
+    },
+    {
+     "n": 11,
+     "role": "critique-r2",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 202611051650014581233004dff52ayA1Np2XO（退出码 1）",
+     "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/80 验收成功（-8.0），P95 370.6s（-18.0），均价 $0.2633（-4.0），样本层 task，总分 65.0）"
+    }
+   ]
+  },
+  {
+   "id": "r-20261106-030005-8137",
+   "status": "done",
+   "cost_usd": 0.9155,
+   "verdict": {
+    "publishable": false,
+    "overall": 6.7,
+    "threshold": 7.0,
+    "review_independence": "no-review",
+    "review_degraded": false,
+    "review_resources": {
+     "required_seats": 1,
+     "completed_seats": 0,
+     "distinct_cli_count": 0,
+     "distinct_model_count": 0,
+     "independence_level": "rules-only",
+     "seat_count_satisfied": false,
+     "planned_seats": 1
+    },
+    "review_degradation_reasons": [],
+    "scores": {
+     "准确性": 7.0,
+     "结构清晰": 5.9,
+     "表达流畅": 6.8,
+     "实用价值": 7.0
+    }
+   },
+   "steps": [
+    {
+     "n": 1,
+     "role": "draft",
+     "agent": "provided-manuscript",
+     "status": "done",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "沿用已有稿件作为本次评审输入",
+     "note": ""
+    },
+    {
+     "n": 2,
+     "role": "critique-r1",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519011788705747804dff52aogg3de5U（退出码 1）",
+     "note": ""
+    },
+    {
+     "n": 3,
+     "role": "critique-r1",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_9n3rjrj2.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 6,\n\n    \"结构清晰\": 7,\n\n    \"表达流畅\": 6,\n\n    \"实用价值\": 5\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告将同步状态判定为'疑似进行中/悬挂'，但统计文件、首页、当日记录页均已更新且\n口径自洽，与'日志未出现完成行'这一事实存在矛盾，未给出足够证据说明为何日志缺失\n但产物已更新。\",\n\n      \"quote\": \"同步状态：统计文件与页面已更新，但日志层面未确认完成行。\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告声称'后台任务超时（300s）'，但未提供任何日志或进程证据支撑该",
+     "note": "评审自动换 CLI：codex-cli → aider（（无满足模型族/供应商/上游隔离的评审者，兼容回退同源候选；原因：aider: 上游相同（open.bigmodel.cn））能力基线 70，reasoning 匹配 +1.0，无历史记录，在线 30/81 验收成功（-8.0），P95 296.8s（-18.0），均价 $0.1676（-4.0），样本层 task，总分 41.0）；前序失败：codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519011788705747804dff52aogg3de5U（退出码 1）"
+    },
+    {
+     "n": 4,
+     "role": "critique-r1",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_7pl03n7v.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 5,\n\n    \"结构清晰\": 7,\n\n    \"表达流畅\": 6,\n\n    \"实用价值\": 6\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告将同步状态判定为“统计文件与页面已更新，但日志层面未确认完成行”，但依据既有\n经验规则，同步成败应以日志完成行为准。稿件在“综合判定”中又给出“疑似进行中/悬挂”\n的结论，前后表述存在矛盾，且未明确给出最终判定。\",\n\n      \"quote\": \"同步状态：统计文件与页面已更新，但日志层面未确认完成行。\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告在“执行摘要”中称“后台任务",
+     "note": "评审自动换 CLI：codex-cli → aider（（无满足模型族/供应商/上游隔离的评审者，兼容回退同源候选；原因：aider: 上游相同（open.bigmodel.cn））能力基线 70，reasoning 匹配 +1.0，无历史记录，在线 30/81 验收成功（-8.0），P95 296.8s（-18.0），均价 $0.1676（-4.0），样本层 task，总分 41.0）；前序失败：codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519011788705747804dff52aogg3de5U（退出码 1）"
+    },
+    {
+     "n": 5,
+     "role": "revise-r1",
+     "agent": "claude-code",
+     "status": "done",
+     "model": "glm-5.3-flash",
+     "cost_usd": 0.9155,
+     "summary": "修订完成，`document.md` 已按 UTF-8 保存并复核（编码确认为 UTF-8；仅改动稿件文件，未重跑同步、未扩大范围）。\n\n**本轮改动 3 句话说明：**\n\n1. **结构清晰**：新增第 1 节「当日时间线表」（01:00 标头 → 02:59 stats 落盘 → 03:13:47 本轮标头 → 03:30 核验），据此修正了原稿「stats.json 落在本轮构建窗口内」与「generated_at 02:59:01 早于 03:13:47 标头」的自相矛盾——统计文件改标为「归属本轮无法确认」，验收清单中对应项由 [x] 改为 [ ]，并将重复的执行摘要表/综合判定表合并为一处。\n2. **表达流畅**：重写执行摘要与综合判定为「数据面可用 / 流程面待确认」双维度结论，标题改为直接写结果；第 1 节「疑似日志落盘或锁释放延迟」的无据推测替换为基于 sync.ps1 行为的证据化表述（完成行与错误块均未出现，只能确认进程未产出可捕获结果）。\n3. **准确性守护与实用价值**：核对实际日志证实 03:13:47 轮至今无完成行（原稿结论成立），修正了建议动作中不成立的 PowerShell 直跑命令（`%USERPROFILE%` cmd 语法 → `& \"$env:USERPROFILE\\anaconda3\\python.exe\" ...`，与 sync.",
+     "note": ""
+    },
+    {
+     "n": 6,
+     "role": "critique-r2",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_36d0i_95.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 7.5,\n\n    \"结构清晰\": 8.5,\n\n    \"表达流畅\": 8.0,\n\n    \"实用价值\": 8.0\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告将03:13:47轮同步判定为“未确认”，但未提供该轮是否实际执行或是否被外部终止的\n直接证据；同时将02:59:01的stats.json归属为“无法确认”，却仍将其作为“最新构建产物\n”使用，存在证据链不闭合。\",\n\n      \"quote\": \n\"本轮标头后完成行与错误块均未出现，据此只能确认进程未产出可捕获的结果，不能区分\n「仍在运行」与「被外部终止」。\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"mino",
+     "note": ""
+    },
+    {
+     "n": 7,
+     "role": "critique-r2",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_k2nh942f.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 6,\n\n    \"结构清晰\": 8,\n\n    \"表达流畅\": 7,\n\n    \"实用价值\": 7\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \n\"报告将'数据面已更新'作为结论，但未确认本轮同步是否成功，且将'数据面可用'与'同\n步成功'混为一谈，可能误导读者认为同步已完成。\",\n\n      \"quote\": \"结论：知识库数据是当日最新构建产物，可正常使用；但被核验的 \n03:13:47 轮同步未在日志层面确认完成。\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \"报告称'两轮标头后均未出现 Knowledge sync compl",
+     "note": ""
+    },
+    {
+     "n": 8,
+     "role": "critique-r2",
+     "agent": "aider",
+     "status": "done",
+     "model": "DeepSeek-V4-Flash",
+     "cost_usd": 0.0,
+     "summary": "Aider v0.86.2\nModel: anthropic/DeepSeek-V4-Flash with whole edit format\nGit repo: none\nRepo-map: disabled\nAdded tutti_prompt_i67i7by3.md to the chat (read-only).\n\n```json\n\n{\n\n  \"scores\": {\n\n    \"准确性\": 7,\n\n    \"结构清晰\": 8,\n\n    \"表达流畅\": 7,\n\n    \"实用价值\": 8\n\n  },\n\n  \"issues\": [\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"major\",\n\n      \"note\": \"报告将“数据面已更新”与“03:13 \n轮完成未获日志确认”并列，但未明确区分“数据面可用”与“同步成功”两个不同结论，容易\n让读者误以为同步已成功。\",\n\n      \"quote\": \"结论：知识库数据是当日最新构建产物，可正常使用；但被核验的 \n03:13:47 轮同步未在日志层面确认完成。\"\n\n    },\n\n    {\n\n      \"dim\": \"准确性\",\n\n      \"severity\": \"minor\",\n\n      \"note\": \"报告称“两轮标头后均未出现 Knowledge s",
+     "note": ""
+    },
+    {
+     "n": 9,
+     "role": "critique-r2",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "glm-5.3",
+     "cost_usd": 0.0,
+     "summary": "codex: {\"error\":{\"message\":\"field reasoning.effort invalid, should be one of: low, high, max\",\"type\":\"invalid_request_error\",\"param\":\"reasoning.effort\",\"code\":\"invalid_request_error\"}}\n（退出码 1）；日志错误行: {\"error\":{\"message\":\"field reasoning.effort invalid, should be one of: low, high, max\",\"type\":\"invalid_request_error\",\"param\":\"reasoning.effort\",\"code\":\"invalid_request_error\"}}",
+     "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/81 验收成功（-8.0），P95 329.2s（-18.0），均价 $0.1623（-4.0），样本层 task，总分 65.0）"
+    },
+    {
+     "n": 10,
+     "role": "critique-r2",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519114364736568404dff52adCztw3LT（退出码 1）",
+     "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/81 验收成功（-8.0），P95 329.2s（-18.0），均价 $0.1623（-4.0），样本层 task，总分 65.0）"
+    },
+    {
+     "n": 11,
+     "role": "critique-r2",
+     "agent": "codex-cli",
+     "status": "failed",
+     "model": "",
+     "cost_usd": 0.0,
+     "summary": "codex: exceeded retry limit, last status: 429 Too Many Requests, request id: 2026110519123741795813204dff52aYj1IDNPV（退出码 1）",
+     "note": "评审解析失败后自动换 CLI：aider → codex-cli（跨模型族/供应商评审（作者 智谱，评审 codex）：能力基线 84，reasoning 匹配 +11.0，无历史记录，在线 30/81 验收成功（-8.0），P95 329.2s（-18.0），均价 $0.1623（-4.0），样本层 task，总分 65.0）"
+    }
+   ]
+  }
+ ]
+}
