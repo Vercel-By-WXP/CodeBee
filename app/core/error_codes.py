@@ -34,7 +34,7 @@ class ErrorCode(str, Enum):
     MISSING_CREDENTIAL = "MISSING_CREDENTIAL"  # 当前路由没有可用 API key
     AUTH = "AUTH"                          # 凭据认证失败（401）
     FORBIDDEN = "FORBIDDEN"                # 上游拒绝当前账号/模型/请求（403）
-    QUOTA = "QUOTA"                        # 欠费、余额或调用额度耗尽
+    QUOTA = "QUOTA"                        # 欠费/余额/调用额度耗尽（账号级死错，非瞬时限流）
     RATE_LIMIT = "RATE_LIMIT"              # 短时速率/并发限制（429）
     LOCAL_STATE = "LOCAL_STATE"            # 本地 CLI 状态/锁冲突
     CONTEXT_OVERFLOW = "CONTEXT_OVERFLOW"  # 触发压缩（与 MAX_TOKENS 不同）
@@ -85,8 +85,19 @@ _FORBIDDEN = ("forbidden", "request not allowed", "permission denied", "access d
 # QUOTA 是账号级死错（本场该停用该 CLI），FORBIDDEN 只封具体上游。
 # 强信号词零歧义（不会出现在权限文案里），先于 401/403 正则判定。
 _QUOTA_STRONG = ("预扣费", "剩余额度", "额度不足", "insufficient balance",
-                "insufficient quota", "insufficient credit", "quota exhausted",
-                "余额不足", "欠费停", "payment required", "billing address")
+                "insufficient quota", "insufficient credit", "insufficient credits",
+                "quota exhausted", "exceed quota limit", "quota limit exceeded",
+                "monthly quota", "余额不足", "欠费停", "payment required",
+                "billing address",
+                # 2026-11-06 九家供应商直连原话补齐（见 11-05 台账 16:00 节）：
+                # `[1309]GLM Coding Plan 套餐已到期` 带 429 前缀却完全没有信号
+                # （既不换通道也不停用），必须先于 _RATE_LIMIT 判成 QUOTA。
+                # 只放零歧义组合词，绝不放裸 "quota" 或裸「使用上限」——
+                # 周期性上限仍走 classify 的「达到…上限 + 后可继续使用」双条件，
+                # 「达到并发使用上限」这类瞬时措辞必须保持 RATE_LIMIT
+                # （tests/test_upstream_config_classify.py 守着这条边界）。
+                "套餐已到期", "套餐到期", "订阅已到期", "subscription expired",
+                "plan has expired")
 # 「request rejected」是智谱网关 429 的固定措辞（Request rejected (429)）：
 # 裸 (429) 不带 http/status-code 前缀，正则分支匹配不到，只能靠词面
 # （2026-09-27 七天上限案：分类不出 → 换将闸门当终态收工，备用 KEY 永不上场）
@@ -435,6 +446,37 @@ def safe_error_summary(code):
     except (ValueError, TypeError):
         value = ErrorCode.VENDOR_ERROR
     return _SAFE_ERROR_SUMMARIES.get(value, _SAFE_ERROR_SUMMARIES[ErrorCode.VENDOR_ERROR])
+
+
+# 周期性额度文案点名的恢复时刻：「…2026-11-09 14:09:00 后可继续使用」。
+# 2026-11-06 实案：这条 429 被叫成「触发速率或并发限制」，用户被引导去
+# 降并发/加退避，而真话是「等 11-09 14:09」，怎么重试都不会好。
+_QUOTA_RECOVERY_RE = re.compile(
+    r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?::\d{2})?\s*后可继续使用")
+
+
+def quota_recovery_at(error):
+    """额度类报错里点名的恢复时刻（`YYYY-MM-DD HH:MM`）；没有则空串。"""
+    match = _QUOTA_RECOVERY_RE.search(str(error or ""))
+    return "%s %s" % (match.group(1), match.group(2)) if match else ""
+
+
+def describe_error_text(error):
+    """有原文时的人话诊断：额度用尽说清恢复时间与「不是限速」。
+
+    `safe_error_summary(code)` 只拿枚举、拿不到原文，带不出恢复时刻；
+    诊断/UI 层手里有原文时改用本函数。其它错误码沿用原摘要，零行为变化。
+    刻意不提「降低并发 / 增加退避」——对账号级死错那是无效建议。
+    """
+    code = classify_error_text(error)
+    if code == ErrorCode.QUOTA:
+        at = quota_recovery_at(error)
+        if at:
+            return "额度已用完，%s 后可继续使用（续费或等窗口恢复，不是限速）" % at
+        return "额度或余额已用完（续费或更换有额度的凭据，不是限速）"
+    if code:
+        return safe_error_summary(code)
+    return _SAFE_ERROR_SUMMARIES[ErrorCode.VENDOR_ERROR]
 
 
 def is_fatal(code) -> bool:
