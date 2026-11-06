@@ -16,9 +16,16 @@ claude-code 认不出绑定的第三方模型时（``[claude-code:unrecognized_m
 import json
 import pathlib
 
-import pytest
+try:
+    import pytest
+except ImportError:  # 纯标准库发版闸门环境无 pytest：本文件用例带 monkeypatch
+    pytest = None      # fixture，unittest 本来就不收集，只要别让 discover 炸掉。
 
 from core import runner
+
+# pytest 缺席时降级为恒等装饰器；用例仍不被 unittest 收集，pytest 下语义不变。
+_fixture = (pytest.fixture(autouse=True) if pytest is not None
+            else (lambda fn: fn))
 
 
 def _claude_env(agent_env):
@@ -30,7 +37,7 @@ def _claude_env(agent_env):
     return json.loads(path.read_text(encoding="utf-8"))["env"]
 
 
-@pytest.fixture(autouse=True)
+@_fixture
 def _clean_env(monkeypatch):
     monkeypatch.delenv("TUTTI_CLAUDE_MAX_THINKING_TOKENS", raising=False)
 
