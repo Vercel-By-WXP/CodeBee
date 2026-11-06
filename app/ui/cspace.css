@@ -7,9 +7,10 @@
 details.cspace-box {
   margin: 0 0 16px;
   border: 1px solid var(--wb-border);
+  border-left: 3px solid var(--wb-accent);
   border-radius: 12px;
-  background: var(--wb-panel);
-  padding: 10px 14px 14px;
+  background: var(--wb-panel2);
+  padding: 12px 16px 16px;
 }
 details.cspace-box > summary {
   cursor: pointer;
@@ -20,14 +21,61 @@ details.cspace-box > summary {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 28px;
 }
 details.cspace-box > summary::-webkit-details-marker { display: none; }
 details.cspace-box > summary::before {
   content: "▸";
-  color: var(--wb-muted);
-  font-size: 12px;
+  color: var(--wb-accent);
+  font-size: 13px;
+  flex: none;
 }
 details.cspace-box[open] > summary::before { content: "▾"; }
+.cs-sum-ico { width: 17px; height: 17px; flex: none; color: var(--wb-accent); }
+.cs-sum-title { flex: none; }
+.cs-sum-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--wb-muted);
+}
+details.cspace-box > summary .cs-lock { margin-left: auto; }
+.cs-sum-hint {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wb-accent);
+  border: 1px solid var(--wb-accent);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+details.cspace-box[open] > summary .cs-sum-hint { display: none; }
+
+.side-settings .set-item.cs-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--wb-text);
+}
+.side-settings .set-item.cs-nav > .ico { color: var(--wb-accent); }
+.cs-nav-tag {
+  margin-left: auto;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-accent);
+}
+@keyframes cs-flash {
+  0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--wb-accent) 30%, transparent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+details.cspace-box.cs-flash { animation: cs-flash 1.8s ease-out 1; }
+@media (prefers-reduced-motion: reduce) {
+  details.cspace-box.cs-flash { animation: none; }
+}
+@media (max-width: 1100px) {
+  .cs-sum-sub, .cs-sum-hint { display: none; }
+}
 .cs-sub {
   margin: 4px 0 12px;
   font-size: 12.5px;

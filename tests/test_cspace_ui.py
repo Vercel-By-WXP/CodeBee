@@ -80,6 +80,33 @@ class CspaceUiTest(unittest.TestCase):
         self.assertIn('post("settings", { readonly: false })', JS)
         self.assertIn("只读模式下不执行", JS)
 
+    def test_sidebar_entry_reuses_existing_nav(self):
+        # 入口复用 .set-item + data-search：设置搜索只扫 .side-settings .set-item，
+        # 分组归属（面包屑）只看 .active 项的前一个 .set-group，都不依赖 data-sub。
+        self.assertIn("injectNav", JS)
+        self.assertIn('nav.className = "set-item cs-nav"', JS)
+        self.assertIn("nav.dataset.search", JS)
+        self.assertIn('window.switchTab("data", "settings")', JS,
+                      "覆盖层在 app.js 通用绑定之后注入，必须自己切页")
+        self.assertIn("box.open = true", JS, "侧栏入口要直接展开面板")
+        self.assertIn('data-sub="data"', HTML, "侧栏锚点消失会让入口静默失效")
+        self.assertIn("cs-flash", CSS, "切页后要有一眼可见的定位反馈")
+
+    def test_sidebar_entry_is_not_double_highlighted(self):
+        # 2026-11-05 实拍：注入项和原生「数据与备份」都带 data-sub="data"，
+        # switchTab 按 data-sub 给所有匹配项加 active → 两个胶囊同时高亮。
+        # 跨文件前提锁在 app.js：一旦它改成只高亮首个匹配项，这条约束要重评。
+        app_js = (UI / "app.js").read_text(encoding="utf-8")
+        self.assertRegex(
+            app_js,
+            r'\.set-item"\)\.forEach\(\(b\) => b\.classList\.toggle\("active", !inMain && b\.dataset\.sub === name\)\)',
+            "app.js switchTab 的高亮机制变了，覆盖层的互斥处理要跟着重评")
+        self.assertNotIn("nav.dataset.sub", JS,
+                         "注入项一旦带 data-sub 就会与原生数据页入口同时高亮")
+        self.assertIn('.set-item[data-sub="data"]', JS,
+                      "点自己时必须把原生项的 active 收敛掉")
+        self.assertIn('nav.classList.add("active")', JS)
+
     def test_no_upstream_product_name_in_source(self):
         # 产品只叫 CodeBee；来源归属放仓库根 THIRD_PARTY_NOTICES.md
         targets = [UI / "cspace.js", UI / "cspace.css"]

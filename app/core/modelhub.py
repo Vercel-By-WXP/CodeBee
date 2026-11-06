@@ -29,6 +29,8 @@ anthropic/openai 可注入到 CLI；google 仅登记（当前无对应 CLI 可�
 from __future__ import annotations
 
 import copy
+import contextlib
+import contextvars
 import hashlib
 import ipaddress
 import json
@@ -1717,6 +1719,17 @@ def set_binding(agent_id, provider_id=None, model=None, models=None,
             b["provider_id"] = eff_pid
         if difficulty_routing is not None:
             b["difficulty_routing"] = bool(difficulty_routing)
+        # 人手改绑优先于学到的粘性：链首被显式改成另一条时，旧钉子必须作废，
+        # 否则「我刚在界面换成甲，它下一章又用回乙」。链首为空（纯 CLI 默认凭据
+        # / 交给自动推荐）不算改绑——那种情况粘性正是该起作用的地方。
+        try:
+            head = next(iter(b.get("chain") or []), {}) or {}
+            if (head.get("provider_id")
+                    and not _pin_hit(_pin_any(agent_id),
+                                     head.get("provider_id"), head.get("model"))):
+                forget_pin(agent_id)
+        except Exception:
+            pass
         _save(data)
         return b
 
@@ -2452,8 +2465,255 @@ def binding_dead_msg(cli_id):
     return msg
 
 
+# ------------------------------------------------------------------ 成功粘性
+# 2026-11-05 实测（172 个带配置快照的连载 run）：51% 的书跨章换过模型、46%
+# 换过供应商，而约七成的漂移发生在上一章**成功之后**——不是失败降级，是解析
+# 层每章重排（健康判定 down / 模型级熔断 / 难度重排）自己抖出来的。
+# 对连载这种长跑，换模型的代价不是失败（换后九成照样能跑），而是文风断裂，
+# 这个台账测不出来。所以记「最近一次真正跑通的 (供应商, 模型)」，下次解析把
+# 它提到链首，并允许它压过健康类**瞬态**闸门；删除/停用/无密钥/协议不符这些
+# 确定性死因照旧拦。整链失败即清——失败时该换就换。
+# 有效期按真实节奏定，不是拍脑袋：835 个起草步里单章耗时 p90=23 分、max=84 分，
+# 605 次「上一章成功后」的章间隔 p90=30.9 分、max=164 分。原来 30 分的窗口正好
+# 卡在 p90 上，会把约 10% 的换章白白放过——等于每十次里有一次文风重来。
+# 过期代价不对称：钉错了最多多烧一次失败尝试（失败即清，下一章自愈），
+# 而不钉是直接丢一致性，所以取值宁宽勿窄。
+OK_PIN_TTL_S = 12 * 3600.0
+_PIN = {"by_target": {}, "loaded": False, "lock": threading.Lock()}
+
+# 钉位按「本」隔离，不按 CLI。生产上四本书并发跑同一个 claude-code（11-06 实测
+# 四个活动 run 全是 claude-code），共享一个钉位就是互相覆盖：A 章刚记下甲，
+# B 章记成乙，A 下一章读到乙——粘性反而变成了漂移源。作用域取 task_id，
+# 由 pipeline 在步骤入口绑定（子线程的 context 是空的，必须在入口补）。
+_PIN_SCOPE = contextvars.ContextVar("tutti_pin_scope", default="")
+
+
+def _pin_scope_name():
+    try:
+        return str(_PIN_SCOPE.get() or "")
+    except Exception:
+        return ""
+
+
+def bind_scope(scope):
+    """给当前线程/上下文绑定粘性作用域。同一步内重复调用是幂等的。"""
+    try:
+        _PIN_SCOPE.set(str(scope or ""))
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def scope_ctx(scope):
+    """带退出还原的作用域（整场 run 用这个，避免泄漏到队列里下一个 run）。"""
+    token = _PIN_SCOPE.set(str(scope or ""))
+    try:
+        yield
+    finally:
+        try:
+            _PIN_SCOPE.reset(token)
+        except Exception:
+            pass
+
+
+def _pin_key(target):
+    """`<目标>@<作用域>`；没有作用域（不在 run 内）时退回全局钉位。"""
+    t = str(target or "")
+    sc = _pin_scope_name()
+    if t and sc:
+        return t + "@" + sc
+    return t
+
+
+def _pin_enabled():
+    return os.environ.get("TUTTI_MODEL_PIN", "1").strip().lower() not in (
+        "0", "false", "off", "no")
+
+
+def _pin_ttl():
+    """有效期（秒）。`TUTTI_MODEL_PIN_TTL_MIN` 可按分钟覆盖，供长休整期调整。"""
+    raw = os.environ.get("TUTTI_MODEL_PIN_TTL_MIN", "").strip()
+    if raw:
+        try:
+            minutes = float(raw)
+            if minutes > 0:
+                return minutes * 60.0
+        except (TypeError, ValueError):
+            pass
+    return OK_PIN_TTL_S
+
+
+def _pin_file():
+    """粘性落盘位置：与 models.json 同目录。
+
+    跟着 `_FILE` 走而不是另起常量，隔离实例（`TUTTI_DATA`）与守测用的临时
+    目录都自动各拿一份，不会把测试的钉子写进开发库或生产库。
+    """
+    try:
+        return _FILE.parent / "model_pin.json"
+    except Exception:
+        return None
+
+
+def _pin_load_locked():
+    """把磁盘上的粘性读进内存（调用方须持 `_PIN["lock"]`）。
+
+    坏文件一律当空处理：粘性只是「上次谁跑通了」的缓存，判据失效的后果是
+    退回改动前的行为（每章重选），不该让解析层抛错。
+    """
+    if _PIN["loaded"]:
+        return
+    _PIN["loaded"] = True
+    path = _pin_file()
+    if path is None:
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return
+    entries = raw.get("by_target") if isinstance(raw, dict) else None
+    if not isinstance(entries, dict):
+        return
+    now = time.time()
+    for tid, rec in entries.items():
+        if not isinstance(rec, dict) or not isinstance(tid, str) or not tid:
+            continue
+        if now - float(rec.get("at") or 0) > _pin_ttl():
+            continue      # 落盘期间早就过期了，别带进内存再判一次
+        _PIN["by_target"].setdefault(tid, rec)
+
+
+def _pin_save_locked():
+    """落盘（调用方须持锁）。写失败不影响解析——内存里的钉子照样生效。"""
+    path = _pin_file()
+    if path is None:
+        return
+    now = time.time()
+    ttl = _pin_ttl()
+    # 顺手清过期：按本隔离后钉位按「书 × CLI」增长，长期跑会攒一堆死钉子。
+    alive = {k: v for k, v in _PIN["by_target"].items()
+             if isinstance(v, dict) and now - float(v.get("at") or 0) <= ttl}
+    if len(alive) != len(_PIN["by_target"]):
+        _PIN["by_target"] = alive
+    try:
+        atomic.write_json(path, {"version": 1, "by_target": dict(alive)},
+                          durable=False)
+    except Exception:
+        pass
+
+
+def note_success(target, provider_id, model):
+    """记一次真实跑通（run_agent 成功返回时调用）。空目标/开关关闭时静默跳过。"""
+    tid = _pin_key(target)
+    if not tid or not _pin_enabled():
+        return
+    pid, mdl = str(provider_id or ""), str(model or "").strip()
+    if not pid and not mdl:
+        return
+    with _PIN["lock"]:
+        _pin_load_locked()
+        _PIN["by_target"][tid] = {"provider_id": pid, "model": mdl,
+                                  "at": time.time()}
+        _pin_save_locked()
+
+
+def note_failure(target):
+    """整链失败：清掉成功粘性。继续钉在同一个死模型上只会多烧一次额度。"""
+    tid = _pin_key(target)
+    if not tid:
+        return
+    with _PIN["lock"]:
+        _pin_load_locked()
+        if _PIN["by_target"].pop(tid, None) is not None:
+            _pin_save_locked()
+
+
+def forget_pin(target):
+    """用户显式改绑时调用：学到的粘性不许盖过人手选的那一条。
+
+    这是 `set_binding` 的配套纪律——没有它，「我在界面把写手换成甲」会被上一章
+    的成功记录顶回去，用户看到的是「改了没用」。按本隔离后必须清掉**所有**
+    作用域的同名钉位，否则只有当前这本书听话，别本书照旧钉在旧模型上。
+    """
+    tid = str(target or "")
+    if not tid:
+        return
+    prefix = tid + "@"
+    with _PIN["lock"]:
+        _pin_load_locked()
+        stale = [k for k in _PIN["by_target"]
+                 if k == tid or k.startswith(prefix)]
+        for k in stale:
+            _PIN["by_target"].pop(k, None)
+        if stale:
+            _pin_save_locked()
+
+
+def _pin_fresh(rec, now=None):
+    if not rec:
+        return False
+    now = time.time() if now is None else now
+    return now - float(rec.get("at") or 0) <= _pin_ttl()
+
+
+def _pin_any(target):
+    """该目标在**任意**作用域下仍新鲜的钉位（供人工改绑判「有没有钉子」）。"""
+    tid = str(target or "")
+    if not tid:
+        return None
+    prefix = tid + "@"
+    now = time.time()
+    with _PIN["lock"]:
+        _pin_load_locked()
+        for key, rec in _PIN["by_target"].items():
+            if (key == tid or key.startswith(prefix)) and _pin_fresh(rec, now):
+                return rec
+    return None
+
+
+def ok_pin_clear():
+    """清空成功粘性（测试隔离用；服务运行期无需调用）。"""
+    with _PIN["lock"]:
+        _PIN["by_target"].clear()
+        _PIN["loaded"] = True     # 已清就别再从磁盘把旧钉子读回来
+        _pin_save_locked()
+
+
+def _ok_pin(target):
+    """返回仍然新鲜的 pin 记录，没有/过期/开关关闭时返回 None。
+
+    只认**本作用域**的钉子：不做「本作用域没有就退回全局」的兜底，否则并发
+    写书时又会顺着全局钉位互相串味。
+    """
+    if not _pin_enabled():
+        return None
+    tid = _pin_key(target)
+    with _PIN["lock"]:
+        _pin_load_locked()
+        rec = _PIN["by_target"].get(tid)
+    if not _pin_fresh(rec):
+        return None
+    return rec
+
+
+def _pin_hit(rec, provider_id, model):
+    """该链条目是否就是上次跑通的那一条：供应商必须同，模型记了就同。"""
+    if not rec:
+        return False
+    if str(rec.get("provider_id") or "") != str(provider_id or ""):
+        return False
+    want = str(rec.get("model") or "").strip()
+    return not want or want == str(model or "").strip()
+
+
+def _pin_provider(rec, provider_id):
+    """供应商级命中（推荐路径先按供应商筛候选，模型粒度在下一层再判）。"""
+    return (bool(rec)
+            and str(rec.get("provider_id") or "") == str(provider_id or ""))
+
+
 def _resolve_chain_entries(chain, provs, target, allowed, down_set,
-                           admit_transient):
+                           admit_transient, pinned=None):
     """按显式链收集可注入条目，返回 (entries, dead_reasons)。
 
     admit_transient=False（第一遍）：健康 down / 模型级熔断 / 评测结论作废
@@ -2500,28 +2760,33 @@ def _resolve_chain_entries(chain, provs, target, allowed, down_set,
                      "、".join(allowed)))
             continue
         effective_model = model or _usable_default_model(prov, prov.get("model"))
+        # 成功粘性：上次真正跑通的这一条，允许压过下面三道瞬态闸门
+        pinned_here = _pin_hit(pinned, pid, effective_model)
         if prov.get("name") in down_set:
-            if not admit_transient:
+            if not admit_transient and not pinned_here:
                 _dead(dead_reasons, "%s：健康监测判定 down" % label)
                 continue  # 健康监测判定 down：跳过，省掉无效等待
-            _dead(dead_reasons, "%s：健康监测判定 down（独苗兜底放行）" % label)
+            _dead(dead_reasons, "%s：健康监测判定 down（%s放行）"
+                  % (label, "成功粘性" if pinned_here else "独苗兜底"))
         try:
             from . import health as _health
             if _health.is_model_down(label, effective_model):
-                if not admit_transient:
+                if not admit_transient and not pinned_here:
                     _dead(dead_reasons, "%s/%s：模型级健康熔断"
                           % (label, effective_model))
                     continue
-                _dead(dead_reasons, "%s/%s：模型级健康熔断（独苗兜底放行）"
-                      % (label, effective_model))
+                _dead(dead_reasons, "%s/%s：模型级健康熔断（%s放行）"
+                      % (label, effective_model,
+                         "成功粘性" if pinned_here else "独苗兜底"))
         except Exception:
             pass
         if not native_cli and not _evaluation_is_usable(pid, effective_model):
-            if not admit_transient:
+            if not admit_transient and not pinned_here:
                 _dead(dead_reasons, "%s：评测结论不可用（健康事件作废或探针失败）"
                       % label)
                 continue  # 旧评测结论已过期/被健康事件作废，不能冒充绿灯
-            _dead(dead_reasons, "%s：评测结论不可用（独苗兜底放行）" % label)
+            _dead(dead_reasons, "%s：评测结论不可用（%s放行）"
+                  % (label, "成功粘性" if pinned_here else "独苗兜底"))
         if _is_codex_target(target) and (ep[2] == "chat" or codex_wire_blocked(prov)):
             _dead(dead_reasons, "%s：chat wire 被 codex 剔除（codex 仅讲 responses）"
                   % label)
@@ -2580,6 +2845,9 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
     # 会产生「codex 拿到 ANTHROPIC_* env 却缺 ORCH_API_KEY」这类必然失败的组合
     # （2026-09-15 连载验收实测，症状：Missing environment variable: ORCH_API_KEY）。
     allowed = bindable_protocols(agent_kind_or_id)
+    # 成功粘性：上次真正跑通的 (供应商, 模型)。只做「提到链首 + 放过瞬态闸门」，
+    # 不做「凭空复活」——条目若被删除/停用/无密钥/协议不符剔掉，pin 自然失效。
+    pinned = _ok_pin(agent_kind_or_id)
 
     if chain:
         # 告警模块联动：已被健康监测判定 down 的供应商直接跳过——
@@ -2592,14 +2860,14 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
             down_set = set()
         entries, dead_reasons = _resolve_chain_entries(
             chain, provs, agent_kind_or_id, allowed, down_set,
-            admit_transient=False)
+            admit_transient=False, pinned=pinned)
         last_resort = False
         if not entries:
             # 独苗兜底：全场只剩瞬态死因（熔断/评测作废）时按原链先试，
             # 不让健康态单方面判死「只有一个 CLI、一个模型」的配置形态。
             entries, transient_reasons = _resolve_chain_entries(
                 chain, provs, agent_kind_or_id, allowed, down_set,
-                admit_transient=True)
+                admit_transient=True, pinned=pinned)
             if entries:
                 last_resort = True
                 for e in entries:
@@ -2618,6 +2886,15 @@ def resolve_binding(agent_kind_or_id, difficulty="default"):
                     data.get("pricing") or {}, tier, "", "")
             except Exception:
                 pass
+        # 成功粘性排在难度重排之后：连续性优先于成本/档位优化——连载跨章
+        # 换模型的代价是文风断裂，比省那点价差贵得多（11-05 实测七成漂移
+        # 发生在上一章成功之后，纯属解析层自己抖）。
+        if pinned:
+            keep = [e for e in entries
+                    if _pin_hit(pinned, e.get("provider_id"), e.get("model"))]
+            if keep:
+                kept = {id(e) for e in keep}
+                entries = keep + [e for e in entries if id(e) not in kept]
         head = entries[0]
         out = {"model": head["model"], "env": head["env"], "provider": head.get("provider"),
                # model_fallbacks 是「换模型」的列表（runner 无链时的回退用）：
@@ -2764,6 +3041,10 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
     继续使用 CLI 自带登录态与默认模型。
     """
     allowed = bindable_protocols(agent_kind_or_id)
+    # 成功粘性也要管住「自动推荐」这条路：生产上多数 CLI 的 chain 是空的，
+    # 全靠每次现算推荐——那才是跨章换模型的最大来源（推荐算法随健康度/
+    # 价格/难度重排）。pin 命中项在候选里获得同样的闸门豁免，排到最前。
+    pin = _ok_pin(agent_kind_or_id)
     try:
         from . import health
         down_set = health.down_names()
@@ -2778,7 +3059,7 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         if not pid or not prov.get("enabled", True) or (
                 not prov.get("api_key") and not native_cli):
             continue
-        if prov.get("name") in down_set:
+        if prov.get("name") in down_set and not _pin_provider(pin, pid):
             continue
         if not native_cli and not _evaluation_is_usable(pid, prov.get("model") or ""):
             continue
@@ -2800,13 +3081,15 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
         for model in names:
             if not isinstance(model, str) or not model:
                 continue
+            pinned_here = _pin_hit(pin, pid, model)
             try:
                 from . import health as _health
-                if _health.is_model_down(prov.get("name") or pid, model):
+                if _health.is_model_down(prov.get("name") or pid, model) and not pinned_here:
                     continue
             except Exception:
                 pass
-            if not native_cli and not _evaluation_is_usable(pid, model):
+            if (not native_cli and not pinned_here
+                    and not _evaluation_is_usable(pid, model)):
                 continue
             candidates.append({"provider_id": pid, "model": model})
     if not candidates:
@@ -2815,6 +3098,13 @@ def recommend_binding(agent_kind_or_id, difficulty="default", task_type="", role
     ranked, decisions = dispatch.rank_model_entries(
         candidates, provs, data.get("pricing") or {}, difficulty,
         task_type=task_type, role=role, force=True)
+    # 上一章跑通的那一条排最前：推荐路径的排序完全由价格/难度/健康度现算，
+    # 不拦住的话每章都可能换人（连载最贵的代价不是失败，是文风断裂）。
+    if pin:
+        keep = [c for c in ranked if _pin_hit(pin, c.get("provider_id"), c.get("model"))]
+        if keep:
+            kept = {id(c) for c in keep}
+            ranked = keep + [c for c in ranked if id(c) not in kept]
     entries, entry_decisions = [], []
     decision_by_model = {
         (d.get("provider_id") or "", d.get("model") or ""): d

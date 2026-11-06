@@ -979,6 +979,10 @@ def _run_step(run_id, role, agent, prompt, workdir, readonly, ev, timeout=runner
     # 不加脚注防风格漂移；标记解析本身对所有流程生效（写了就收）。
     try:
         _row = store.get_run(run_id) or {}
+        # 成功粘性按「本」隔离：并发写四本书时各钉各的模型，不互相覆盖
+        # （11-06 实测四个活动 run 全是 claude-code，共享一个钉位等于每章
+        # 互相换将）。子线程的 context 是空的，所以每个步骤入口补绑一次。
+        modelhub.bind_scope(_row.get("task_id") or run_id)
         _task = store.get_task(_row.get("task_id")) if _row.get("task_id") else {}
         if (_task.get("type") or "") not in ("serial_novel", "novel"):
             prompt = (prompt.rstrip() +
@@ -8983,4 +8987,12 @@ def execute_run(run_id):
     with _EXECUTION_LOCKS_LOCK:
         lock = _EXECUTION_LOCKS.setdefault(key, threading.RLock())
     with lock:
-        return _execute_run_impl(run_id)
+        # 整场 run 的粘性作用域 = 本任务；队列线程会被复用，必须还原，
+        # 否则下一本书会继承上一本书的钉位。
+        try:
+            _row = store.get_run(run_id) or {}
+            _scope = _row.get("task_id") or key
+        except Exception:
+            _scope = key
+        with modelhub.scope_ctx(_scope):
+            return _execute_run_impl(run_id)

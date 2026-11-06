@@ -2284,10 +2284,10 @@ def _opencode_salvage_complete_run(res):
     return text
 
 
-def run_agent(agent, prompt, workdir=None, readonly=True,
-              timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
-              images=None, require_tools=False, deadline=None, command_context=None,
-              checkpoint_run_id=""):
+def _run_agent_pinned(agent, prompt, workdir=None, readonly=True,
+                      timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
+                      images=None, require_tools=False, deadline=None, command_context=None,
+                      checkpoint_run_id=""):
     """执行一次智能体调用，返回统一结构
     {ok, text, json, cost_usd, tokens, error, error_code, raw}。
     agent 来自 registry.effective_agents()；resume 为已有会话 id，仅真实智能体生效
@@ -3161,5 +3161,54 @@ def run_agent(agent, prompt, workdir=None, readonly=True,
             timed_out_upstreams[upstream] = timed_out_upstreams.get(upstream, 0) + 1
             if timed_out_upstreams[upstream] >= 2:
                 skipped_upstreams.add(upstream)
+    return out
+
+
+def _note_binding_outcome(agent, out):
+    """把「这次到底哪个供应商+模型跑通了」记进成功粘性。
+
+    目标 id 与 prepare_agent 取 rid 的规则一致（`_binding_source` 优先），
+    否则复核席影子 id 记的 pin 解析时永远用不上。
+    """
+    if not isinstance(out, dict):
+        return
+    from . import modelhub
+    target = (str((agent or {}).get("_binding_source") or "").strip()
+              or str((agent or {}).get("id") or "").strip())
+    if not target:
+        return
+    if out.get("ok"):
+        pid, mdl = "", str(out.get("model") or "")
+        for att in reversed(out.get("attempts") or []):
+            if att.get("ok") and not att.get("skipped"):
+                pid = str(att.get("provider_id") or "")
+                mdl = str(att.get("model") or mdl)
+                break
+        modelhub.note_success(target, pid, mdl)
+        return
+    raw = out.get("raw")
+    if out.get("cancelled") or (isinstance(raw, dict) and raw.get("cancelled")):
+        return      # 取消/中断不是模型的问题，别清掉一条已知能用的路径
+    modelhub.note_failure(target)
+
+
+def run_agent(agent, prompt, workdir=None, readonly=True,
+              timeout=DEFAULT_TIMEOUT, cancel_event=None, log_path=None, resume=None,
+              images=None, require_tools=False, deadline=None, command_context=None,
+              checkpoint_run_id=""):
+    """公开入口：执行一次智能体调用，并顺带记一次成功粘性。
+
+    包装层只做记账，任何异常都不许影响返回值——宁可少记一次，也不能因为
+    记账把一次真正跑通的调用判成失败。
+    """
+    out = _run_agent_pinned(
+        agent, prompt, workdir=workdir, readonly=readonly, timeout=timeout,
+        cancel_event=cancel_event, log_path=log_path, resume=resume,
+        images=images, require_tools=require_tools, deadline=deadline,
+        command_context=command_context, checkpoint_run_id=checkpoint_run_id)
+    try:
+        _note_binding_outcome(agent, out)
+    except Exception:
+        pass
     return out
 

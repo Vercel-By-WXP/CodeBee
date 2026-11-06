@@ -88,7 +88,7 @@
 <link rel="stylesheet" href="chat-quiet.css?v=20261105a">
 <!-- 空间管家（2026-11-05）：设置 → 数据页的磁盘透视 / 清理 / 搬家 / 账本覆盖层。
      纯样式覆盖层，删掉本行 + cspace.js 那行 script 即回滚；后端包不受影响。 -->
-<link rel="stylesheet" href="cspace.css?v=20261105">
+<link rel="stylesheet" href="cspace.css?v=20261105c">
 <!-- 首屏预涂：在样式表之后、绘制之前定好皮肤 / 布局 / 明暗 + 语言，避免刷新时闪一下默认配色。
      皮肤与布局互不校验——非法值匹配不到任何 html[data-skin=...] / html[data-layout=...] 规则，
      首涂落经典底色；app.js 加载后会按 currentSkin()/currentLayout() 校正。
@@ -3063,6 +3063,9 @@
 <script defer src="mobile-workbench.js"></script>
 <script defer src="demo-parity.js"></script>
 <script defer src="run-config.js"></script>
+<!-- 运行记录批量重试（重试所选 / 全部重试 / 行内重试）：纯覆盖层，观察 #run-list
+     重绘后补按钮；必须在 app.js 之后加载，删掉本行即回滚（run-batch.js） -->
+<script defer src="run-batch.js"></script>
 <script defer src="composer-add-menu.js?v=20261103"></script>
 <!-- 输入卡专家胶囊行 + 底部上下文条（必须在 app.js / home-chips.js 之后：
      要复用 window.pickQuickType 的包装链与 expertAvHtml） -->
@@ -3092,6 +3095,6 @@
 <!-- 空间管家（2026-11-05）：设置 → 数据页注入磁盘透视 / 清理 / 搬家 / 账本。
      必须在 i18n.js / app.js / borrow-ui.js 之后（要用 t / authHeaders / uiApproveCard）；
      删掉本行 + cspace.css 那行 link 即整层回滚。 -->
-<script defer src="cspace.js?v=20261105"></script>
+<script defer src="cspace.js?v=20261105c"></script>
 </body>
 </html>

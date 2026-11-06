@@ -78,6 +78,10 @@
     "预检": "Precheck", "预检中…": "Prechecking…",
     "预检结果": "Precheck result", "高级": "Advanced",
     "默认只读：透视、盘点、账本都能用；要清理或搬家，先解锁「允许执行」，每次动作还要再确认一次。": "Read-only by default: inspection, inventory and ledger all work. Unlock \"Allow actions\" to clean or migrate; every action still needs a second confirmation.",
+    "点此展开": "Click to expand",
+    "磁盘透视 · 清理 · 搬家": "Drive insights, cleanup, migration",
+    "打开空间管家": "Open Space Manager",
+    "查看磁盘占用、清理与无损搬家": "Inspect disk usage, clean up, and migrate data safely",
   };
   if (window.I18N_EN && typeof window.I18N_EN === "object") {
     Object.assign(window.I18N_EN, EN_DICT);
@@ -156,9 +160,13 @@
       ["advanced", _t("高级")],
     ];
     const lock = S.status && S.status.readonly === false;
-    return '<summary>' + _t("空间管家") +
+    return '<summary>' +
+      '<svg class="ico cs-sum-ico" aria-hidden="true"><use href="#i-layers"></use></svg>' +
+      '<span class="cs-sum-title">' + _t("空间管家") + "</span>" +
+      '<span class="cs-sum-sub">' + _t("磁盘透视 · 清理 · 搬家") + "</span>" +
       '<span class="cs-lock' + (lock ? " cs-open" : "") + '" id="cs-lock">' +
-      _esc(lock ? _t("已解锁") : _t("只读模式")) + "</span></summary>" +
+      _esc(lock ? _t("已解锁") : _t("只读模式")) + "</span>" +
+      '<span class="cs-sum-hint">' + _t("点此展开") + "</span></summary>" +
       '<div class="cs-sub">' + _t("默认只读：透视、盘点、账本都能用；要清理或搬家，先解锁「允许执行」，每次动作还要再确认一次。") + "</div>" +
       '<div class="cs-bar"><button class="cs-btn' + (lock ? " danger" : "") +
       '" data-act="' + (lock ? "lock" : "unlock") + '">' +
@@ -642,7 +650,56 @@
     if (act === "dedup") return dedup(Number(el.dataset.g));
   }
 
+  // ---------------------------------------------------------------- 侧栏直达
+  /* 入口原先只藏在「设置 → 数据与备份」子页顶部的折叠条里，用户找不到。
+   * 现在在设置侧栏「数据与安全」分组补一个常驻项，点进去直接展开面板。
+   * 复用 .set-item + data-search 让设置搜索与分组归属照常生效；但**不设
+   * data-sub**：app.js 的 switchTab 按 data-sub 给所有匹配项 toggle("active")，
+   * 两个数据页入口会同时高亮（2026-11-05 实拍）。高亮改由本层收敛成唯一一个。
+   * 不包装也不拦截任何全局函数，本层只做「切页 → 收敛 → 展开 → 定位 → 闪一下」。 */
+  function openFromNav(ev) {
+    if (ev) ev.stopImmediatePropagation();  // 防 app.js 晚绑定时重复切一次页
+    if (typeof window.switchTab === "function") window.switchTab("data", "settings");
+    // switchTab 会给原生「数据与备份」加 active；本项没有 data-sub，
+    // 所以点原生项时 switchTab 会自动把本项清掉，天然互斥，无需额外处理。
+    const nav = g("cs-nav");
+    if (nav) {
+      document.querySelectorAll('.side-settings .set-item[data-sub="data"]')
+        .forEach((b) => b.classList.remove("active"));
+      nav.classList.add("active");
+    }
+    const box = g("cspace-box");
+    if (!box) return;
+    box.open = true;
+    box.classList.remove("cs-flash");
+    void box.offsetWidth;                 // 重播 CSS 动画，纯装饰不猜渲染时序
+    box.classList.add("cs-flash");
+    try { box.scrollIntoView({ block: "start", behavior: "smooth" }); }
+    catch (e) { /* 老浏览器不支持 options 形式，忽略即可 */ }
+  }
+
+  function injectNav() {
+    if (g("cs-nav")) return;
+    const anchor = document.querySelector('.side-settings .set-item[data-sub="data"]');
+    if (!anchor || !anchor.parentNode) return;
+    const nav = document.createElement("button");
+    nav.type = "button";
+    nav.id = "cs-nav";
+    nav.className = "set-item cs-nav";
+    // 刻意不设 data-sub：见 openFromNav 上方注释，避免与原生数据页入口双高亮。
+    nav.dataset.search = "空间管家 磁盘 C盘 清理 搬家 透视 账本 大文件 重复文件 回收站 disk space storage cleanup migrate";
+    nav.title = _t("查看磁盘占用、清理与无损搬家");
+    nav.setAttribute("aria-label", _t("打开空间管家"));
+    nav.innerHTML =
+      '<svg class="ico" aria-hidden="true"><use href="#i-layers"></use></svg>' +
+      '<span data-i18n="空间管家">' + _esc(_t("空间管家")) + "</span>" +
+      '<span class="cs-nav-tag" aria-hidden="true"></span>';
+    nav.addEventListener("click", openFromNav);
+    anchor.parentNode.insertBefore(nav, anchor);  // 分组第一项，进设置页一眼可见
+  }
+
   function boot() {
+    injectNav();
     const host = g("sub-data");
     if (!host || g("cspace-box")) return;
     const box = document.createElement("details");
@@ -655,6 +712,7 @@
       ev.preventDefault();
       Promise.resolve(onAct(el.dataset.act, el, ev)).catch(fail);
     });
+    box.innerHTML = shell();  // status 回来前先出骨架，别留一块空白
     loadStatus().then(render).catch((e) => { box.innerHTML = shell(); fail(e); });
     // 语言切换后重绘（动态渲染的内容没有 data-i18n 属性，applyI18n 扫不到）
     try {
