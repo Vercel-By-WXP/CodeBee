@@ -24,10 +24,15 @@ serial_novel 73 步）；`tests/fixtures/quota_recovery_automation.json` 是 15:
    `[1310][已达到 7 天使用上限...]` 与 `litellm.RateLimitError`，
    旧 `RATE_LIMIT_RE` 一条都检不出；新增零歧义词表并与
    `error_codes.py:_QUOTA_STRONG` 逐字对齐，噪音（捕获上限 / request id 429）不误判。
+7. **`pause_control.paused=0` 不等于可以 retry**：`store.retry_task` 拒的是
+   「该 task 下还有 queued/running run」，只解除暂停会让 `--check` 假绿。
 
 夹具 `tests/fixtures/quota_recovery_error_texts.json` 是 15:5x 从生产
 `/api/runs/<id>` 只读取的 **10 条真实 step 原文**（3 类），长转录按前 400
 字符截取并标注，截断内字符未改写。
+`tests/fixtures/quota_recovery_resume.json` 是 16:3x 从生产 `/api/state` 只读取的
+**重启前**状态（4 条 09:48 批次 run + 4 个 task + pause_control）。重启收尸后的状态
+生产里还不存在，守测中按 `store.py:900/941` 推导的样本一律单列标注为派生、不计真样本。
 
 决策 18：报出真被判过的真实样本数。合成样本只用于反向覆盖边界，单独标注、
 不计入真样本数。
@@ -48,6 +53,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_runs.json"
 AUTOMATION_FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_automation.json"
 ERROR_TEXTS_FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_error_texts.json"
+RESUME_FIXTURE = ROOT / "tests" / "fixtures" / "quota_recovery_resume.json"
 _spec = importlib.util.spec_from_file_location(
     "quota_recovery", ROOT / "scripts" / "quota_recovery.py")
 qr = importlib.util.module_from_spec(_spec)
@@ -64,6 +70,37 @@ def _automation():
 
 def _error_cases():
     return json.loads(ERROR_TEXTS_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _resume_fixture():
+    return json.loads(RESUME_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _resume_state():
+    """真实重启前 /api/state 投影（只读夹具，不改写）。"""
+    return copy.deepcopy(_resume_fixture()["state"])
+
+
+def _derived_after_restart():
+    """合成：按 store.py:900/941 收尸逻辑推导的重启后状态，不是生产落盘值。"""
+    state = _resume_state()
+    state["pause_control"] = {"active": 0, "paused": 0}
+    for r in state["runs"]:
+        r["status"] = "failed"
+        r["interrupted"] = "restart"
+    for t in state["tasks"]:
+        t["status"] = "failed"
+    return state
+
+
+def _derived_unpaused_without_restart():
+    """合成：只解除暂停、没重启的假绿场景，不是生产落盘值。"""
+    state = _resume_state()
+    state["pause_control"] = {"active": 4, "paused": 0}
+    for r in state["runs"]:
+        r["paused"] = False
+        r["pause_phase"] = "none"
+    return state
 
 
 def _tasks_after_recovery():
@@ -456,9 +493,8 @@ class ResumeWritePathTest(unittest.TestCase):
         self.assertIn("复核失败", buf.getvalue())
 
     def test_check_after_recovery_tells_to_restart_first(self):
-        state = {"pause_control": {"active": 4, "paused": 4}, "runs": []}
         tasks = _tasks_after_recovery()
-        fake_get, _ = self._fake_get(tasks, state=state)
+        fake_get, _ = self._fake_get(tasks, state=_resume_state())
         buf = io.StringIO()
         with mock.patch.object(qr, "api_get", side_effect=fake_get), \
              mock.patch.object(qr, "api_post") as post, \
@@ -468,13 +504,13 @@ class ResumeWritePathTest(unittest.TestCase):
         self.assertIn("先重启 8765 清残留", buf.getvalue())
         post.assert_not_called()
 
-        state2 = {"pause_control": {"active": 0, "paused": 0}, "runs": []}
-        fake_get2, _ = self._fake_get(tasks, state=state2)
+        fake_get2, _ = self._fake_get(tasks, state=_derived_after_restart())
         buf2 = io.StringIO()
         with mock.patch.object(qr, "api_get", side_effect=fake_get2), \
              redirect_stdout(buf2):
             qr.main(["--check"])
-        self.assertIn("直接一本串行续跑", buf2.getvalue())
+        self.assertIn("只先 retry 一本", buf2.getvalue())
+        self.assertNotIn("直接一本串行续跑", buf2.getvalue())
 
 
 class ResumeSafetyTest(unittest.TestCase):
@@ -631,6 +667,158 @@ class QuotaErrorTextTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("quota_blocked_steps", buf.getvalue())
         self.assertIn("额度耗尽原话", buf.getvalue())
+        post.assert_not_called()
+
+
+class RetryReadinessTest(unittest.TestCase):
+    """16:3x：`--check` 不能把「解除暂停」当成「重启收尸完成」。
+
+    `store.retry_task:1986-1988` 拒的是「该 task 下还有 queued/running run」，
+    与 pause_control 无关。真样本只有「重启前」这一份生产状态；收尸后与
+    「只解除暂停」的样本都是按源码推导的合成态，明确标注不计真样本。
+    """
+
+    def test_real_state_is_four_runs_and_four_tasks(self):
+        fx = _resume_fixture()
+        state = _resume_state()
+        runs, tasks = state["runs"], state["tasks"]
+        self.assertEqual(len(runs), 4)
+        self.assertEqual(len(tasks), 4)
+        self.assertEqual({r["task_id"] for r in runs}, {t["id"] for t in tasks})
+        self.assertEqual(state["pause_control"], {"active": 4, "paused": 4})
+        self.assertEqual(fx["_source"]["resume_task_ids"], sorted(qr.RESUME_TASK_IDS))
+        for r in runs:
+            self.assertEqual(r["status"], "running")
+            self.assertTrue(r["paused"])
+            self.assertEqual(r["pause_phase"], "paused")
+        for t in tasks:
+            self.assertEqual(t["status"], "running")
+        print("真被判过的真实重启前样本数：4/4（run 4 条 + task 4 个，一一对应）")
+
+    def test_resume_task_ids_match_production_fixture(self):
+        self.assertEqual(set(qr.RESUME_TASK_IDS),
+                         set(_resume_fixture()["_source"]["resume_task_ids"]))
+        self.assertEqual(len(qr.RESUME_TASK_IDS), 4)
+
+    def test_status_constants_match_store_source(self):
+        """别让脚本的终态/活跃口径与 store.py 漂移。"""
+        src = (ROOT / "app" / "core" / "store.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        node = next(n for n in tree.body if isinstance(n, ast.Assign)
+                    and any(getattr(t, "id", "") == "TERMINAL_STATUSES" for t in n.targets))
+        self.assertEqual(tuple(ast.literal_eval(node.value)), qr.TASK_TERMINAL_STATUSES)
+        body = src[src.index("def retry_task("):][:1200]
+        self.assertIn('("queued", "running")', body)
+        self.assertIn("任务仍在运行中，不能重试", body)
+        self.assertEqual(tuple(qr.ACTIVE_RUN_STATUSES), ("queued", "running"))
+
+    def test_real_state_is_not_retry_ready(self):
+        r = qr.judge_retry_readiness(_resume_state())
+        self.assertFalse(r["retry_ready"])
+        self.assertEqual(len(r["active_runs"]), 4)
+        self.assertEqual(len(r["terminal_tasks"]), 0)
+        self.assertTrue(all(st == "running" for st in r["task_states"].values()))
+        self.assertEqual(len(r["blockers"]), 2)
+        self.assertTrue(any("store.retry_task 会拒" in b for b in r["blockers"]))
+        self.assertTrue(any("还不是终态" in b for b in r["blockers"]))
+
+    def test_unpausing_without_restart_is_still_not_ready(self):
+        """核心防假绿：paused 归零但 run 仍 running，旧 --check 会宣布可续跑。"""
+        state = _derived_unpaused_without_restart()
+        self.assertEqual(state["pause_control"]["paused"], 0)
+        r = qr.judge_retry_readiness(state)
+        self.assertFalse(r["retry_ready"], "只解除暂停就判可 retry = 11-09 假绿")
+        self.assertEqual(len(r["active_runs"]), 4)
+        self.assertTrue(any("只解除暂停不算" in b for b in r["blockers"]))
+        print("合成派生样本 1 条（只解除暂停未重启，反向覆盖，不计真样本数）")
+
+    def test_one_unpaused_run_still_blocks(self):
+        """只解除一条也不行：四本齐跑的风险不因 paused 计数少 1 而消失。"""
+        state = _derived_unpaused_without_restart()
+        for r in state["runs"][1:]:
+            r["paused"] = True
+            r["pause_phase"] = "paused"
+        state["pause_control"] = {"active": 4, "paused": 3}
+        self.assertFalse(qr.judge_retry_readiness(state)["retry_ready"])
+
+    def test_derived_post_restart_state_is_ready(self):
+        """派生：收尸把 run → failed + interrupted=restart、task → failed。"""
+        r = qr.judge_retry_readiness(_derived_after_restart())
+        self.assertTrue(r["retry_ready"])
+        self.assertEqual(r["active_runs"], [])
+        self.assertEqual(r["terminal_tasks"], list(qr.RESUME_TASK_IDS))
+        self.assertEqual(r["blockers"], [])
+        self.assertEqual(len(r["resume_task_ids"]), 4)
+        print("合成派生样本 1 条（按 store.py:900/941 推导的收尸后态，不计真样本数）")
+
+    def test_partial_restart_is_not_ready(self):
+        """派生：只有 3 条收尸、1 条仍 running，不能判可 retry。"""
+        state = _derived_after_restart()
+        state["runs"][0]["status"] = "running"
+        state["tasks"][0]["status"] = "running"
+        r = qr.judge_retry_readiness(state)
+        self.assertFalse(r["retry_ready"])
+        self.assertEqual(len(r["active_runs"]), 1)
+        self.assertEqual(len(r["terminal_tasks"]), 3)
+        self.assertTrue(any("还不是终态" in b for b in r["blockers"]))
+
+    def test_collected_runs_but_task_not_backfilled_is_not_ready(self):
+        """派生：run 全收尸了，但 store.py:941 的 task 回填没成功 → 仍不可 retry。
+
+        这条单独钉住「task 终态」这一层：它与「无 active run」是**两个独立条件**，
+        上一条部分收尸样本里两者同时成立，盖不住回填失败的分支。
+        """
+        state = _derived_after_restart()
+        state["tasks"][0]["status"] = "running"
+        r = qr.judge_retry_readiness(state)
+        self.assertFalse(r["retry_ready"])
+        self.assertEqual(r["active_runs"], [])
+        self.assertEqual(len(r["terminal_tasks"]), 3)
+        self.assertTrue(any("还不是终态" in b for b in r["blockers"]))
+        print("合成派生样本 1 条（收尸完成但 task 回填失败，不计真样本数）")
+
+    def test_other_active_runs_do_not_block(self):
+        """别处正常新跑的 run 不该把续跑判死，但要提醒别并发。"""
+        state = _derived_after_restart()
+        state["runs"].append({"id": "r-synth-other", "task_id": "t-synth-other",
+                              "status": "running", "paused": False})
+        r = qr.judge_retry_readiness(state)
+        self.assertTrue(r["retry_ready"])
+        self.assertEqual(r["other_active_run_count"], 1)
+        self.assertTrue(any("别和续跑并发" in n for n in r["notes"]))
+
+    def test_check_prints_retry_gate_and_one_book_only(self):
+        """消费点：--check 必须把「可 retry / 只先一本 / 4 个 task_id」打到 stdout。"""
+        fake_get, _ = ResumeWritePathTest._fake_get(
+            _tasks_after_recovery(), state=_derived_after_restart())
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
+            rc = qr.main(["--check"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("续跑前置：可 retry", out)
+        self.assertIn("POST /api/tasks/<id>/retry", out)
+        self.assertIn("只先 retry 一本", out)
+        for tid in qr.RESUME_TASK_IDS:
+            self.assertIn(tid, out)
+        post.assert_not_called()
+
+    def test_check_blocks_when_only_unpaused(self):
+        """消费点：解除暂停≠可续跑，--check 不能给「可 retry」结论。"""
+        fake_get, _ = ResumeWritePathTest._fake_get(
+            _tasks_after_recovery(), state=_derived_unpaused_without_restart())
+        buf = io.StringIO()
+        with mock.patch.object(qr, "api_get", side_effect=fake_get), \
+             mock.patch.object(qr, "api_post") as post, \
+             redirect_stdout(buf):
+            qr.main(["--check"])
+        out = buf.getvalue()
+        self.assertIn("续跑前置：不可 retry", out)
+        self.assertIn("别只解除暂停", out)
+        self.assertNotIn("续跑前置：可 retry", out)
+        self.assertNotIn("只先 retry 一本", out)
         post.assert_not_called()
 
 

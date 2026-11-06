@@ -41,6 +41,12 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
    `429 Too Many Requests` / `last status: 429`，旧 `RATE_LIMIT_RE` 检不出。
    `judge_recovery` 另认一组零歧义额度原话，避免 11-09 假绿。
 
+9. **`pause_control.paused=0` 不等于「可以 retry」**：`store.retry_task:1986-1988`
+   拒的是「该 task 下还有 `queued/running` run」，与暂停标志无关。只把
+   `paused` 解成 false 时 `pause_control` 立刻归零，但 run 仍 `running`，
+   `POST /api/tasks/<id>/retry` 仍被拒；四本同时解除暂停更会直接齐跑抢额度。
+   `judge_retry_readiness` 按真实前置判，`--check` 不再拿 paused 数当续跑信号。
+
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
 核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
@@ -66,6 +72,17 @@ TASK_IDS = (
 # 交接单第 3 节第 1 条：14:19 停用的是「4 个 enabled 定时任务」，
 # 第 5 个本来就是 disabled；白名单外再出现停用任务 = 清单变了，别盲写。
 KNOWN_DISABLED_IDS = frozenset(("auto-20260921-135622-8720",))
+# 16:3x 生产 /api/state 只读取证：11:38 暂停的 4 条 09:48 批次 run 对应的 task。
+# 11-09 要 retry 的就是这 4 个；别按 run id 猜，retry 的入口是 task id。
+RESUME_TASK_IDS = (
+    "t-20261022-104907-1000",
+    "t-20261029-102103-5910",
+    "t-20261104-170153-4815",
+    "t-20261105-152926-2324",
+)
+# 对齐 store.retry_task:1986-1988 的拒写条件与 store.py:1085 的终态集合。
+ACTIVE_RUN_STATUSES = ("queued", "running")
+TASK_TERMINAL_STATUSES = ("done", "failed", "cancelled", "timeout")
 RATE_LIMIT_RE = re.compile(r"429\s+Too\s+Many\s+Requests|last\s+status:\s*429", re.I)
 # 额度耗尽 / 上游限流原话（15:5x 从生产 26 条 run 的 step 只读取证）：
 #   [1310][已达到 7 天使用上限，2026-11-09 14:09:00 后可继续使用]
@@ -319,7 +336,7 @@ def human_recovery(r):
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- 恢复计划（纯函数）
+# ------------------------------------------------- 恢复计划 / 续跑前置（纯函数）
 
 def plan_resume(tasks):
     """输入 GET /api/automation 的 tasks，输出恢复计划 + 写前 blockers。
@@ -347,6 +364,62 @@ def plan_resume(tasks):
                      "enabled": bool((by_id.get(tid) or {}).get("enabled")),
                      "next_run": (by_id.get(tid) or {}).get("next_run") or ""}
                     for tid in TASK_IDS if tid in by_id],
+    }
+
+
+
+def judge_retry_readiness(state):
+    """输入 GET /api/state，判 4 个待续跑 task 是否真能 POST /api/tasks/<id>/retry。
+
+    store.retry_task:1986-1988 拒的是「该 task 下还有 queued/running run」，
+    跟 pause_control 无关；store.py:900 收尸把 running → failed（不看 paused），
+    store.py:941-955 再把 task 同步成终态。所以「解除暂停」≠「可续跑」：
+    只把 paused 清成 false 时 pause_control.paused=0，但 run 仍是 running，
+    retry 仍被拒，四本同时解除暂停还会立刻齐跑抢见底池。
+    """
+    runs = [r for r in (state.get("runs") or []) if isinstance(r, dict)]
+    tasks = {t.get("id"): t for t in (state.get("tasks") or [])
+             if isinstance(t, dict) and t.get("id")}
+    active = [r for r in runs if r.get("status") in ACTIVE_RUN_STATUSES]
+    active_for_resume = [r for r in active
+                         if r.get("task_id") in RESUME_TASK_IDS]
+    other_active = [r for r in active
+                    if r.get("task_id") not in RESUME_TASK_IDS]
+    task_states = {tid: (tasks.get(tid) or {}).get("status") or "(缺失)"
+                   for tid in RESUME_TASK_IDS}
+    nonterminal = [tid for tid, st in task_states.items()
+                   if st not in TASK_TERMINAL_STATUSES]
+    blockers = []
+    if active_for_resume:
+        blockers.append("仍有 %d 条 run 处于 queued/running（%s）：store.retry_task 会拒"
+                        "「任务仍在运行中，不能重试」；先重启 8765 让收尸把 running → failed，"
+                        "只解除暂停不算" % (
+                            len(active_for_resume),
+                            ",".join(str(r.get("id")) for r in active_for_resume[:6])))
+    if nonterminal:
+        blockers.append("%d 个待续跑 task 还不是终态（%s）：重启回填 store.py:941 未完成，"
+                        "retry 仍会被拒" % (
+                            len(nonterminal),
+                            ",".join("%s=%s" % (tid, task_states[tid])
+                                     for tid in nonterminal[:6])))
+    notes = []
+    if other_active:
+        notes.append("另有 %d 条其它 task 的 active run，不属于待续跑集合、不阻塞 retry，"
+                     "但 11-09 别和续跑并发" % len(other_active))
+    return {
+        "resume_task_ids": list(RESUME_TASK_IDS),
+        "active_runs": [{"id": r.get("id"), "task_id": r.get("task_id"),
+                         "status": r.get("status"), "paused": bool(r.get("paused")),
+                         "pause_phase": r.get("pause_phase"),
+                         "interrupted": r.get("interrupted")}
+                        for r in active_for_resume],
+        "other_active_run_count": len(other_active),
+        "task_states": task_states,
+        "terminal_tasks": [tid for tid in RESUME_TASK_IDS
+                           if task_states[tid] in TASK_TERMINAL_STATUSES],
+        "retry_ready": not active_for_resume and not nonterminal,
+        "blockers": blockers,
+        "notes": notes,
     }
 
 
@@ -380,20 +453,29 @@ def cmd_check(base):
     print("09:48 批次 run %d 条：%s" % (
         len(paused), ", ".join("%s(%s/%s)" % (r.get("id"), r.get("status"),
                                               r.get("pause_phase")) for r in paused)))
-    paused_n = int(pause.get("paused") or 0)
+    ready = judge_retry_readiness(state)
+    print("续跑前置：%s（按 store.retry_task 的真实门槛判，不按 paused 数）" % (
+        "可 retry" if ready["retry_ready"] else "不可 retry"))
+    for tid, st in ready["task_states"].items():
+        print("  [task] %-28s status=%s" % (tid, st))
+    for b in ready["blockers"]:
+        print("  [缺口] %s" % b)
+    for n in ready["notes"]:
+        print("  [提醒] %s" % n)
     if plan["missing"] or plan["unexpected_disabled"]:
         conclusion = ("清单异常（缺失 %d / 白名单外停用 %d），先人工核对 /api/automation，别开跑"
                       % (len(plan["missing"]), len(plan["unexpected_disabled"])))
     elif enabled < len(TASK_IDS):
         conclusion = ("仍处额度见底期抑制态（启用 %d/%d），不要开跑"
                       % (enabled, len(TASK_IDS)))
-    elif paused_n > 0:
-        conclusion = ("4 个定时任务已恢复，但还有 %d 条 paused run：先重启 8765 清残留"
-                      "（收尸把 running → failed，pause_control 自动归零），再一本串行续跑"
-                      % paused_n)
+    elif not ready["retry_ready"]:
+        conclusion = ("4 个定时任务已恢复，但续跑前置未满足（%d 条缺口）：先重启 8765 清残留；"
+                      "别只解除暂停——paused=0 不等于 retry 可用。重启后重跑 --check"
+                      % len(ready["blockers"]))
     else:
-        conclusion = ("4 个定时任务已恢复且无暂停残留：直接一本串行续跑，"
-                      "再 --verify-run <id> 看 blockers")
+        conclusion = ("4 个定时任务已恢复、4 个 task 全终态且无 active run：可 "
+                      "POST /api/tasks/<id>/retry；只先 retry 一本（4 个 task_id 见上），"
+                      "别四本齐跑抢见底池，再 --verify-run <id> 看 blockers")
     print("结论：%s" % conclusion)
     return 0
 

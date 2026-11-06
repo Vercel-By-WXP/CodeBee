@@ -1,0 +1,143 @@
+{
+ "_source": {
+  "captured_at": "2026-11-06 16:39:29",
+  "endpoint": "GET /api/state (生产 127.0.0.1:8765，只读)",
+  "note": "真实落盘值：11-06 14:19 停用调度、11:38 暂停的 4 条 09:48 批次 run 与对应 4 个 task，以及 pause_control。只保留判 retry 前置要用的字段，裁掉 goal/manuscript/flow_snapshot 等无关大字段；未改写任何字符串。这是「重启前」状态，重启收尸后的状态不在生产里，守测里按 store.py:900/941 推导的样本一律标注为派生、不计真样本。",
+  "kept_run_keys": [
+   "id",
+   "task_id",
+   "kind",
+   "status",
+   "paused",
+   "pause_phase",
+   "interrupted",
+   "interrupted_at",
+   "superseded_by",
+   "resume_enqueue_at",
+   "step_count",
+   "progress",
+   "cost_usd",
+   "created_at",
+   "started_at",
+   "ended_at",
+   "error",
+   "summary"
+  ],
+  "kept_task_keys": [
+   "id",
+   "status",
+   "title",
+   "created_at",
+   "error"
+  ],
+  "resume_task_ids": [
+   "t-20261022-104907-1000",
+   "t-20261029-102103-5910",
+   "t-20261104-170153-4815",
+   "t-20261105-152926-2324"
+  ],
+  "retry_gate_basis": "store.retry_task:1986-1988 只认「该 task 下没有 queued/running run」；store.py:1085 TERMINAL_STATUSES=(done,failed,cancelled,timeout)；store.py:900 收尸把 running -> failed + interrupted=restart；store.py:941-955 回填把 task 同步成终态。"
+ },
+ "state": {
+  "pause_control": {
+   "active": 4,
+   "paused": 4
+  },
+  "runs": [
+   {
+    "id": "r-20261106-094827-3523",
+    "task_id": "t-20261104-170153-4815",
+    "kind": "orchestration",
+    "status": "running",
+    "paused": true,
+    "pause_phase": "paused",
+    "resume_enqueue_at": "",
+    "step_count": 23,
+    "progress": 52,
+    "cost_usd": 1.3922,
+    "created_at": "2026-11-06 09:48:27",
+    "started_at": "2026-11-06 09:48:29",
+    "ended_at": null,
+    "error": "",
+    "summary": ""
+   },
+   {
+    "id": "r-20261106-094824-4277",
+    "task_id": "t-20261022-104907-1000",
+    "kind": "orchestration",
+    "status": "running",
+    "paused": true,
+    "pause_phase": "paused",
+    "resume_enqueue_at": "",
+    "step_count": 25,
+    "progress": 60,
+    "cost_usd": 4.3012,
+    "created_at": "2026-11-06 09:48:24",
+    "started_at": "2026-11-06 09:48:27",
+    "ended_at": null,
+    "error": "",
+    "summary": ""
+   },
+   {
+    "id": "r-20261106-094822-4307",
+    "task_id": "t-20261105-152926-2324",
+    "kind": "orchestration",
+    "status": "running",
+    "paused": true,
+    "pause_phase": "paused",
+    "resume_enqueue_at": "",
+    "step_count": 23,
+    "progress": 52,
+    "cost_usd": 1.6682,
+    "created_at": "2026-11-06 09:48:22",
+    "started_at": "2026-11-06 09:48:24",
+    "ended_at": null,
+    "error": "",
+    "summary": ""
+   },
+   {
+    "id": "r-20261106-094817-8634",
+    "task_id": "t-20261029-102103-5910",
+    "kind": "orchestration",
+    "status": "running",
+    "paused": true,
+    "pause_phase": "paused",
+    "resume_enqueue_at": "",
+    "step_count": 20,
+    "progress": 70,
+    "cost_usd": 2.1935,
+    "created_at": "2026-11-06 09:48:17",
+    "started_at": "2026-11-06 09:48:24",
+    "ended_at": null,
+    "error": "",
+    "summary": ""
+   }
+  ],
+  "tasks": [
+   {
+    "id": "t-20261105-152926-2324",
+    "status": "running",
+    "title": "阴账铺子：我专收死人欠的账",
+    "created_at": "2026-11-05 15:29:26"
+   },
+   {
+    "id": "t-20261104-170153-4815",
+    "status": "running",
+    "title": "屏幕上跳出下周五 -32℃ 的预报时，所有人都笑着说，是苹果",
+    "created_at": "2026-11-04 17:01:53"
+   },
+   {
+    "id": "t-20261029-102103-5910",
+    "status": "running",
+    "title": "《头七结账人》21-24章修订复评（第二轮·整章重写至规格）·续7",
+    "created_at": "2026-10-29 10:21:03"
+   },
+   {
+    "id": "t-20261022-104907-1000",
+    "status": "running",
+    "title": "神瞳鉴宝：31-40章修订复评（第二轮·33/38/40点名修）·续14",
+    "created_at": "2026-10-22 10:49:07"
+   }
+  ]
+ }
+}
