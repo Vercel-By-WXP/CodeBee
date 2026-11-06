@@ -10,6 +10,10 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     py -3.13 scripts/quota_recovery.py --resume-tasks --dry-run    # 只看会做什么
     py -3.13 scripts/quota_recovery.py --resume-tasks --confirm-quota-restored
                                         # 上游窗口变了可加 --recovery-at "YYYY-MM-DD HH:MM"
+    py -3.13 scripts/quota_recovery.py --retry-one --dry-run --confirm-quota-restored
+                                        # 只预演「先 retry 哪一本」，零 POST
+    py -3.13 scripts/quota_recovery.py --retry-one --confirm-quota-restored
+                                        # 四道闸全过才真正 POST 一次
 
 判据的字段陷阱（11-06 15:00 / 15:2x 从生产详情量出来的，别再踩）：
 
@@ -69,6 +73,16 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     时间只是**必要非充分条件**：窗口过了也可能账号续期 / 仍见底，
     人工确认照样必需。解析用与 `error_codes.quota_recovery_at()` 同款正则，
     能直接从生产 `[1310]` 原话取时刻，守测做交叉验证。
+
+12. **「只 retry 一本」原先只是交接单里的一句话**（21:4x）：`--check` /
+    `--check-inherit` / `judge_retry_readiness` / `judge_quota_window` 四个判据
+    都在，但 11-09 唯一真正烧额度的 `POST /api/tasks/<id>/retry` 仍靠手敲
+    curl —— 敲错本子（会倒退 4 章）或一次 retry 四本（互推成失败）都会
+    白烧刚恢复的额度。`--retry-one` 把四个判据串到写路径：真写前四道闸
+    （确认标志 / 恢复窗口 / 重启收尸前置 / 目标继承判据必须 `ok`），
+    任一不过零 POST 拒写；目标不填按 `--check-inherit` 推荐值推导，
+    **不硬编码 task id**；只 POST 一次，写后复核「其余 3 本没新增 active run」。
+    `--dry-run` 允许提前预演、零 POST，但会打印窗口与收尸前置未满足的提醒。
 
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
@@ -709,6 +723,112 @@ def _fmt_chapters(chs, cap=14):
     return "[%s … 共 %d 章]" % (",".join(str(c) for c in chs[:cap]), len(chs))
 
 
+# ---------------------------------------------------------------- retry 写路径判据（纯函数）
+
+def plan_retry_one(state, inherit_plan, task_id=None, confirm=False,
+                   window_reached=True, dry_run=False):
+    """11-09 唯一烧额度的写操作 POST /api/tasks/<id>/retry 的四道闸。
+
+    纯函数、零 IO；所有拒写都在 POST 之前。判据全部来自已有的真实生产
+    判据，不硬编码 task id：
+      - inherit_plan：plan_check_inherit 的结果，recommended_first 是
+        「一章不丢」里继承最完整的一本；
+      - state：judge_retry_readiness 判「无 active run + 4 个 task 全终态」；
+      - window_reached：judge_quota_window()["reached"] is True。
+    真写时四道闸任一不过即拒；dry-run 只放宽「窗口 / 收尸前置」两条
+    （这两条 11-09 重启后才会满足），其余照拦并打印提醒。
+    """
+    results = {r["task_id"]: r for r in (inherit_plan or {}).get("results") or []}
+    recommended = (inherit_plan or {}).get("recommended_first") or ""
+    target = task_id or recommended
+    judged = (inherit_plan or {}).get("judged_run_count", 0)
+
+    def reject(code, text):
+        row = results.get(target) or {}
+        return {"target": target, "recommended": recommended, "allow": False,
+                "gate": code, "blockers": [text],
+                "target_inherit_verdict": row.get("verdict", "missing"),
+                "lost_chapters": row.get("lost_chapters") or [],
+                "judged_run_count": judged, "retry_ready": None, "notes": []}
+
+    if not confirm:
+        return reject("confirm", "缺 --confirm-quota-restored：retry 会真烧额度，拒绝任何写")
+    if not dry_run and window_reached is not True:
+        return reject("window", "恢复窗口未到 / 解析不了：拒绝写，--dry-run 可提前预演")
+    if not recommended:
+        return reject("no_safe_task",
+                      "--check-inherit 没判出「一章不丢」的本子，别 retry")
+    if target not in RESUME_TASK_IDS:
+        return reject("unknown_task",
+                      "目标 %s 不在 4 个待续跑 task 里，拒绝写" % target)
+    row = results.get(target) or {}
+    if row.get("verdict") != "ok":
+        if row.get("verdict") == "regress":
+            return reject("inherit",
+                          "目标 %s 会倒退 %d 章 %s：先核对磁盘成稿与历史章号，"
+                          "别拿它当第一本" % (
+                              target, len(row.get("lost_chapters") or []),
+                              _fmt_chapters(row.get("lost_chapters"))))
+        return reject("inherit",
+                      "目标 %s 的继承判据是 unknown/缺详情：%s" % (
+                          target, "；".join(row.get("reasons") or []) or "判不了"))
+    readiness = judge_retry_readiness(state or {})
+    notes = []
+    if not dry_run and not readiness["retry_ready"]:
+        return {"target": target, "recommended": recommended, "allow": False,
+                "gate": "retry_ready",
+                "blockers": ["重启收尸未完成：%s" % (
+                    "；".join(readiness["blockers"]) or "retry 前置不满足")],
+                "target_inherit_verdict": "ok", "lost_chapters": [],
+                "judged_run_count": judged,
+                "retry_ready": readiness["retry_ready"], "notes": []}
+    # 注：不再单列「目标 task 是否终态」这道闸 —— retry_ready=True 的定义
+    # 就是「无 active run 且 4 个 task 全终态」，再加一道是死分支。
+    # judge_retry_readiness 的 blockers 已把未回填的 task 逐条点出来。
+    if dry_run:
+        if window_reached is not True:
+            notes.append("dry-run 提醒：恢复窗口未到 / 解析不了，届时真写会被拒")
+        if not readiness["retry_ready"]:
+            notes.append("dry-run 提醒：重启收尸未完成（%d 条 active run / %d 个 task "
+                         "未终态），11-09 重启后需重跑 --check 看逐条缺口"
+                         % (len(readiness["active_runs"]),
+                            len(readiness["resume_task_ids"])
+                            - len(readiness["terminal_tasks"])))
+    return {"target": target, "recommended": recommended, "allow": True,
+            "gate": "allow", "blockers": [], "notes": notes,
+            "target_inherit_verdict": "ok", "lost_chapters": [],
+            "judged_run_count": judged, "retry_ready": readiness["retry_ready"]}
+
+
+def judge_retry_post_write(state_before, state_after, target, new_run_id):
+    """写后复核：只准目标 task 新增一条 active run，其余 3 本必须仍是 0。
+
+    POST 已经发生、不能回滚；复核失败要显式报出来让人处理，别假装成功。
+    """
+    def active_by_task(state):
+        out = {}
+        for r in (state.get("runs") or []):
+            if isinstance(r, dict) and r.get("status") in ACTIVE_RUN_STATUSES:
+                tid = r.get("task_id")
+                if tid in RESUME_TASK_IDS:
+                    out[tid] = out.get(tid, 0) + 1
+        return out
+
+    before = active_by_task(state_before or {})
+    after = active_by_task(state_after or {})
+    others = sorted(tid for tid in RESUME_TASK_IDS
+                    if tid != target and after.get(tid, 0) > before.get(tid, 0))
+    target_delta = after.get(target, 0) - before.get(target, 0)
+    problems = []
+    if others:
+        problems.append("其余 %d 本也新增了 active run（%s）：四本齐跑会抢见底池，"
+                        "立刻去暂停" % (len(others), ",".join(others)))
+    if target_delta > 1:
+        problems.append("目标 task 新增 %d 条 active run（应恰好 1 条）" % target_delta)
+    return {"ok": not problems, "problems": problems,
+            "new_run_id": new_run_id, "active_before": before, "active_after": after}
+
+
 # ---------------------------------------------------------------- 动作
 
 def cmd_check(base):
@@ -764,7 +884,8 @@ def cmd_check(base):
                       "POST /api/tasks/<id>/retry；只先 retry 一本（4 个 task_id 见上），"
                       "别四本齐跑抢见底池，再 --verify-run <id> 看 blockers")
     print("结论：%s" % conclusion)
-    print("提示：挑本子先跑 --check-inherit（只读，报倒退章清单与真被判过样本数）")
+    print("提示：挑本子先跑 --check-inherit（只读，报倒退章清单与真被判过样本数）；"
+          "真要 retry 用 --retry-one（四道闸，不用手敲 curl）")
     return 0
 
 
@@ -815,6 +936,65 @@ def cmd_check_inherit(base):
         print("\n结论：没有一本能判定「一章不丢」，先按上面 unknown / 倒退清单人工核对，别 retry")
     print("提醒：部署包 store.py 已同步但运行进程仍加载旧模块，必须先重启 8765"
           "（POST /api/selfupdate/restart）后修复才生效；重启后重跑 --check 确认可 retry。")
+    return 0
+
+
+def cmd_retry_one(base, task_id, confirm, dry_run, at_text=None):
+    print("11-09 单本续跑护栏（只 retry 一本；真写前四道闸，任一不过零 POST）")
+    # 闸 1/2 在第一次 GET 之前判，保证「拒写且零 IO」。
+    window = judge_quota_window(at_text)
+    pre = plan_retry_one({}, {}, task_id=task_id, confirm=confirm,
+                         window_reached=window["reached"], dry_run=dry_run)
+    if pre["gate"] in ("confirm", "window"):
+        print("拒绝写：%s" % "；".join(pre["blockers"]))
+        print("窗口判据：%s" % window["human"])
+        return 2
+    state = api_get(base, "/api/state")
+    state_runs = state.get("runs") or []
+    ids = [s["id"] for s in state_runs
+           if isinstance(s, dict) and s.get("id")
+           and s.get("task_id") in RESUME_TASK_IDS]
+    details = {}
+    for rid in ids:
+        d = api_get(base, "/api/runs/" + rid)
+        details[rid] = d.get("run") or d
+    inherit = plan_check_inherit(state_runs, details)
+    plan = plan_retry_one(state, inherit, task_id=task_id, confirm=confirm,
+                          window_reached=window["reached"], dry_run=dry_run)
+    print("真被判过的真实 run 样本数 %d/%d；判据推荐先 retry %s（不硬编码 id）" % (
+        inherit["judged_run_count"], len(ids), inherit["recommended_first"] or "无"))
+    print("恢复窗口：%s" % window["human"])
+    readiness = judge_retry_readiness(state)
+    print("retry 前置：%s（可 retry 的终态 task %d/4）" % (
+        "满足" if readiness["retry_ready"] else "未满足",
+        len(readiness["terminal_tasks"])))
+    for b in readiness["blockers"]:
+        print("  [前置] %s" % b)
+    print("目标：%s（继承判据 %s）" % (plan["target"], plan["target_inherit_verdict"]))
+    print("  POST /api/tasks/%s/retry%s" % (
+        plan["target"], "（dry-run，不写）" if dry_run else ""))
+    for n in plan["notes"]:
+        print("  %s" % n)
+    if not plan["allow"]:
+        print("拒绝写：%s" % "；".join(plan["blockers"]))
+        return 2
+    if dry_run:
+        print("dry-run 结束，生产未改动（真写要去掉 --dry-run 且四道闸全过）")
+        return 0
+    res = api_post(base, "/api/tasks/%s/retry" % plan["target"], {})
+    new_run_id = res.get("run_id") or ""
+    if res.get("ok") is False or not new_run_id:
+        print("写入失败：%s" % json.dumps(res, ensure_ascii=False)[:200])
+        return 1
+    print("  [ok] 新 run %s" % new_run_id)
+    after = api_get(base, "/api/state")
+    chk = judge_retry_post_write(state, after, plan["target"], new_run_id)
+    if not chk["ok"]:
+        for p in chk["problems"]:
+            print("复核失败：%s" % p)
+        return 1
+    print("复核通过：只 %s 新增 1 条 active run，其余 3 本未动；"
+          "接着 --verify-run %s 看 verdict" % (plan["target"], new_run_id))
     return 0
 
 
@@ -899,7 +1079,8 @@ def cmd_resume_tasks(base, confirm, dry_run, at_text=None):
         return 1
     print("复核通过：4 个任务 enabled=true 且 next_run 非空。")
     print("后续（脚本不代做）：重启 8765（POST /api/selfupdate/restart）→ "
-          "一本串行续跑（POST /api/tasks/<id>/retry，续跑前 min_words 调 3000+）→ "
+          "重跑 --check 确认可 retry → --retry-one --dry-run --confirm-quota-restored → "
+          "去掉 --dry-run 才真写一本（续跑前 min_words 调 3000+）→ "
           "--verify-run <id> 看 verdict 与恢复判据")
     return 0
 
@@ -912,12 +1093,19 @@ def main(argv=None):
     ap.add_argument("--check-inherit", action="store_true",
                     help="只读复现 retry 会继承的章号，报倒退章清单")
     ap.add_argument("--resume-tasks", action="store_true", help="开回 4 个定时任务（写操作）")
-    ap.add_argument("--dry-run", action="store_true", help="与 --resume-tasks 合用，只打印不写")
+    ap.add_argument("--retry-one", action="store_true",
+                    help="只 retry 一本（写操作，四道闸：确认/窗口/收尸/不倒退）")
+    ap.add_argument("--task-id", help="--retry-one 的目标 task；不填按 --check-inherit 推荐")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="与 --resume-tasks / --retry-one 合用，只打印不写")
     ap.add_argument("--confirm-quota-restored", action="store_true",
                     help="人工确认额度已恢复；缺这个标志拒绝任何写操作")
     ap.add_argument("--recovery-at", default=QUOTA_RECOVERY_AT,
                     help="覆盖上游恢复时刻（默认 2026-11-09 14:09）；支持 YYYY-MM-DD HH:MM 或 [1310] 原话")
     args = ap.parse_args(argv)
+    if args.retry_one:
+        return cmd_retry_one(args.base, args.task_id, args.confirm_quota_restored,
+                             args.dry_run, args.recovery_at)
     if args.resume_tasks:
         return cmd_resume_tasks(args.base, args.confirm_quota_restored,
                                 args.dry_run, args.recovery_at)
