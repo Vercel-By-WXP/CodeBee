@@ -21,7 +21,11 @@
    都是产品内设计好的动作，算成救火会惩罚正确设计、把指标变成摆设。
 3. 未到终态 = ``incomplete``（在跑），**不进分母**；字段缺失或出现不认识的
    事件 = ``unknown``，**也不进分母**，单列报数。绝不把「没记」当成「没救火」。
-4. 零推断：不猜事件、不补样本、不联网、不写盘。
+4. ``cancelled`` / ``failed`` 单列为 ``aborted``（中途夭折），**不进分母**。
+   一本自然跑挂、没人救过的书若算进 ``clean``，完成率会凭空变好看——
+   这不是「无需人工救火地交付了」，是根本没交付。接入真实落盘后生产库里
+   有 25 本这类 task，这个洞必须堵上（2026-11-06 实测暴露）。
+5. 零推断：不猜事件、不补样本、不联网、不写盘。
 
 dev / prod
 ----------
@@ -40,14 +44,18 @@ RESCUE_KINDS = frozenset((
     "manual_revise",         # 人工改稿后重新提交
 ))
 START_KINDS = frozenset(("task_created",))
-TERMINAL_KINDS = frozenset(("accepted", "rejected", "cancelled", "failed"))
+# 走到平台结论才算终态：被拒也是把流程跑到了结论，计进分母；
+# cancelled / failed 是中途夭折，单列 aborted，不许算成功。
+TERMINAL_KINDS = frozenset(("accepted", "rejected"))
+ABORTED_KINDS = frozenset(("cancelled", "failed"))
 # 正常链路事件：明确列出，防止把「作者正常登记结论」误算成救火。
 NEUTRAL_KINDS = frozenset((
     "draft_done", "review_done", "published", "outcome_recorded",
 ))
-VALID_KINDS = RESCUE_KINDS | START_KINDS | TERMINAL_KINDS | NEUTRAL_KINDS
+VALID_KINDS = (RESCUE_KINDS | START_KINDS | TERMINAL_KINDS
+               | ABORTED_KINDS | NEUTRAL_KINDS)
 
-STATUSES = ("clean", "rescued", "incomplete", "unknown")
+STATUSES = ("clean", "rescued", "aborted", "incomplete", "unknown")
 
 
 def _unknown(reason):
@@ -73,7 +81,9 @@ def classify_journey(events):
     if not any(k in START_KINDS for k in kinds):
         return _unknown("missing_task_created")
     if not any(k in TERMINAL_KINDS for k in kinds):
-        # 在跑的书不算失败也不算成功，单列；绝不按「没救火」记成 clean。
+        # 中途夭折不算「无需救火地交付了」；在跑的书也不算，都单列。
+        if any(k in ABORTED_KINDS for k in kinds):
+            return {"status": "aborted", "reasons": [], "judged": False}
         return {"status": "incomplete", "reasons": [], "judged": False}
     rescues = sorted(set(k for k in kinds if k in RESCUE_KINDS))
     return {
@@ -131,8 +141,9 @@ def human_report(summary):
     rate = summary["clean_rate"]
     lines = [
         "端到端交付指标：一本新书从建单到过签，无需人工救火的完成率",
-        "真被判过的样本数 %d/%d（终态且事件完整）；在跑 %d、判不了 %d 单列不进分母"
-        % (summary["judged"], summary["total"], c["incomplete"], c["unknown"]),
+        "真被判过的样本数 %d/%d（终态且事件完整）；在跑 %d、中途夭折 %d、判不了 %d 单列不进分母"
+        % (summary["judged"], summary["total"], c["incomplete"],
+           c.get("aborted", 0), c["unknown"]),
         "无需人工救火 %d 本 / 人工救火 %d 本" % (c["clean"], c["rescued"]),
         "完成率：%s" % ("%.1f%% (%d/%d)" % (rate * 100, c["clean"], summary["judged"])
                        if rate is not None else "unknown（无终态完整样本，不上绿标）"),

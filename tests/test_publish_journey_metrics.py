@@ -74,7 +74,8 @@ class JourneyMetricsTest(unittest.TestCase):
                    ev("accepted", "t-2")]
         summary = journey.from_events(events)
         self.assertEqual(2, summary["judged"])
-        self.assertEqual({"clean": 1, "rescued": 1, "incomplete": 0, "unknown": 0},
+        self.assertEqual({"clean": 1, "rescued": 1, "aborted": 0,
+                          "incomplete": 0, "unknown": 0},
                          summary["counts"])
         self.assertEqual(0.5, summary["clean_rate"])
         self.assertEqual(1, summary["rescue_reasons"]["force_publish"])
@@ -95,6 +96,32 @@ class JourneyMetricsTest(unittest.TestCase):
             frozenset(("force_publish", "manual_retry",
                        "manual_pause_resume", "manual_revise")),
             journey.RESCUE_KINDS)
+
+    def test_aborted_never_counts_as_clean(self):
+        """真实落盘里有 25 本 cancelled/failed；若不单列会把完成率凭空抬绿。
+
+        一本自然跑挂、没人救过的书不是「无需人工救火地交付了」。
+        """
+        for kind in sorted(journey.ABORTED_KINDS):
+            got = journey.classify_journey([ev("task_created"), ev("draft_done"),
+                                            ev(kind)])
+            self.assertEqual("aborted", got["status"], kind)
+            self.assertFalse(got["judged"])
+        summary = journey.from_events(
+            full_chain() + [ev("task_created", "t-2"), ev("failed", "t-2")]
+            + [ev("task_created", "t-3"), ev("cancelled", "t-3")])
+        self.assertEqual(1, summary["judged"])
+        self.assertEqual(1.0, summary["clean_rate"])
+        self.assertEqual(2, summary["counts"]["aborted"])
+
+    def test_terminal_kinds_contract(self):
+        """只有走到平台结论才进分母；改这里必须同步改交接单口径。"""
+        self.assertEqual(frozenset(("accepted", "rejected")),
+                         journey.TERMINAL_KINDS)
+        self.assertEqual(frozenset(("cancelled", "failed")),
+                         journey.ABORTED_KINDS)
+        self.assertEqual(set(), set(journey.TERMINAL_KINDS)
+                         & set(journey.ABORTED_KINDS))
 
 
 if __name__ == "__main__":
