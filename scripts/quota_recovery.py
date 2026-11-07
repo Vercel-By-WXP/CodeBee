@@ -115,6 +115,27 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     `unknown` 不上绿标，非 `ok` 时打印「验收不可用」、不再输出恢复结论并
     返回 2。九步命令块 ⑨ 已带这个开关作为消费点。
 
+15. **「`--retry-one` 复核通过」不等于「⑧ 打印的 `$RID` 可信」**（11-07 14:1x）：
+    ⑧ 是九步里除 ④ 重启外唯一不可回滚的写动作，`POST /api/tasks/<id>/retry`
+    的响应来自 `main.py:2599-2614`，但 `cmd_retry_one` 原只判
+    `res.get("ok") is False or not run_id` —— **只认显式 False**：
+    `main.py:2607` 的 503「`retry_task` 已建 run 落盘、但 `_enqueue_run` 失败」
+    返回 `{"error":..., "run_id":...}` **根本没有 `ok` 键**，会被当成成功；
+    真实 503 则被 `api_post` 抛成 `HTTPError` 直接 traceback，POST 已发生、
+    run 不可回滚却不给处置建议。更隐蔽的是 `judge_retry_post_write` 的
+    `new_run_id` **是死参数**（只原样塞回返回值、零消费），且
+    `target_delta=0` 不报问题：生产 26 条真实 run 派生的写后态实证
+    「state 没新增 run」「state 新增的 run 与响应 id 不一致」都会判
+    「复核通过」，把一个错的 `$RID` 递给刚加固的 ⑨。
+    修法：新增纯函数 `judge_retry_response` 三路判 `ok`/`blocked`/`unknown`
+    （`ok is True` + `run_id` 非空 + 无 `error`；`ok` 缺失 / 非布尔一律
+    `unknown` 不上绿标）；`judge_retry_post_write` 真正消费 `new_run_id`，
+    核对它在写后 `/api/state` 里存在、`status` active、`task_id == target`、
+    且目标 task 新增的 active run id 集合恰为 `{new_run_id}`；
+    `target_delta=0` / 找不到一律 `unknown`，判不了与不通过分开报；
+    非 `ok` 时不再打印「复核通过」并给人话处置建议。`api_post` 异常显式
+    兜住、不重试、不吞成成功。成功打印的 `$RID` 现在与 state 对过账。
+
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
 核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
@@ -1052,32 +1073,128 @@ def plan_retry_one(state, inherit_plan, task_id=None, confirm=False,
             "judged_run_count": judged, "retry_ready": readiness["retry_ready"]}
 
 
+def judge_retry_response(res):
+    """三路判 `POST /api/tasks/<id>/retry` 的响应 —— 纯函数，零 IO。
+
+    响应形状来自 `main.py:2599-2614` 源码取证（见夹具
+    `tests/fixtures/quota_recovery_post_write.json` 的 `response_shapes`）：
+      - 200 成功：`{"ok": True, "run_id": run["id"]}`；
+      - 400 `retry_task` 拒：`{"error": err}`；
+      - 503 入队失败：`{"error": qerr, "run_id": run["id"]}`，**没有 `ok`**。
+    原判据只认 `ok is False`，于是 503 / `ok` 缺失 / `ok` 非布尔都会被
+    当成成功；而 503 的场景恰恰是 `store.retry_task` 已建 run 落盘、
+    `_enqueue_run` 失败，POST 已发生不可回滚、run 永远不会跑。
+
+    三路口径：`ok is True` + `run_id` 非空字符串 + 无 `error` 才 `ok`；
+    显式失败（`ok is False` 或有 `error`）报 `blocked`；其余（字段缺失 /
+    类型异常 / 响应不是 dict）一律 `unknown`、**不上绿标** —— 判不了就别
+    把 `$RID` 递给 ⑨。
+    """
+    if not isinstance(res, dict):
+        return {"verdict": "unknown", "run_id": "",
+                "blockers": ["响应不是 dict（%s）：判不了写入结果，别按成功继续"
+                             % type(res).__name__], "notes": []}
+    err = res.get("error")
+    ok = res.get("ok")
+    rid = res.get("run_id")
+    if err or ok is False:
+        return {"verdict": "blocked", "run_id": "",
+                "blockers": ["明确写入失败（ok=%r, error=%s）"
+                             % (ok, str(err)[:120])], "notes": []}
+    if ok is not True or not isinstance(rid, str) or not rid.strip():
+        return {"verdict": "unknown", "run_id": "",
+                "blockers": ["响应缺 ok=True 或 run_id 不是非空字符串"
+                             "（ok=%r, run_id=%r）：判不了就不上绿标；"
+                             "503 入队失败就是这种形状，run 已落盘但不会跑"
+                             % (ok, rid)], "notes": []}
+    return {"verdict": "ok", "run_id": rid, "blockers": [],
+            "notes": ["ok=True 且 run_id 非空；仍要与写后 /api/state 对账"]}
+
+
 def judge_retry_post_write(state_before, state_after, target, new_run_id):
     """写后复核：只准目标 task 新增一条 active run，其余 3 本必须仍是 0。
 
     POST 已经发生、不能回滚；复核失败要显式报出来让人处理，别假装成功。
+
+    11-07 14:1x 加固：`new_run_id` 原先是**死参数**（只原样塞回返回值），
+    且 `target_delta=0` 不报问题。生产 26 条真实 run 派生的写后态实证：
+    「响应说建了 run、state 里没新增」与「state 新增的是另一条 run」都会判
+    「复核通过」，把错的 `$RID` 递给 ⑨。现在真正消费它：核对这条 id 在写后
+    `/api/state` 里存在、`status` 是 active、`task_id` 恰为目标，且目标 task
+    新增的 active run id 集合恰好是 `{new_run_id}`。判不了（`target_delta=0`
+    / 找不到 / id 不是字符串）一律 `unknown`、`ok=False`、不上绿标；明确不一致
+    报 `blocked`。`ok` / `problems` 保留兼容，新增 `verdict` / `blockers` /
+    `notes` 让调用方分开报「不通过」与「判不了」。
     """
+    def active_rows(state):
+        return [r for r in ((state or {}).get("runs") or [])
+                if isinstance(r, dict) and r.get("status") in ACTIVE_RUN_STATUSES]
+
     def active_by_task(state):
         out = {}
-        for r in (state.get("runs") or []):
-            if isinstance(r, dict) and r.get("status") in ACTIVE_RUN_STATUSES:
-                tid = r.get("task_id")
-                if tid in RESUME_TASK_IDS:
-                    out[tid] = out.get(tid, 0) + 1
+        for r in active_rows(state):
+            tid = r.get("task_id")
+            if tid in RESUME_TASK_IDS:
+                out[tid] = out.get(tid, 0) + 1
         return out
 
     before = active_by_task(state_before or {})
     after = active_by_task(state_after or {})
+    after_rows = active_rows(state_after or {})
+    before_rows = active_rows(state_before or {})
     others = sorted(tid for tid in RESUME_TASK_IDS
                     if tid != target and after.get(tid, 0) > before.get(tid, 0))
     target_delta = after.get(target, 0) - before.get(target, 0)
-    problems = []
+    blockers, notes = [], []
+    unknown = False
     if others:
-        problems.append("其余 %d 本也新增了 active run（%s）：四本齐跑会抢见底池，"
+        blockers.append("其余 %d 本也新增了 active run（%s）：四本齐跑会抢见底池，"
                         "立刻去暂停" % (len(others), ",".join(others)))
     if target_delta > 1:
-        problems.append("目标 task 新增 %d 条 active run（应恰好 1 条）" % target_delta)
-    return {"ok": not problems, "problems": problems,
+        blockers.append("目标 task 新增 %d 条 active run（应恰好 1 条）" % target_delta)
+
+    rid = new_run_id if isinstance(new_run_id, str) else ""
+    if not rid.strip():
+        unknown = True
+        notes.append("POST 响应没有可用的 run_id：判不了 ⑧ 该打印哪个 $RID")
+    else:
+        match = [r for r in after_rows if str(r.get("id") or "") == rid]
+        if not match:
+            if target_delta >= 1:
+                blockers.append("响应 run_id=%s 在写后 /api/state 找不到，但目标 task "
+                                "确实新增了 %d 条 active run（id 不匹配）：⑧ 打印的 "
+                                "$RID 会指向不存在的 run，先按 /api/state 核对"
+                                % (rid, target_delta))
+            else:
+                unknown = True
+                notes.append("响应 run_id=%s 在写后 /api/state 里找不到 active run："
+                             "可能入队没落地或快照延迟，判不了就不上绿标" % rid)
+        else:
+            row = match[0]
+            if str(row.get("task_id") or "") != target:
+                blockers.append("响应 run_id=%s 落在 task=%s 而不是目标 %s："
+                                "写串了本子，别拿它下 11-09 验收结论"
+                                % (rid, row.get("task_id"), target))
+        new_ids = ({str(r.get("id") or "") for r in after_rows
+                    if r.get("task_id") == target}
+                   - {str(r.get("id") or "") for r in before_rows
+                      if r.get("task_id") == target})
+        if new_ids and new_ids != {rid}:
+            blockers.append("目标 task 新增的 active run id 是 %s，不是响应声明的 %s："
+                            "⑧ 打印的 $RID 会指向不存在的 run"
+                            % (",".join(sorted(new_ids)[:4]), rid))
+    if target_delta == 0:
+        unknown = True
+        notes.append("目标 task 没有新增 active run（delta=0）：响应说建了 run，但 "
+                     "/api/state 里看不到；可能入队没落地或快照延迟，别按复核通过继续 ⑨")
+    elif target_delta < 0:
+        unknown = True
+        notes.append("目标 task 的 active run 反而减少了 %d 条：状态异常，判不了"
+                     % (-target_delta))
+
+    verdict = "blocked" if blockers else ("unknown" if unknown else "ok")
+    return {"ok": verdict == "ok", "verdict": verdict,
+            "problems": blockers + notes, "blockers": blockers, "notes": notes,
             "new_run_id": new_run_id, "active_before": before, "active_after": after}
 
 
@@ -1265,20 +1382,36 @@ def cmd_retry_one(base, task_id, confirm, dry_run, at_text=None):
     if dry_run:
         print("dry-run 结束，生产未改动（真写要去掉 --dry-run 且四道闸全过）")
         return 0
-    res = api_post(base, "/api/tasks/%s/retry" % plan["target"], {})
-    new_run_id = res.get("run_id") or ""
-    if res.get("ok") is False or not new_run_id:
-        print("写入失败：%s" % json.dumps(res, ensure_ascii=False)[:200])
+    try:
+        res = api_post(base, "/api/tasks/%s/retry" % plan["target"], {})
+    except Exception as exc:
+        # 真实 503 会被 urllib 抛成 HTTPError；POST 可能已发生、run 已落盘，
+        # 绝不重试（四本齐跑抢见底池），也绝不吞成成功。
+        print("写入请求异常（POST 可能已发生、不能回滚）：%s" % str(exc)[:160])
+        print("先 GET /api/state 看目标 task 有没有新增 run；别重跑 ⑧。"
+              "若服务端已建 run 但入队失败，它不会跑，需人工核对后再处理。")
+        return 1
+    resp = judge_retry_response(res)
+    new_run_id = resp["run_id"]
+    if resp["verdict"] != "ok":
+        print("写入失败/不可用（%s）：%s" % (
+            resp["verdict"], "；".join(resp["blockers"])))
+        print("  响应原文：%s" % json.dumps(res, ensure_ascii=False)[:200])
+        print("  别按成功继续 ⑨；先按 /api/state 核对是否已落盘 run。")
         return 1
     print("  [ok] 新 run %s" % new_run_id)
     after = api_get(base, "/api/state")
     chk = judge_retry_post_write(state, after, plan["target"], new_run_id)
     if not chk["ok"]:
+        tag = ("复核失败" if chk["verdict"] == "blocked"
+               else "复核不可用（判不了，不上绿标）")
         for p in chk["problems"]:
-            print("复核失败：%s" % p)
+            print("%s：%s" % (tag, p))
+        print("POST 已发生不能回滚：先按 /api/state 与 /api/runs/<id> 核对，别直接跑 ⑨")
         return 1
     print("复核通过：只 %s 新增 1 条 active run，其余 3 本未动；"
-          "接着 --verify-run %s 看 verdict" % (plan["target"], new_run_id))
+          "$RID 已与 /api/state 对账；接着 --verify-run %s --as-recovery 看 verdict"
+          % (plan["target"], new_run_id))
     return 0
 
 

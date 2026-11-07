@@ -1,0 +1,301 @@
+{
+  "captured_at": "2026-11-07 14:13:19",
+  "source": "生产 8765 GET /api/state 只读导出（零写入）+ app/main.py:2599-2614 源码响应形状取证；不造合成稿",
+  "note": "state_before 是 26 条生产真实 run 的摘要身份字段（落盘真原文、未改写）；写后的边界态单列在 derived 里、明确标注为合成、不计真被判过样本数。503 形状的关键事实是：store.retry_task 已建 run 并落盘、_enqueue_run 失败才返回 503，此时 POST 已发生且 run 不可回滚，但响应里没有 ok 字段。",
+  "scan_summary": {
+    "real_run_samples": 26,
+    "status_counts": {
+      "running": 4,
+      "failed": 7,
+      "timeout": 12,
+      "done": 3
+    },
+    "active_run_ids": [
+      "r-20261106-094827-3523",
+      "r-20261106-094824-4277",
+      "r-20261106-094822-4307",
+      "r-20261106-094817-8634"
+    ],
+    "response_shapes_judged": 3
+  },
+  "state_before": {
+    "pause_control": {
+      "active": 4,
+      "paused": 4
+    },
+    "runs": [
+      {
+        "id": "r-20261106-094827-3523",
+        "task_id": "t-20261104-170153-4815",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:27"
+      },
+      {
+        "id": "r-20261106-094824-4277",
+        "task_id": "t-20261022-104907-1000",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:24"
+      },
+      {
+        "id": "r-20261106-094822-4307",
+        "task_id": "t-20261105-152926-2324",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:22"
+      },
+      {
+        "id": "r-20261106-094817-8634",
+        "task_id": "t-20261029-102103-5910",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:17"
+      },
+      {
+        "id": "r-20261106-090022-1472",
+        "task_id": "t-20261105-090019-9616",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:00:22"
+      },
+      {
+        "id": "r-20261106-083948-1126",
+        "task_id": "t-20261029-102103-5910",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 08:39:48"
+      },
+      {
+        "id": "r-20261106-083058-6777",
+        "task_id": "t-20261105-152926-2324",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "requested",
+        "created_at": "2026-11-06 08:30:58"
+      },
+      {
+        "id": "r-20261106-081358-1596",
+        "task_id": "t-20261022-104907-1000",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 08:13:58"
+      },
+      {
+        "id": "r-20261106-055755-2822",
+        "task_id": "t-20261104-170153-4815",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "requested",
+        "created_at": "2026-11-06 05:57:55"
+      },
+      {
+        "id": "r-20261106-042553-9551",
+        "task_id": "t-20261105-152926-2324",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 04:25:53"
+      },
+      {
+        "id": "r-20261106-033426-2214",
+        "task_id": "t-20261029-102103-5910",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 03:34:26"
+      },
+      {
+        "id": "r-20261106-030828-8219",
+        "task_id": "t-20261022-104907-1000",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 03:08:28"
+      },
+      {
+        "id": "r-20261106-030005-8137",
+        "task_id": "t-20260929-030024-4439",
+        "status": "done",
+        "error": "",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 03:00:05"
+      },
+      {
+        "id": "r-20261106-015242-9914",
+        "task_id": "t-20261104-170153-4815",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 01:52:42"
+      },
+      {
+        "id": "r-20261106-003002-5467",
+        "task_id": "t-20261105-003005-4821",
+        "status": "done",
+        "error": "",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 00:30:02"
+      },
+      {
+        "id": "r-20261106-002051-8753",
+        "task_id": "t-20261105-152828-7336",
+        "status": "done",
+        "error": "",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 00:20:51"
+      },
+      {
+        "id": "r-20261106-002047-3319",
+        "task_id": "t-20261105-152926-2324",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 00:20:47"
+      },
+      {
+        "id": "r-20261105-222904-4371",
+        "task_id": "t-20261029-102103-5910",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 22:29:04"
+      },
+      {
+        "id": "r-20261105-220550-8375",
+        "task_id": "t-20261022-104907-1000",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 22:05:50"
+      },
+      {
+        "id": "r-20261105-214735-6265",
+        "task_id": "t-20261104-170153-4815",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 21:47:35"
+      },
+      {
+        "id": "r-20261105-200143-6309",
+        "task_id": "t-20261105-152926-2324",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 20:01:43"
+      },
+      {
+        "id": "r-20261105-195727-1027",
+        "task_id": "t-20261105-152828-7336",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 19:57:27"
+      },
+      {
+        "id": "r-20261105-174730-9762",
+        "task_id": "t-20261104-170153-4815",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:47:30"
+      },
+      {
+        "id": "r-20261105-171605-0233",
+        "task_id": "t-20261105-152926-2324",
+        "status": "failed",
+        "error": "第 4 章起草失败: ；本场停用：claude-code：上游余额或调用额度不足（QUOTA）；cline-cli：API 凭据认证失败（AUTH）；gemini-cli：本地 CLI 启动失败（可执行文件不存在，与供应商无关）（TOOL_LAUNCH）；github-copilot-cli：上游余额或调用额度不足（QUOTA）",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:16:05"
+      },
+      {
+        "id": "r-20261105-171029-5845",
+        "task_id": "t-20261105-152828-7336",
+        "status": "failed",
+        "error": "第 6 章起草失败: ；本场停用：claude-code：上游余额或调用额度不足（QUOTA）；cline-cli：API 凭据认证失败（AUTH）；gemini-cli：本地 CLI 启动失败（可执行文件不存在，与供应商无关）（TOOL_LAUNCH）；github-copilot-cli：上游余额或调用额度不足（QUOTA）",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:10:29"
+      },
+      {
+        "id": "r-20261105-171025-3047",
+        "task_id": "t-20261029-102103-5910",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:10:25"
+      }
+    ]
+  },
+  "response_shapes": {
+    "200_success": {
+      "source_line": "app/main.py:2614",
+      "code": "return self._json(200, {\"ok\": True, \"run_id\": run[\"id\"]})",
+      "body": {
+        "ok": true,
+        "run_id": "<run['id']>"
+      }
+    },
+    "400_retry_rejected": {
+      "source_line": "app/main.py:2601-2602",
+      "code": "return self._json(400, {\"error\": err})",
+      "body": {
+        "error": "<err>"
+      }
+    },
+    "503_enqueue_failed": {
+      "source_line": "app/main.py:2606-2607",
+      "code": "return self._json(503, {\"error\": qerr, \"run_id\": run[\"id\"]})",
+      "body": {
+        "error": "<qerr>",
+        "run_id": "<run['id']>"
+      }
+    }
+  },
+  "derived": {
+    "note": "以下均为合成边界态，仅用于反向覆盖，不计入真被判过样本数。",
+    "new_run_ok": {
+      "id": "r-derived-new-0001",
+      "task_id": "<target>",
+      "status": "queued"
+    },
+    "new_run_other_id": {
+      "id": "r-derived-other-9999",
+      "task_id": "<target>",
+      "status": "queued"
+    }
+  }
+}
