@@ -1,0 +1,194 @@
+{
+  "source": {
+    "note": "2026-11-07 19:xx 生产库只读取证，零 HTTP、零写入；task 文件与 books.json 原文，未造合成样本",
+    "data_dir": "%APPDATA%/CodeBee",
+    "csv": "data/exports/outcome-gaps-20261107.csv",
+    "http_source": "无",
+    "case_mismatch_note": "原 CSV 第 2 列有 1 处被静默小写（ai→AI）；本脚本取 books.json 原文，该真样本冻结进 real_rows 末条"
+  },
+  "scan_summary": {
+    "csv_rows": 80,
+    "csv_columns": 7,
+    "csv_with_real_book_title": 12,
+    "csv_without_book_title": 68,
+    "task_files": 115,
+    "books_json_keys": 67,
+    "missing_with_task_title": 68,
+    "missing_with_workdir_tail": 68,
+    "csv_book_col_mismatch": 1,
+    "real_rows_count": 13,
+    "real_rows_with_csv_truth": 13
+  },
+  "header": [
+    "task_id",
+    "书名(来自 publish/books.json，真实)",
+    "status",
+    "created_at",
+    "缺口原因",
+    "平台结论(待人工核对后填写)",
+    "核对备注"
+  ],
+  "real_rows": [
+    {
+      "task_id": "t-20260913-000157-4217",
+      "book_titles": [],
+      "task_title": "加班夜的天台(连载试跑D)",
+      "workdir_tail": "GoOut\\tutti-novel-lab",
+      "csv_book_col": "",
+      "status": "done",
+      "created_at": "2026-09-13 00:01:57",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260913-021329-9489",
+      "book_titles": [],
+      "task_title": "加班夜的天台(2万字签约稿)",
+      "workdir_tail": "GoOut\\tutti-novel-qimao",
+      "csv_book_col": "",
+      "status": "done",
+      "created_at": "2026-09-13 02:13:29",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260914-202540-3033",
+      "book_titles": [],
+      "task_title": "七猫甜宠·续2（auto 多智能体并行）",
+      "workdir_tail": "demo-workdir\\qimao-20k",
+      "csv_book_col": "",
+      "status": "done",
+      "created_at": "2026-09-14 20:25:40",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260915-204801-2244",
+      "book_titles": [],
+      "task_title": "七猫甜宠·续2（auto 多智能体并行）·续3",
+      "workdir_tail": "demo-workdir\\qimao-20k",
+      "csv_book_col": "",
+      "status": "done",
+      "created_at": "2026-09-15 20:48:01",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260916-085052-6384",
+      "book_titles": [],
+      "task_title": "七猫甜宠·续2（auto 多智能体并行）·续4",
+      "workdir_tail": "demo-workdir\\qimao-20k",
+      "csv_book_col": "",
+      "status": "done",
+      "created_at": "2026-09-16 08:50:52",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260918-143825-5243",
+      "book_titles": [],
+      "task_title": "# 重写",
+      "workdir_tail": "ChatGPT\\不周山",
+      "csv_book_col": "",
+      "status": "done",
+      "created_at": "2026-09-18 14:38:25",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260913-201955-0730",
+      "book_titles": [
+        "楼上那户总在半夜做饭"
+      ],
+      "task_title": "全自动试跑·七猫女频2万字",
+      "workdir_tail": "demo-workdir\\qimao-20k",
+      "csv_book_col": "楼上那户总在半夜做饭",
+      "status": "done",
+      "created_at": "2026-09-13 20:19:55",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20260921-144532-2098",
+      "book_titles": [
+        "戍边骑奴：我以军功镇山河"
+      ],
+      "task_title": "戍边骑奴：我以军功镇山河1-8",
+      "workdir_tail": "AI小说\\小说",
+      "csv_book_col": "戍边骑奴：我以军功镇山河",
+      "status": "done",
+      "created_at": "2026-09-21 14:45:32",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20261012-195924-3413",
+      "book_titles": [
+        "神瞳鉴宝：我在当铺断真假"
+      ],
+      "task_title": "神瞳鉴宝：重写前10章签约稿V2",
+      "workdir_tail": "AI小说\\神瞳鉴宝：我在当铺断真假",
+      "csv_book_col": "神瞳鉴宝：我在当铺断真假",
+      "status": "done",
+      "created_at": "2026-10-12 19:59:24",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20261012-200539-2806",
+      "book_titles": [
+        "头七结账人"
+      ],
+      "task_title": "《头七结账人》连载（第1-10章）",
+      "workdir_tail": "AI小说\\头七结账人",
+      "csv_book_col": "头七结账人",
+      "status": "done",
+      "created_at": "2026-10-12 20:05:39",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20261017-115114-8191",
+      "book_titles": [
+        "嫡女重生：我的符能渡人也能杀人",
+        "嫡女重生：我的符，能渡人也能杀"
+      ],
+      "task_title": "嫡女重生：我的符，能渡人也能杀人",
+      "workdir_tail": "AI小说\\嫡女重生：我的符，能渡人也能杀人",
+      "csv_book_col": "嫡女重生：我的符能渡人也能杀人 / 嫡女重生：我的符，能渡人也能杀",
+      "status": "done",
+      "created_at": "2026-10-17 11:51:14",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20261017-120746-1086",
+      "book_titles": [
+        "边关一小卒，杀出个镇北王"
+      ],
+      "task_title": "边关一小卒，杀出个镇北王",
+      "workdir_tail": "AI小说\\边关一小卒，杀出个镇北王",
+      "csv_book_col": "边关一小卒，杀出个镇北王",
+      "status": "done",
+      "created_at": "2026-10-17 12:07:46",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    },
+    {
+      "task_id": "t-20261017-134251-3423",
+      "book_titles": [
+        "重生之我带AI回到了2000年"
+      ],
+      "task_title": "重生之我带AI回到了2000年",
+      "workdir_tail": "AI小说\\重生之我带AI回到了2000年",
+      "csv_book_col": "重生之我带ai回到了2000年",
+      "status": "done",
+      "created_at": "2026-10-17 13:42:51",
+      "reason": "no_entry",
+      "csv_remark": "done != 过签；去平台核对真实结论后走 outcome.record 补登，脚本不代填"
+    }
+  ],
+  "derived": {
+    "note": "守测中的缺 title / 缺 workdir / 多书名 / 已填结论等边界态，均由上述真样本派生，单列标注、不计真样本"
+  }
+}
