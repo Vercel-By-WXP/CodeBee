@@ -83,12 +83,20 @@ def _resume_state():
 
 
 def _derived_after_restart():
-    """合成：按 store.py:900/941 收尸逻辑推导的重启后状态，不是生产落盘值。"""
+    """合成：按 store.py:900/941 收尸逻辑推导的重启后状态，不是生产落盘值。
+
+    11-07 补：`--check` 会核对重启收尸自洽性，所以派生必须带齐
+    `store.py:900` 真正会写的四个字段（error / interrupted / interrupted_at /
+    ended_at），否则模拟的是「收尸没发生却说可 retry」的不真实状态。
+    """
     state = _resume_state()
     state["pause_control"] = {"active": 0, "paused": 0}
     for r in state["runs"]:
         r["status"] = "failed"
+        r["error"] = r.get("error") or "服务重启中断，可重试"
         r["interrupted"] = "restart"
+        r["interrupted_at"] = "2026-11-09 14:20:01"
+        r["ended_at"] = "2026-11-09 14:20:01"
     for t in state["tasks"]:
         t["status"] = "failed"
     return state
@@ -395,6 +403,12 @@ class ResumeWritePathTest(unittest.TestCase):
             seen.append(path)
             if path == "/api/state":
                 return state or {"pause_control": {}, "runs": []}
+            if path.startswith("/api/runs/"):
+                # 详情与 /api/state 同源，不额外编造：收尸后的 run 对象就长这样。
+                rid = path.rsplit("/", 1)[-1]
+                run = next((r for r in ((state or {}).get("runs") or [])
+                            if r.get("id") == rid), {})
+                return {"run": copy.deepcopy(run)}
             n = sum(1 for p in seen if p == "/api/automation")
             return {"tasks": tasks_before if n == 1
                     else (tasks_after if tasks_after is not None else tasks_before)}

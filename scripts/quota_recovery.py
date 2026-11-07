@@ -84,6 +84,22 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     **不硬编码 task id**；只 POST 一次，写后复核「其余 3 本没新增 active run」。
     `--dry-run` 允许提前预演、零 POST，但会打印窗口与收尸前置未满足的提醒。
 
+13. **「4 个 task 全终态」不等于「本次重启收尸真的发生了」**（11-07 13:0x）：
+    九步流程第 ④ 步 `POST /api/selfupdate/restart` 是全链唯一不可逆的
+    生产中断动作；第 ⑤ 步 `--check` 原只判 `retry_ready`（无 active run +
+    4 个 task 全终态）就宣布可 retry，看不出这些终态是不是**本次收尸**
+    造成的。更坑的是 11-06 09:47:13 那次重启已经给这 4 个 task 的旧 run
+    打过一模一样的 `interrupted=restart`，光看「有没有标记」或「最新时刻」
+    会拿老账冒充本次（离线复核连抓两次）。
+    `/api/state` 的 run 摘要带 `error` 但**不带** `interrupted`
+    （`_state_run_summary` 白名单），所以先用 `error` 里的收尸专属文案筛候选，
+    再只对候选拉 `/api/runs/<id>` 详情；判据以**重启前那批 active run 的 id**
+    为锚点（id 重启前后不变），核对 4 条锚点的 `interrupted` /
+    `interrupted_at` / `ended_at` 齐备且同批次、且严格新于全部历史老账。
+    同一批次里别的 task 被一并收尸是合法行为，单列提醒不判误伤；
+    判不了一律 `unknown`、不上绿标。`--check` 只在重启后（`retry_ready=True`）
+    才拉详情，额度见底期零额外 GET。
+
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
 核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
@@ -145,6 +161,11 @@ STATE_VERDICT_KEYS = frozenset(("pass", "publishable", "verify_pass",
                                 "review_pass", "end_chapter", "quality_status"))
 # 评审证据缺口（区别于「评分低于最低门槛」那种正常的判据否决）。
 _INCOMPLETE_REVIEW_WORDS = ("未完成", "未判定", "证据不完整", "缺少可定位正文引文")
+# 与 app/core/store.py:47 _RESTART_INTERRUPT_TEXT 逐字对齐（守测用 ast 锁防漂移）。
+# 收尸写入的 error 形如「服务重启中断，可重试」；store.py:933 老账回填也认这个前缀。
+# 摘要层只有 error 可用（interrupted 不在 _state_run_summary 白名单里）。
+RESTART_INTERRUPT_TEXT = "服务重启中断"
+REAP_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 
 def _open(base):
@@ -414,6 +435,9 @@ def judge_retry_readiness(state):
     store.py:941-955 再把 task 同步成终态。所以「解除暂停」≠「可续跑」：
     只把 paused 清成 false 时 pause_control.paused=0，但 run 仍是 running，
     retry 仍被拒，四本同时解除暂停还会立刻齐跑抢见底池。
+
+    注意：`/api/state` 的 run 摘要**不带** `interrupted`，这里不采恒为 None
+    的字段自欺；收尸标记走 `/api/runs/<id>` 详情，见 `judge_restart_reaping`。
     """
     runs = [r for r in (state.get("runs") or []) if isinstance(r, dict)]
     tasks = {t.get("id"): t for t in (state.get("tasks") or [])
@@ -448,8 +472,7 @@ def judge_retry_readiness(state):
         "resume_task_ids": list(RESUME_TASK_IDS),
         "active_runs": [{"id": r.get("id"), "task_id": r.get("task_id"),
                          "status": r.get("status"), "paused": bool(r.get("paused")),
-                         "pause_phase": r.get("pause_phase"),
-                         "interrupted": r.get("interrupted")}
+                         "pause_phase": r.get("pause_phase")}
                         for r in active_for_resume],
         "other_active_run_count": len(other_active),
         "task_states": task_states,
@@ -458,6 +481,128 @@ def judge_retry_readiness(state):
         "retry_ready": not active_for_resume and not nonterminal,
         "blockers": blockers,
         "notes": notes,
+    }
+
+
+# ------------------------------------------------- 重启收尸自洽性（只读，11-09 第 ⑤ 步）
+
+def _run_reaped_by_restart(summary):
+    """摘要层筛候选：只认收尸写入的专属 error 文案，别拿 reason 猜。"""
+    return str(summary.get("error") or "").startswith(RESTART_INTERRUPT_TEXT)
+
+
+def judge_restart_reaping(state, details, expected_ids=None):
+    """核对「本次重启收尸」是否干净落在重启前那批 active run 上 —— 纯函数，零 IO。
+
+    `store.py:900` 收尸只碰 `running` / 无退避 `queued`，打
+    ``status=failed`` + ``interrupted=restart`` + ``interrupted_at`` +
+    ``ended_at``；`store.py:941` 再把对应 task 回填成终态。`--check` 的
+    `retry_ready` 只看「4 个 task 全终态 + 无 active run」，**看不出这些终态
+    到底是不是本次重启收尸造成的** —— 手工改状态、收尸只做一半、或拿
+    11-06 的历史老账冒充，都会让 `retry_ready` 假绿。
+
+    为什么必须用 `expected_ids`：11-06 09:47:13 那次重启已经给 4 个待续跑
+    task 的旧 run 打过一模一样的 restart 标记；光看「有没有收尸记录」或
+    「全局最新的 interrupted_at」，重启没生效时也会拿老账判成 ok（11-07
+    离线复核连抓两次）。只有**重启前那批 active run 的 id** 是无歧义锚点：
+    id 重启前后不变，`--check` 的 09:48 批次观察项就是这份清单。
+
+    `store.py:900` 本来就收所有 active run，所以同一批次里若有别的 task
+    被一并收尸是**合法**的，单列提醒、不判成误伤（那会是假红）。
+    判不了（没给锚点 / 详情缺失 / 字段缺失）一律 `unknown`、不上绿标。
+
+    `details` 是 ``{run_id: /api/runs/<id> 的 run 对象}``，按候选拉。
+    """
+    expected = [str(x) for x in (expected_ids or []) if str(x)]
+    notes = []
+    unknown_ids = []
+    empty = {"verdict": "unknown", "judged_count": 0, "batch_at": "",
+             "batch_ids": [], "batch_size": 0, "blockers": [],
+             "notes": notes, "unknown_ids": unknown_ids}
+
+    def fail(verdict, msg, **kw):
+        return dict(empty, verdict=verdict, blockers=[msg], **kw)
+
+    if not expected:
+        return fail("unknown", "没给重启前 active run 清单（expected_ids），"
+                    "分不出本次收尸与历史老账：判不了就不上绿标")
+    runs = [r for r in (state.get("runs") or []) if isinstance(r, dict)]
+    by_id = {str(r.get("id") or ""): r for r in runs}
+    # 锚点清单必须恰好覆盖 4 个待续跑 task：前缀筛漏 / 多筛 / 重影都要先人工核对。
+    anchor_tasks = [str((by_id.get(rid) or {}).get("task_id") or "")
+                    for rid in expected]
+    missing_tasks = sorted(set(RESUME_TASK_IDS) - set(anchor_tasks))
+    extra_tasks = sorted(set(anchor_tasks) - set(RESUME_TASK_IDS))
+    if (missing_tasks or extra_tasks or len(anchor_tasks) != len(set(anchor_tasks))):
+        return fail("blocked", "重启前 active 清单与 4 个待续跑 task 对不上"
+                    "（缺 %s / 多 %s / %d 条）：先人工核对，别开跑"
+                    % (",".join(missing_tasks) or "无",
+                       ",".join(extra_tasks) or "无", len(expected)))
+    judged = 0
+    bad_shape = []
+    ats = []
+    for rid in expected:
+        d = (details or {}).get(rid)
+        if not isinstance(d, dict) or not d:
+            unknown_ids.append(rid)
+            continue
+        judged += 1
+        at = str(d.get("interrupted_at") or "")
+        if (d.get("interrupted") != "restart" or not REAP_AT_RE.match(at)
+                or d.get("status") != "failed" or not d.get("ended_at")):
+            bad_shape.append(rid)
+            continue
+        ats.append(at)
+    if unknown_ids:
+        return fail("unknown", "%d 条锚点 run 的详情读不到（%s）：判不了就不上绿标，"
+                    "走 /api/runs/<id> 人工核对" %
+                    (len(unknown_ids), ",".join(unknown_ids[:6])),
+                    judged_count=judged)
+    if bad_shape:
+        return fail("blocked", "%d 条锚点 run 没有完整的收尸标记/终态（%s）："
+                    "重启可能没生效或收尸只做了一半，别按 retry_ready 开跑" %
+                    (len(bad_shape), ",".join(bad_shape[:6])), judged_count=judged)
+    if len(set(ats)) != 1:
+        return fail("blocked", "锚点批次的 interrupted_at 不一致（%s）：不是同一次重启，"
+                    "先人工核对" % ",".join(sorted(set(ats))[:3]), judged_count=judged)
+    batch_at = ats[0]
+    # YYYY-MM-DD HH:MM:SS 的字典序就是时间序。非锚点的 restart run 按时刻分三类：
+    # 同批次 = 合法的一并收尸；更早 = 历史老账；更晚 = 拿老账冒充本次 / 时钟回拨，
+    # 后一类必须拦住，否则「重启没生效」也会被判成 ok（11-07 离线复核抓到）。
+    history_at, same_batch_others, future_others = [], [], []
+    for rid, d in (details or {}).items():
+        if rid in expected or not isinstance(d, dict):
+            continue
+        at = str(d.get("interrupted_at") or "")
+        if d.get("interrupted") != "restart" or not REAP_AT_RE.match(at):
+            continue
+        if at == batch_at:
+            same_batch_others.append(rid)
+        elif at < batch_at:
+            history_at.append(at)
+        else:
+            future_others.append(rid)
+    if future_others:
+        return fail("blocked", "存在 %d 条比锚点批次 %s 更晚的收尸记录（%s）："
+                    "可能重启没生效、拿老账冒充本次，或时钟回拨；先人工核对"
+                    % (len(future_others), batch_at, ",".join(future_others[:3])),
+                    judged_count=judged)
+    if same_batch_others:
+        notes.append("同一批次另有 %d 条其它 task 的 run 被一并收尸（%s）："
+                     "store.py:900 本来就收所有 active，属合法，列出来供人工核对"
+                     % (len(same_batch_others), ",".join(same_batch_others[:3])))
+    if history_at:
+        notes.append("另有 %d 条历史重启老账（最晚 %s），不混进本次判据"
+                     % (len(history_at), max(history_at)))
+    return {
+        "verdict": "ok",
+        "judged_count": judged,
+        "batch_at": batch_at,
+        "batch_ids": list(expected),
+        "batch_size": len(expected),
+        "blockers": [],
+        "notes": notes,
+        "unknown_ids": unknown_ids,
     }
 
 
@@ -869,6 +1014,32 @@ def cmd_check(base):
         print("  [缺口] %s" % b)
     for n in ready["notes"]:
         print("  [提醒] %s" % n)
+    # 只在重启后（4 个 task 全终态）才拉详情；额度见底期零额外 GET。
+    reap = {"verdict": "unknown", "judged_count": 0, "batch_at": "",
+            "batch_ids": [], "batch_size": 0,
+            "blockers": ["收尸核对未执行"], "notes": [], "unknown_ids": []}
+    if ready["retry_ready"]:
+        reaped = [r for r in (state.get("runs") or [])
+                  if isinstance(r, dict) and _run_reaped_by_restart(r)]
+        details = {}
+        for row in reaped:
+            rid = str(row.get("id") or "")
+            if not rid:
+                continue
+            try:
+                details[rid] = api_get(base, "/api/runs/" + rid).get("run") or {}
+            except Exception:
+                details[rid] = {}   # 读不到交给 unknown 分支，不编造
+        # 重启前那批 active run 的 id 在重启前后不变；09:48 批次观察项就是锚点。
+        expected_ids = [str(r.get("id") or "") for r in paused]
+        reap = judge_restart_reaping(state, details, expected_ids=expected_ids)
+        print("重启收尸自洽性：%s（真被判过 %d 条锚点，本次批次 %s / %d 条）" % (
+            reap["verdict"], reap["judged_count"],
+            reap["batch_at"] or "(无)", reap["batch_size"]))
+        for b in reap["blockers"]:
+            print("  [缺口] %s" % b)
+        for n in reap["notes"]:
+            print("  [提醒] %s" % n)
     if plan["missing"] or plan["unexpected_disabled"]:
         conclusion = ("清单异常（缺失 %d / 白名单外停用 %d），先人工核对 /api/automation，别开跑"
                       % (len(plan["missing"]), len(plan["unexpected_disabled"])))
@@ -879,10 +1050,16 @@ def cmd_check(base):
         conclusion = ("4 个定时任务已恢复，但续跑前置未满足（%d 条缺口）：先重启 8765 清残留；"
                       "别只解除暂停——paused=0 不等于 retry 可用。重启后重跑 --check"
                       % len(ready["blockers"]))
+    elif reap["verdict"] != "ok":
+        conclusion = ("4 个 task 全终态，但重启收尸自洽性=%s（%d 条缺口）："
+                      "先按 /api/runs/<id> 人工核对收尸范围，别开跑"
+                      % (reap["verdict"], len(reap["blockers"])))
     else:
-        conclusion = ("4 个定时任务已恢复、4 个 task 全终态且无 active run：可 "
+        conclusion = ("4 个定时任务已恢复、4 个 task 全终态、无 active run，"
+                      "且重启收尸自洽性 ok（本次 %d 条）：可 "
                       "POST /api/tasks/<id>/retry；只先 retry 一本（4 个 task_id 见上），"
-                      "别四本齐跑抢见底池，再 --verify-run <id> 看 blockers")
+                      "别四本齐跑抢见底池，再 --verify-run <id> 看 blockers"
+                      % reap["batch_size"])
     print("结论：%s" % conclusion)
     print("提示：挑本子先跑 --check-inherit（只读，报倒退章清单与真被判过样本数）；"
           "真要 retry 用 --retry-one（四道闸，不用手敲 curl）")

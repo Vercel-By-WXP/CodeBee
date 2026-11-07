@@ -1,0 +1,673 @@
+{
+  "captured_at": "2026-11-07 13:03:43",
+  "source": "生产 8765 GET /api/state + GET /api/runs/<id>，只读导出、零写入",
+  "note": "26 条真实 run。4 条 09:48 批次此刻 running/paused，是 11-09 重启后才会被收尸的对象；5 条 11-06 09:47:13 已收尸 run 带 interrupted=restart；2 条额度自然失败不带该标记。守测派生的重启后状态单列标注、不计真样本。",
+  "state": {
+    "pause_control": {
+      "active": 4,
+      "paused": 4
+    },
+    "runs": [
+      {
+        "id": "r-20261106-094827-3523",
+        "task_id": "t-20261104-170153-4815",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:27"
+      },
+      {
+        "id": "r-20261106-094824-4277",
+        "task_id": "t-20261022-104907-1000",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:24"
+      },
+      {
+        "id": "r-20261106-094822-4307",
+        "task_id": "t-20261105-152926-2324",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:22"
+      },
+      {
+        "id": "r-20261106-094817-8634",
+        "task_id": "t-20261029-102103-5910",
+        "status": "running",
+        "error": "",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:48:17"
+      },
+      {
+        "id": "r-20261106-090022-1472",
+        "task_id": "t-20261105-090019-9616",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 09:00:22"
+      },
+      {
+        "id": "r-20261106-083948-1126",
+        "task_id": "t-20261029-102103-5910",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 08:39:48"
+      },
+      {
+        "id": "r-20261106-083058-6777",
+        "task_id": "t-20261105-152926-2324",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "requested",
+        "created_at": "2026-11-06 08:30:58"
+      },
+      {
+        "id": "r-20261106-081358-1596",
+        "task_id": "t-20261022-104907-1000",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "paused",
+        "created_at": "2026-11-06 08:13:58"
+      },
+      {
+        "id": "r-20261106-055755-2822",
+        "task_id": "t-20261104-170153-4815",
+        "status": "failed",
+        "error": "服务重启中断，可重试",
+        "paused": true,
+        "pause_phase": "requested",
+        "created_at": "2026-11-06 05:57:55"
+      },
+      {
+        "id": "r-20261106-042553-9551",
+        "task_id": "t-20261105-152926-2324",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 04:25:53"
+      },
+      {
+        "id": "r-20261106-033426-2214",
+        "task_id": "t-20261029-102103-5910",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 03:34:26"
+      },
+      {
+        "id": "r-20261106-030828-8219",
+        "task_id": "t-20261022-104907-1000",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 03:08:28"
+      },
+      {
+        "id": "r-20261106-030005-8137",
+        "task_id": "t-20260929-030024-4439",
+        "status": "done",
+        "error": "",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 03:00:05"
+      },
+      {
+        "id": "r-20261106-015242-9914",
+        "task_id": "t-20261104-170153-4815",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 01:52:42"
+      },
+      {
+        "id": "r-20261106-003002-5467",
+        "task_id": "t-20261105-003005-4821",
+        "status": "done",
+        "error": "",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 00:30:02"
+      },
+      {
+        "id": "r-20261106-002051-8753",
+        "task_id": "t-20261105-152828-7336",
+        "status": "done",
+        "error": "",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 00:20:51"
+      },
+      {
+        "id": "r-20261106-002047-3319",
+        "task_id": "t-20261105-152926-2324",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-06 00:20:47"
+      },
+      {
+        "id": "r-20261105-222904-4371",
+        "task_id": "t-20261029-102103-5910",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 22:29:04"
+      },
+      {
+        "id": "r-20261105-220550-8375",
+        "task_id": "t-20261022-104907-1000",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 22:05:50"
+      },
+      {
+        "id": "r-20261105-214735-6265",
+        "task_id": "t-20261104-170153-4815",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 21:47:35"
+      },
+      {
+        "id": "r-20261105-200143-6309",
+        "task_id": "t-20261105-152926-2324",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 20:01:43"
+      },
+      {
+        "id": "r-20261105-195727-1027",
+        "task_id": "t-20261105-152828-7336",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 19:57:27"
+      },
+      {
+        "id": "r-20261105-174730-9762",
+        "task_id": "t-20261104-170153-4815",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:47:30"
+      },
+      {
+        "id": "r-20261105-171605-0233",
+        "task_id": "t-20261105-152926-2324",
+        "status": "failed",
+        "error": "第 4 章起草失败: ；本场停用：claude-code：上游余额或调用额度不足（QUOTA）；cline-cli：API 凭据认证失败（AUTH）；gemini-cli：本地 CLI 启动失败（可执行文件不存在，与供应商无关）（TOOL_LAUNCH）；github-copilot-cli：上游余额或调用额度不足（QUOTA）",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:16:05"
+      },
+      {
+        "id": "r-20261105-171029-5845",
+        "task_id": "t-20261105-152828-7336",
+        "status": "failed",
+        "error": "第 6 章起草失败: ；本场停用：claude-code：上游余额或调用额度不足（QUOTA）；cline-cli：API 凭据认证失败（AUTH）；gemini-cli：本地 CLI 启动失败（可执行文件不存在，与供应商无关）（TOOL_LAUNCH）；github-copilot-cli：上游余额或调用额度不足（QUOTA）",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:10:29"
+      },
+      {
+        "id": "r-20261105-171025-3047",
+        "task_id": "t-20261029-102103-5910",
+        "status": "timeout",
+        "error": "任务总时限已到",
+        "paused": null,
+        "pause_phase": "none",
+        "created_at": "2026-11-05 17:10:25"
+      }
+    ],
+    "tasks": [
+      {
+        "id": "t-20261105-152926-2324",
+        "status": "running"
+      },
+      {
+        "id": "t-20261105-152828-7336",
+        "status": "done"
+      },
+      {
+        "id": "t-20261105-090019-9616",
+        "status": "failed"
+      },
+      {
+        "id": "t-20261105-003005-4821",
+        "status": "done"
+      },
+      {
+        "id": "t-20261104-yitou-liewu",
+        "status": "done"
+      },
+      {
+        "id": "t-20261104-170153-4815",
+        "status": "running"
+      },
+      {
+        "id": "t-20261029-102103-5910",
+        "status": "running"
+      },
+      {
+        "id": "t-20261026-144301-2960",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261026-143712-9532",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261024-164131-1112",
+        "status": "done"
+      },
+      {
+        "id": "t-20261022-135720-4105",
+        "status": "done"
+      },
+      {
+        "id": "t-20261022-115109-7965",
+        "status": "done"
+      },
+      {
+        "id": "t-20261022-114544-7009",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261022-104907-1000",
+        "status": "running"
+      },
+      {
+        "id": "t-20261022-094358-1904",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261022-093242-3125",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261021-091028-7000",
+        "status": "done"
+      },
+      {
+        "id": "t-20261021-084217-4203",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261020-224354-8342",
+        "status": "done"
+      },
+      {
+        "id": "t-20261020-004357-7391",
+        "status": "done"
+      },
+      {
+        "id": "t-20261019-124342-6067",
+        "status": "done"
+      },
+      {
+        "id": "t-20261019-093327-6806",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261019-064239-3306",
+        "status": "done"
+      },
+      {
+        "id": "t-20261019-044236-2423",
+        "status": "done"
+      },
+      {
+        "id": "t-20261019-004415-9032",
+        "status": "done"
+      },
+      {
+        "id": "t-20261019-001256-4332",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261019-001249-0300",
+        "status": "done"
+      },
+      {
+        "id": "t-20261018-164218-5124",
+        "status": "done"
+      },
+      {
+        "id": "t-20261018-132331-7475",
+        "status": "done"
+      },
+      {
+        "id": "t-20261018-093033-2457",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261018-003812-8166",
+        "status": "done"
+      },
+      {
+        "id": "t-20261018-001358-5211",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261017-235638-9659",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261017-235317-8442",
+        "status": "done"
+      },
+      {
+        "id": "t-20261017-202125-8867",
+        "status": "done"
+      },
+      {
+        "id": "t-20261017-191322-6640",
+        "status": "done"
+      },
+      {
+        "id": "t-20261017-062031-5640",
+        "status": "done"
+      },
+      {
+        "id": "t-20261017-003556-4955",
+        "status": "done"
+      },
+      {
+        "id": "t-20261016-181135-6727",
+        "status": "done"
+      },
+      {
+        "id": "t-20261016-174056-4326",
+        "status": "done"
+      },
+      {
+        "id": "t-20261016-113328-9082",
+        "status": "done"
+      },
+      {
+        "id": "t-20261016-113130-1598",
+        "status": "done"
+      },
+      {
+        "id": "t-20261015-003418-5129",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261015-002905-8580",
+        "status": "cancelled"
+      },
+      {
+        "id": "t-20261012-200539-2806",
+        "status": "done"
+      },
+      {
+        "id": "t-20261012-195924-3413",
+        "status": "done"
+      },
+      {
+        "id": "t-20261012-154955-7775",
+        "status": "done"
+      }
+    ]
+  },
+  "run_details": {
+    "r-20261106-094827-3523": {
+      "id": "r-20261106-094827-3523",
+      "task_id": "t-20261104-170153-4815",
+      "status": "running",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": null,
+      "error": ""
+    },
+    "r-20261106-094824-4277": {
+      "id": "r-20261106-094824-4277",
+      "task_id": "t-20261022-104907-1000",
+      "status": "running",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": null,
+      "error": ""
+    },
+    "r-20261106-094822-4307": {
+      "id": "r-20261106-094822-4307",
+      "task_id": "t-20261105-152926-2324",
+      "status": "running",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": null,
+      "error": ""
+    },
+    "r-20261106-094817-8634": {
+      "id": "r-20261106-094817-8634",
+      "task_id": "t-20261029-102103-5910",
+      "status": "running",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": null,
+      "error": ""
+    },
+    "r-20261106-090022-1472": {
+      "id": "r-20261106-090022-1472",
+      "task_id": "t-20261105-090019-9616",
+      "status": "failed",
+      "interrupted": "restart",
+      "interrupted_at": "2026-11-06 09:47:13",
+      "ended_at": "2026-11-06 09:47:13",
+      "error": "服务重启中断，可重试"
+    },
+    "r-20261106-083948-1126": {
+      "id": "r-20261106-083948-1126",
+      "task_id": "t-20261029-102103-5910",
+      "status": "failed",
+      "interrupted": "restart",
+      "interrupted_at": "2026-11-06 09:47:13",
+      "ended_at": "2026-11-06 09:47:13",
+      "error": "服务重启中断，可重试"
+    },
+    "r-20261106-083058-6777": {
+      "id": "r-20261106-083058-6777",
+      "task_id": "t-20261105-152926-2324",
+      "status": "failed",
+      "interrupted": "restart",
+      "interrupted_at": "2026-11-06 09:47:13",
+      "ended_at": "2026-11-06 09:47:13",
+      "error": "服务重启中断，可重试"
+    },
+    "r-20261106-081358-1596": {
+      "id": "r-20261106-081358-1596",
+      "task_id": "t-20261022-104907-1000",
+      "status": "failed",
+      "interrupted": "restart",
+      "interrupted_at": "2026-11-06 09:47:13",
+      "ended_at": "2026-11-06 09:47:13",
+      "error": "服务重启中断，可重试"
+    },
+    "r-20261106-055755-2822": {
+      "id": "r-20261106-055755-2822",
+      "task_id": "t-20261104-170153-4815",
+      "status": "failed",
+      "interrupted": "restart",
+      "interrupted_at": "2026-11-06 09:47:13",
+      "ended_at": "2026-11-06 09:47:13",
+      "error": "服务重启中断，可重试"
+    },
+    "r-20261106-042553-9551": {
+      "id": "r-20261106-042553-9551",
+      "task_id": "t-20261105-152926-2324",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 08:30:55",
+      "error": "任务总时限已到"
+    },
+    "r-20261106-033426-2214": {
+      "id": "r-20261106-033426-2214",
+      "task_id": "t-20261029-102103-5910",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 08:39:29",
+      "error": "任务总时限已到"
+    },
+    "r-20261106-030828-8219": {
+      "id": "r-20261106-030828-8219",
+      "task_id": "t-20261022-104907-1000",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 08:13:33",
+      "error": "任务总时限已到"
+    },
+    "r-20261106-030005-8137": {
+      "id": "r-20261106-030005-8137",
+      "task_id": "t-20260929-030024-4439",
+      "status": "done",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 03:13:42",
+      "error": ""
+    },
+    "r-20261106-015242-9914": {
+      "id": "r-20261106-015242-9914",
+      "task_id": "t-20261104-170153-4815",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 05:57:51",
+      "error": "任务总时限已到"
+    },
+    "r-20261106-003002-5467": {
+      "id": "r-20261106-003002-5467",
+      "task_id": "t-20261105-003005-4821",
+      "status": "done",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 00:51:46",
+      "error": ""
+    },
+    "r-20261106-002051-8753": {
+      "id": "r-20261106-002051-8753",
+      "task_id": "t-20261105-152828-7336",
+      "status": "done",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 04:22:00",
+      "error": ""
+    },
+    "r-20261106-002047-3319": {
+      "id": "r-20261106-002047-3319",
+      "task_id": "t-20261105-152926-2324",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 04:25:51",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-222904-4371": {
+      "id": "r-20261105-222904-4371",
+      "task_id": "t-20261029-102103-5910",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 03:34:07",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-220550-8375": {
+      "id": "r-20261105-220550-8375",
+      "task_id": "t-20261022-104907-1000",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 03:08:04",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-214735-6265": {
+      "id": "r-20261105-214735-6265",
+      "task_id": "t-20261104-170153-4815",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 01:52:39",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-200143-6309": {
+      "id": "r-20261105-200143-6309",
+      "task_id": "t-20261105-152926-2324",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 00:20:45",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-195727-1027": {
+      "id": "r-20261105-195727-1027",
+      "task_id": "t-20261105-152828-7336",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-06 00:03:16",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-174730-9762": {
+      "id": "r-20261105-174730-9762",
+      "task_id": "t-20261104-170153-4815",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-05 21:47:32",
+      "error": "任务总时限已到"
+    },
+    "r-20261105-171605-0233": {
+      "id": "r-20261105-171605-0233",
+      "task_id": "t-20261105-152926-2324",
+      "status": "failed",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-05 20:01:41",
+      "error": "第 4 章起草失败: ；本场停用：claude-code：上游余额或调用额度不足（QUOTA）；cline-cli：API 凭据认证失败（AUTH）；gemini-cli：本地 CLI 启动失败（可执行文件不存在，与供应商无关）（TOOL_LAUNCH）；github-copilot-cli：上游余额或调用额度不足（QUOTA）"
+    },
+    "r-20261105-171029-5845": {
+      "id": "r-20261105-171029-5845",
+      "task_id": "t-20261105-152828-7336",
+      "status": "failed",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-05 19:57:25",
+      "error": "第 6 章起草失败: ；本场停用：claude-code：上游余额或调用额度不足（QUOTA）；cline-cli：API 凭据认证失败（AUTH）；gemini-cli：本地 CLI 启动失败（可执行文件不存在，与供应商无关）（TOOL_LAUNCH）；github-copilot-cli：上游余额或调用额度不足（QUOTA）"
+    },
+    "r-20261105-171025-3047": {
+      "id": "r-20261105-171025-3047",
+      "task_id": "t-20261029-102103-5910",
+      "status": "timeout",
+      "interrupted": null,
+      "interrupted_at": null,
+      "ended_at": "2026-11-05 22:28:46",
+      "error": "任务总时限已到"
+    }
+  }
+}
