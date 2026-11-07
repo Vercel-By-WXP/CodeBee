@@ -27,6 +27,27 @@ _PLATS = ("", "fanqie", "qimao")
 _MODES = ("", "direct", "draft", "schedule")
 _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
+# C0 阶段③ triage 校准（11-07）：prompt 里书单是「1. 书名」编号展示的，
+# 模型常回「《书名》」/「1. 书名」。原来 `book not in books` 一刀清空，
+# 明明是真书名也被判幻觉 → 确认卡丢书名，用户得再说一遍。
+_BOOK_NOISE_RE = re.compile(r"^[\s\u3000]*\d+\s*[\.、)）]\s*")
+_BOOK_WRAP_RE = re.compile(r"[\s\u3000《》<>\"'\"`]+")
+
+
+def _norm_book(s):
+    """归一成可比形式：去编号前缀 / 书名号 / 引号 / 各类空白。"""
+    return _BOOK_WRAP_RE.sub("", _BOOK_NOISE_RE.sub("", str(s or "").strip())).strip()
+
+
+def _match_book(raw, books):
+    """命中真实清单就回填清单原值；不命中 / 多重命中一律空（fail-closed）。"""
+    key = _norm_book(raw)
+    if not key:
+        return ""
+    hits = [b for b in books if _norm_book(b) == key]
+    return hits[0] if len(hits) == 1 else ""
+
+
 _PROMPT_TMPL = (
     "你是 CodeBee 的意图分类器。用户在任务输入框说了一句话，请判断它想触发"
     "哪个动作。动作类型：publish=发布/直发/存草稿/定时发布已写好的章；"
@@ -60,11 +81,12 @@ def _parse_reply(text, books):
     if not isinstance(j, dict):
         return None
     kind = str(j.get("kind") or "").strip()
+    if kind == "none":
+        return None        # prompt 契约里的「都不是」显式收口
     if kind not in _KINDS:
         return None
-    book = str(j.get("book") or "").strip()[:40]
-    if book and book not in books:
-        book = ""          # 书名必须来自真实清单，防幻觉
+    # 书名先归一再与真实清单精确比对；命中回填清单原值，判不了就空。
+    book = _match_book(j.get("book"), books)
     try:
         count = int(j.get("count") or 0)
     except (TypeError, ValueError):
@@ -80,12 +102,15 @@ def _parse_reply(text, books):
     t = str(j.get("time") or "").strip()
     if not _TIME_RE.match(t):
         t = ""
-    if kind == "none":
-        return None
     it = {"kind": kind, "book": book, "count": count,
           "platform": platform, "mode": mode, "time": t}
     if it["kind"] == "publish" and it["mode"] == "":
         it["mode"] = "direct"
+    # 定时但没给合法时间：草稿整单作废。前端 triageRemote 会把缺失 time
+    # 默默补成默认 10:10（chat-intent.js 的 def:true），用户没说的发布时间
+    # 不该由分类器编出来；退回原样建任务（fail-open），确定性路径自有确认卡。
+    if it["kind"] == "publish" and it["mode"] == "schedule" and not it["time"]:
+        return None
     if it["kind"] != "publish":
         # 控制类/查询只要 kind+book，其余字段不带（防下游误读）
         it = {"kind": kind, "book": book, "count": 0,
