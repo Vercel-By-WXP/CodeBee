@@ -1,0 +1,182 @@
+{
+  "captured_at": "2026-11-07 13:50:02",
+  "source": "生产 8765 的 GET /api/state（只读）+ %APPDATA%/CodeBee/runs/*/run.json 全量只读扫描；零写入、零推断",
+  "note": "身份判据只消费 run 的 task_id / status / created_at，这三个字段是落盘真原文、未改写；schema / recovery_ok / successful_model_steps 是用完整 run 经 judge_run + judge_recovery 实算后冻结的结论（不重存 120~180KB 的 messages / agent_context / outline / output 长转录，避免裁字符串造出假反例）。派生样本单列在 derived 里、明确标注为合成、不计真样本数。",
+  "scan_summary": {
+    "total_run_json_judged": 1217,
+    "schema_counts": {
+      "unknown": 1004,
+      "serial_novel": 152,
+      "doc": 61
+    },
+    "recovery_ok_count": 3,
+    "recovery_ok_ids": [
+      "r-20261025-201512-6940",
+      "r-20261026-164352-1755",
+      "r-20261026-235405-0280"
+    ],
+    "resume_task_run_count": 92,
+    "resume_task_schema_counts": {
+      "unknown": 92
+    },
+    "resume_task_recovery_ok_count": 0
+  },
+  "recovery_window": "2026-11-09 14:09",
+  "resume_task_ids": [
+    "t-20261022-104907-1000",
+    "t-20261029-102103-5910",
+    "t-20261104-170153-4815",
+    "t-20261105-152926-2324"
+  ],
+  "real_runs": [
+    {
+      "id": "r-20261025-201512-6940",
+      "task_id": "t-20261024-205325-3934",
+      "status": "failed",
+      "created_at": "2026-10-25 20:15:12",
+      "schema": "doc",
+      "recovery_ok": true,
+      "n_steps": 18,
+      "successful_model_steps": 2,
+      "category": "false_green_historical"
+    },
+    {
+      "id": "r-20261026-164352-1755",
+      "task_id": "t-20261024-205731-8118",
+      "status": "done",
+      "created_at": "2026-10-26 16:43:52",
+      "schema": "doc",
+      "recovery_ok": true,
+      "n_steps": 8,
+      "successful_model_steps": 1,
+      "category": "false_green_historical"
+    },
+    {
+      "id": "r-20261026-235405-0280",
+      "task_id": "t-20261024-205325-3934",
+      "status": "done",
+      "created_at": "2026-10-26 23:54:05",
+      "schema": "doc",
+      "recovery_ok": true,
+      "n_steps": 18,
+      "successful_model_steps": 3,
+      "category": "false_green_historical"
+    },
+    {
+      "id": "r-20261106-055755-2822",
+      "task_id": "t-20261104-170153-4815",
+      "status": "failed",
+      "created_at": "2026-11-06 05:57:55",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 99,
+      "successful_model_steps": 11,
+      "category": "same_task_old"
+    },
+    {
+      "id": "r-20261106-081358-1596",
+      "task_id": "t-20261022-104907-1000",
+      "status": "failed",
+      "created_at": "2026-11-06 08:13:58",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 22,
+      "successful_model_steps": 5,
+      "category": "same_task_old"
+    },
+    {
+      "id": "r-20261106-083058-6777",
+      "task_id": "t-20261105-152926-2324",
+      "status": "failed",
+      "created_at": "2026-11-06 08:30:58",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 23,
+      "successful_model_steps": 2,
+      "category": "same_task_old"
+    },
+    {
+      "id": "r-20261106-083948-1126",
+      "task_id": "t-20261029-102103-5910",
+      "status": "failed",
+      "created_at": "2026-11-06 08:39:48",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 19,
+      "successful_model_steps": 0,
+      "category": "same_task_old"
+    },
+    {
+      "id": "r-20261106-094817-8634",
+      "task_id": "t-20261029-102103-5910",
+      "status": "running",
+      "created_at": "2026-11-06 09:48:17",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 20,
+      "successful_model_steps": 1,
+      "category": "anchor_active_before_restart"
+    },
+    {
+      "id": "r-20261106-094822-4307",
+      "task_id": "t-20261105-152926-2324",
+      "status": "running",
+      "created_at": "2026-11-06 09:48:22",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 23,
+      "successful_model_steps": 1,
+      "category": "anchor_active_before_restart"
+    },
+    {
+      "id": "r-20261106-094824-4277",
+      "task_id": "t-20261022-104907-1000",
+      "status": "running",
+      "created_at": "2026-11-06 09:48:24",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 25,
+      "successful_model_steps": 5,
+      "category": "anchor_active_before_restart"
+    },
+    {
+      "id": "r-20261106-094827-3523",
+      "task_id": "t-20261104-170153-4815",
+      "status": "running",
+      "created_at": "2026-11-06 09:48:27",
+      "schema": "unknown",
+      "recovery_ok": false,
+      "n_steps": 23,
+      "successful_model_steps": 1,
+      "category": "anchor_active_before_restart"
+    }
+  ],
+  "derived": {
+    "note": "以下均为合成样本，仅用于反向覆盖边界，不计入真被判过样本数。",
+    "new_recovery_run": {
+      "id": "r-derived-20261109-142001",
+      "task_id": "t-20261104-170153-4815",
+      "status": "done",
+      "created_at": "2026-11-09 14:20:01",
+      "verdict": {
+        "type": "serial_novel",
+        "publishable": true,
+        "review_status": "evaluated",
+        "review_degraded": false,
+        "review_independence": "independent",
+        "global_reviewer_count": 2,
+        "review_quality": "assessed",
+        "quality_status": "ok",
+        "review_degradation_reasons": []
+      },
+      "steps": [
+        {
+          "n": 1,
+          "status": "done",
+          "cost_usd": 1.2,
+          "summary": "修订完成"
+        }
+      ]
+    }
+  }
+}

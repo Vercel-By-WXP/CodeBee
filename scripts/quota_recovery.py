@@ -6,6 +6,8 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
 
     py -3.13 scripts/quota_recovery.py --check                      # 只读，随时可跑
     py -3.13 scripts/quota_recovery.py --verify-run <run_id>       # 只读，出人话结论
+    py -3.13 scripts/quota_recovery.py --verify-run <run_id> --as-recovery
+                                        # 11-09 第 ⑨ 步：核对这条 run 是本次续跑新建的
     py -3.13 scripts/quota_recovery.py --check-inherit            # 只读，报续跑会倒退哪几章
     py -3.13 scripts/quota_recovery.py --resume-tasks --dry-run    # 只看会做什么
     py -3.13 scripts/quota_recovery.py --resume-tasks --confirm-quota-restored
@@ -100,6 +102,19 @@ verdict」代码化，避免 11-09 靠人眼比对字段。
     判不了一律 `unknown`、不上绿标。`--check` 只在重启后（`retry_ready=True`）
     才拉详情，额度见底期零额外 GET。
 
+14. **「`--verify-run` 给了通过」不等于「验的是本次续跑」**（11-07 13:5x）：
+    九步 ⑧ 打印新 run id、⑨ 靠人手复制 `$RID`；`judge_recovery` 只看
+    verdict / steps，**不看 `status`、也不核对身份**。生产 1217 条落盘 run
+    实算有 3 条历史 doc run（10-25/10-26，含 1 条 `status=failed`）会被判
+    「恢复判据：通过」——贴错就是验收假绿，紧接着四本齐跑抢见底池；
+    贴成 4 个待续跑 task 下的 92 条见底期旧 run 则全是 `schema=unknown`
+    → 又会误导「额度还没恢复」。新增 `--as-recovery` 开关（**默认关闭**，
+    普通诊断路径逐字不变）：纯函数 `judge_verify_target` 核对
+    `task_id ∈ 4 个待续跑 task`、`created_at` 严格晚于恢复窗口（复用
+    `parse_recovery_at`，解析不了 fail-closed）、`status=done`；判不了一律
+    `unknown` 不上绿标，非 `ok` 时打印「验收不可用」、不再输出恢复结论并
+    返回 2。九步命令块 ⑨ 已带这个开关作为消费点。
+
 脚本**不替人判断额度是否恢复**：`--resume-tasks` 必须显式带
 `--confirm-quota-restored`，否则拒绝任何写操作。写之前还会用 `plan_resume`
 核对真实 `/api/automation` 清单：待恢复 id 缺失、或白名单外出现被停用任务，
@@ -166,6 +181,9 @@ _INCOMPLETE_REVIEW_WORDS = ("未完成", "未判定", "证据不完整", "缺少
 # 摘要层只有 error 可用（interrupted 不在 _state_run_summary 白名单里）。
 RESTART_INTERRUPT_TEXT = "服务重启中断"
 REAP_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+# 11-07 13:5x：run.created_at 的落盘格式（与 /api/runs/<id> 详情一致）。
+# 只认完整秒，拿半截时间做字典序比较会把「同一分钟创建」误判成更早。
+RUN_CREATED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 
 def _open(base):
@@ -393,6 +411,95 @@ def human_recovery(r):
         lines.extend("  - " + b for b in r["blockers"])
     lines.extend("  提醒：" + n for n in r["notes"])
     return "\n".join(lines)
+
+
+# ------------------------------- 11-09 第 ⑨ 步：验收回执的身份核对（只读，11-07 13:5x）
+
+def _parse_run_created_at(text):
+    """run.created_at 落盘格式 YYYY-MM-DD HH:MM:SS；解析不了返回 None。
+
+    用 datetime 而不是字符串字典序：恢复窗口只有分钟（14:09），拿它跟
+    「2026-11-09 14:09:01」直接比字符串会得出错误结论。
+    """
+    s = str(text or "").strip()
+    if not RUN_CREATED_AT_RE.match(s):
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def judge_verify_target(run, at_text=None, expected_task_ids=None):
+    """核对 `--verify-run` 传进来的 run 是不是「本次 11-09 续跑」产生的那条。
+
+    九步 ⑧ 打印新 run id、⑨ 靠人手复制 `$RID`。`judge_recovery` 只看
+    verdict / steps，**完全不看 status、也不核对身份**：生产 1217 条落盘
+    run 实算有 3 条历史 doc run（其中 1 条 `status=failed`）会被判
+    「恢复判据：通过」；贴错成它们就是验收假绿，接下来四本齐跑抢见底池。
+    贴成 4 个待续跑 task 下的 92 条见底期旧 run 则全是 `schema=unknown`
+    → 又会误导「额度还没恢复」。
+
+    三道身份判据（纯函数、零 IO）：
+      1. `task_id` ∈ 4 个待续跑 task（排除别的历史书）；
+      2. `created_at` 严格晚于恢复窗口（复用 `parse_recovery_at`，排除同
+         task 的旧 run；解析不了 fail-closed）；
+      3. `status=done`（`queued/running` 还在跑、`failed/cancelled/timeout`
+         流程没收尾，都不该下验收结论）。
+    字段缺失 / 格式异常一律 `unknown`、不上绿标；`unknown` 与 `blocked`
+    分开报，别把「判不了」说成「不通过」。
+
+    `at_text` 默认 `QUOTA_RECOVERY_AT`，可用 `--recovery-at` 覆盖（守测注入）。
+    """
+    expected = set(expected_task_ids or RESUME_TASK_IDS)
+    blockers, notes, judged = [], [], 0
+
+    def fail(kind, text):
+        return {"verdict": kind, "blockers": blockers + [text],
+                "notes": notes, "judged_fields": judged}
+
+    # 恢复窗口先解析；解析不了就别往下比时间（fail-closed，时间只是下界）。
+    window_at = parse_recovery_at(QUOTA_RECOVERY_AT if at_text is None else at_text)
+    if window_at is None:
+        return fail("unknown", "恢复时刻解析不了（%s）：判不了新 run 的时间下界，"
+                    "走 --recovery-at 传可解析的时刻" % str(at_text)[:80])
+
+    tid = run.get("task_id")
+    if not isinstance(tid, str) or not tid:
+        return fail("unknown", "run 详情缺 task_id：判不了是不是本次续跑的书")
+    judged += 1
+    if tid not in expected:
+        blockers.append("task_id=%s 不在 4 个待续跑 task 里：这是别的书 / 历史 run，"
+                        "别拿它下 11-09 验收结论" % tid)
+
+    created = _parse_run_created_at(run.get("created_at"))
+    if created is None:
+        return fail("unknown", "run 详情缺 created_at 或格式不是 "
+                    "YYYY-MM-DD HH:MM:SS（%r）：判不了是不是恢复后新建的"
+                    % run.get("created_at"))
+    judged += 1
+    if created <= window_at:
+        blockers.append("created_at=%s 不晚于恢复窗口 %s：这是重启前 / 见底期的旧 run，"
+                        "不是本次 retry 新建的" % (
+                            created.strftime("%Y-%m-%d %H:%M:%S"),
+                            window_at.strftime("%Y-%m-%d %H:%M")))
+
+    status = run.get("status")
+    if not isinstance(status, str) or not status:
+        return fail("unknown", "run 详情缺 status：判不了流程有没有收尾")
+    judged += 1
+    if status in ACTIVE_RUN_STATUSES:
+        blockers.append("status=%s，run 还在跑：此时 steps / verdict 未定稿，"
+                        "别拿中间态下验收结论，等它跑完再 --verify-run" % status)
+    elif status != "done":
+        blockers.append("status=%s，流程没收尾（failed / cancelled / timeout）："
+                        "就算 verdict 字段凑巧齐全也不是一次成功续跑" % status)
+    else:
+        notes.append("status=done 只表示流程收尾，质量结论仍看 verdict "
+                     "（pipeline.py:8867 按 publishable 判）；别按 status 反推额度")
+
+    return {"verdict": "blocked" if blockers else "ok",
+            "blockers": blockers, "notes": notes, "judged_fields": judged}
 
 
 # ------------------------------------------------- 恢复计划 / 续跑前置（纯函数）
@@ -1175,8 +1282,13 @@ def cmd_retry_one(base, task_id, confirm, dry_run, at_text=None):
     return 0
 
 
-def cmd_verify_run(base, run_id):
-    detail = api_get(base, "/api/runs/" + run_id)
+def cmd_verify_run(base, run_id, as_recovery=False, at_text=None):
+    try:
+        detail = api_get(base, "/api/runs/" + run_id)
+    except Exception as exc:
+        print("run 详情读不到（%s）：别拿它下 11-09 验收结论，先核对 ⑧ 打印的 $RID"
+              % str(exc)[:120])
+        return 2
     run = detail.get("run") or detail
     d = judge_run(run)
     print("%s  status=%s  schema=%s" % (run_id, d["status"], d["schema"]))
@@ -1197,6 +1309,18 @@ def cmd_verify_run(base, run_id):
             value = "%d 条（首条：%s…）" % (len(value), str(value[0])[:70])
         print("  %-26s %s" % (key, value))
     print("结论：" + human_verdict(d))
+    if as_recovery:
+        ident = judge_verify_target(run, at_text=at_text)
+        print("本次续跑身份核对：%s（真被判过 %d 项身份字段）" % (
+            ident["verdict"], ident["judged_fields"]))
+        for b in ident["blockers"]:
+            print("  [缺口] %s" % b)
+        for n in ident["notes"]:
+            print("  [提醒] %s" % n)
+        if ident["verdict"] != "ok":
+            print("验收不可用：上面的「结论」不能用来判断 11-09 额度是否恢复；"
+                  "核对 ⑧ 打印的新 run id，别贴错")
+            return 2
     print(human_recovery(judge_recovery(d)))
     return 0
 
@@ -1267,6 +1391,9 @@ def main(argv=None):
     ap.add_argument("--base", default=BASE, help="服务地址（隔离实例可覆盖，默认生产 8765）")
     ap.add_argument("--check", action="store_true", help="只读复核调度与暂停状态（默认）")
     ap.add_argument("--verify-run", metavar="RUN_ID", help="只读判一条 run 的 verdict")
+    ap.add_argument("--as-recovery", action="store_true",
+                    help="与 --verify-run 合用：核对这条 run 确实是本次 11-09 续跑新建的；"
+                         "身份不符判「验收不可用」并返回 2（默认关闭，普通诊断不受影响）")
     ap.add_argument("--check-inherit", action="store_true",
                     help="只读复现 retry 会继承的章号，报倒退章清单")
     ap.add_argument("--resume-tasks", action="store_true", help="开回 4 个定时任务（写操作）")
@@ -1287,7 +1414,9 @@ def main(argv=None):
         return cmd_resume_tasks(args.base, args.confirm_quota_restored,
                                 args.dry_run, args.recovery_at)
     if args.verify_run:
-        return cmd_verify_run(args.base, args.verify_run)
+        return cmd_verify_run(args.base, args.verify_run,
+                              as_recovery=args.as_recovery,
+                              at_text=args.recovery_at)
     if args.check_inherit:
         return cmd_check_inherit(args.base)
     return cmd_check(args.base)
