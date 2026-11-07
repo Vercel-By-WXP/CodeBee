@@ -31,6 +31,12 @@
        并提醒别因清单里还在就重跑 `--apply`（`outcome.record` 的 history
        会追加，重复写污染台账）。口径唯一真源 = `journey_sources.STAGE_TERMINALS`，
        不改判据 / 不改分母 / 不新增 IO。
+    7. 空清单守卫（23:1x 补，离线实证）：`data/exports/` 已 gitignore、CSV
+       不进仓，换机器或误清空后「只剩表头」会被误报成「0 行结论全空」+
+       `exit 0`，「真源目录指错」会打 `真被判过 0/0` 却仍 `exit 0`，
+       「文件不存在」直接抛裸 traceback。三者一律判 `unknown` / 人话拒跑 +
+       `exit 2`：判不了就不上绿标。0 字节文件原本走表头漂移 `exit 2`，
+       保持不变；正常清单（80 行 + 真源 80 待登记）行为零改动。
 
 填写格式（CSV 第 6 列「平台结论(待人工核对后填写)」）：
     平台|阶段|平台原话        例：qimao|signed|
@@ -128,8 +134,21 @@ def is_terminal_stage(stage):
     return str(stage or "").strip() in terminal_stages()
 
 
+class CsvMissingError(Exception):
+    """清单 CSV 不存在 / 不是文件：data/exports 已 gitignore，需重新导出。"""
+
+
 def read_csv(path):
-    """返回 (表头, 数据行)；行保留成 list，列数漂移要能被判据看见。"""
+    """返回 (表头, 数据行)；行保留成 list，列数漂移要能被判据看见。
+
+    文件不存在时不抛裸 FileNotFoundError：给出可执行的恢复命令，
+    由调用方统一转 exit 2（零 POST / 零 GET）。
+    """
+    if not Path(path).is_file():
+        raise CsvMissingError(
+            "清单 CSV 不存在或不是文件：%s；data/exports 已 gitignore、不进仓，"
+            "先跑 `py -3.13 scripts/export_outcome_gaps.py --prod` 重新导出"
+            % path)
     with open(path, "r", encoding="utf-8-sig", newline="") as fh:
         rows = list(csv.reader(fh))
     if not rows:
@@ -183,6 +202,11 @@ def judge_rows(header, rows, missing_ids):
             "reason": "表头漂移：期望 7 列逐字一致，实际 %r；"
                       "列错位会让结论贴到别的书上，整批拒写" % (header,)})
         return out
+    if not rows:
+        out["unknown"].append({
+            "row": 1, "task_id": "",
+            "reason": "清单 0 数据行：文件可能被清空 / 贴错 CSV，判不了；"
+                      "先跑 export_outcome_gaps.py --prod 重新导出"})
     missing = set(missing_ids or ())
     seen = set()
     for row_no, row in enumerate(rows, start=2):
@@ -226,6 +250,10 @@ def judge_rows(header, rows, missing_ids):
                           "terminal": is_terminal_stage(parsed["stage"])})
     if not missing:
         out["notes"].append("待登记清单为空：判不了任何一行归不归这本，fail-closed")
+        out["unknown"].append({
+            "row": 1, "task_id": "",
+            "reason": "真源零待登记：--data-dir 可能指错或落盘真源丢失，"
+                      "判不了任何一行归不归这本；先核对 --data-dir"})
     return out
 
 
@@ -249,6 +277,9 @@ def print_verdict(result, gaps):
         print("  回执登记覆盖：真被判过 %s/%s%s" % (
             registered, total,
             "（%.1f%%）" % (rate * 100) if isinstance(rate, (int, float)) else ""))
+        if not total:
+            print("  [提醒] 真源分母为 0：0/0 不是覆盖率达标，"
+                  "核对 --data-dir 是否指错或落盘真源是否丢失")
     for kind, label in (("blocked", "不通过"), ("unknown", "判不了")):
         for item in result[kind][:10]:
             print("  [%s 第 %s 行 %s] %s" % (
@@ -261,7 +292,11 @@ def print_verdict(result, gaps):
 
 
 def cmd_check(csv_path, data_dir):
-    header, rows = read_csv(csv_path)
+    try:
+        header, rows = read_csv(csv_path)
+    except CsvMissingError as exc:
+        print("拒判：%s" % exc)
+        return 2
     missing_ids, gaps = load_missing_ids(data_dir)
     result = judge_rows(header, rows, missing_ids)
     print_verdict(result, gaps)
@@ -288,7 +323,11 @@ def cmd_apply(csv_path, data_dir, base, dry_run, confirmed):
     if not confirmed:
         print("拒写：--apply 必须同时带 %s（人已逐本核对平台结论）" % HUMAN_FLAG)
         return 2
-    header, rows = read_csv(csv_path)
+    try:
+        header, rows = read_csv(csv_path)
+    except CsvMissingError as exc:
+        print("拒写：%s" % exc)
+        return 2
     # ② 清单判据 + ③ 写前复核：重新取一次落盘真源，防 CSV 编制期间别人登记过。
     missing_ids, gaps = load_missing_ids(data_dir)
     result = judge_rows(header, rows, missing_ids)
