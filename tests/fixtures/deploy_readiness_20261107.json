@@ -1,0 +1,28 @@
+{
+  "captured_at": "2026-11-07 23:52",
+  "source": "py -3.13 scripts/deploy_readiness.py --check-py38（本机真实只读对账，零 HTTP / 零写入）",
+  "note": "真被判过 971/971 共有文件。派生边界态由守测用 tmpdir 构造，单列标注、不计入真样本。",
+  "verdict": "ok",
+  "counts": {
+    "repo_files": 973,
+    "dep_files": 973,
+    "compared": 971,
+    "byte_equal": 970,
+    "eol_only": 1,
+    "content_diff": 0,
+    "only_repo": 2,
+    "only_dep": 2,
+    "unreadable": 0
+  },
+  "lists": {
+    "content_diff": [],
+    "eol_only": ["core/quality/constraints.py"],
+    "only_repo": ["core/publish/serial_gate.py", "作品信息-七猫.md"],
+    "only_dep": ["ui/index.html.bak-cspace-20261105b", "ui/index.html.bak-cspace-20261105c"]
+  },
+  "py38": {
+    "status": "ok",
+    "compiled": 276,
+    "failed": 0
+  }
+}
