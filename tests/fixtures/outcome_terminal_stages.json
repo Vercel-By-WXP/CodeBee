@@ -1,0 +1,91 @@
+{
+  "source": {
+    "note": "2026-11-07 22:0x 生产库只读取证 + 纯函数派生，零 HTTP、零写入；6 个 stage 全部在**同一本真实待登记 task** 上派生",
+    "data_dir": "%APPDATA%/CodeBee",
+    "probe_task_id": "t-20260913-000157-4217",
+    "method": "journey_sources.outcome_gaps(tasks, derived_outcomes, bindings)；derived 只在内存里给该 task 加一条 fanqie stage，不改落盘"
+  },
+  "scan_summary": {
+    "base_total": 81,
+    "base_registered": 1,
+    "base_rate": 0.0123,
+    "base_missing": 80,
+    "task_files": 115,
+    "outcomes_keys": 5,
+    "stages_count": 6,
+    "terminal_count": 3
+  },
+  "stage_truth": [
+    {
+      "stage": "submitted",
+      "terminal": false,
+      "registered_delta": 0,
+      "still_in_missing": true,
+      "kind": "wait",
+      "needs_quote": false
+    },
+    {
+      "stage": "in_review",
+      "terminal": false,
+      "registered_delta": 0,
+      "still_in_missing": true,
+      "kind": "wait",
+      "needs_quote": false
+    },
+    {
+      "stage": "live",
+      "terminal": false,
+      "registered_delta": 0,
+      "still_in_missing": true,
+      "kind": "good",
+      "needs_quote": false
+    },
+    {
+      "stage": "rejected",
+      "terminal": true,
+      "registered_delta": 1,
+      "still_in_missing": false,
+      "kind": "bad",
+      "needs_quote": true
+    },
+    {
+      "stage": "signing_rejected",
+      "terminal": true,
+      "registered_delta": 1,
+      "still_in_missing": false,
+      "kind": "bad",
+      "needs_quote": true
+    },
+    {
+      "stage": "signed",
+      "terminal": true,
+      "registered_delta": 1,
+      "still_in_missing": false,
+      "kind": "good",
+      "needs_quote": false
+    }
+  ],
+  "stage_order": [
+    "submitted",
+    "in_review",
+    "live",
+    "rejected",
+    "signing_rejected",
+    "signed"
+  ],
+  "stage_terminals": {
+    "signed": "accepted",
+    "rejected": "rejected",
+    "signing_rejected": "rejected"
+  },
+  "probe_task": {
+    "id": "t-20260913-000157-4217",
+    "type": "serial_novel",
+    "status": "done",
+    "created_at": "2026-09-13 00:01:57",
+    "title": "加班夜的天台(连载试跑D)"
+  },
+  "derived": {
+    "note": "守测重放只用 1 本真 task（相对 delta，不重放 115 本绝对数）；坏 stage / 缺原话等边界态另由 test_outcome_register.py 覆盖，不计这里的真样本"
+  }
+}

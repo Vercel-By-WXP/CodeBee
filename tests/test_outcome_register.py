@@ -32,6 +32,8 @@ spec.loader.exec_module(reg)
 REAL_READ_CSV = reg.read_csv
 
 FX = json.loads(FIXTURE.read_text(encoding="utf-8"))
+TF = json.loads((ROOT / "tests/fixtures/outcome_terminal_stages.json").read_text(
+    encoding="utf-8"))
 HEADER = FX["header"]
 REAL_ROWS = FX["real_rows"]
 MISSING = set(FX["missing_ids"])
@@ -435,6 +437,156 @@ class TestConsumptionPoints(_Case):
                         "交接单未写明人工确认标志")
         self.assertTrue("--template" in text,
                         "交接单未写明填写契约入口")
+
+
+class TestTerminalStageContract(_Case):
+    """22:0x：非终态 stage 不闭环，工具不许把它说成「登记完成即涨覆盖率」。
+
+    真值来自 tests/fixtures/outcome_terminal_stages.json（生产库只读取证 +
+    journey_sources.outcome_gaps 纯函数派生，6 个 stage 全在同一本真 task 上）。
+    """
+
+    def test_37_terminal_set_is_single_source_of_truth(self):
+        self.assertEqual(set(reg.terminal_stages()),
+                         set(reg.journey_sources.STAGE_TERMINALS))
+        self.assertEqual(6, TF["scan_summary"]["stages_count"])
+        self.assertEqual(3, TF["scan_summary"]["terminal_count"])
+        term = [t["stage"] for t in TF["stage_truth"] if t["terminal"]]
+        non = [t["stage"] for t in TF["stage_truth"] if not t["terminal"]]
+        self.assertEqual(sorted(TF["stage_terminals"]), sorted(term))
+        self.assertEqual(["in_review", "live", "submitted"], sorted(non))
+        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+        fn = next(n for n in tree.body
+                  if isinstance(n, ast.FunctionDef)
+                  and n.name == "terminal_stages")
+        body = ast.dump(fn)
+        # 只查「全文含某词」会被 docstring 假绿：必须真的读上游常量
+        self.assertIn("STAGE_TERMINALS", body,
+                      "terminal_stages 必须读上游常量，不许另抄词表")
+        self.assertIn("journey_sources", body)
+
+    def test_38_all_six_stages_classified_from_fixture(self):
+        """真被判过样本数 6/6：每个 stage 都真的被判过一次。"""
+        for t in TF["stage_truth"]:
+            self.assertEqual(t["terminal"],
+                             reg.is_terminal_stage(t["stage"]), t["stage"])
+        print("真被判过的 stage 样本数 %d/%d"
+              % (len(TF["stage_truth"]), len(TF["stage_truth"])))
+
+    def test_39_pure_function_replay_on_real_task(self):
+        """重放上游事实：非终态 +0 且仍在 missing，终态 +1 且消失。"""
+        js = reg.journey_sources
+        task = TF["probe_task"]
+        tid = task["id"]
+        base = js.outcome_gaps([task], {}, {})
+        self.assertEqual(0, base["registered"])
+        self.assertEqual([tid], [x["task_id"] for x in base["missing"]])
+        for t in TF["stage_truth"]:
+            derived = {tid: {"fanqie": {
+                "platform": "fanqie", "stage": t["stage"],
+                "quote": "平台原话" if t["needs_quote"] else ""}}}
+            got = js.outcome_gaps([task], derived, {})
+            self.assertEqual(t["registered_delta"],
+                             got["registered"] - base["registered"],
+                             t["stage"])
+            self.assertEqual(t["still_in_missing"],
+                             any(x["task_id"] == tid
+                                 for x in got["missing"]), t["stage"])
+        self.assertEqual(81, TF["scan_summary"]["base_total"])
+        self.assertEqual(1, TF["scan_summary"]["base_registered"])
+
+    def test_40_judge_rows_marks_terminal_without_signature_change(self):
+        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+        fn = next(n for n in tree.body
+                  if isinstance(n, ast.FunctionDef) and n.name == "judge_rows")
+        self.assertEqual(["header", "rows", "missing_ids"],
+                         [a.arg for a in fn.args.args])
+        self.assertEqual(3, len(_valid_rows()))
+        judged = reg.judge_rows(list(reg.EXPECTED_HEADER),
+                                _valid_rows(), MISSING)
+        self.assertEqual(3, judged["judged"])
+        by_id = {x["task_id"]: x for x in judged["ok"]}
+        for row in D["valid_rows"]:
+            stage = row["cell"].split("|")[1]
+            self.assertIn("terminal", by_id[row["task_id"]])
+            self.assertEqual(stage in TF["stage_terminals"],
+                             by_id[row["task_id"]]["terminal"],
+                             row["cell"])
+
+    def test_41_template_lists_both_groups_and_warns(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(0, reg.main(["--template"]))
+        text = buf.getvalue()
+        for phrase in ("终态", "非终态", "覆盖率不变", "别重跑"):
+            self.assertIn(phrase, text)
+        # 按分组行首定位：别让示例行的同一句话替分组行假绿
+        ls = text.splitlines()
+        term_line = next((l for l in ls
+                          if l.strip().startswith("终态（登记后覆盖率")), None)
+        non_line = next((l for l in ls
+                         if l.strip().startswith("非终态（覆盖率不变")), None)
+        self.assertIsNotNone(term_line, "template 缺终态分组行")
+        self.assertIsNotNone(non_line, "template 缺非终态分组行")
+        both = term_line + non_line
+        for stage in TF["stage_order"]:
+            self.assertIn(stage, both, "分组行漏了 stage %s" % stage)
+        self.assertIn("fanqie|in_review", text)
+
+    def test_42_check_reports_split_not_fake_green(self):
+        self.write_csv(_valid_rows())
+        rc, text, calls = self.run_cli([])
+        self.assertEqual(0, rc, text)
+        self.assertEqual([], calls["post"])
+        self.assertEqual([], calls["get"])
+        for phrase in ("终态 2", "非终态 1", "覆盖率不变", "别重跑"):
+            self.assertIn(phrase, text)
+        self.assertNotIn("全部闭环", text)
+
+    def test_43_dry_run_reports_split_and_zero_io(self):
+        self.write_csv(_valid_rows())
+        rc, text, calls = self.run_cli(
+            ["--apply", "--dry-run", "--confirm-human-reviewed"])
+        self.assertEqual(0, rc, text)
+        self.assertEqual([], calls["post"])
+        self.assertEqual([], calls["get"])
+        self.assertIn("终态 2", text)
+        self.assertIn("非终态 1", text)
+        self.assertIn("别重跑", text)
+
+    def test_44_apply_output_warns_non_terminal(self):
+        self.write_csv(_valid_rows())
+        stages = {}
+        for row in D["valid_rows"]:
+            parts = row["cell"].split("|")
+            stages[row["task_id"]] = (parts[0], parts[1])
+
+        def _get(path):
+            tid = path.split("/")[-2]
+            plat, stage = stages[tid]
+            return {"platforms": {plat: {"stage": stage}}}
+
+        rc, text, calls = self.run_cli(
+            ["--apply", "--confirm-human-reviewed"], get_side_effect=_get)
+        self.assertEqual(0, rc, text)
+        self.assertEqual(3, len(calls["post"]))
+        self.assertEqual(3, len(calls["get"]))
+        self.assertIn("3 本写后复核通过", text)  # 旧口径保留
+        for phrase in ("终态 2", "非终态 1", "覆盖率不变", "别重跑"):
+            self.assertIn(phrase, text)
+
+    def test_45_handover_documents_terminal_gap(self):
+        lines = HANDOVER.read_text(encoding="utf-8").splitlines()
+        para = next((l for l in lines
+                     if l.startswith("> **11-07 22:")
+                     and "非终态" in l), None)
+        self.assertIsNotNone(para, "第 3 节缺本轮终态口径段落")
+        for phrase in ("非终态", "覆盖率不变", "别重跑", "STAGE_TERMINALS",
+                       "+0", "submitted / in_review / live"):
+            self.assertIn(phrase, para, "第 3 节段落缺事实：%s" % phrase)
+        row = next((l for l in lines
+                    if l.startswith("| 11-07 | **ⓒ 补登工具修非终态")), None)
+        self.assertIsNotNone(row, "第 4 节缺变更日志行")
 
 
 if __name__ == "__main__":

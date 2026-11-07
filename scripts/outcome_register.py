@@ -23,6 +23,14 @@
     5. 枚举从 `core.publish.outcome.STAGES / PLATFORMS` 取，不另抄一份；
        `needs_quote` 沿用其刻意设计（不是硬校验），批量登记时缺原话判 `unknown`
        并整批拒写 —— 平台确实没给原话时，请人单独走 HTTP 入口登记，别混进批量。
+    6. 终态口径（22:0x 补，纯函数实证）：只有 `STAGE_TERMINALS` 里的
+       signed / rejected / signing_rejected 登记后让 `registered` +1 且从
+       `outcome_gaps.missing` 消失；submitted / in_review / live 是过程态，
+       POST 成功、GET 复核也一致，但**覆盖率不变、书仍留在清单里**。工具
+       必须分路报「终态 M 本 / 非终态 K 本」，不许把「登记完成」说成闭环；
+       并提醒别因清单里还在就重跑 `--apply`（`outcome.record` 的 history
+       会追加，重复写污染台账）。口径唯一真源 = `journey_sources.STAGE_TERMINALS`，
+       不改判据 / 不改分母 / 不新增 IO。
 
 填写格式（CSV 第 6 列「平台结论(待人工核对后填写)」）：
     平台|阶段|平台原话        例：qimao|signed|
@@ -105,6 +113,19 @@ def load_missing_ids(data_dir):
         if tid:
             ids.add(tid)
     return ids, gaps
+
+
+def terminal_stages():
+    """终态口径唯一真源：不另抄 stage 词表。"""
+    return frozenset(journey_sources.STAGE_TERMINALS)
+
+
+def is_terminal_stage(stage):
+    """该 stage 登记后是否让覆盖率 +1、从待登记清单消失。
+
+    非终态不是「填错」：它是合法的平台结论，只是覆盖率口径按终态计。
+    """
+    return str(stage or "").strip() in terminal_stages()
 
 
 def read_csv(path):
@@ -201,7 +222,8 @@ def judge_rows(header, rows, missing_ids):
         out["ok"].append({"row": row_no, "task_id": tid,
                           "platform": parsed["platform"],
                           "stage": parsed["stage"],
-                          "quote": parsed["quote"]})
+                          "quote": parsed["quote"],
+                          "terminal": is_terminal_stage(parsed["stage"])})
     if not missing:
         out["notes"].append("待登记清单为空：判不了任何一行归不归这本，fail-closed")
     return out
@@ -214,6 +236,12 @@ def print_verdict(result, gaps):
         result["judged"], result["total"], len(result["skip"])))
     print("  ok=%d  blocked=%d  unknown=%d" % (
         len(result["ok"]), len(result["blocked"]), len(result["unknown"])))
+    if result["ok"]:
+        term = sum(1 for x in result["ok"] if x.get("terminal"))
+        non = len(result["ok"]) - term
+        print("  其中终态 %d 本（覆盖率 +%d、从待登记清单消失）；"
+              "非终态 %d 本（覆盖率不变，仍会出现在清单，别重跑）"
+              % (term, term, non))
     total = (gaps or {}).get("total")
     registered = (gaps or {}).get("registered")
     rate = (gaps or {}).get("registration_rate")
@@ -248,8 +276,10 @@ def cmd_check(csv_path, data_dir):
               "即可，不必填满 %d 行；零证据 ≠ 从未投过，证据只是线索"
               % result["total"])
         return 0
-    print("可登记 %d 本；确认无误后跑 --apply --dry-run，再看 --apply" %
-          len(result["ok"]))
+    term = sum(1 for x in result["ok"] if x.get("terminal"))
+    print("可登记 %d 本（终态 %d 本 → 覆盖率 +%d；非终态 %d 本 → "
+          "覆盖率不变）；确认无误后跑 --apply --dry-run，再看 --apply"
+          % (len(result["ok"]), term, term, len(result["ok"]) - term))
     return 0
 
 
@@ -306,6 +336,12 @@ def cmd_apply(csv_path, data_dir, base, dry_run, confirmed):
                 x["task_id"], got.get("stage"), x["stage"]))
     print("登记完成：%d 本写后复核通过，%d 本异常" % (
         len(result["ok"]) - len(bad), len(bad)))
+    term = sum(1 for x in result["ok"] if x.get("terminal"))
+    non = len(result["ok"]) - term
+    if non:
+        print("  其中非终态 %d 本：覆盖率不变，这些书仍会出现在待登记清单"
+              "（正常）；别因清单里还在就重跑 --apply（会重复写 history）"
+              % non)
     for line in bad:
         print("  [异常] %s" % line)
     _, after = load_missing_ids(data_dir)
@@ -323,12 +359,18 @@ def template():
     print("  <平台>|<阶段>|<平台原话>")
     print("  平台：%s" % "/".join(sorted(outcome.PLATFORMS)))
     print("  阶段：%s" % "/".join(outcome.STAGE_ORDER))
+    print("  终态（登记后覆盖率 +1、从待登记清单消失）：%s"
+          % "/".join(s for s in outcome.STAGE_ORDER
+                     if is_terminal_stage(s)))
+    print("  非终态（覆盖率不变、书仍在清单里；别重跑）：%s"
+          % "/".join(s for s in outcome.STAGE_ORDER
+                     if not is_terminal_stage(s)))
     print("  驳回类（%s）必须带第 3 段原话，否则整批判不了、拒写" %
           "/".join(sorted(k for k, v in outcome.STAGES.items()
                           if v.get("needs_quote"))))
     print("示例：")
     print("  qimao|signed|")
-    print("  fanqie|in_review")
+    print("  fanqie|in_review   ← 非终态：覆盖率不变，别重跑")
     print("  fanqie|rejected|缺乏吸引力，建议修改开篇")
     print("留空 = 这本还没核对（skip，不写）；核对结果若是「从未投稿」，"
           "留空合法，不必填满（零证据 ≠ 从未投过，台账证据只是线索）。"
