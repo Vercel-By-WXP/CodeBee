@@ -17,6 +17,13 @@
 
 守测全部从**落盘原文**取证（交接单 / 脚本 AST / main.py AST），
 零夹具、零合成样本、零 HTTP、零写入；也禁止自己变成「真跑九步」的入口。
+
+20:2x 追加（唯一现行写入口）：倒查发现第 3 条 1349 行「恢复前置（必做）」
+还留着一套裸 curl 循环（硬编码 4 次 toggle，不判窗口 / 不核对清单 / 不复核），
+与九步「别手敲 curl」和 ②③ 的五道闸直接冲突；同一条 1350 行却又说
+「恢复调度用 --resume-tasks」。1431 行 11-05 旧口径「额度恢复后先解除暂停」
+也已被 16:3x 纠正但没标废弃。修法只改文字（删除线 + 废弃标记 + 指向九步），
+再用 test_17..20 把「九步是唯一现行写入口」锁住。
 """
 import ast
 import pathlib
@@ -283,6 +290,76 @@ class NineStepsContract(unittest.TestCase):
                 if n.func.id in ("eval", "exec", "system"):
                     forbidden_calls.append(n.func.id)
         self.assertEqual([], forbidden_calls)
+
+    def _handover_lines(self):
+        return HANDOVER.read_text(encoding="utf-8").splitlines()
+
+    def test_17_no_live_post_outside_nine_steps(self):
+        """未标废弃的 -X POST 只准出现在九步命令块内，别再有第二套写命令。"""
+        posts = [(i + 1, l) for i, l in enumerate(self._handover_lines())
+                 if "-X POST" in l]
+        self.assertEqual(2, len(posts),
+                         "写命令行数变了，先确认是不是又多了一套：%s"
+                         % [n for n, _ in posts])
+        for no, line in posts:
+            inside = self.d["open_line"] <= no <= self.d["close_line"]
+            retired = "~~" in line or "已废弃" in line
+            self.assertTrue(inside or retired,
+                            "第 %d 行是未标废弃的现行写命令：%s"
+                            % (no, line[:110]))
+
+    def test_18_recovery_front_matter_points_to_nine_steps(self):
+        """第 3 条恢复前置必须把人指向 ②③，旧 curl 循环必须标废弃。"""
+        lines = self._handover_lines()
+        head = next(l for l in lines
+                    if l.startswith("      **恢复前置")
+                    and "automation.json" in l)
+        for flag in ("--resume-tasks --dry-run",
+                     "--resume-tasks --confirm-quota-restored"):
+            self.assertIn(flag, head)
+        self.assertIn("别手敲 curl", head)
+        old = next(l for l in lines if "for id in auto-" in l)
+        for word in ("~~", "已废弃", "勿执行", "九步"):
+            self.assertIn(word, old)
+
+    def test_19_old_pause_advice_marked_deprecated(self):
+        """11-05 的「解除暂停续跑」旧口径必须显式废弃，不然 11-09 会照抄。"""
+        old = next(l for l in self._handover_lines()
+                   if "r-20261105-155231-0915/pause" in l)
+        for word in ("~~", "已废弃", "解除暂停 ≠ 可以 retry", "--check"):
+            self.assertIn(word, old)
+
+    def test_20_hardcoded_auto_ids_match_script_whitelist(self):
+        """交接单里硬编码的 4 个 auto id 必须与脚本 TASK_IDS 逐字一致。"""
+        line = next(l for l in self._handover_lines() if "for id in auto-" in l)
+        handover_ids = sorted(set(re.findall(r"auto-[0-9-]+", line)))
+        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+        script_ids = []
+        for n in tree.body:
+            if (isinstance(n, ast.Assign) and len(n.targets) == 1
+                    and isinstance(n.targets[0], ast.Name)
+                    and n.targets[0].id == "TASK_IDS"
+                    and isinstance(n.value, (ast.Tuple, ast.List))):
+                script_ids = [e.value for e in n.value.elts
+                              if isinstance(e, ast.Constant)]
+        self.assertEqual(4, len(handover_ids), handover_ids)
+        self.assertEqual(sorted(script_ids), handover_ids)
+
+    def test_21_change_log_quote_block_intact(self):
+        """19:55 插段曾把 `> **冻结区**` 整行吃掉，这里锁住引用块不被截断。"""
+        lines = self._handover_lines()
+        start = next(i for i, l in enumerate(lines)
+                     if "11-07 19:55 补九步命令块" in l)
+        end = next((i for i, l in enumerate(lines)
+                    if l.startswith("> **冻结区**")), None)
+        self.assertIsNotNone(end,
+                             "冻结区行被吃掉或引用前缀丢了（会变成裸行）")
+        self.assertLess(start, end)
+        for n in range(start + 1, end):
+            s = lines[n].strip()
+            if s:
+                self.assertTrue(s.startswith(">"),
+                                "第 %d 行引用块断裂：%s" % (n + 1, s[:80]))
 
     def test_16_handover_keeps_crlf(self):
         """交接单是 CRLF 共享文件，别被 autocrlf 整文件翻成 LF。"""
