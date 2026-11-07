@@ -66,7 +66,18 @@ def _state(reaped=False, extra_runs=None):
 
 
 def _details():
-    return {r["id"]: r for r in REAL_RUNS}
+    out = {r["id"]: dict(r) for r in REAL_RUNS}
+    # 15:4x：_state_runs(reaped=True) 已在摘要层写 interrupted=restart，
+    # 详情层必须自洽 —— 摘要有标记而详情没有，正是 13:20 收尸判据专防的
+    # 「收尸只做一半」。⑧ 新增第五道闸后真写路径守测要提供完整详情。
+    # 派生时刻不是真实落盘值，只用于让守测状态内部自洽。
+    at = "2026-11-09 14:20:01"
+    for rid, d in out.items():
+        if str(rid).startswith("r-20261106-0948"):
+            d.update({"status": "failed", "interrupted": "restart",
+                      "interrupted_at": at, "ended_at": at,
+                      "error": "服务重启中断，可重试"})
+    return out
 
 
 def _inherit(reaped=False):

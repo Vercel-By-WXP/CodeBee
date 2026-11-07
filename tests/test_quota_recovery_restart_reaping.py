@@ -257,13 +257,26 @@ class RestartReapingTest(unittest.TestCase):
         self.assertNotIn("可 POST /api/tasks/<id>/retry", text)
 
     def test_14_source_anchors_no_dead_code(self):
-        """锁接线：判据真被 --check 消费，且不采恒为 None 的假字段。"""
+        """锁接线：判据真被 ⑥ 与 ⑧ 同时消费，且不采恒为 None 的假字段。
+
+        15:4x ⑧ 新增第五道闸后，⑥ 的调用改成共用 restart_anchor_ids /
+        collect_reap_details（不再内联拼 expected_ids），两套闸必须同源：
+        只装在 ⑥ 时，唯一烧额度的 ⑧ 会拿 retry_ready 假绿真 POST。
+        """
         src = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("judge_restart_reaping(state, details, expected_ids=expected_ids)", src)
+        self.assertIn("restart_anchor_ids(state)", src)
+        self.assertIn("collect_reap_details(base, state, details)", src)
+        tree = ast.parse(src)
+        calls = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id == "judge_restart_reaping"]
+        self.assertEqual(len(calls), 2,
+                         "⑥ --check 与 ⑧ --retry-one 各一处消费点；"
+                         "少一处=写入闸没判收尸，多一处=口径分叉")
         self.assertIn("elif reap[\"verdict\"] != \"ok\":", src)
+        self.assertIn('if reap["verdict"] != "ok" and not dry_run:', src)
         self.assertNotIn('"interrupted": r.get("interrupted")', src,
                          "/api/state 摘要不带 interrupted，别再采恒 None 的字段")
-        tree = ast.parse(src)
         fn = next(n for n in tree.body
                   if isinstance(n, ast.FunctionDef) and n.name == "judge_restart_reaping")
         self.assertEqual([a.arg for a in fn.args.args],

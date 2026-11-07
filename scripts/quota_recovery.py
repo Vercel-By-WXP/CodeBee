@@ -201,6 +201,10 @@ _INCOMPLETE_REVIEW_WORDS = ("未完成", "未判定", "证据不完整", "缺少
 # 收尸写入的 error 形如「服务重启中断，可重试」；store.py:933 老账回填也认这个前缀。
 # 摘要层只有 error 可用（interrupted 不在 _state_run_summary 白名单里）。
 RESTART_INTERRUPT_TEXT = "服务重启中断"
+# 11-07 15:4x：重启前那批 active run 的 id 前缀。id 重启前后不变，
+# 是 judge_restart_reaping 唯一无歧义锚点；⑥ --check 与 ⑧ --retry-one
+# 必须共用，别一处硬编码、一处另筛，导致两套闸口径漂移。
+RESTART_BATCH_PREFIX = "r-20261106-0948"
 REAP_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 # 11-07 13:5x：run.created_at 的落盘格式（与 /api/runs/<id> 详情一致）。
 # 只认完整秒，拿半截时间做字典序比较会把「同一分钟创建」误判成更早。
@@ -675,6 +679,38 @@ def _run_reaped_by_restart(summary):
     return str(summary.get("error") or "").startswith(RESTART_INTERRUPT_TEXT)
 
 
+def restart_anchor_ids(state):
+    """重启前那批 active run 的 id —— ⑥ 与 ⑧ 共用的无歧义锚点。
+
+    id 重启前后不变，11-06 09:47:13 的历史老账不会落在这个前缀里。
+    抽成函数是为了防止两套闸各筛各的（前缀一改就会静默分叉）。
+    """
+    return [str(r.get("id") or "") for r in (state.get("runs") or [])
+            if isinstance(r, dict)
+            and str(r.get("id") or "").startswith(RESTART_BATCH_PREFIX)]
+
+
+def collect_reap_details(base, state, details=None):
+    """把 state 里所有带收尸专属 error 的 run 详情补齐，已有则复用、零重复 GET。
+
+    judge_restart_reaping 除核对 4 条锚点，还要扫「非锚点但带 restart 标记」
+    的更晚记录来防老账冒充；只拿 4 个待续跑 task 的详情会漏掉别的 task
+    被一并收尸的候选。⑥ 与 ⑧ 都走这里，保证判据的数据范围逐字一致。
+    """
+    out = dict(details or {})
+    for row in (state.get("runs") or []):
+        if not isinstance(row, dict) or not _run_reaped_by_restart(row):
+            continue
+        rid = str(row.get("id") or "")
+        if not rid or rid in out:
+            continue
+        try:
+            out[rid] = api_get(base, "/api/runs/" + rid).get("run") or {}
+        except Exception:
+            out[rid] = {}   # 读不到交给 unknown 分支，不编造
+    return out
+
+
 def judge_restart_reaping(state, details, expected_ids=None):
     """核对「本次重启收尸」是否干净落在重启前那批 active run 上 —— 纯函数，零 IO。
 
@@ -1064,8 +1100,10 @@ def plan_retry_one(state, inherit_plan, task_id=None, confirm=False,
         「一章不丢」里继承最完整的一本；
       - state：judge_retry_readiness 判「无 active run + 4 个 task 全终态」；
       - window_reached：judge_quota_window()["reached"] is True。
-    真写时四道闸任一不过即拒；dry-run 只放宽「窗口 / 收尸前置」两条
-    （这两条 11-09 重启后才会满足），其余照拦并打印提醒。
+    本纯函数真写时四道闸任一不过即拒；dry-run 只放宽「窗口 / 续跑前置」
+    两条，其余照拦并打印提醒。**重启收尸自洽性不是这里的闸**：它是
+    cmd_retry_one 的第五道闸（要读 /api/runs/<id> 详情，纯函数拿不到），
+    与 ⑥ --check 共用 judge_restart_reaping，别把 retry_ready 当成收尸判据。
     """
     results = {r["task_id"]: r for r in (inherit_plan or {}).get("results") or []}
     recommended = (inherit_plan or {}).get("recommended_first") or ""
@@ -1281,7 +1319,7 @@ def cmd_check(base):
     pause = state.get("pause_control") or {}
     print("pause_control: %s" % json.dumps(pause, ensure_ascii=False))
     paused = [r for r in (state.get("runs") or [])
-              if str(r.get("id") or "").startswith("r-20261106-0948")]
+              if str(r.get("id") or "").startswith(RESTART_BATCH_PREFIX)]
     print("09:48 批次 run %d 条：%s" % (
         len(paused), ", ".join("%s(%s/%s)" % (r.get("id"), r.get("status"),
                                               r.get("pause_phase")) for r in paused)))
@@ -1299,20 +1337,10 @@ def cmd_check(base):
             "batch_ids": [], "batch_size": 0,
             "blockers": ["收尸核对未执行"], "notes": [], "unknown_ids": []}
     if ready["retry_ready"]:
-        reaped = [r for r in (state.get("runs") or [])
-                  if isinstance(r, dict) and _run_reaped_by_restart(r)]
-        details = {}
-        for row in reaped:
-            rid = str(row.get("id") or "")
-            if not rid:
-                continue
-            try:
-                details[rid] = api_get(base, "/api/runs/" + rid).get("run") or {}
-            except Exception:
-                details[rid] = {}   # 读不到交给 unknown 分支，不编造
-        # 重启前那批 active run 的 id 在重启前后不变；09:48 批次观察项就是锚点。
-        expected_ids = [str(r.get("id") or "") for r in paused]
-        reap = judge_restart_reaping(state, details, expected_ids=expected_ids)
+        details = collect_reap_details(base, state)
+        # 锚点与详情取数都走共用函数，⑧ 的第五道闸与之逐字同源。
+        reap = judge_restart_reaping(
+            state, details, expected_ids=restart_anchor_ids(state))
         print("重启收尸自洽性：%s（真被判过 %d 条锚点，本次批次 %s / %d 条）" % (
             reap["verdict"], reap["judged_count"],
             reap["batch_at"] or "(无)", reap["batch_size"]))
@@ -1397,7 +1425,7 @@ def cmd_check_inherit(base):
 
 
 def cmd_retry_one(base, task_id, confirm, dry_run, at_text=None):
-    print("11-09 单本续跑护栏（只 retry 一本；真写前四道闸，任一不过零 POST）")
+    print("11-09 单本续跑护栏（只 retry 一本；真写前五道闸，任一不过零 POST）")
     # 闸 1/2 在第一次 GET 之前判，保证「拒写且零 IO」。
     window = judge_quota_window(at_text)
     pre = plan_retry_one({}, {}, task_id=task_id, confirm=confirm,
@@ -1435,8 +1463,32 @@ def cmd_retry_one(base, task_id, confirm, dry_run, at_text=None):
     if not plan["allow"]:
         print("拒绝写：%s" % "；".join(plan["blockers"]))
         return 2
+    # ⑤（11-07 15:4x 补）重启收尸自洽性：⑥ --check 把 reap!=ok 当「别开跑」
+    # 的阻断条件，而 ⑧ 是唯一真烧额度的写入口 —— judge_retry_readiness 只看
+    # 「无 active run + 4 task 全终态」，看不出终态是不是本次重启收尸造成的，
+    # 手工改状态 / 收尸只做一半 / 老账冒充都会让它假绿。上面 details 已对
+    # 4 个待续跑 task 的全部 run 拉过详情，collect_reap_details 只补其它 task
+    # 的收尸候选，零重复 GET；判不了（unknown）与 blocked 一律不上绿标。
+    reap_details = collect_reap_details(base, state, details)
+    reap = judge_restart_reaping(
+        state, reap_details, expected_ids=restart_anchor_ids(state))
+    print("重启收尸自洽性：%s（真被判过 %d 条锚点，本次批次 %s / %d 条）" % (
+        reap["verdict"], reap["judged_count"],
+        reap["batch_at"] or "(无)", reap["batch_size"]))
+    for b in reap["blockers"]:
+        print("  [缺口] %s" % b)
+    for n in reap["notes"]:
+        print("  [提醒] %s" % n)
+    if reap["verdict"] != "ok" and not dry_run:
+        print("拒绝写：同一 state 上 ⑥ --check 会判「别开跑」（收尸自洽性 %s）；"
+              "先重跑 --check / 人工核对 /api/runs/<id>，别按 retry_ready 假绿烧额度。"
+              % reap["verdict"])
+        return 2
     if dry_run:
-        print("dry-run 结束，生产未改动（真写要去掉 --dry-run 且四道闸全过）")
+        if reap["verdict"] != "ok":
+            print("dry-run 提醒：收尸自洽性=%s，真写时第五道闸会拒写；"
+                  "11-09 重启后先重跑 --check" % reap["verdict"])
+        print("dry-run 结束，生产未改动（真写要去掉 --dry-run 且五道闸全过）")
         return 0
     try:
         res = api_post(base, "/api/tasks/%s/retry" % plan["target"], {})
