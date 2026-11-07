@@ -1,0 +1,33 @@
+{
+  "captured_at": "2026-11-07 15:24:32",
+  "source": "生产库 %APPDATA%/CodeBee/runs/*/run.json 全量只读扫描；不连 8765、零写入、零额度",
+  "scan_summary": {
+    "total_run_json_judged": 1217,
+    "total_steps_judged": 25182,
+    "runs_with_1310_step": 29,
+    "runs_with_429_literal_step": 40,
+    "real_quota_steps_frozen": 3
+  },
+  "real_quota_steps": [
+    {
+      "run_id": "r-20260927-092749-9887",
+      "step_n": 4,
+      "summary": "退出码 1；stderr/stdout: > build · glm-5.3-flash\n\nError: [1310][已达到 7 天使用上限，2026-09-28 09:45:56 后可继续使用。如需超限额按量付费使用，可联系管理员开启超额按量付费。][202609271014113c0412fc4d484c82]",
+      "source_run_json": "run.json"
+    },
+    {
+      "run_id": "r-20260927-092808-7309",
+      "step_n": 2,
+      "summary": "claude 返回 is_error: API Error: Request rejected (429) · [1310][已达到 7 天使用上限，2026-09-28 09:45:56 后可继续使用。如需超限额按量付费使用，可联系管理员开启超额按量付费。][202609271015510e6ba6547a984ba5]；日志错误行: {\"duration_api_ms\":433095,\"stop_reason\":\"stop_sequence\",\"session_id\":\"88f7fe56-9d51-436c-b450-46fa86d853b4\",\"total_cost_usd\":0.6231890000000001,\"usage\":{\"input_tokens\":44561,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":768,\"output_tokens\":16000,\"output_tokens_details\":{\"thinking_tokens\"",
+      "source_run_json": "run.json"
+    },
+    {
+      "run_id": "r-20260927-191156-5821",
+      "step_n": 1,
+      "summary": "大纲降级：编排者/作者模型均未返回可用大纲（claude 返回 is_error: API Error: Request rejected (429) · [1310][已达到 7 天使用上限，2026-09-28 09:45:56 后可继续使用。如需超限额按量付费使用，可联系管理员开启超额按量付费。][20260927194529091a65d7624f4d43]；日志错误行: {\"duration_api_ms\":0,\"stop_rea）",
+      "source_run_json": "run.json"
+    }
+  ],
+  "derived": "11-07 窗口后的 run 根本不存在，不伪造。守测复用 tests/fixtures/quota_recovery_verify_target.json 的 derived.new_recovery_run（已明确标注为合成、不计真样本数），只把上面 3 条真实 step 原文装进它的 steps 字段。",
+  "note": "冻结的是 step.summary 落盘真原文、未改写未截断（裁字符串会造出本来不存在的假反例）。口径：429 ≠ 限速；[1310] 七天上限 / 套餐到期 / RateLimitError 都不带 429 Too Many Requests 字面，靠 error_codes._QUOTA_STRONG 逐字对齐的零歧义词表识别。"
+}

@@ -434,6 +434,42 @@ def human_recovery(r):
     return "\n".join(lines)
 
 
+# --------------------------- 11-09 第 ⑨ 步：验收结论的可消费出口（11-07 15:2x）
+
+def judge_recovery_acceptance(d):
+    """把 `judge_recovery` 的 bool 结论变成 ⑨ 唯一可消费的 ok/blocked/unknown。
+
+    13:20~14:37 把「这条 run 是不是本次续跑」判得很严，但 ⑨ 最后一行只是
+    `print(human_recovery(judge_recovery(d)))` 然后无条件 `return 0`：
+    身份 ok 且「仍有 1 步 [1310] 额度耗尽原话」时，退出码、输出末尾与
+    「额度已恢复」**完全一样**，人/脚本会按交接单继续开其余 3 本去烧额度。
+    `recovery_ok` 全程只被 `human_recovery` 用来挑一行文案 = 零消费点。
+
+    另一半是口径：`judge_recovery` 把「schema 不认识 / 字段不足」也塞进
+    blockers 说成「恢复判据：未通过」，把**判不了**说成**不通过**。生产库
+    1217 条落盘 run 里 1004 条是 `schema=unknown`（`/api/state` 压缩 verdict
+    只留 publishable），拿到压缩版该 fail-closed 报 unknown，而不是宣布
+    「额度没恢复」。unknown 与 blocked 分开报，不上绿标也不误定性。
+
+    纯函数、零 IO；保留 `recovery_ok` 兼容键便于与旧判据逐条对照。
+    """
+    r = judge_recovery(d)
+    unknown_reasons = []
+    if d["schema"] == "unknown" or not d["fields_complete"]:
+        unknown_reasons.append(
+            "verdict schema=%s / 字段不足：判不了质量与额度，别拿 /api/state "
+            "压缩版下 11-09 结论，改看 /api/runs/<id> 详情" % d["schema"])
+    if unknown_reasons:
+        verdict = "unknown"
+    elif r["recovery_ok"]:
+        verdict = "ok"
+    else:
+        verdict = "blocked"
+    return {"verdict": verdict, "recovery_ok": r["recovery_ok"],
+            "blockers": r["blockers"], "unknown_reasons": unknown_reasons,
+            "notes": r["notes"]}
+
+
 # ------------------------------- 11-09 第 ⑨ 步：验收回执的身份核对（只读，11-07 13:5x）
 
 def _parse_run_created_at(text):
@@ -1494,6 +1530,26 @@ def cmd_verify_run(base, run_id, as_recovery=False, at_text=None,
                   "核对 ⑧ 打印的新 run id，别贴错")
             return 2
     print(human_recovery(judge_recovery(d)))
+    if as_recovery:
+        # ⑨ 结论契约：身份核对已 ok，这里必须把「额度恢复了吗」变成可消费的
+        # 退出码与动作。上面那行 print 是 14:00 的默认诊断路径，逐字保留；
+        # 判据只在带 --as-recovery 的九步第 ⑨ 步生效，不改普通诊断。
+        acc = judge_recovery_acceptance(d)
+        print("⑨ 验收结论：%s（身份真被判过 %d 项字段；恢复判据 %d 条缺口、"
+              "%d 条判不了）" % (
+                  acc["verdict"], ident["judged_fields"],
+                  len(acc["blockers"]), len(acc["unknown_reasons"])))
+        for u in acc["unknown_reasons"]:
+            print("  [判不了] %s" % u)
+        for b in acc["blockers"]:
+            print("  [恢复缺口] %s" % b)
+        for n in acc["notes"]:
+            print("  [提醒] %s" % n)
+        if acc["verdict"] != "ok":
+            print("验收不可用：别按「额度已恢复」宣布、别开其余 3 本、别进粘性 A/B；"
+                  "按上面缺口逐条排查（评审 / 质量缺口不等于额度没恢复）")
+            return 2
+        print("验收通过：可以进粘性 A/B；其余 3 本仍要串行，别四本齐跑抢见底池")
     return 0
 
 
