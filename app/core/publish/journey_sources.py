@@ -13,6 +13,7 @@ jsonl——没有事件采集时报告只能显示 unknown，指标等于没上�
 ``tasks/*.json``              ``task_created``（created_at）、取消/失败终态
 ``publish/outcomes.json``     作者登记的审核/签约结论（唯一可信的「过签」）
 ``publish/publish-*.jsonl``   发布动作、``quality_forced`` 强制放行
+``publish/books.json``        作品绑定，只用于给孤儿回执找**精确**归属候选
 ===========================  ==========================================
 
 三条刻意的保守口径（改之前先看守测）
@@ -241,6 +242,64 @@ def load_rescue_records(data_dir):
     return rows, stat, problems
 
 
+def _norm_title(value):
+    """标题规范化：只去书名号与空白并转小写，**绝不做模糊/相似度匹配**。
+
+    孤儿回执归属一旦用模糊匹配，就可能把 A 书的驳回挂到 B 书头上——
+    那比「判不了」更糟。宁可报 unknown 让人手工确认。
+    """
+    return str(value or "").strip().casefold().strip(
+        "《》〈〉『』「」\"' \t\r\n")
+
+
+def _orphan_work(book):
+    """从孤儿回执条目里取**显式**书名 ``work``；没有就空串，绝不猜键名。"""
+    if not isinstance(book, dict):
+        return ""
+    for entry in book.values():
+        if isinstance(entry, dict):
+            work = _norm_title(entry.get("work"))
+            if work:
+                return work
+    return ""
+
+
+def load_book_bindings(data_dir):
+    """只读 ``publish/books.json``（task ↔ 平台作品绑定）。
+
+    只产出「精确标题匹配」的原料，**不做归属推断、不改任何文件**。
+    文件不存在/损坏不是错误也不是绿灯：如实记进 stat / problems，
+    让孤儿回执一律保持 unknown。
+    """
+    path = Path(data_dir) / "publish" / "books.json"
+    stat = {"exists": path.exists(), "task_keys": 0, "titles": 0,
+            "bad_entries": 0}
+    problems = []
+    if not path.exists():
+        return {}, stat, problems
+    obj, err = _read_json(path)
+    if err or not isinstance(obj, dict):
+        problems.append("books.json " + (err or "不是 JSON 对象"))
+        return {}, stat, problems
+    bindings = {}
+    for tid, plats in obj.items():
+        if not isinstance(plats, dict):
+            stat["bad_entries"] += 1
+            continue
+        stat["task_keys"] += 1
+        titles = []
+        for _plat, entry in plats.items():
+            if not isinstance(entry, dict):
+                stat["bad_entries"] += 1
+                continue
+            title = _norm_title(entry.get("title"))
+            if title:
+                titles.append(title)
+                stat["titles"] += 1
+        bindings[str(tid)] = frozenset(titles)
+    return bindings, stat, problems
+
+
 def _outcome_terminal(book, task_id, problems):
     """从回执条目取终态 kind；返回 (kind 或 None, 是否有结论证据)。"""
     if not isinstance(book, dict):
@@ -275,6 +334,93 @@ def _ledger_for_task(records, task_id):
     return has_published, forced
 
 
+def outcome_gaps(tasks, outcomes, bindings):
+    """回执登记覆盖率契约（纯函数、只读、零推断）。
+
+    **这不是交付完成率**：它只回答「平台结论有没有被作者登记到对应的书」。
+    上线前置 ⓒ 要的就是这份可核对清单——之前只有一句「80 本 done 无结论」
+    的文本提醒，人根本不知道该去补哪几本。
+
+    返回结构化 dict：
+      -     ``total`` / ``registered`` / ``registration_rate``（**无可判样本时**
+        ``None``，显示 unknown；有样本而一本没登记才真的是 0.0）。
+        **分母只含「已登记终态结论」+「``status=done`` 但没有结论」**：
+        在跑 / 夭折 / 其它状态的书本来就不该有平台结论，放进分母只会
+        把覆盖率稀释成一个没有行动含义的数字，单列进 ``out_of_scope``；
+      - ``missing``：待登记 task 清单（``done`` ≠ 已投平台，只是流程收尾，
+        清单是「去核对」而不是「都欠一条结论」）；
+      - ``orphans``：挂在非 task 键上的回执 + 精确匹配候选。
+        只有 ``books.json`` 里标题**恰好命中一个** task 才给候选，且
+        ``verdict="exact"``；0 个或多个都 ``unknown``。脚本绝不改数据，
+        归属必须由人确认后走 ``outcome.record`` 补登。
+    """
+    novel = []
+    task_ids = set()
+    for task in tasks:
+        tid = str(task.get("id") or "").strip()
+        if not tid:
+            continue
+        task_ids.add(tid)
+        if str(task.get("type") or "") in NOVEL_TYPES:
+            novel.append(task)
+
+    missing, registered = [], 0
+    out_of_scope = {"running": 0, "aborted": 0, "other": 0}
+    for task in novel:
+        tid = str(task.get("id") or "").strip()
+        book = outcomes.get(tid)
+        terminal, has_stage = _outcome_terminal(book, tid, [])
+        if terminal:
+            registered += 1
+            continue
+        status = str(task.get("status") or "").strip().lower()
+        if status != "done":
+            key = ("running" if status in ("running", "queued", "pending")
+                   else "aborted" if status in ("cancelled", "failed", "timeout")
+                   else "other")
+            out_of_scope[key] += 1
+            continue
+        missing.append({
+            "task_id": tid,
+            "status": status,
+            "created_at": str(task.get("created_at") or ""),
+            "reason": "stage_not_terminal" if has_stage else "no_entry",
+        })
+
+    orphans = []
+    for key in sorted(k for k in outcomes if k not in task_ids):
+        book = outcomes[key] or {}
+        work = _orphan_work(book)
+        hits = ([tid for tid, titles in (bindings or {}).items()
+                 if work and work in titles] if work else [])
+        if len(hits) == 1:
+            verdict, candidates = "exact", sorted(hits)
+        else:
+            verdict, candidates = "unknown", []
+        orphans.append({
+            "key": str(key),
+            "work": work,
+            "candidate_task_ids": candidates,
+            "verdict": verdict,
+            "action": ("需人工确认后由 outcome.record 补登；脚本绝不改数据"
+                       if verdict == "exact" else
+                       "books.json 无唯一精确匹配 → 保持 unknown，不自动归属"),
+        })
+
+    total = registered + len(missing)
+    return {
+        "novel_tasks": len(novel),
+        "total": total,
+        "registered": registered,
+        "registration_rate": (round(registered / total, 4)
+                              if total else None),
+        "out_of_scope": out_of_scope,
+        "missing": sorted(missing, key=lambda x: x["task_id"]),
+        "orphans": orphans,
+        "matching": "books.json title 精确匹配（casefold + 去书名号）",
+    }
+
+
 def derive_events(data_dir=".", telemetry_since=None):
     """只读派生：返回 ``{events, coverage}``。
 
@@ -290,7 +436,9 @@ def derive_events(data_dir=".", telemetry_since=None):
     outcomes, outcome_stat, outcome_problems = load_outcomes(root)
     records, ledger_stat, ledger_problems = load_publish_records(root)
     rescue_rows, rescue_stat, rescue_problems = load_rescue_records(root)
-    problems += outcome_problems + ledger_problems + rescue_problems
+    bindings, binding_stat, binding_problems = load_book_bindings(root)
+    problems += (outcome_problems + ledger_problems + rescue_problems
+                 + binding_problems)
     since = contract.normalize_since(telemetry_since)
 
     # 按 task 聚合救火台账；坏行 / 无 source / 不认识的 kind 单列，不静默计入。
@@ -416,8 +564,11 @@ def derive_events(data_dir=".", telemetry_since=None):
         "data_dir": str(root.resolve()),
         "sources": {"tasks": task_stat, "outcomes": outcome_stat,
                     "publish_ledger": ledger_stat,
-                    "rescue_ledger": rescue_stat},
+                    "rescue_ledger": rescue_stat,
+                    "book_bindings": binding_stat},
         "counts": counts,
+        # 回执登记覆盖率（不是交付完成率）；清单供人补登记，脚本零写入。
+        "outcome_gaps": outcome_gaps(tasks, outcomes, bindings),
         "telemetry_since": since,
         "observed_rescues": sorted(OBSERVED_RESCUE_KINDS),
         "not_applicable_rescues": sorted(NOT_APPLICABLE_RESCUE_KINDS),
@@ -474,6 +625,16 @@ def human_coverage(coverage):
     if c["done_without_outcome"]:
         lines.append("提醒：%d 本 status=done 但没有平台结论，done ≠ 过签，判不了"
                      % c["done_without_outcome"])
+    g = coverage.get("outcome_gaps") or {}
+    if g:
+        exact = len([o for o in g["orphans"] if o["verdict"] == "exact"])
+        lines.append("回执登记覆盖（≠交付完成率；分母只含 done / 已登记结论）："
+                     "真被判过 %d/%d 本，待登记 %d 本；孤儿回执 %d 键"
+                     "（books.json 唯一精确匹配 %d / 保持 unknown %d）；"
+                     "在跑/夭折未纳分母 %d 本"
+                     % (g["registered"], g["total"], len(g["missing"]),
+                        len(g["orphans"]), exact, len(g["orphans"]) - exact,
+                        sum(g.get("out_of_scope", {}).values())))
     if coverage["problems"]:
         lines.append("读取异常 %d 条（前 3 条）：" % len(coverage["problems"]))
         for p in coverage["problems"][:3]:

@@ -22,6 +22,11 @@
 历史书一律判不了；只有 11-09 重启埋点真生效后，把那个真实时刻传进来，
 之后新建的书才会进分母。别提前传一个未来时间造绿标。
 
+``--outcome-gaps`` 打印「哪些书还没登记平台结论 / 哪些回执挂在非 task 键上」
+的**只读清单**（上线前置 ⓒ）。它不是交付完成率，也不会补登数据：孤儿
+回执只有 ``books.json`` 标题恰好命中唯一 task 才给候选，其余保持 unknown，
+归属必须由人确认后走 ``outcome.record``。``--gap-limit 0`` 看全量。
+
 dev / prod：
 - dev 用仓库 ``data/`` 或临时结构夹具验证口径，不需要起服务；
 - prod 只读本地/AppData 落盘文件，不连 8765、不写任何台账、不改调度。
@@ -56,6 +61,41 @@ def read_events(path):
                 rec = None
             out.append(rec if isinstance(rec, dict) else {"kind": "__bad_line__"})
     return out
+
+
+def human_gaps(gaps, limit=20):
+    """把回执登记缺口说成人话：这是给人补登记的清单，不是指标。"""
+    rate = gaps.get("registration_rate")
+    lines = [
+        "回执登记缺口（只读清单，脚本不补登、不改数据；≠ 交付完成率）",
+        "真被判过（已登记终态结论）%d/%d 本；覆盖率 %s"
+        % (gaps.get("registered", 0), gaps.get("total", 0),
+           "unknown（无可判样本）" if rate is None else "%.1f%%" % (rate * 100)),
+        "分母口径：只含 status=done 或已登记终态结论的书；"
+        "在跑 %d / 中途夭折 %d / 其它 %d 本不纳分母"
+        % (gaps.get("out_of_scope", {}).get("running", 0),
+           gaps.get("out_of_scope", {}).get("aborted", 0),
+           gaps.get("out_of_scope", {}).get("other", 0)),
+        "「待登记」= 流程已收尾但没结论，是去核对的清单，不等于都投过平台",
+    ]
+    missing = gaps.get("missing") or []
+    lines.append("待登记 %d 本：" % len(missing))
+    shown = missing if limit == 0 else missing[:max(0, limit)]
+    for m in shown:
+        lines.append("  - %s  status=%s  reason=%s  created=%s"
+                     % (m["task_id"], m["status"] or "?", m["reason"],
+                        m["created_at"] or "?"))
+    if len(shown) < len(missing):
+        lines.append("  ... 其余 %d 本（--gap-limit 0 看全量）"
+                     % (len(missing) - len(shown)))
+    orphans = gaps.get("orphans") or []
+    lines.append("孤儿回执 %d 键：" % len(orphans))
+    for o in (orphans if limit == 0 else orphans[:max(0, limit)]):
+        lines.append("  - %s  work=%s  verdict=%s  candidates=%s"
+                     % (o["key"], o["work"] or "?", o["verdict"],
+                        ",".join(o["candidate_task_ids"]) or "无"))
+        lines.append("      " + o["action"])
+    return "\n".join(lines)
 
 
 def _resolve_source(args, ap):
@@ -93,10 +133,18 @@ def main(argv=None):
                      help="读生产库 %%APPDATA%%/CodeBee（只读）")
     ap.add_argument("--telemetry-since", default=None,
                     help="埋点启用时刻 YYYY-MM-DD HH:MM[:SS]；不传=未声明，历史书一律判不了")
+    ap.add_argument("--outcome-gaps", action="store_true",
+                    help="打印回执登记缺口清单（只读，不补登、不改数据）")
+    ap.add_argument("--gap-limit", type=int, default=20,
+                    help="缺口清单每类最多列几条；0=全量（默认 20）")
     ap.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     args = ap.parse_args(argv)
     if not (args.events or args.data_dir or args.prod):
         ap.error("必须指定 --events / --data-dir / --prod 之一")
+    if args.outcome_gaps and args.events:
+        ap.error("--outcome-gaps 需要真实落盘（--prod / --data-dir），--events 没有回执数据")
+    if args.gap_limit < 0:
+        ap.error("--gap-limit 不能为负（0=全量）")
 
     kind, path = _resolve_source(args, ap)
     if kind == "events":
@@ -120,6 +168,9 @@ def main(argv=None):
         print(journey_sources.human_coverage(coverage))
         print("")
         print(journey.human_report(summary))
+        if args.outcome_gaps:
+            print("")
+            print(human_gaps(coverage["outcome_gaps"], limit=args.gap_limit))
     return 0
 
 
