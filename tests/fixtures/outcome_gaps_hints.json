@@ -4,7 +4,8 @@
     "data_dir": "%APPDATA%/CodeBee",
     "csv": "data/exports/outcome-gaps-20261107.csv",
     "http_source": "无",
-    "case_mismatch_note": "原 CSV 第 2 列有 1 处被静默小写（ai→AI）；本脚本取 books.json 原文，该真样本冻结进 real_rows 末条"
+    "case_mismatch_note": "原 CSV 第 2 列有 1 处被静默小写（ai→AI）；本脚本取 books.json 原文，该真样本冻结进 real_rows 末条",
+    "evidence_note": "2026-11-07 21:3x 生产库只读取证：publish-*.jsonl 全量事件，严格复用 journey_sources.LIVE_ACTIONS + ok=True 才算投稿证据；connect/probe/auto_fire 等失败或非投稿动作不计。零 HTTP、零写入。"
   },
   "scan_summary": {
     "csv_rows": 80,
@@ -17,7 +18,14 @@
     "missing_with_workdir_tail": 68,
     "csv_book_col_mismatch": 1,
     "real_rows_count": 13,
-    "real_rows_with_csv_truth": 13
+    "real_rows_with_csv_truth": 13,
+    "publish_event_files": 3,
+    "publish_events_total": 2005,
+    "publish_events_matched_missing": 699,
+    "live_ok_events": 235,
+    "tasks_with_publish_evidence": 23,
+    "tasks_without_publish_evidence": 57,
+    "bad_publish_lines": 0
   },
   "header": [
     "task_id",
@@ -189,6 +197,191 @@
     }
   ],
   "derived": {
-    "note": "守测中的缺 title / 缺 workdir / 多书名 / 已填结论等边界态，均由上述真样本派生，单列标注、不计真样本"
-  }
+    "note": "守测中的缺 title / 缺 workdir / 多书名 / 已填结论等边界态，均由上述真样本派生，单列标注、不计真样本",
+    "evidence_note": "守测中缺台账 / 坏行 / 非投稿动作 / ok=false 等边界态由上述真样本派生，单列标注、不计真样本"
+  },
+  "live_actions": [
+    "create_book",
+    "publish_short_story",
+    "upload_chapter",
+    "upload_chapter_scheduled"
+  ],
+  "evidence_samples": [
+    {
+      "task_id": "t-20260913-201955-0730",
+      "evidence": [
+        {
+          "file": "publish-202609.jsonl",
+          "platform": "qimao",
+          "action": "create_book",
+          "ok": true,
+          "day": "2026-09-19"
+        }
+      ],
+      "counts": [
+        {
+          "platform": "qimao",
+          "action": "create_book",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "task_id": "t-20260918-143825-5243",
+      "evidence": [
+        {
+          "file": "publish-202609.jsonl",
+          "platform": "qimao",
+          "action": "create_book",
+          "ok": true,
+          "day": "2026-09-19"
+        }
+      ],
+      "counts": [
+        {
+          "platform": "qimao",
+          "action": "create_book",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "task_id": "t-20260921-144532-2098",
+      "evidence": [
+        {
+          "file": "publish-202609.jsonl",
+          "platform": "qimao",
+          "action": "create_book",
+          "ok": true,
+          "day": "2026-09-24"
+        },
+        {
+          "file": "publish-202609.jsonl",
+          "platform": "fanqie",
+          "action": "create_book",
+          "ok": true,
+          "day": "2026-09-24"
+        },
+        {
+          "file": "publish-202609.jsonl",
+          "platform": "fanqie",
+          "action": "upload_chapter",
+          "ok": true,
+          "day": "2026-09-24"
+        }
+      ],
+      "counts": [
+        {
+          "platform": "fanqie",
+          "action": "upload_chapter",
+          "n": 7
+        },
+        {
+          "platform": "qimao",
+          "action": "create_book",
+          "n": 2
+        },
+        {
+          "platform": "fanqie",
+          "action": "create_book",
+          "n": 1
+        },
+        {
+          "platform": "qimao",
+          "action": "upload_chapter",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "task_id": "t-20261012-195924-3413",
+      "evidence": [
+        {
+          "file": "publish-202610.jsonl",
+          "platform": "qimao",
+          "action": "create_book",
+          "ok": true,
+          "day": "2026-10-14"
+        },
+        {
+          "file": "publish-202610.jsonl",
+          "platform": "qimao",
+          "action": "upload_chapter",
+          "ok": true,
+          "day": "2026-10-14"
+        },
+        {
+          "file": "publish-202610.jsonl",
+          "platform": "qimao",
+          "action": "upload_chapter",
+          "ok": true,
+          "day": "2026-10-14"
+        }
+      ],
+      "counts": [
+        {
+          "platform": "fanqie",
+          "action": "upload_chapter",
+          "n": 18
+        },
+        {
+          "platform": "qimao",
+          "action": "upload_chapter",
+          "n": 11
+        },
+        {
+          "platform": "fanqie",
+          "action": "upload_chapter_scheduled",
+          "n": 10
+        },
+        {
+          "platform": "qimao",
+          "action": "create_book",
+          "n": 1
+        },
+        {
+          "platform": "fanqie",
+          "action": "create_book",
+          "n": 1
+        }
+      ]
+    }
+  ],
+  "noise_events": [
+    {
+      "file": "publish-202610.jsonl",
+      "task_id": "t-20261003-230306-1499",
+      "platform": "fanqie",
+      "action": "upload_chapter_pending",
+      "ok": false
+    },
+    {
+      "file": "publish-202610.jsonl",
+      "task_id": "t-20261012-072110-5341",
+      "platform": "fanqie",
+      "action": "upload_chapter_draft",
+      "ok": true
+    },
+    {
+      "file": "publish-202610.jsonl",
+      "task_id": "t-20261012-200539-2806",
+      "platform": "qimao",
+      "action": "update",
+      "ok": true
+    },
+    {
+      "file": "publish-202610.jsonl",
+      "task_id": "t-20261012-200539-2806",
+      "platform": "fanqie",
+      "action": "publish",
+      "ok": true
+    },
+    {
+      "file": "publish-202610.jsonl",
+      "task_id": "t-20261012-200539-2806",
+      "platform": "fanqie",
+      "action": "draft",
+      "ok": true
+    }
+  ]
 }

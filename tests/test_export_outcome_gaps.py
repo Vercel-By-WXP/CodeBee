@@ -36,6 +36,9 @@ RF = json.loads(ROWS_FIXTURE.read_text(encoding="utf-8"))
 REAL = FX["real_rows"]
 MISSING_IDS = set(RF["missing_ids"])  # 80 个真实待登记 task_id
 SCAN = FX["scan_summary"]
+EVID = FX["evidence_samples"]        # 4 本真实投稿证据（生产台账原文派生）
+NOISE = FX["noise_events"]           # 5 条真实非投稿动作（含 ok=True 的 publish）
+LIVE_ACTIONS = set(FX["live_actions"])
 
 
 def _missing():
@@ -70,6 +73,24 @@ def _setup_data(tmp):
             }
     publish.joinpath("books.json").write_text(
         json.dumps(books, ensure_ascii=False), encoding="utf-8")
+    # 真实台账：4 本有 LIVE_ACTIONS 成功动作（按夹具 counts 全量重放），
+    # 另 5 条真实非投稿动作做噪声；守测只看字段，文件名不影响口径。
+    lines = []
+    for sample in EVID:
+        for cnt in sample["counts"]:
+            for _ in range(cnt["n"]):
+                lines.append(json.dumps({
+                    "task_id": sample["task_id"],
+                    "platform": cnt["platform"], "action": cnt["action"],
+                    "ok": True, "day": "", "ts": "", "title": "",
+                }, ensure_ascii=False))
+    for n in NOISE:
+        lines.append(json.dumps({
+            "task_id": n["task_id"], "platform": n["platform"],
+            "action": n["action"], "ok": n["ok"],
+        }, ensure_ascii=False))
+    publish.joinpath("publish-202610.jsonl").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8")
     return Path(tmp)
 
 
@@ -291,6 +312,128 @@ class _Case(unittest.TestCase):
         self.assertTrue("export_outcome_gaps.py" in text,
                         "交接单缺导出脚本记录")
         self.assertTrue("定位线索" in text, "交接单缺定位线索口径")
+
+    # ---- 21:3x 追加：台账证据只是线索，绝不进判据 / 不代填 ----
+    def test_16_evidence_reuses_project_live_actions(self):
+        """口径唯一真源：投稿证据必须复用 journey_sources.LIVE_ACTIONS。"""
+        self.assertEqual(sorted(ex.journey_sources.LIVE_ACTIONS),
+                         sorted(LIVE_ACTIONS))
+        self.assertEqual(23, SCAN["tasks_with_publish_evidence"])
+        self.assertEqual(57, SCAN["tasks_without_publish_evidence"])
+        self.assertEqual(235, SCAN["live_ok_events"])
+        self.assertEqual(0, SCAN["bad_publish_lines"])
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("LIVE_ACTIONS", source,
+                      "不许另造一套投稿动作词表")
+        for word in ("connect", "probe", "auto_fire"):
+            self.assertNotIn('"%s"' % word, source,
+                             "别把非投稿动作硬编码进证据口径")
+
+    def test_17_evidence_only_in_remark_not_in_columns_1_to_6(self):
+        """有/无台账两种情况下，第 1-6 列必须逐字相同。"""
+        rows_with = {r[0]: r for r in self._build()}
+        ledger = self.data / "publish" / "publish-202610.jsonl"
+        ledger.unlink()
+        rows_without = {r[0]: r for r in self._build()}
+        self.assertEqual(sorted(rows_with), sorted(rows_without))
+        for tid in rows_with:
+            self.assertEqual(rows_without[tid][:6], rows_with[tid][:6],
+                             "%s：证据不许改动第 1-6 列" % tid)
+            self.assertEqual("", rows_with[tid][5])
+        for sample in EVID:
+            remark = rows_with[sample["task_id"]][6]
+            self.assertIn(ex.EVIDENCE_LABEL, remark)
+            for cnt in sample["counts"]:
+                self.assertIn(cnt["action"], remark)
+                self.assertIn(cnt["platform"], remark)
+        zero = [r for r in rows_with.values()
+                if "无成功投稿动作" in r[6]]
+        self.assertEqual(len(rows_with) - len(EVID), len(zero))
+
+    def test_18_noise_and_failed_actions_are_not_evidence(self):
+        """真噪声：ok=True 的 publish 但不在 LIVE_ACTIONS，也不算投稿证据。"""
+        ev = ex.load_publish_evidence(self.data)
+        for tid, counts in ev.items():
+            for (_, action), n in counts.items():
+                self.assertIn(action, LIVE_ACTIONS)
+                self.assertGreater(n, 0)
+        noise_only = {n["action"] for n in NOISE} - LIVE_ACTIONS
+        self.assertTrue(noise_only, "夹具必须留真实非投稿动作")
+        self.assertNotIn("publish", {a for c in ev.values()
+                                     for (_, a) in c})
+        # 派生：把一本真样本的 LIVE 行 ok 改 false → 证据整体消失
+        target = EVID[0]["task_id"]
+        ledger = self.data / "publish" / "publish-202610.jsonl"
+        lines = []
+        for line in ledger.read_text(encoding="utf-8").splitlines():
+            obj = json.loads(line)
+            if obj.get("task_id") == target:
+                obj["ok"] = False
+            lines.append(json.dumps(obj, ensure_ascii=False))
+        ledger.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.assertNotIn(target, ex.load_publish_evidence(self.data))
+
+    def test_19_bad_ledger_lines_counted_and_fail_closed(self):
+        """派生：坏 JSON 行计数、不猜、不影响其它行。"""
+        ledger = self.data / "publish" / "publish-202610.jsonl"
+        ledger.write_text(ledger.read_text(encoding="utf-8")
+                          + "{not json\n", encoding="utf-8")
+        ev, stat = ex.load_publish_evidence(self.data, with_stat=True)
+        self.assertEqual(1, stat["bad_lines"])
+        self.assertGreater(stat["lines"], stat["bad_lines"])
+        self.assertIn(EVID[0]["task_id"], ev)
+        rows, stats = ex.build_rows(self.data)
+        self.assertEqual(1, stats["bad_ledger_lines"])
+        self.assertEqual(13, len(rows))
+
+    def test_20_evidence_never_reaches_judgement_layer(self):
+        """判据层零漂移：judge_rows / parse_conclusion 不接证据参数。"""
+        reg_tree = ast.parse((ROOT / "scripts/outcome_register.py").read_text(
+            encoding="utf-8"))
+        sigs = {n.name: [a.arg for a in n.args.args]
+                for n in reg_tree.body if isinstance(n, ast.FunctionDef)}
+        self.assertEqual(["header", "rows", "missing_ids"],
+                         sigs["judge_rows"])
+        self.assertEqual(["cell"], sigs["parse_conclusion"])
+        ex_tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+        for node in ast.walk(ex_tree):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("judge_rows", "parse_conclusion")):
+                self.fail("导出脚本不许调用判据：%s" % node.func.attr)
+        # 导出的 CSV 判据仍只认第 6 列：13 行全空 → 真被判过 0
+        rows = self._build()
+        judged = reg.judge_rows(list(reg.EXPECTED_HEADER), rows, MISSING_IDS)
+        self.assertEqual(0, judged["judged"])
+        self.assertEqual(13, len(judged["skip"]))
+        self.assertEqual([], judged["blocked"])
+
+    def test_21_blank_conclusion_is_legal_and_documented(self):
+        """零证据 ≠ 从未投稿；留空是合法核对结论，不必填满 80 行。"""
+        rows = self._build()
+        for row in rows:
+            for phrase in ("留空合法", "零证据 ≠ 从未投过", "不必填满"):
+                self.assertIn(phrase, row[6])
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(0, reg.main(["--template"]))
+        tpl = buf.getvalue()
+        self.assertIn("留空合法", tpl)
+        self.assertIn("不必填满", tpl)
+        lines = HANDOVER.read_text(encoding="utf-8").splitlines()
+        # 按行首定位第 3 节本轮段落：只查「全文含某词」会被表格行假绿
+        para = next((l for l in lines
+                     if l.startswith("> **11-07 21:")
+                     and "台账证据层" in l), None)
+        self.assertIsNotNone(para, "第 3 节缺本轮变更日志段")
+        for phrase in ("23/57", "留空合法", "台账证据",
+                       "零证据 ≠ 从未投过", "不进判据"):
+            self.assertTrue(phrase in para,
+                            "第 3 节段落缺口径：%s" % phrase)
+        row = next((l for l in lines
+                    if l.startswith("| 11-07 | **ⓒ 清单补台账证据层")), None)
+        self.assertIsNotNone(row, "第 4 节缺变更日志行")
+        self.assertTrue("23/57" in row, "第 4 节表格行缺口径")
 
 
 if __name__ == "__main__":

@@ -244,6 +244,9 @@ def cmd_check(csv_path, data_dir):
     if not result["ok"]:
         print("清单还没核对（%d 行结论全空）：别跑 --apply，"
               "先去平台核对后填第 6 列" % len(result["skip"]))
+        print("留空合法：核对结果若是从未投稿（台账零证据），第 6 列留空"
+              "即可，不必填满 %d 行；零证据 ≠ 从未投过，证据只是线索"
+              % result["total"])
         return 0
     print("可登记 %d 本；确认无误后跑 --apply --dry-run，再看 --apply" %
           len(result["ok"]))
@@ -327,7 +330,9 @@ def template():
     print("  qimao|signed|")
     print("  fanqie|in_review")
     print("  fanqie|rejected|缺乏吸引力，建议修改开篇")
-    print("留空 = 这本还没核对（skip，不写）。填完依次跑：")
+    print("留空 = 这本还没核对（skip，不写）；核对结果若是「从未投稿」，"
+          "留空合法，不必填满（零证据 ≠ 从未投过，台账证据只是线索）。"
+          "填完依次跑：")
     print("  py -3.13 scripts/outcome_register.py --check")
     print("  py -3.13 scripts/outcome_register.py --apply --dry-run " + HUMAN_FLAG)
     print("  py -3.13 scripts/outcome_register.py --apply " + HUMAN_FLAG)
