@@ -451,7 +451,8 @@ def _parse_run_created_at(text):
         return None
 
 
-def judge_verify_target(run, at_text=None, expected_task_ids=None):
+def judge_verify_target(run, at_text=None, expected_task_ids=None,
+                        expected_task_id=None):
     """核对 `--verify-run` 传进来的 run 是不是「本次 11-09 续跑」产生的那条。
 
     九步 ⑧ 打印新 run id、⑨ 靠人手复制 `$RID`。`judge_recovery` 只看
@@ -466,11 +467,17 @@ def judge_verify_target(run, at_text=None, expected_task_ids=None):
       2. `created_at` 严格晚于恢复窗口（复用 `parse_recovery_at`，排除同
          task 的旧 run；解析不了 fail-closed）；
       3. `status=done`（`queued/running` 还在跑、`failed/cancelled/timeout`
-         流程没收尾，都不该下验收结论）。
+         流程没收尾，都不该下验收结论）；
+      4. （11-07 补，仅当传入 `expected_task_id`）`task_id` 恰为 ⑧ 写后复核
+         确认的那本 target。前 3 道只要求「属于 4 本白名单」，可第 ③ 步会把
+         4 个定时任务开回来，窗口后**同一批次别本书**也可能跑出一条 done run；
+         ⑧ 明明只 retry 了 A，⑨ 贴成 B 照样给绿灯 —— 这是 ⑧ 的对账结论
+         没被 ⑨ 消费的裂缝。判不了就别把 ⑧ 的成果丢在人手复制里。
     字段缺失 / 格式异常一律 `unknown`、不上绿标；`unknown` 与 `blocked`
     分开报，别把「判不了」说成「不通过」。
 
     `at_text` 默认 `QUOTA_RECOVERY_AT`，可用 `--recovery-at` 覆盖（守测注入）。
+    `expected_task_id` 默认 None = 不收窄，保证 14:00 那条普通诊断路径逐字不变。
     """
     expected = set(expected_task_ids or RESUME_TASK_IDS)
     blockers, notes, judged = [], [], 0
@@ -485,6 +492,14 @@ def judge_verify_target(run, at_text=None, expected_task_ids=None):
         return fail("unknown", "恢复时刻解析不了（%s）：判不了新 run 的时间下界，"
                     "走 --recovery-at 传可解析的时刻" % str(at_text)[:80])
 
+    # 传了 ⑧ 的 target 但不在 4 本白名单里：是参数贴错，不是 run 的问题，
+    # 判不了就 fail-closed，别拿错参数去比出一个「不通过」。
+    expected_one = str(expected_task_id or "").strip()
+    if expected_one and expected_one not in expected:
+        return fail("unknown", "--expect-task=%s 不在 4 个待续跑 task 里："
+                    "先核对 ⑧ 打印的目标 task，别拿错参数下 11-09 结论"
+                    % expected_one)
+
     tid = run.get("task_id")
     if not isinstance(tid, str) or not tid:
         return fail("unknown", "run 详情缺 task_id：判不了是不是本次续跑的书")
@@ -492,6 +507,11 @@ def judge_verify_target(run, at_text=None, expected_task_ids=None):
     if tid not in expected:
         blockers.append("task_id=%s 不在 4 个待续跑 task 里：这是别的书 / 历史 run，"
                         "别拿它下 11-09 验收结论" % tid)
+    elif expected_one and tid != expected_one:
+        # ④ ⑧ 的写后复核说「只 A 新增 1 条 active run」，⑨ 必须消费这个 A。
+        blockers.append("task_id=%s 不是 ⑧ retry 的目标 %s：这是同一批次另一本书 / "
+                        "定时调度自己跑出来的 run，别拿它下 11-09 验收结论"
+                        % (tid, expected_one))
 
     created = _parse_run_created_at(run.get("created_at"))
     if created is None:
@@ -1410,12 +1430,17 @@ def cmd_retry_one(base, task_id, confirm, dry_run, at_text=None):
         print("POST 已发生不能回滚：先按 /api/state 与 /api/runs/<id> 核对，别直接跑 ⑨")
         return 1
     print("复核通过：只 %s 新增 1 条 active run，其余 3 本未动；"
-          "$RID 已与 /api/state 对账；接着 --verify-run %s --as-recovery 看 verdict"
-          % (plan["target"], new_run_id))
+          "$RID 已与 /api/state 对账；接着 --verify-run %s --as-recovery "
+          "--expect-task %s 看 verdict"
+          % (plan["target"], new_run_id, plan["target"]))
+    # $RID 与 $TID 都由 ⑧ 给，打印成一整行让人整行复制，别分两次手敲。
+    print("  ⑨ 完整命令：py -3.13 scripts/quota_recovery.py --verify-run %s "
+          "--as-recovery --expect-task %s" % (new_run_id, plan["target"]))
     return 0
 
 
-def cmd_verify_run(base, run_id, as_recovery=False, at_text=None):
+def cmd_verify_run(base, run_id, as_recovery=False, at_text=None,
+                   expect_task=None):
     try:
         detail = api_get(base, "/api/runs/" + run_id)
     except Exception as exc:
@@ -1443,13 +1468,27 @@ def cmd_verify_run(base, run_id, as_recovery=False, at_text=None):
         print("  %-26s %s" % (key, value))
     print("结论：" + human_verdict(d))
     if as_recovery:
-        ident = judge_verify_target(run, at_text=at_text)
+        # 详情回退防御：`main.py:1120` 走 `store.get_run(id)` 严格按 id 取，
+        # 但隔离实例 / 反向代理 / 未来改动若把另一条 run 塞进 {"run": ...}，
+        # 下面所有身份判据都会用错对象还照样给绿灯。带上 id 就交叉核对。
+        detail_id = run.get("id")
+        if isinstance(detail_id, str) and detail_id and detail_id != run_id:
+            print("验收不可用：详情 run.id=%s 与请求的 $RID=%s 不一致，"
+                  "核对 ⑧ 打印的新 run id，别贴错" % (detail_id, run_id))
+            return 2
+        ident = judge_verify_target(run, at_text=at_text,
+                                    expected_task_id=expect_task)
         print("本次续跑身份核对：%s（真被判过 %d 项身份字段）" % (
             ident["verdict"], ident["judged_fields"]))
         for b in ident["blockers"]:
             print("  [缺口] %s" % b)
         for n in ident["notes"]:
             print("  [提醒] %s" % n)
+        if not expect_task:
+            # 普通诊断路径保持 14:00 的行为逐字不变；但 11-09 的第 ⑨ 步
+            # 必须带 --expect-task，否则 ⑧ 的「只 retry 了哪一本」没被消费。
+            print("  [提醒] 未带 --expect-task：只按 4 本白名单核对，没消费 ⑧ 的"
+                  "目标 task；11-09 请直接复制 ⑧ 打印的完整命令")
         if ident["verdict"] != "ok":
             print("验收不可用：上面的「结论」不能用来判断 11-09 额度是否恢复；"
                   "核对 ⑧ 打印的新 run id，别贴错")
@@ -1527,6 +1566,10 @@ def main(argv=None):
     ap.add_argument("--as-recovery", action="store_true",
                     help="与 --verify-run 合用：核对这条 run 确实是本次 11-09 续跑新建的；"
                          "身份不符判「验收不可用」并返回 2（默认关闭，普通诊断不受影响）")
+    ap.add_argument("--expect-task", metavar="TASK_ID",
+                    help="与 --verify-run --as-recovery 合用：⑧ 打印的目标 task；"
+                         "核对这条 run 确实是 ⑧ retry 的那本（不带则只按 4 本白名单判，"
+                         "普通诊断路径行为不变）")
     ap.add_argument("--check-inherit", action="store_true",
                     help="只读复现 retry 会继承的章号，报倒退章清单")
     ap.add_argument("--resume-tasks", action="store_true", help="开回 4 个定时任务（写操作）")
@@ -1549,7 +1592,8 @@ def main(argv=None):
     if args.verify_run:
         return cmd_verify_run(args.base, args.verify_run,
                               as_recovery=args.as_recovery,
-                              at_text=args.recovery_at)
+                              at_text=args.recovery_at,
+                              expect_task=args.expect_task)
     if args.check_inherit:
         return cmd_check_inherit(args.base)
     return cmd_check(args.base)
