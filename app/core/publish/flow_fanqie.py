@@ -442,6 +442,11 @@ def run_fanqie_publish(page, st, i, note, values):
             "const x=d&&d.querySelector('" + _sel.get("fq_time_input") + "');"
             "return x?x.value:'';}", timeout=10) or "")
         if got != hhmm:
+            # 平台改版：定时时段收紧为固定档（如 14:00/15:00），00:00 不再
+            # 可选——点选被静默弹回。日期已按队列节奏选好，此时接受平台
+            # 回填的合法时间继续排队，不再按 00:00 硬卡整批。
+            if re.match(r"^\d{1,2}:\d{2}$", str(got or "")):
+                return got
             raise FlowError("番茄定时时间选择失败：期望 %s，实际 %s" % (hhmm, got))
 
     def fq_read_slot():
@@ -576,12 +581,13 @@ def run_fanqie_publish(page, st, i, note, values):
                          (prefill["date"], prefill["time"]))
                 else:
                     fq_pick_date(trial_day)
-                    fq_pick_time(trial_time)
+                    _accepted = fq_pick_time(trial_time)
                     # Save the actual accepted candidate back to
                     # the caller so the publish ledger can continue
                     # this queue's cadence for the next chapter.
                     values["scheduled_date"] = trial_day.strftime("%Y-%m-%d")
-                    values["scheduled_time"] = trial_time.strftime("%H:%M")
+                    values["scheduled_time"] = (_accepted
+                                                or trial_time.strftime("%H:%M"))
                     note(i, "尝试定时发布 %s %s" %
                          (trial_day.strftime("%Y-%m-%d"),
                           trial_time.strftime("%H:%M")))

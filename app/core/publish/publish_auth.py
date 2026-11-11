@@ -447,10 +447,16 @@ def _auto_release_authorized(task):
     2026-10 的 25 条 forced 里 14 条就是这么来的。现在这类放行必须有任务级
     开关背书，否则一律交回界面问人。
 
-    只认 JSON 真值 ``True``：``bool("false")`` 为真，字符串一旦被当授权，
-    手滑发个 ``"false"`` 就把闸门打开了（与 quality_gate 的 force 同一条纪律）。
+    只认两种显式授权：JSON 真值 ``True``，或定时发布配置对象且 ``enabled``
+    为真布尔（``/api/publish/task/<id>/auto-publish`` 落盘的正是这个形态，
+    两者语义同为「作者显式打开了这一任务的无人值守发布」）。字符串一律不认：
+    ``bool("false")`` 为真，手滑发个 ``"false"`` 就把闸门打开了（与
+    quality_gate 的 force 同一条纪律）。
     """
-    return (task or {}).get("auto_publish") is True
+    ap = (task or {}).get("auto_publish")
+    if ap is True:
+        return True
+    return isinstance(ap, dict) and ap.get("enabled") is True
 
 
 def _appeal_evidence(task):
