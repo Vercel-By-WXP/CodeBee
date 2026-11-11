@@ -49,6 +49,15 @@ REAL = (_dep_root() / "app").is_dir()
 class RealBaselineTest(unittest.TestCase):
     """真样本：本机真实仓库 ↔ 真实部署包，只读、零写入。"""
 
+    @classmethod
+    def setUpClass(cls):
+        # real-pair 基线只在主检出有效：git worktree 的 .git 是文件且全新
+        # 物化，与部署包天然行尾/清单不一致，跑出来只会是 unknown（2026-11-11
+        # 闸门三连实案）。发版闸门在仓外 worktree 执行，这里必须跳过。
+        if (ROOT / ".git").is_file():
+            raise unittest.SkipTest(
+                "git worktree 环境（.git 为文件）：real-pair 基线只在主检出有效")
+
     @unittest.skipUnless(REAL, "本机没有部署包副本；换机器用 --dep-root 复跑")
     def test_01_real_pair_matches_frozen_baseline(self):
         base = json.loads(FIXTURE.read_text(encoding="utf-8"))

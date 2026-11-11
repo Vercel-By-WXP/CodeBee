@@ -18,8 +18,18 @@ from core import attention, automation, store
 from core.publish import stats as pub_stats
 
 
-def _run(rid, status="failed", ended="2026-11-01T08:00:00", task_id="t1",
+def _iso_ago(seconds):
+    """相对当前的 ISO 时间串（本地时区）。
+
+    写死日期会随「近 7 天」窗口腐烂：2026-11-01 写的用例 11-04 起三连红
+    （闸门实案），一律用相对时间。"""
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - seconds))
+
+
+def _run(rid, status="failed", ended=None, task_id="t1",
          error=" boom", **kw):
+    if ended is None:
+        ended = _iso_ago(3600)
     r = {"id": rid, "status": status, "ended_at": ended, "task_id": task_id,
          "error": error}
     r.update(kw)
@@ -66,7 +76,7 @@ class CollectTests(unittest.TestCase):
     def test_paused_run_listed_with_run_id(self):
         # 暂停是 run 级标志（任务状态不变）：paused=True 且 run 仍 running
         runs = [_run("r-p", status="running", paused=True,
-                     pause_requested_at="2026-11-01T08:00:00")]
+                     pause_requested_at=_iso_ago(3600))]
         with mock.patch.object(store, "list_runs", return_value=runs), \
              mock.patch.object(store, "list_tasks", return_value=[]):
             res = attention.collect(now=self.now)

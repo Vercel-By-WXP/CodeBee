@@ -2,3 +2,12 @@
 # bat 必须 CRLF；其余文本随 core.autocrlf。
 *.sh text eol=lf
 *.bat text eol=crlf
+
+# 纯文本代码资产统一 LF 物化：core.autocrlf=true 会让新 checkout 把 LF blob
+# 物化成 CRLF，凡按字节断言「必须保持 LF」的守测（quota_recovery 三连）在
+# fresh worktree/CI 必炸（2026-11-11 闸门实案）。状态对账走 clean 过滤，
+# 既有 CRLF 工作副本不会被误判为改动。
+*.py text eol=lf
+*.json text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
